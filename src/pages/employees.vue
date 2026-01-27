@@ -1,0 +1,724 @@
+<template>
+  <q-page padding>
+    <!-- Page Header -->
+    <div class="row items-center justify-between q-mb-lg">
+      <div class="col-12 col-md-auto">
+        <h1 class="text-h4 text-weight-bold q-my-none">
+          Quản Lý Nhân Viên
+        </h1>
+      </div>
+      <div class="col-12 col-md-auto q-mt-md q-mt-md-none">
+        <div class="row q-gutter-sm items-center">
+          <!-- Search Input -->
+          <div class="col-12 col-sm-auto">
+            <q-input
+              v-model="searchQuery"
+              outlined
+              dense
+              placeholder="Tìm kiếm nhân viên..."
+              debounce="300"
+              class="search-input"
+            >
+              <template #prepend>
+                <q-icon name="search" />
+              </template>
+              <template #append>
+                <q-icon
+                  v-if="searchQuery"
+                  name="close"
+                  class="cursor-pointer"
+                  @click="searchQuery = ''"
+                />
+              </template>
+            </q-input>
+          </div>
+          <!-- Add Button -->
+          <div class="col-12 col-sm-auto">
+            <q-btn
+              color="primary"
+              icon="add"
+              label="Thêm Nhân Viên"
+              unelevated
+              class="full-width-xs"
+              @click="openAddDialog"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Employee Table with Pagination -->
+    <q-table
+      v-model:pagination="pagination"
+      flat
+      bordered
+      :rows="filteredEmployees"
+      :columns="visibleColumns"
+      row-key="id"
+      :loading="loading"
+      :rows-per-page-options="rowsPerPageOptions"
+      class="employee-table"
+    >
+      <!-- Loading Skeleton -->
+      <template #loading>
+        <q-inner-loading showing>
+          <q-spinner-dots
+            size="50px"
+            color="primary"
+          />
+        </q-inner-loading>
+      </template>
+
+      <!-- Empty State -->
+      <template #no-data>
+        <div class="full-width column items-center q-py-xl">
+          <q-icon
+            name="people"
+            size="64px"
+            color="grey-5"
+            class="q-mb-md"
+          />
+          <div class="text-h6 text-grey-6 q-mb-sm">
+            {{ searchQuery ? 'Không tìm thấy nhân viên phù hợp' : 'Chưa có nhân viên nào' }}
+          </div>
+          <div
+            v-if="!searchQuery"
+            class="text-body2 text-grey-5"
+          >
+            Nhấn "Thêm Nhân Viên" để bắt đầu
+          </div>
+        </div>
+      </template>
+
+      <!-- Inline Edit: Full Name Column -->
+      <template #body-cell-full_name="props">
+        <q-td
+          :props="props"
+          class="cursor-pointer editable-cell"
+        >
+          <q-spinner-dots
+            v-if="inlineEditLoading[getCellKey(props.row.id, 'full_name')]"
+            size="sm"
+            color="primary"
+          />
+          <template v-else>
+            <span class="cell-value">{{ props.row.full_name }}</span>
+            <q-icon
+              name="edit"
+              size="xs"
+              class="edit-hint q-ml-xs text-grey-5"
+            />
+            <q-popup-edit
+              v-slot="scope"
+              v-model="props.row.full_name"
+              buttons
+              label-set="Lưu"
+              label-cancel="Hủy"
+              @save="(val: string, initialVal: string) => handleInlineEdit(props.row.id, 'full_name', val, initialVal)"
+            >
+              <q-input
+                v-model="scope.value"
+                dense
+                autofocus
+                :rules="[(val: string) => !!val?.trim() || 'Không được để trống']"
+                @keyup.enter="scope.set"
+              />
+            </q-popup-edit>
+          </template>
+        </q-td>
+      </template>
+
+      <!-- Inline Edit: Department Column -->
+      <template #body-cell-department="props">
+        <q-td
+          :props="props"
+          class="cursor-pointer editable-cell"
+        >
+          <q-spinner-dots
+            v-if="inlineEditLoading[getCellKey(props.row.id, 'department')]"
+            size="sm"
+            color="primary"
+          />
+          <template v-else>
+            <span class="cell-value">{{ props.row.department }}</span>
+            <q-icon
+              name="edit"
+              size="xs"
+              class="edit-hint q-ml-xs text-grey-5"
+            />
+            <q-popup-edit
+              v-slot="scope"
+              v-model="props.row.department"
+              buttons
+              label-set="Lưu"
+              label-cancel="Hủy"
+              @save="(val: string, initialVal: string) => handleInlineEdit(props.row.id, 'department', val, initialVal)"
+            >
+              <q-input
+                v-model="scope.value"
+                dense
+                autofocus
+                @keyup.enter="scope.set"
+              />
+            </q-popup-edit>
+          </template>
+        </q-td>
+      </template>
+
+      <!-- Inline Edit: Chức Vụ Column with Dropdown -->
+      <template #body-cell-chuc_vu="props">
+        <q-td
+          :props="props"
+          class="cursor-pointer editable-cell"
+        >
+          <q-spinner-dots
+            v-if="inlineEditLoading[getCellKey(props.row.id, 'chuc_vu')]"
+            size="sm"
+            color="primary"
+          />
+          <template v-else>
+            <span class="cell-value">{{ chucVuLabels[props.row.chuc_vu] || props.row.chuc_vu }}</span>
+            <q-icon
+              name="edit"
+              size="xs"
+              class="edit-hint q-ml-xs text-grey-5"
+            />
+            <q-popup-edit
+              v-slot="scope"
+              v-model="props.row.chuc_vu"
+              buttons
+              label-set="Lưu"
+              label-cancel="Hủy"
+              @save="(val: string, initialVal: string) => handleInlineEdit(props.row.id, 'chuc_vu', val, initialVal)"
+            >
+              <q-select
+                v-model="scope.value"
+                :options="chucVuOptions"
+                option-value="value"
+                option-label="label"
+                emit-value
+                map-options
+                dense
+                autofocus
+                options-dense
+                style="min-width: 150px"
+              />
+            </q-popup-edit>
+          </template>
+        </q-td>
+      </template>
+
+      <!-- Actions Column -->
+      <template #body-cell-actions="props">
+        <q-td :props="props">
+          <q-btn
+            flat
+            round
+            dense
+            icon="edit"
+            color="primary"
+            @click="openEditDialog(props.row)"
+          >
+            <q-tooltip>Sửa (Modal)</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            round
+            dense
+            icon="delete"
+            color="negative"
+            @click="confirmDelete(props.row)"
+          >
+            <q-tooltip>Xóa</q-tooltip>
+          </q-btn>
+        </q-td>
+      </template>
+    </q-table>
+
+    <!-- Add/Edit Dialog -->
+    <q-dialog
+      v-model="formDialog.isOpen"
+      persistent
+      :maximized="$q.screen.lt.sm"
+      transition-show="slide-up"
+      transition-hide="slide-down"
+    >
+      <q-card :style="$q.screen.gt.xs ? 'min-width: 400px; max-width: 500px' : ''">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">
+            {{ formDialog.mode === 'create' ? 'Thêm Nhân Viên Mới' : 'Chỉnh Sửa Nhân Viên' }}
+          </div>
+          <q-space />
+          <q-btn
+            v-close-popup
+            icon="close"
+            flat
+            round
+            dense
+            @click="closeFormDialog"
+          />
+        </q-card-section>
+
+        <q-card-section>
+          <q-form
+            class="q-gutter-md"
+            @submit.prevent="handleSubmit"
+          >
+            <!-- Mã Nhân Viên -->
+            <q-input
+              v-model="formData.employee_id"
+              outlined
+              label="Mã Nhân Viên *"
+              :rules="[
+                (val: string) => !!val?.trim() || 'Vui lòng nhập mã nhân viên'
+              ]"
+              :disable="formDialog.mode === 'edit'"
+              lazy-rules
+            >
+              <template #prepend>
+                <q-icon name="badge" />
+              </template>
+            </q-input>
+
+            <!-- Tên Nhân Viên -->
+            <q-input
+              v-model="formData.full_name"
+              outlined
+              label="Tên Nhân Viên *"
+              :rules="[
+                (val: string) => !!val?.trim() || 'Vui lòng nhập tên nhân viên'
+              ]"
+              lazy-rules
+            >
+              <template #prepend>
+                <q-icon name="person" />
+              </template>
+            </q-input>
+
+            <!-- Phòng Ban -->
+            <q-input
+              v-model="formData.department"
+              outlined
+              label="Phòng Ban"
+            >
+              <template #prepend>
+                <q-icon name="business" />
+              </template>
+            </q-input>
+
+            <!-- Chức Vụ -->
+            <q-input
+              v-model="formData.chuc_vu"
+              outlined
+              label="Chức Vụ"
+            >
+              <template #prepend>
+                <q-icon name="work" />
+              </template>
+            </q-input>
+
+            <!-- Action Buttons -->
+            <div class="row justify-end q-gutter-sm q-mt-md">
+              <q-btn
+                flat
+                label="Hủy"
+                color="grey"
+                @click="closeFormDialog"
+              />
+              <q-btn
+                unelevated
+                type="submit"
+                label="Lưu"
+                color="primary"
+                :loading="loading"
+              />
+            </div>
+          </q-form>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
+
+    <!-- Delete Confirmation Dialog -->
+    <q-dialog
+      v-model="deleteDialog.isOpen"
+      persistent
+    >
+      <q-card style="min-width: 320px">
+        <q-card-section class="row items-center">
+          <q-avatar
+            icon="warning"
+            color="negative"
+            text-color="white"
+          />
+          <span class="q-ml-sm text-h6">Xác nhận xóa</span>
+        </q-card-section>
+
+        <q-card-section class="q-pt-none">
+          Bạn có chắc muốn xóa nhân viên này?
+          <div
+            v-if="deleteDialog.employee"
+            class="q-mt-sm text-weight-medium"
+          >
+            {{ deleteDialog.employee.full_name }} ({{ deleteDialog.employee.employee_id }})
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn
+            v-close-popup
+            flat
+            label="Hủy"
+            color="grey"
+            @click="deleteDialog.isOpen = false"
+          />
+          <q-btn
+            flat
+            label="Xóa"
+            color="negative"
+            :loading="loading"
+            @click="handleDelete"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+  </q-page>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useQuasar, type QTableColumn } from 'quasar'
+import { useEmployees, useSnackbar } from '@/composables'
+import type { Employee, EmployeeFormData } from '@/types'
+
+const $q = useQuasar()
+const snackbar = useSnackbar()
+
+// Composables
+const {
+  employees,
+  loading,
+  fetchEmployees,
+  createEmployee,
+  updateEmployee,
+  deleteEmployee,
+} = useEmployees()
+
+// Local state
+const searchQuery = ref('')
+
+// Pagination state (AC7-AC9)
+const pagination = ref({
+  page: 1,
+  rowsPerPage: 25,
+  sortBy: 'created_at',
+  descending: true,
+})
+
+// Page size options for dropdown (AC8)
+const rowsPerPageOptions = [10, 25, 50, 100]
+
+// Reset pagination to page 1 when search/filter changes (AC9)
+watch(searchQuery, () => {
+  pagination.value.page = 1
+})
+
+// Inline edit loading state - tracks which cells are being saved
+const inlineEditLoading = ref<Record<string, boolean>>({})
+
+// Chức Vụ options for dropdown selection
+const chucVuOptions = [
+  { label: 'Quản Lý', value: 'quan_ly' },
+  { label: 'Nhân Viên', value: 'nhan_vien' },
+  { label: 'Trưởng Phòng', value: 'truong_phong' },
+]
+
+// Mapping chuc_vu values to display labels
+const chucVuLabels: Record<string, string> = {
+  quan_ly: 'Quản Lý',
+  nhan_vien: 'Nhân Viên',
+  truong_phong: 'Trưởng Phòng',
+}
+
+/**
+ * Generate unique key for tracking cell loading state
+ */
+const getCellKey = (id: number, field: string): string => `${id}-${field}`
+
+/**
+ * Handle inline field edits via q-popup-edit
+ * @param id - Employee ID
+ * @param field - Field name being edited (full_name, department, chuc_vu)
+ * @param newValue - New value from popup edit
+ * @param originalValue - Original value for rollback on error
+ */
+const handleInlineEdit = async (
+  id: number,
+  field: 'full_name' | 'department' | 'chuc_vu',
+  newValue: string,
+  originalValue: string
+): Promise<void> => {
+  // Skip if no change
+  if (newValue === originalValue) return
+
+  // Validate non-empty for full_name (required field)
+  if (field === 'full_name' && !newValue?.trim()) {
+    snackbar.error('Tên nhân viên không được để trống')
+    // Revert the value
+    const emp = employees.value.find(e => e.id === id)
+    if (emp) {
+      emp[field] = originalValue
+    }
+    return
+  }
+
+  const cellKey = getCellKey(id, field)
+  inlineEditLoading.value[cellKey] = true
+
+  try {
+    // Optimistic update already applied by v-model
+    const result = await updateEmployee(id, { [field]: newValue })
+
+    if (!result) {
+      // Revert on error - find employee and restore original value
+      const emp = employees.value.find(e => e.id === id)
+      if (emp) {
+        emp[field] = originalValue
+      }
+    }
+    // Success notification is handled by useEmployees composable
+  } catch {
+    // Revert on error - composable already handles error notification
+    const emp = employees.value.find(e => e.id === id)
+    if (emp) {
+      emp[field] = originalValue
+    }
+  } finally {
+    inlineEditLoading.value[cellKey] = false
+  }
+}
+
+// Form dialog state
+const formDialog = reactive({
+  isOpen: false,
+  mode: 'create' as 'create' | 'edit',
+  employeeId: null as number | null,
+})
+
+// Form data
+const formData = reactive<EmployeeFormData>({
+  employee_id: '',
+  full_name: '',
+  department: '',
+  chuc_vu: '',
+})
+
+// Delete dialog state
+const deleteDialog = reactive({
+  isOpen: false,
+  employee: null as Employee | null,
+})
+
+// Table columns configuration
+const columns: QTableColumn[] = [
+  {
+    name: 'employee_id',
+    label: 'Mã NV',
+    field: 'employee_id',
+    sortable: true,
+    align: 'left',
+  },
+  {
+    name: 'full_name',
+    label: 'Tên Nhân Viên',
+    field: 'full_name',
+    sortable: true,
+    align: 'left',
+  },
+  {
+    name: 'department',
+    label: 'Phòng Ban',
+    field: 'department',
+    sortable: true,
+    align: 'left',
+  },
+  {
+    name: 'chuc_vu',
+    label: 'Chức Vụ',
+    field: 'chuc_vu',
+    sortable: true,
+    align: 'left',
+  },
+  {
+    name: 'actions',
+    label: 'Thao Tác',
+    field: 'actions',
+    align: 'center',
+  },
+]
+
+// Mobile columns - hide department on xs screens
+const mobileColumns: QTableColumn[] = [
+  {
+    name: 'employee_id',
+    label: 'Mã NV',
+    field: 'employee_id',
+    sortable: true,
+    align: 'left',
+  },
+  {
+    name: 'full_name',
+    label: 'Tên Nhân Viên',
+    field: 'full_name',
+    sortable: true,
+    align: 'left',
+  },
+  {
+    name: 'actions',
+    label: 'Thao Tác',
+    field: 'actions',
+    align: 'center',
+  },
+]
+
+// Responsive columns
+const visibleColumns = computed(() => {
+  return $q.screen.lt.sm ? mobileColumns : columns
+})
+
+// Filtered employees based on search query
+const filteredEmployees = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return employees.value
+  }
+
+  const query = searchQuery.value.toLowerCase().trim()
+  return employees.value.filter((emp) =>
+    emp.full_name?.toLowerCase().includes(query) ||
+    emp.employee_id?.toLowerCase().includes(query) ||
+    emp.department?.toLowerCase().includes(query) ||
+    emp.chuc_vu?.toLowerCase().includes(query)
+  )
+})
+
+// Form dialog methods
+const openAddDialog = () => {
+  formDialog.mode = 'create'
+  formDialog.employeeId = null
+  resetFormData()
+  formDialog.isOpen = true
+}
+
+const openEditDialog = (employee: Employee) => {
+  formDialog.mode = 'edit'
+  formDialog.employeeId = employee.id
+  formData.employee_id = employee.employee_id
+  formData.full_name = employee.full_name
+  formData.department = employee.department
+  formData.chuc_vu = employee.chuc_vu
+  formDialog.isOpen = true
+}
+
+const closeFormDialog = () => {
+  formDialog.isOpen = false
+  resetFormData()
+}
+
+const resetFormData = () => {
+  formData.employee_id = ''
+  formData.full_name = ''
+  formData.department = ''
+  formData.chuc_vu = ''
+}
+
+// Submit handler for create/update
+const handleSubmit = async () => {
+  // Validate required fields
+  if (!formData.employee_id.trim() || !formData.full_name.trim()) {
+    snackbar.warning('Vui lòng điền đầy đủ thông tin bắt buộc')
+    return
+  }
+
+  let result: Employee | null = null
+
+  if (formDialog.mode === 'create') {
+    result = await createEmployee({ ...formData })
+  } else if (formDialog.employeeId) {
+    result = await updateEmployee(formDialog.employeeId, { ...formData })
+  }
+
+  // Success notification is handled by useEmployees composable
+  if (result) {
+    closeFormDialog()
+  }
+}
+
+// Delete confirmation
+const confirmDelete = (employee: Employee) => {
+  deleteDialog.employee = employee
+  deleteDialog.isOpen = true
+}
+
+const handleDelete = async () => {
+  if (!deleteDialog.employee) return
+
+  const success = await deleteEmployee(deleteDialog.employee.id)
+
+  if (success) {
+    deleteDialog.isOpen = false
+    deleteDialog.employee = null
+  }
+}
+
+// Fetch employees on mount
+onMounted(() => {
+  fetchEmployees()
+})
+</script>
+
+<style scoped>
+.search-input {
+  min-width: 250px;
+}
+
+@media (max-width: 599px) {
+  .search-input {
+    min-width: 100%;
+  }
+
+  .full-width-xs {
+    width: 100%;
+  }
+}
+
+.employee-table {
+  /* Ensure table is scrollable on mobile */
+  max-width: 100%;
+}
+
+/* Smooth transitions for dialogs */
+.q-dialog__inner--minimized > div {
+  max-width: 95vw;
+}
+
+/* Editable cell styles */
+.editable-cell {
+  transition: background-color 0.2s ease;
+}
+
+.editable-cell:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.editable-cell .edit-hint {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.editable-cell:hover .edit-hint {
+  opacity: 1;
+}
+
+.editable-cell .cell-value {
+  display: inline-block;
+}
+</style>
