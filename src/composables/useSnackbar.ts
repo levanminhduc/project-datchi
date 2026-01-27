@@ -1,58 +1,154 @@
-import { ref } from 'vue'
+import { useQuasar } from 'quasar'
+
+type NotifyPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top' | 'bottom' | 'left' | 'right' | 'center'
+type NotifyType = 'positive' | 'negative' | 'warning' | 'info' | 'ongoing'
 
 interface SnackbarOptions {
-  text: string
+  message: string
+  type?: NotifyType
   color?: string
+  textColor?: string
+  icon?: string
   timeout?: number
-  location?: 'top' | 'bottom' | 'left' | 'right'
+  position?: NotifyPosition
+  caption?: string
+  html?: boolean
+  actions?: Array<{
+    label: string
+    color?: string
+    handler?: () => void
+  }>
+  progress?: boolean
+  multiLine?: boolean
 }
 
 export function useSnackbar() {
-  const isVisible = ref(false)
-  const options = ref<SnackbarOptions>({
-    text: '',
-    color: 'success',
-    timeout: 3000,
-    location: 'bottom'
-  })
+  const $q = useQuasar()
 
-  const show = (config: string | SnackbarOptions) => {
-    if (typeof config === 'string') {
-      options.value = { ...options.value, text: config }
-    } else {
-      options.value = { ...options.value, ...config }
+  // Map type to icon (using Material Icons format, not MDI)
+  const getIcon = (type: NotifyType): string => {
+    const iconMap: Record<NotifyType, string> = {
+      positive: 'check_circle',      // Material Icons format
+      negative: 'error',             // Material Icons format
+      warning: 'warning',            // Material Icons format
+      info: 'info',                  // Material Icons format
+      ongoing: 'hourglass_empty'     // Material Icons format (for loading spinner case)
     }
-    isVisible.value = true
+    return iconMap[type] || 'info'
   }
 
-  const success = (text: string, timeout?: number) => {
-    show({ text, color: 'success', timeout })
+  /**
+   * Show a notification
+   */
+  const show = (options: string | SnackbarOptions): void => {
+    const config: SnackbarOptions = typeof options === 'string'
+      ? { message: options }
+      : options
+
+    const {
+      message,
+      type,
+      color,
+      textColor,
+      icon,
+      timeout = 3000,
+      position = 'top',
+      caption,
+      html = false,
+      actions,
+      progress = false,
+      multiLine = false
+    } = config
+
+    // Use conditional spread to only include optional properties when defined
+    // This allows the `type` property to provide default colors/styling
+    const computedIcon = icon || (type ? getIcon(type) : undefined)
+    const computedActions = actions?.map(a => ({
+      label: a.label,
+      color: a.color || 'white',
+      handler: a.handler
+    }))
+
+    $q.notify({
+      message,
+      type,
+      ...(color && { color }),
+      ...(textColor && { textColor }),
+      ...(computedIcon && { icon: computedIcon }),
+      timeout,
+      position,
+      ...(caption && { caption }),
+      html,
+      ...(computedActions && { actions: computedActions }),
+      progress,
+      multiLine
+    })
   }
 
-  const error = (text: string, timeout?: number) => {
-    show({ text, color: 'error', timeout })
+  /**
+   * Success notification (green)
+   */
+  const success = (message: string, timeout?: number): void => {
+    show({
+      message,
+      type: 'positive',
+      timeout: timeout || 3000
+    })
   }
 
-  const warning = (text: string, timeout?: number) => {
-    show({ text, color: 'warning', timeout })
+  /**
+   * Error notification (red)
+   */
+  const error = (message: string, timeout?: number): void => {
+    show({
+      message,
+      type: 'negative',
+      timeout: timeout || 5000
+    })
   }
 
-  const info = (text: string, timeout?: number) => {
-    show({ text, color: 'info', timeout })
+  /**
+   * Warning notification (orange)
+   */
+  const warning = (message: string, timeout?: number): void => {
+    show({
+      message,
+      type: 'warning',
+      timeout: timeout || 4000
+    })
   }
 
-  const hide = () => {
-    isVisible.value = false
+  /**
+   * Info notification (blue)
+   */
+  const info = (message: string, timeout?: number): void => {
+    show({
+      message,
+      type: 'info',
+      timeout: timeout || 3000
+    })
+  }
+
+  /**
+   * Ongoing/loading notification (returns dismiss function)
+   */
+  const loading = (message: string): (() => void) => {
+    const dismiss = $q.notify({
+      message,
+      type: 'ongoing',
+      spinner: true,
+      timeout: 0, // Persistent until dismissed
+      position: 'top'
+    })
+    return dismiss
   }
 
   return {
-    isVisible,
-    options,
     show,
     success,
     error,
     warning,
     info,
-    hide
+    loading
   }
 }

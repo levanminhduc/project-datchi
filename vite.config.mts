@@ -1,5 +1,6 @@
 import { quasar, transformAssetUrls } from '@quasar/vite-plugin'
 import Components from 'unplugin-vue-components/vite'
+import { QuasarResolver } from 'unplugin-vue-components/resolvers'
 import Vue from '@vitejs/plugin-vue'
 import Fonts from 'unplugin-fonts/vite'
 import VueRouter from 'unplugin-vue-router/vite'
@@ -19,6 +20,10 @@ export default defineConfig({
     }),
     Components({
       dts: 'src/components.d.ts',
+      dirs: ['src/components'],
+      resolvers: [
+        QuasarResolver(),
+      ],
     }),
     Fonts({
       fontsource: {
@@ -40,6 +45,6 @@ export default defineConfig({
     extensions: ['.js', '.json', '.jsx', '.mjs', '.ts', '.tsx', '.vue'],
   },
   server: {
-    port: 3000,
+    port: 5173,
   },
 })

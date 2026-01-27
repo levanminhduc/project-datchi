@@ -70,30 +70,41 @@ src/
 
 ## Data Models
 
-**User-Provided Structure** (do not modify):
+**User-Provided Structure** (updated to match implementation):
 
 ```typescript
 interface Employee {
   id: string              // UUID from Supabase
   full_name: string       // Tên Nhân Viên
-  employee_code: string   // Mã Nhân Viên
+  employee_id: string     // Mã Nhân Viên (immutable)
   department: string      // Phòng Ban
-  position: string        // Chức Vụ
+  chuc_vu: ChucVu         // Chức Vụ
   created_at: string      // ISO timestamp
   updated_at: string      // ISO timestamp
 }
+
+// Position/Role enum type
+type ChucVu = 'quan_ly' | 'nhan_vien' | 'truong_phong'
+
+// Vietnamese labels for ChucVu dropdown display
+const chucVuLabels: Record<ChucVu, string> = {
+  quan_ly: 'Quản lý',
+  nhan_vien: 'Nhân viên',
+  truong_phong: 'Trưởng phòng'
+}
 ```
 
-This structure was provided by the user and must be used exactly as shown:
+This structure was updated to match implementation:
 - Field names: snake_case (preserve exact casing)
-- Types: string for all fields including id (UUID)
-- No additional fields should be added without user approval
+- `employee_code` renamed to `employee_id` (immutable field)
+- `position` renamed to `chuc_vu` with enum type
+- Types: string for most fields, ChucVu enum for position
 
 **Derived Types**:
 
 ```typescript
 // For create/update operations (without id, timestamps)
-type EmployeeInput = Pick<Employee, 'full_name' | 'employee_code' | 'department' | 'position'>
+type EmployeeInput = Pick<Employee, 'full_name' | 'employee_id' | 'department' | 'chuc_vu'>
 
 // Table column definition - follow pattern from src/types/components.ts:10-19
 interface EmployeeColumn extends DataTableColumn {
@@ -123,9 +134,9 @@ Follow pattern from `src/pages/components.vue:622-626`:
 ```typescript
 const columns: EmployeeColumn[] = [
   { name: 'full_name', label: 'Tên Nhân Viên', field: 'full_name', align: 'left', sortable: true },
-  { name: 'employee_code', label: 'Mã Nhân Viên', field: 'employee_code', align: 'left', sortable: true },
+  { name: 'employee_id', label: 'Mã NV', field: 'employee_id', align: 'left', sortable: true },
   { name: 'department', label: 'Phòng Ban', field: 'department', align: 'left', sortable: true },
-  { name: 'position', label: 'Chức Vụ', field: 'position', align: 'left', sortable: true },
+  { name: 'chuc_vu', label: 'Chức Vụ', field: 'chuc_vu', align: 'left', sortable: true },
   { name: 'actions', label: 'Thao tác', field: 'actions', align: 'center' }
 ]
 ```
@@ -146,15 +157,47 @@ sequenceDiagram
     U->>P: Navigate to /employees
     P->>C: onMounted → fetchEmployees()
     C->>C: isLoading = true
-    C->>S: getEmployees(pagination)
-    S->>A: GET /api/employees?page=1&limit=10
+    C->>S: getEmployees({ limit: 0 })
+    S->>A: GET /api/employees?limit=0
     A->>D: SELECT * FROM employees
-    D-->>A: rows[]
+    D-->>A: rows[] (1630+ records)
     A-->>S: { data: employees[], total }
-    S-->>C: PaginatedResponse
+    S-->>C: All employees array
     C->>C: employees = data, isLoading = false
     C-->>P: reactive state updated
-    P-->>U: Render q-table with data
+    P-->>U: Render q-table with virtual-scroll
+```
+
+### Inline Edit Flow (NEW)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant P as employees.vue
+    participant C as useEmployees
+    participant S as employeeService
+    participant A as Hono API
+    participant D as Supabase
+
+    U->>P: Click on editable cell (full_name/department/chuc_vu)
+    P->>P: Show q-popup-edit with current value
+    U->>P: Edit value, press Enter or click save
+    P->>P: Store original value, show loading on cell
+    P->>C: handleInlineEdit(id, field, newValue)
+    C->>S: update(id, { [field]: newValue })
+    S->>A: PUT /api/employees/:id
+    A->>D: UPDATE employees SET field = value
+    D-->>A: updated employee
+    A-->>S: { data: employee }
+    S-->>C: Employee
+    C->>C: Update local state
+    C-->>P: Success
+    P->>P: Hide loading, show success notification
+    P-->>U: Cell shows new value
+    
+    Note over P: On Error
+    P->>P: Revert to original value
+    P->>P: Show error notification
 ```
 
 ### Create Employee
@@ -188,11 +231,13 @@ sequenceDiagram
 
 | Method | Endpoint | Request | Response | Description |
 |--------|----------|---------|----------|-------------|
-| GET | /api/employees | `?page=1&limit=10&search=` | `PaginatedResponse<Employee>` | List with pagination |
+| GET | /api/employees | `?limit=0` | `Employee[]` | All records (limit=0 disables pagination) |
 | GET | /api/employees/:id | - | `ApiResponse<Employee>` | Get single employee |
 | POST | /api/employees | `EmployeeInput` | `ApiResponse<Employee>` | Create employee |
-| PUT | /api/employees/:id | `Partial<EmployeeInput>` | `ApiResponse<Employee>` | Update employee |
+| PUT | /api/employees/:id | `Partial<EmployeeInput>` | `ApiResponse<Employee>` | Update employee (used by inline edit) |
 | DELETE | /api/employees/:id | - | `ApiResponse<{success: true}>` | Delete employee |
+
+> **Note**: Backend already supports `limit=0` for fetching all records without pagination.
 
 ### Error Response Format
 
@@ -283,6 +328,22 @@ const supabaseKey = process.env.SUPABASE_ANON_KEY || '...'
 export const supabase = createClient(supabaseUrl, supabaseKey)
 ```
 
+### Supabase Client Pattern
+
+The backend uses dual Supabase clients:
+
+| Client | Key | Purpose |
+|--------|-----|---------|
+| `supabase` | `ANON_KEY` | For frontend-like operations (respects RLS) |
+| `supabaseAdmin` | `SERVICE_ROLE_KEY` | For backend CRUD operations (bypasses RLS) |
+
+**Important**: `supabaseAdmin` bypasses all Row Level Security policies. Only use for server-side operations. Never expose to frontend.
+
+**Environment Variables**:
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase instance URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Anon key for frontend
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key for backend (keep secret)
+
 ## Error Handling
 
 ### Backend (Hono)
@@ -327,14 +388,160 @@ Follow Quasar responsive design. Table adapts:
 />
 ```
 
+## Virtual Scroll Configuration (NEW)
+
+For handling 1630+ employee records efficiently, replace pagination with Quasar's virtual scroll.
+
+### Q-Table Virtual Scroll Setup
+
+```vue
+<q-table
+  flat
+  bordered
+  virtual-scroll
+  :virtual-scroll-sticky-size-start="48"
+  :rows="filteredEmployees"
+  :columns="visibleColumns"
+  row-key="id"
+  :loading="loading"
+  style="height: calc(100vh - 200px)"
+  class="employee-table"
+>
+```
+
+### Configuration Details
+
+| Property | Value | Purpose |
+|----------|-------|---------|
+| `virtual-scroll` | true | Enable virtual scrolling |
+| `virtual-scroll-sticky-size-start` | 48 | Header row height in px |
+| `style="height: calc(100vh - 200px)"` | dynamic | Viewport-based height for better UX |
+| `:rows-per-page-options="[0]"` | disable | Hide pagination (show all rows) |
+
+### Performance Considerations
+
+- **Initial Load**: Fetches all 1630 records in single API call (~1s with limit=0)
+- **Memory**: ~500KB for 1630 records in memory (acceptable)
+- **Render**: Only visible rows rendered (~10-15 at a time)
+- **Scroll**: 60fps smooth scrolling with virtualization
+- **Search**: Client-side filtering on full dataset (instant with computed)
+
+## Inline Editing with q-popup-edit (NEW)
+
+Enable rapid editing of employee fields directly in table cells.
+
+### Editable Fields
+
+| Field | Column Name | Editable | Component |
+|-------|-------------|----------|-----------|
+| full_name | Tên Nhân Viên | Yes | q-popup-edit |
+| department | Phòng Ban | Yes | q-popup-edit |
+| chuc_vu | Chức Vụ | Yes | q-popup-edit |
+| employee_id | Mã NV | No | Read-only |
+| actions | Thao Tác | N/A | Buttons |
+
+### Template Slot Pattern
+
+```vue
+<!-- Inline edit for full_name -->
+<template #body-cell-full_name="props">
+  <q-td :props="props" class="cursor-pointer">
+    {{ props.row.full_name }}
+    <q-popup-edit
+      v-model="props.row.full_name"
+      v-slot="scope"
+      buttons
+      label-set="Lưu"
+      label-cancel="Hủy"
+      @save="(val, initialVal) => handleInlineEdit(props.row.id, 'full_name', val, initialVal)"
+    >
+      <q-input
+        v-model="scope.value"
+        dense
+        autofocus
+        @keyup.enter="scope.set"
+      />
+    </q-popup-edit>
+    <q-icon name="edit" size="xs" class="q-ml-xs text-grey-5" />
+  </q-td>
+</template>
+```
+
+### handleInlineEdit Method Specification
+
+```typescript
+/**
+ * Handle inline field edits via q-popup-edit
+ * @param id - Employee ID
+ * @param field - Field name being edited (full_name, department, chuc_vu)
+ * @param newValue - New value from popup edit
+ * @param originalValue - Original value for rollback on error
+ */
+const handleInlineEdit = async (
+  id: number,
+  field: 'full_name' | 'department' | 'chuc_vu',
+  newValue: string,
+  originalValue: string
+): Promise<void> => {
+  // Skip if no change
+  if (newValue === originalValue) return
+  
+  // Optimistic update already applied by v-model
+  const result = await updateEmployee(id, { [field]: newValue })
+  
+  if (!result) {
+    // Revert on error - find employee and restore original value
+    const emp = employees.value.find(e => e.id === id)
+    if (emp) {
+      emp[field] = originalValue
+    }
+  }
+}
+```
+
+### Loading State per Cell
+
+Track which cells are currently saving:
+
+```typescript
+// State for tracking inline edit loading
+const inlineEditLoading = ref<Record<string, boolean>>({})
+
+// Generate key for loading state
+const getCellKey = (id: number, field: string) => `${id}-${field}`
+
+// In handleInlineEdit
+inlineEditLoading.value[getCellKey(id, field)] = true
+try {
+  await updateEmployee(id, { [field]: newValue })
+} finally {
+  inlineEditLoading.value[getCellKey(id, field)] = false
+}
+```
+
+### Visual Indicator
+
+```vue
+<q-td :props="props" class="cursor-pointer">
+  <q-spinner-dots 
+    v-if="inlineEditLoading[getCellKey(props.row.id, 'full_name')]"
+    size="sm"
+  />
+  <template v-else>
+    {{ props.row.full_name }}
+    <!-- popup-edit here -->
+  </template>
+</q-td>
+```
+
 ## Vietnamese Labels Reference
 
 | Field | Database Column | Vietnamese Label |
 |-------|-----------------|------------------|
 | Name | full_name | Tên Nhân Viên |
-| Code | employee_code | Mã Nhân Viên |
+| Code | employee_id | Mã NV |
 | Department | department | Phòng Ban |
-| Position | position | Chức Vụ |
+| Position | chuc_vu | Chức Vụ |
 | Actions | - | Thao tác |
 | Add | - | Thêm nhân viên |
 | Edit | - | Sửa |
@@ -352,12 +559,18 @@ Follow Quasar responsive design. Table adapts:
 | Supabase connection failure | Environment variable fallbacks |
 | Slow API responses | Loading states, timeout handling |
 | XSS in user input | Quasar sanitizes by default |
+| **NEW** Large dataset performance | Virtual scroll renders only visible rows |
+| **NEW** Memory with 1630+ records | ~500KB acceptable, use computed for filtering |
+| **NEW** Inline edit race conditions | Loading state per cell, optimistic update with rollback |
+| **NEW** Inline edit data loss | Store original value, revert on API failure |
 
 ## Test Strategy
 
 - **Unit**: Test useEmployees composable in isolation
 - **Integration**: Test employeeService with mock API
 - **E2E**: Test full CRUD flow on employees page
+- **NEW** Virtual scroll: Verify smooth scrolling with 1630 records
+- **NEW** Inline edit: Test save/cancel/error rollback scenarios
 
 ## Implementation Notes
 
