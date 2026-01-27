@@ -1,32 +1,17 @@
-/**
- * Hono Backend Server
- *
- * Main entry point for the Employee Management API
- * Provides REST endpoints with CORS support
- */
-
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serve } from '@hono/node-server'
 import dotenv from 'dotenv'
 
-// Load environment variables
 dotenv.config()
 
-// Import routes
 import employeesRouter from './routes/employees'
 
-// Create Hono app instance
 const app = new Hono()
 
-// Get configuration from environment
 const PORT = parseInt(process.env.PORT || '3000', 10)
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
 
-/**
- * CORS Configuration
- * Allows requests from the Vue.js frontend
- */
 app.use(
   '/api/*',
   cors({
@@ -37,10 +22,6 @@ app.use(
   })
 )
 
-/**
- * Health Check Endpoint
- * GET /health
- */
 app.get('/health', (c) => {
   return c.json({
     status: 'ok',
@@ -49,15 +30,8 @@ app.get('/health', (c) => {
   })
 })
 
-/**
- * Mount Employee Routes
- * All employee endpoints are prefixed with /api/employees
- */
 app.route('/api/employees', employeesRouter)
 
-/**
- * Global Error Handler
- */
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
   return c.json(
@@ -69,9 +43,6 @@ app.onError((err, c) => {
   )
 })
 
-/**
- * 404 Handler for unmatched routes
- */
 app.notFound((c) => {
   return c.json(
     {
@@ -82,7 +53,6 @@ app.notFound((c) => {
   )
 })
 
-// Start the server
 console.log(`Starting server on port ${PORT}...`)
 console.log(`CORS enabled for: ${FRONTEND_URL}`)
 

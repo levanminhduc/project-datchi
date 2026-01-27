@@ -1,10 +1,3 @@
-/**
- * Employee API Routes
- *
- * Provides CRUD endpoints for employee management
- * All responses use structured JSON format: { data, error, message }
- */
-
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import type {
@@ -15,40 +8,26 @@ import type {
   PaginatedResponse,
 } from '../types/employee'
 
-// Create router instance
 const employees = new Hono()
 
-/**
- * GET /api/employees
- * List all employees with optional pagination and search
- *
- * Query params:
- * - page: Page number (default: 1)
- * - limit: Items per page (default: 0 = all, or specify number)
- * - search: Search term for filtering by full_name, employee_id, or department
- */
 employees.get('/', async (c) => {
   try {
-    // Parse pagination params
     const page = parseInt(c.req.query('page') || '1', 10)
     const limitParam = c.req.query('limit') || '0'
     const limit = limitParam === 'all' ? 0 : parseInt(limitParam, 10)
     const search = c.req.query('search') || ''
 
-    // Build query
     let query = supabase
       .from('employees')
       .select('id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at', { count: 'exact' })
       .order('created_at', { ascending: false })
 
-    // Apply search filter if provided
     if (search) {
       query = query.or(
         `full_name.ilike.%${search}%,employee_id.ilike.%${search}%,department.ilike.%${search}%`
       )
     }
 
-    // Apply pagination only if limit > 0
     if (limit > 0) {
       const offset = (page - 1) * limit
       query = query.range(offset, offset + limit - 1)
@@ -63,7 +42,6 @@ employees.get('/', async (c) => {
         )
       }
 
-      // Filter to only include safe fields (exclude sensitive data)
       const safeData = (data || []).map((emp) => ({
         id: emp.id,
         employee_id: emp.employee_id,
@@ -85,21 +63,17 @@ employees.get('/', async (c) => {
       return c.json(response)
     }
 
-    // Batch fetching for limit=0 (fetch all) to bypass Supabase's 1000-row max_rows limit
-    // Supabase PostgREST enforces max_rows=1000 by default, so we paginate through batches
     const BATCH_SIZE = 1000
     let allData: Employee[] = []
     let offset = 0
 
     while (true) {
-      // Build batch query with same filters
       let batchQuery = supabase
         .from('employees')
         .select('id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at')
         .order('created_at', { ascending: false })
         .range(offset, offset + BATCH_SIZE - 1)
 
-      // Apply search filter if provided
       if (search) {
         batchQuery = batchQuery.or(
           `full_name.ilike.%${search}%,employee_id.ilike.%${search}%,department.ilike.%${search}%`
@@ -118,7 +92,6 @@ employees.get('/', async (c) => {
 
       if (!batchData || batchData.length === 0) break
 
-      // Add batch results to accumulated data (push is more efficient than spread in loops)
       for (const emp of batchData) {
         allData.push({
           id: emp.id,
@@ -132,7 +105,6 @@ employees.get('/', async (c) => {
         })
       }
 
-      // If this batch returned fewer than BATCH_SIZE, we've reached the end
       if (batchData.length < BATCH_SIZE) break
 
       offset += BATCH_SIZE
@@ -155,10 +127,6 @@ employees.get('/', async (c) => {
   }
 })
 
-/**
- * GET /api/employees/:id
- * Get a single employee by ID
- */
 employees.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
@@ -183,7 +151,6 @@ employees.get('/:id', async (c) => {
       )
     }
 
-    // Filter to only include safe fields
     const safeData = {
       id: data.id,
       employee_id: data.employee_id,
@@ -208,17 +175,10 @@ employees.get('/:id', async (c) => {
   }
 })
 
-/**
- * POST /api/employees
- * Create a new employee
- *
- * Request body: CreateEmployeeDTO
- */
 employees.post('/', async (c) => {
   try {
     const body = await c.req.json<CreateEmployeeDTO>()
 
-    // Validate required fields
     if (!body.full_name || !body.employee_id || !body.department || !body.chuc_vu) {
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Vui lòng điền đầy đủ thông tin' },
@@ -226,7 +186,6 @@ employees.post('/', async (c) => {
       )
     }
 
-    // Check for duplicate employee_id
     const { data: existing } = await supabase
       .from('employees')
       .select('id')
@@ -240,7 +199,6 @@ employees.post('/', async (c) => {
       )
     }
 
-    // Insert new employee
     const { data, error } = await supabase
       .from('employees')
       .insert({
@@ -277,18 +235,11 @@ employees.post('/', async (c) => {
   }
 })
 
-/**
- * PUT /api/employees/:id
- * Update an existing employee
- *
- * Request body: UpdateEmployeeDTO
- */
 employees.put('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json<UpdateEmployeeDTO>()
 
-    // Check if employee exists
     const { data: existing, error: findError } = await supabase
       .from('employees')
       .select('id')
@@ -302,7 +253,6 @@ employees.put('/:id', async (c) => {
       )
     }
 
-    // Check for duplicate employee_id if updating it
     if (body.employee_id) {
       const { data: duplicate } = await supabase
         .from('employees')
@@ -319,14 +269,12 @@ employees.put('/:id', async (c) => {
       }
     }
 
-    // Build update object with trimmed values
     const updateData: UpdateEmployeeDTO = {}
     if (body.full_name !== undefined) updateData.full_name = body.full_name.trim()
     if (body.employee_id !== undefined) updateData.employee_id = body.employee_id.trim()
     if (body.department !== undefined) updateData.department = body.department.trim()
     if (body.chuc_vu !== undefined) updateData.chuc_vu = body.chuc_vu.trim()
 
-    // Update employee
     const { data, error } = await supabase
       .from('employees')
       .update(updateData)
@@ -356,15 +304,10 @@ employees.put('/:id', async (c) => {
   }
 })
 
-/**
- * DELETE /api/employees/:id
- * Delete an employee
- */
 employees.delete('/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
-    // Check if employee exists
     const { data: existing, error: findError } = await supabase
       .from('employees')
       .select('id')
@@ -378,7 +321,6 @@ employees.delete('/:id', async (c) => {
       )
     }
 
-    // Delete employee
     const { error } = await supabase
       .from('employees')
       .delete()
