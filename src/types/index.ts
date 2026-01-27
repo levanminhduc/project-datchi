@@ -1,5 +1,6 @@
 export * from './employee'
 export * from './ui'
+export * from './navigation'
 // Re-export only non-conflicting items from components
 export type {
   BaseProps,
@@ -10,7 +11,6 @@ export type {
   MenuItem,
   TimelineEntry,
   ListItem,
-  NavItem,
   RadioOption,
   ChipItem
 } from './components'

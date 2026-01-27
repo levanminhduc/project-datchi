@@ -21,6 +21,11 @@ declare module 'vue-router/auto-routes' {
     '/': RouteRecordInfo<'/', '/', Record<never, never>, Record<never, never>>,
     '/components': RouteRecordInfo<'/components', '/components', Record<never, never>, Record<never, never>>,
     '/employees': RouteRecordInfo<'/employees', '/employees', Record<never, never>, Record<never, never>>,
+    '/ke-hoach': RouteRecordInfo<'/ke-hoach', '/ke-hoach', Record<never, never>, Record<never, never>>,
+    '/kho': RouteRecordInfo<'/kho', '/kho', Record<never, never>, Record<never, never>>,
+    '/ky-thuat': RouteRecordInfo<'/ky-thuat', '/ky-thuat', Record<never, never>, Record<never, never>>,
+    '/nhan-su': RouteRecordInfo<'/nhan-su', '/nhan-su', Record<never, never>, Record<never, never>>,
+    '/phan-quyen': RouteRecordInfo<'/phan-quyen', '/phan-quyen', Record<never, never>, Record<never, never>>,
   }
 
   /**
@@ -44,6 +49,26 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/employees.vue': {
       routes: '/employees'
+      views: never
+    }
+    'src/pages/ke-hoach.vue': {
+      routes: '/ke-hoach'
+      views: never
+    }
+    'src/pages/kho.vue': {
+      routes: '/kho'
+      views: never
+    }
+    'src/pages/ky-thuat.vue': {
+      routes: '/ky-thuat'
+      views: never
+    }
+    'src/pages/nhan-su.vue': {
+      routes: '/nhan-su'
+      views: never
+    }
+    'src/pages/phan-quyen.vue': {
+      routes: '/phan-quyen'
       views: never
     }
   }
