@@ -54,6 +54,7 @@
       bordered
       :rows="filteredEmployees"
       :columns="visibleColumns"
+      :visible-columns="columnNames"
       row-key="id"
       :loading="loading"
       :rows-per-page-options="rowsPerPageOptions"
@@ -406,7 +407,6 @@ const {
 // Local state
 const searchQuery = ref('')
 
-// Pagination state (AC7-AC9)
 const pagination = ref({
   page: 1,
   rowsPerPage: 25,
@@ -518,71 +518,94 @@ const deleteDialog = reactive({
   employee: null as Employee | null,
 })
 
-// Table columns configuration
 const columns: QTableColumn[] = [
   {
     name: 'employee_id',
     label: 'Mã NV',
     field: 'employee_id',
-    sortable: true,
     align: 'left',
+    sortable: true,
+    required: true,
+    style: 'min-width: 100px; width: 100px',
+    headerStyle: 'min-width: 100px; width: 100px',
   },
   {
     name: 'full_name',
     label: 'Tên Nhân Viên',
     field: 'full_name',
-    sortable: true,
     align: 'left',
+    sortable: true,
+    required: true,
+    style: 'min-width: 180px; width: 200px',
+    headerStyle: 'min-width: 180px; width: 200px',
   },
   {
     name: 'department',
     label: 'Phòng Ban',
     field: 'department',
-    sortable: true,
     align: 'left',
+    sortable: true,
+    required: true,
+    style: 'min-width: 150px; width: 150px',
+    headerStyle: 'min-width: 150px; width: 150px',
   },
   {
     name: 'chuc_vu',
     label: 'Chức Vụ',
     field: 'chuc_vu',
-    sortable: true,
     align: 'left',
+    sortable: true,
+    required: true,
+    style: 'min-width: 130px; width: 130px',
+    headerStyle: 'min-width: 130px; width: 130px',
   },
   {
     name: 'actions',
     label: 'Thao Tác',
     field: 'actions',
     align: 'center',
+    required: true,
+    style: 'min-width: 100px; width: 100px',
+    headerStyle: 'min-width: 100px; width: 100px',
   },
 ]
 
-// Mobile columns - hide department on xs screens
 const mobileColumns: QTableColumn[] = [
   {
     name: 'employee_id',
     label: 'Mã NV',
     field: 'employee_id',
-    sortable: true,
     align: 'left',
+    required: true,
+    style: 'min-width: 80px; width: 80px',
+    headerStyle: 'min-width: 80px; width: 80px',
   },
   {
     name: 'full_name',
     label: 'Tên Nhân Viên',
     field: 'full_name',
-    sortable: true,
     align: 'left',
+    required: true,
+    style: 'min-width: 150px; width: auto',
+    headerStyle: 'min-width: 150px; width: auto',
   },
   {
     name: 'actions',
     label: 'Thao Tác',
     field: 'actions',
     align: 'center',
+    required: true,
+    style: 'min-width: 80px; width: 80px',
+    headerStyle: 'min-width: 80px; width: 80px',
   },
 ]
 
-// Responsive columns
 const visibleColumns = computed(() => {
   return $q.screen.lt.sm ? mobileColumns : columns
+})
+
+const columnNames = computed(() => {
+  return visibleColumns.value.map(col => col.name)
 })
 
 // Filtered employees based on search query
@@ -691,8 +714,19 @@ onMounted(() => {
 }
 
 .employee-table {
-  /* Ensure table is scrollable on mobile */
   max-width: 100%;
+}
+
+.employee-table :deep(.q-table) {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.employee-table :deep(th),
+.employee-table :deep(td) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Smooth transitions for dialogs */
