@@ -53,8 +53,7 @@
       flat
       bordered
       :rows="filteredEmployees"
-      :columns="visibleColumns"
-      :visible-columns="columnNames"
+      :columns="columns"
       row-key="id"
       :loading="loading"
       :rows-per-page-options="rowsPerPageOptions"
@@ -250,11 +249,10 @@
     <q-dialog
       v-model="formDialog.isOpen"
       persistent
-      :maximized="$q.screen.lt.sm"
       transition-show="slide-up"
       transition-hide="slide-down"
     >
-      <q-card :style="$q.screen.gt.xs ? 'min-width: 400px; max-width: 500px' : ''">
+      <q-card style="width: 100%; max-width: 500px">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">
             {{ formDialog.mode === 'create' ? 'Thêm Nhân Viên Mới' : 'Chỉnh Sửa Nhân Viên' }}
@@ -395,11 +393,10 @@
 
     <q-dialog
       v-model="detailDialog.isOpen"
-      :maximized="$q.screen.lt.sm"
       transition-show="slide-up"
       transition-hide="slide-down"
     >
-      <q-card :style="$q.screen.gt.xs ? 'min-width: 500px; max-width: 600px' : ''">
+      <q-card style="width: 100%; max-width: 600px">
         <q-card-section class="row items-center q-pb-none bg-primary text-white">
           <q-avatar
             icon="person"
@@ -766,45 +763,6 @@ const columns: QTableColumn[] = [
   },
 ]
 
-const mobileColumns: QTableColumn[] = [
-  {
-    name: 'employee_id',
-    label: 'Mã NV',
-    field: 'employee_id',
-    align: 'left',
-    required: true,
-    style: 'min-width: 80px; width: 80px',
-    headerStyle: 'min-width: 80px; width: 80px',
-  },
-  {
-    name: 'full_name',
-    label: 'Tên Nhân Viên',
-    field: 'full_name',
-    align: 'left',
-    required: true,
-    style: 'min-width: 150px; width: auto',
-    headerStyle: 'min-width: 150px; width: auto',
-  },
-  {
-    name: 'actions',
-    label: 'Thao Tác',
-    field: 'actions',
-    align: 'center',
-    required: true,
-    style: 'min-width: 80px; width: 80px',
-    headerStyle: 'min-width: 80px; width: 80px',
-  },
-]
-
-const visibleColumns = computed(() => {
-  return $q.screen.lt.sm ? mobileColumns : columns
-})
-
-const columnNames = computed(() => {
-  return visibleColumns.value.map(col => col.name)
-})
-
-// Filtered employees based on search query
 const filteredEmployees = computed(() => {
   if (!searchQuery.value.trim()) {
     return employees.value
@@ -936,9 +894,14 @@ onMounted(() => {
   max-width: 100%;
 }
 
+.employee-table :deep(.q-table__middle) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .employee-table :deep(.q-table) {
-  table-layout: fixed;
-  width: 100%;
+  table-layout: auto;
+  min-width: 800px;
 }
 
 .employee-table :deep(th),
