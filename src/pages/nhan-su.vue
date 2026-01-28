@@ -5,18 +5,27 @@ import { EmptyState } from '@/components/ui/feedback'
 </script>
 
 <template>
-  <q-page padding>
-    <PageHeader
-      title="Quản lý Nhân Sự"
-      subtitle="Quản lý thông tin nhân viên và tổ chức"
+  <router-view v-slot="{ Component }">
+    <component
+      :is="Component"
+      v-if="Component"
     />
-    
-    <AppCard class="q-mt-md">
-      <EmptyState
-        icon="people"
-        title="Chưa có dữ liệu"
-        description="Chức năng quản lý nhân sự đang được phát triển"
+    <q-page
+      v-else
+      padding
+    >
+      <PageHeader
+        title="Quản lý Nhân Sự"
+        subtitle="Quản lý thông tin nhân viên và tổ chức"
       />
-    </AppCard>
-  </q-page>
+
+      <AppCard class="q-mt-md">
+        <EmptyState
+          icon="people"
+          title="Chưa có dữ liệu"
+          description="Chức năng quản lý nhân sự đang được phát triển"
+        />
+      </AppCard>
+    </q-page>
+  </router-view>
 </template>

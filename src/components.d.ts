@@ -70,6 +70,7 @@ declare module 'vue' {
     ScrollArea: typeof import('./components/ui/scroll/ScrollArea.vue')['default']
     SearchInput: typeof import('./components/ui/inputs/SearchInput.vue')['default']
     SectionHeader: typeof import('./components/ui/layout/SectionHeader.vue')['default']
+    SidebarItem: typeof import('./components/ui/navigation/SidebarItem.vue')['default']
     StatCard: typeof import('./components/ui/cards/StatCard.vue')['default']
     StepperStep: typeof import('./components/ui/navigation/StepperStep.vue')['default']
     TabPanel: typeof import('./components/ui/navigation/TabPanel.vue')['default']

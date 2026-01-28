@@ -1,9 +1,10 @@
 export interface NavItem {
   label: string
   icon: string
-  to: string
+  to?: string
   badge?: number | string
   badgeColor?: string
+  children?: NavItem[]
 }
 
 export interface NavSection {

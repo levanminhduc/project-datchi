@@ -32,17 +32,11 @@ onMounted(() => {
     >
       <q-scroll-area class="fit">
         <q-list>
-          <q-item
+          <SidebarItem
             v-for="item in navItems"
-            :key="item.to"
-            clickable
-            :to="item.to"
-          >
-            <q-item-section avatar>
-              <q-icon :name="item.icon" />
-            </q-item-section>
-            <q-item-section>{{ item.label }}</q-item-section>
-          </q-item>
+            :key="item.label"
+            :item="item"
+          />
         </q-list>
       </q-scroll-area>
     </q-drawer>

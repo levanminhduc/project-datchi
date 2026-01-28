@@ -5,7 +5,15 @@ const isOpen = ref(true)
 
 const navItems: NavItem[] = [
   { label: 'Trang Chủ', icon: 'home', to: '/#top' },
-  { label: 'Nhân Sự', icon: 'people', to: '/nhan-su#top' },
+  { 
+    label: 'Nhân Sự', 
+    icon: 'people', 
+    to: '/nhan-su#top',
+    children: [
+      { label: 'Danh Sách Nhân Viên', icon: 'list', to: '/nhan-su/danh-sach' },
+      { label: 'Thêm Mới', icon: 'person_add', to: '/nhan-su/them-moi' }
+    ]
+  },
   { label: 'Kế Hoạch', icon: 'event_note', to: '/ke-hoach#top' },
   { label: 'Kỹ Thuật', icon: 'engineering', to: '/ky-thuat#top' },
   { label: 'Kho', icon: 'inventory_2', to: '/kho#top' },

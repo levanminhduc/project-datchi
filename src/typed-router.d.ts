@@ -24,7 +24,8 @@ declare module 'vue-router/auto-routes' {
     '/ke-hoach': RouteRecordInfo<'/ke-hoach', '/ke-hoach', Record<never, never>, Record<never, never>>,
     '/kho': RouteRecordInfo<'/kho', '/kho', Record<never, never>, Record<never, never>>,
     '/ky-thuat': RouteRecordInfo<'/ky-thuat', '/ky-thuat', Record<never, never>, Record<never, never>>,
-    '/nhan-su': RouteRecordInfo<'/nhan-su', '/nhan-su', Record<never, never>, Record<never, never>>,
+    '/nhan-su': RouteRecordInfo<'/nhan-su', '/nhan-su', Record<never, never>, Record<never, never>, '/nhan-su/danh-sach'>,
+    '/nhan-su/danh-sach': RouteRecordInfo<'/nhan-su/danh-sach', '/nhan-su/danh-sach', Record<never, never>, Record<never, never>>,
     '/phan-quyen': RouteRecordInfo<'/phan-quyen', '/phan-quyen', Record<never, never>, Record<never, never>>,
   }
 
@@ -64,7 +65,11 @@ declare module 'vue-router/auto-routes' {
       views: never
     }
     'src/pages/nhan-su.vue': {
-      routes: '/nhan-su'
+      routes: '/nhan-su' | '/nhan-su/danh-sach'
+      views: 'default'
+    }
+    'src/pages/nhan-su/danh-sach.vue': {
+      routes: '/nhan-su/danh-sach'
       views: never
     }
     'src/pages/phan-quyen.vue': {
