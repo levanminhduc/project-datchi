@@ -245,107 +245,46 @@
       </template>
     </q-table>
 
-    <!-- Add/Edit Dialog -->
-    <q-dialog
+    <FormDialog
       v-model="formDialog.isOpen"
+      :title="formDialog.mode === 'create' ? 'Thêm Nhân Viên Mới' : 'Chỉnh Sửa Nhân Viên'"
+      submit-text="Lưu"
+      cancel-text="Hủy"
+      :loading="loading"
       persistent
-      transition-show="slide-up"
-      transition-hide="slide-down"
+      max-width="500px"
+      @submit="handleSubmit"
+      @cancel="closeFormDialog"
     >
-      <q-card style="width: 100%; max-width: 500px">
-        <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">
-            {{ formDialog.mode === 'create' ? 'Thêm Nhân Viên Mới' : 'Chỉnh Sửa Nhân Viên' }}
-          </div>
-          <q-space />
-          <q-btn
-            v-close-popup
-            icon="close"
-            flat
-            round
-            dense
-            @click="closeFormDialog"
-          />
-        </q-card-section>
+      <div class="q-gutter-md">
+        <AppInput
+          v-model="formData.employee_id"
+          label="Mã Nhân Viên"
+          prepend-icon="badge"
+          required
+          :disable="formDialog.mode === 'edit'"
+        />
 
-        <q-card-section>
-          <q-form
-            class="q-gutter-md"
-            @submit.prevent="handleSubmit"
-          >
-            <!-- Mã Nhân Viên -->
-            <q-input
-              v-model="formData.employee_id"
-              outlined
-              label="Mã Nhân Viên *"
-              :rules="[
-                (val: string) => !!val?.trim() || 'Vui lòng nhập mã nhân viên'
-              ]"
-              :disable="formDialog.mode === 'edit'"
-              lazy-rules
-            >
-              <template #prepend>
-                <q-icon name="badge" />
-              </template>
-            </q-input>
+        <AppInput
+          v-model="formData.full_name"
+          label="Tên Nhân Viên"
+          prepend-icon="person"
+          required
+        />
 
-            <!-- Tên Nhân Viên -->
-            <q-input
-              v-model="formData.full_name"
-              outlined
-              label="Tên Nhân Viên *"
-              :rules="[
-                (val: string) => !!val?.trim() || 'Vui lòng nhập tên nhân viên'
-              ]"
-              lazy-rules
-            >
-              <template #prepend>
-                <q-icon name="person" />
-              </template>
-            </q-input>
+        <AppInput
+          v-model="formData.department"
+          label="Phòng Ban"
+          prepend-icon="business"
+        />
 
-            <!-- Phòng Ban -->
-            <q-input
-              v-model="formData.department"
-              outlined
-              label="Phòng Ban"
-            >
-              <template #prepend>
-                <q-icon name="business" />
-              </template>
-            </q-input>
-
-            <!-- Chức Vụ -->
-            <q-input
-              v-model="formData.chuc_vu"
-              outlined
-              label="Chức Vụ"
-            >
-              <template #prepend>
-                <q-icon name="work" />
-              </template>
-            </q-input>
-
-            <!-- Action Buttons -->
-            <div class="row justify-end q-gutter-sm q-mt-md">
-              <q-btn
-                flat
-                label="Hủy"
-                color="grey"
-                @click="closeFormDialog"
-              />
-              <q-btn
-                unelevated
-                type="submit"
-                label="Lưu"
-                color="primary"
-                :loading="loading"
-              />
-            </div>
-          </q-form>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
+        <AppInput
+          v-model="formData.chuc_vu"
+          label="Chức Vụ"
+          prepend-icon="work"
+        />
+      </div>
+    </FormDialog>
 
     <!-- Delete Confirmation Dialog -->
     <q-dialog
@@ -575,11 +514,26 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { useQuasar, type QTableColumn } from 'quasar'
+import { type QTableColumn } from 'quasar'
 import { useEmployees, useSnackbar } from '@/composables'
 import type { Employee, EmployeeFormData } from '@/types'
 
-const $q = useQuasar()
+interface FormDialogState {
+  isOpen: boolean
+  mode: 'create' | 'edit'
+  employeeId: number | null
+}
+
+interface DeleteDialogState {
+  isOpen: boolean
+  employee: Employee | null
+}
+
+interface DetailDialogState {
+  isOpen: boolean
+  employee: Employee | null
+}
+
 const snackbar = useSnackbar()
 
 // Composables
@@ -686,10 +640,10 @@ const handleInlineEdit = async (
 }
 
 // Form dialog state
-const formDialog = reactive({
+const formDialog = reactive<FormDialogState>({
   isOpen: false,
-  mode: 'create' as 'create' | 'edit',
-  employeeId: null as number | null,
+  mode: 'create',
+  employeeId: null,
 })
 
 // Form data
@@ -701,14 +655,14 @@ const formData = reactive<EmployeeFormData>({
 })
 
 // Delete dialog state
-const deleteDialog = reactive({
+const deleteDialog = reactive<DeleteDialogState>({
   isOpen: false,
-  employee: null as Employee | null,
+  employee: null,
 })
 
-const detailDialog = reactive({
+const detailDialog = reactive<DetailDialogState>({
   isOpen: false,
-  employee: null as Employee | null,
+  employee: null,
 })
 
 const columns: QTableColumn[] = [
