@@ -216,6 +216,16 @@
             flat
             round
             dense
+            icon="visibility"
+            color="info"
+            @click="openDetailDialog(props.row)"
+          >
+            <q-tooltip>Xem chi tiết</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            round
+            dense
             icon="edit"
             color="primary"
             @click="openEditDialog(props.row)"
@@ -382,6 +392,187 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <q-dialog
+      v-model="detailDialog.isOpen"
+      :maximized="$q.screen.lt.sm"
+      transition-show="slide-up"
+      transition-hide="slide-down"
+    >
+      <q-card :style="$q.screen.gt.xs ? 'min-width: 500px; max-width: 600px' : ''">
+        <q-card-section class="row items-center q-pb-none bg-primary text-white">
+          <q-avatar
+            icon="person"
+            color="white"
+            text-color="primary"
+            size="42px"
+          />
+          <div class="q-ml-md">
+            <div class="text-h6">Chi Tiết Nhân Viên</div>
+            <div
+              v-if="detailDialog.employee"
+              class="text-caption"
+            >
+              {{ detailDialog.employee.employee_id }}
+            </div>
+          </div>
+          <q-space />
+          <q-btn
+            v-close-popup
+            icon="close"
+            flat
+            round
+            dense
+            color="white"
+          />
+        </q-card-section>
+
+        <q-card-section
+          v-if="detailDialog.employee"
+          class="q-pt-lg"
+        >
+          <q-list separator>
+            <q-item>
+              <q-item-section avatar>
+                <q-avatar
+                  icon="badge"
+                  color="primary"
+                  text-color="white"
+                  size="40px"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label caption>Mã Nhân Viên</q-item-label>
+                <q-item-label class="text-weight-medium">
+                  {{ detailDialog.employee.employee_id }}
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+
+            <q-item>
+              <q-item-section avatar>
+                <q-avatar
+                  icon="person"
+                  color="blue"
+                  text-color="white"
+                  size="40px"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label caption>Họ và Tên</q-item-label>
+                <q-item-label class="text-weight-medium text-h6">
+                  {{ detailDialog.employee.full_name }}
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+
+            <q-item>
+              <q-item-section avatar>
+                <q-avatar
+                  icon="business"
+                  color="orange"
+                  text-color="white"
+                  size="40px"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label caption>Phòng Ban</q-item-label>
+                <q-item-label class="text-weight-medium">
+                  {{ detailDialog.employee.department || 'Chưa xác định' }}
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+
+            <q-item>
+              <q-item-section avatar>
+                <q-avatar
+                  icon="work"
+                  color="purple"
+                  text-color="white"
+                  size="40px"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label caption>Chức Vụ</q-item-label>
+                <q-item-label class="text-weight-medium">
+                  {{ chucVuLabels[detailDialog.employee.chuc_vu] || detailDialog.employee.chuc_vu || 'Chưa xác định' }}
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+
+            <q-item>
+              <q-item-section avatar>
+                <q-avatar
+                  :icon="detailDialog.employee.is_active ? 'check_circle' : 'cancel'"
+                  :color="detailDialog.employee.is_active ? 'positive' : 'negative'"
+                  text-color="white"
+                  size="40px"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label caption>Trạng Thái</q-item-label>
+                <q-item-label class="text-weight-medium">
+                  <q-badge
+                    :color="detailDialog.employee.is_active ? 'positive' : 'negative'"
+                    :label="detailDialog.employee.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'"
+                  />
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+
+            <q-item>
+              <q-item-section avatar>
+                <q-avatar
+                  icon="event"
+                  color="teal"
+                  text-color="white"
+                  size="40px"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label caption>Ngày Tạo</q-item-label>
+                <q-item-label class="text-weight-medium">
+                  {{ formatDateTime(detailDialog.employee.created_at) }}
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+
+            <q-item>
+              <q-item-section avatar>
+                <q-avatar
+                  icon="update"
+                  color="cyan"
+                  text-color="white"
+                  size="40px"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label caption>Cập Nhật Lần Cuối</q-item-label>
+                <q-item-label class="text-weight-medium">
+                  {{ formatDateTime(detailDialog.employee.updated_at) }}
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-card-section>
+
+        <q-card-actions align="right" class="q-px-md q-pb-md">
+          <q-btn
+            flat
+            label="Chỉnh sửa"
+            color="primary"
+            icon="edit"
+            @click="editFromDetail"
+          />
+          <q-btn
+            v-close-popup
+            unelevated
+            label="Đóng"
+            color="grey"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -514,6 +705,11 @@ const formData = reactive<EmployeeFormData>({
 
 // Delete dialog state
 const deleteDialog = reactive({
+  isOpen: false,
+  employee: null as Employee | null,
+})
+
+const detailDialog = reactive({
   isOpen: false,
   employee: null as Employee | null,
 })
@@ -692,7 +888,30 @@ const handleDelete = async () => {
   }
 }
 
-// Fetch employees on mount
+const openDetailDialog = (employee: Employee) => {
+  detailDialog.employee = employee
+  detailDialog.isOpen = true
+}
+
+const editFromDetail = () => {
+  if (detailDialog.employee) {
+    detailDialog.isOpen = false
+    openEditDialog(detailDialog.employee)
+  }
+}
+
+const formatDateTime = (dateString: string): string => {
+  if (!dateString) return 'Chưa xác định'
+  const date = new Date(dateString)
+  return new Intl.DateTimeFormat('vi-VN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
 onMounted(() => {
   fetchEmployees()
 })
