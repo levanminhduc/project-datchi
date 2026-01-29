@@ -201,6 +201,7 @@
                 dense
                 autofocus
                 options-dense
+                popup-content-class="z-max"
                 style="min-width: 150px"
               />
             </q-popup-edit>
@@ -272,17 +273,29 @@
           required
         />
 
-        <AppInput
+        <AppSelect
           v-model="formData.department"
           label="Phòng Ban"
-          prepend-icon="business"
-        />
+          :options="filteredDepartmentOptions"
+          use-input
+          new-value-mode="add-unique"
+          clearable
+          @filter="filterDepartments"
+        >
+          <template #prepend>
+            <q-icon name="business" />
+          </template>
+        </AppSelect>
 
-        <AppInput
+        <AppSelect
           v-model="formData.chuc_vu"
           label="Chức Vụ"
-          prepend-icon="work"
-        />
+          :options="chucVuOptions"
+        >
+          <template #prepend>
+            <q-icon name="work" />
+          </template>
+        </AppSelect>
       </div>
     </FormDialog>
 
@@ -344,7 +357,9 @@
             size="42px"
           />
           <div class="q-ml-md">
-            <div class="text-h6">Chi Tiết Nhân Viên</div>
+            <div class="text-h6">
+              Chi Tiết Nhân Viên
+            </div>
             <div
               v-if="detailDialog.employee"
               class="text-caption"
@@ -378,7 +393,9 @@
                 />
               </q-item-section>
               <q-item-section>
-                <q-item-label caption>Mã Nhân Viên</q-item-label>
+                <q-item-label caption>
+                  Mã Nhân Viên
+                </q-item-label>
                 <q-item-label class="text-weight-medium">
                   {{ detailDialog.employee.employee_id }}
                 </q-item-label>
@@ -395,7 +412,9 @@
                 />
               </q-item-section>
               <q-item-section>
-                <q-item-label caption>Họ và Tên</q-item-label>
+                <q-item-label caption>
+                  Họ và Tên
+                </q-item-label>
                 <q-item-label class="text-weight-medium text-h6">
                   {{ detailDialog.employee.full_name }}
                 </q-item-label>
@@ -412,7 +431,9 @@
                 />
               </q-item-section>
               <q-item-section>
-                <q-item-label caption>Phòng Ban</q-item-label>
+                <q-item-label caption>
+                  Phòng Ban
+                </q-item-label>
                 <q-item-label class="text-weight-medium">
                   {{ detailDialog.employee.department || 'Chưa xác định' }}
                 </q-item-label>
@@ -429,7 +450,9 @@
                 />
               </q-item-section>
               <q-item-section>
-                <q-item-label caption>Chức Vụ</q-item-label>
+                <q-item-label caption>
+                  Chức Vụ
+                </q-item-label>
                 <q-item-label class="text-weight-medium">
                   {{ chucVuLabels[detailDialog.employee.chuc_vu] || detailDialog.employee.chuc_vu || 'Chưa xác định' }}
                 </q-item-label>
@@ -446,7 +469,9 @@
                 />
               </q-item-section>
               <q-item-section>
-                <q-item-label caption>Trạng Thái</q-item-label>
+                <q-item-label caption>
+                  Trạng Thái
+                </q-item-label>
                 <q-item-label class="text-weight-medium">
                   <q-badge
                     :color="detailDialog.employee.is_active ? 'positive' : 'negative'"
@@ -466,7 +491,9 @@
                 />
               </q-item-section>
               <q-item-section>
-                <q-item-label caption>Ngày Tạo</q-item-label>
+                <q-item-label caption>
+                  Ngày Tạo
+                </q-item-label>
                 <q-item-label class="text-weight-medium">
                   {{ formatDateTime(detailDialog.employee.created_at) }}
                 </q-item-label>
@@ -483,7 +510,9 @@
                 />
               </q-item-section>
               <q-item-section>
-                <q-item-label caption>Cập Nhật Lần Cuối</q-item-label>
+                <q-item-label caption>
+                  Cập Nhật Lần Cuối
+                </q-item-label>
                 <q-item-label class="text-weight-medium">
                   {{ formatDateTime(detailDialog.employee.updated_at) }}
                 </q-item-label>
@@ -492,7 +521,10 @@
           </q-list>
         </q-card-section>
 
-        <q-card-actions align="right" class="q-px-md q-pb-md">
+        <q-card-actions
+          align="right"
+          class="q-px-md q-pb-md"
+        >
           <q-btn
             flat
             label="Chỉnh sửa"
@@ -573,6 +605,33 @@ const chucVuOptions = [
   { label: 'Nhân Viên', value: 'nhan_vien' },
   { label: 'Trưởng Phòng', value: 'truong_phong' },
 ]
+
+const departmentOptions = computed(() => {
+  const departments = [...new Set(employees.value.map(e => e.department).filter(Boolean))]
+  return departments.sort().map(dept => ({ label: dept, value: dept }))
+})
+
+// Filtered options for department dropdown with use-input
+const filteredDepartmentOptions = ref<{ label: string; value: string }[]>([])
+
+// Filter handler for department dropdown
+const filterDepartments = (val: string, update: (fn: () => void) => void) => {
+  update(() => {
+    if (!val) {
+      filteredDepartmentOptions.value = departmentOptions.value
+    } else {
+      const needle = val.toLowerCase()
+      filteredDepartmentOptions.value = departmentOptions.value.filter(
+        opt => opt.label.toLowerCase().includes(needle)
+      )
+    }
+  })
+}
+
+// Initialize filteredDepartmentOptions when departmentOptions changes
+watch(departmentOptions, (newOpts) => {
+  filteredDepartmentOptions.value = newOpts
+}, { immediate: true })
 
 // Mapping chuc_vu values to display labels
 const chucVuLabels: Record<string, string> = {
@@ -890,5 +949,12 @@ onMounted(() => {
 
 .editable-cell .cell-value {
   display: inline-block;
+}
+</style>
+
+<style>
+/* Global style for z-index fix in popup-edit dropdowns */
+.z-max {
+  z-index: 9999 !important;
 }
 </style>

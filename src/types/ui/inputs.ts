@@ -94,6 +94,8 @@ export interface AppSelectProps extends BaseComponentProps, LabeledProps, Valida
   popupContentClass?: string
   /** Popup content style */
   popupContentStyle?: string | object
+  /** Popup behavior mode - 'menu' for dropdown, 'dialog' for overlay */
+  behavior?: 'menu' | 'dialog'
   /** Hide dropdown icon */
   hideDropdownIcon?: boolean
   /** Dropdown icon */
