@@ -2,9 +2,9 @@
 
 ## Architecture Overview
 
-Thư viện UI component sử dụng pattern "Wrapper Component" - bọc Quasar components với layer abstraction để chuẩn hóa API, thêm defaults, và đảm bảo type safety.
+UI component library uses "Wrapper Component" pattern - wrapping Quasar components with abstraction layer to standardize API, add defaults, and ensure type safety.
 
-Pattern tham khảo: `src/components/DarkModeToggle.vue` (lines 1-25)
+Pattern reference: `src/components/DarkModeToggle.vue` (lines 1-25)
 
 **Implementation Status**: 63 components implemented across 12 categories
 
@@ -35,7 +35,7 @@ Pattern tham khảo: `src/components/DarkModeToggle.vue` (lines 1-25)
 src/
 ├── components/
 │   └── ui/
-│       ├── index.ts                    # Barrel export tất cả components
+│       ├── index.ts                    # Barrel export all components
 │       ├── buttons/
 │       │   ├── index.ts
 │       │   ├── AppButton.vue           ✅
@@ -46,7 +46,7 @@ src/
 │       ├── inputs/
 │       │   ├── index.ts
 │       │   ├── AppInput.vue            ✅
-│       │   ├── AppSelect.vue           ✅
+│       │   ├── AppSelect.vue           ✅ (behavior prop added)
 │       │   ├── AppCheckbox.vue         ✅
 │       │   ├── AppToggle.vue           ✅
 │       │   ├── AppSlider.vue           ✅
@@ -142,7 +142,7 @@ src/
 │       ├── index.ts                    # Barrel export ✅
 │       ├── base.ts                     # BaseProps, ColorType, SizeType ✅
 │       ├── buttons.ts                  # Button component types ✅
-│       ├── inputs.ts                   # Input component types ✅
+│       ├── inputs.ts                   # Input component types ✅ (includes behavior prop)
 │       ├── feedback.ts                 # Feedback component types ✅
 │       ├── data-display.ts             # Table, List, Card types ✅
 │       ├── dialogs.ts                  # Dialog component types ✅
@@ -163,7 +163,7 @@ src/
 
 ## Component Wrapper Pattern
 
-### Template Pattern (AppButton làm mẫu)
+### Template Pattern (AppButton as example)
 
 ```vue
 <template>
@@ -185,7 +185,7 @@ src/
 import { computed } from 'vue'
 import type { AppButtonProps } from '@/types/ui/buttons'
 
-// Props với Vietnamese defaults
+// Props with Vietnamese defaults
 const props = withDefaults(defineProps<AppButtonProps>(), {
   variant: 'primary',
   size: 'md',
@@ -273,38 +273,79 @@ This pattern is used consistently across:
 - Picker components (DatePicker, TimePicker, ColorPicker)
 - Dialog components (AppDialog, etc.)
 
+## AppSelect Behavior Prop Fix
+
+### Problem
+When `use-input=false`, QSelect's default behavior mode can fail to trigger popup on click.
+
+### Solution
+Add explicit `behavior` prop with default `'dialog'` mode.
+
+### Implementation
+
+**File: `src/types/ui/inputs.ts`** - Add to AppSelectProps:
+```typescript
+export interface AppSelectProps extends BaseComponentProps, LabeledProps, ValidatableProps {
+  // ... existing props ...
+  
+  /** Popup behavior mode - 'dialog' recommended when use-input=false */
+  behavior?: 'menu' | 'dialog'
+}
+```
+
+**File: `src/components/ui/inputs/AppSelect.vue`**:
+- Template: Add `:behavior="behavior"` binding
+- Script: Add `behavior: 'dialog'` to withDefaults
+
+### Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant AppSelect
+    participant QSelect
+    
+    User->>AppSelect: Click (use-input=false)
+    AppSelect->>QSelect: behavior='dialog'
+    QSelect-->>User: Opens dialog overlay
+    
+    User->>AppSelect: Click (use-input=true)
+    AppSelect->>QSelect: behavior='dialog' + input enabled
+    QSelect-->>User: Opens dialog with search input
+```
+
 ## TypeScript Interface Pattern
 
 ### Base Types (`src/types/ui/base.ts`)
 
 ```typescript
 /**
- * Base types cho UI Component Library
+ * Base types for UI Component Library
  */
 
-// Màu sắc sử dụng trong toàn bộ library
+// Colors used throughout library
 export type ColorType = 'primary' | 'secondary' | 'positive' | 'negative' | 'warning' | 'info'
 
-// Variant cho buttons và các interactive components
+// Variant for buttons and interactive components
 export type VariantType = 'primary' | 'secondary' | 'danger' | 'warning' | 'success' | 'info'
 
-// Size chuẩn
+// Standard sizes
 export type SizeType = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 
-// Base props áp dụng cho tất cả components
+// Base props applied to all components
 export interface BaseProps {
   class?: string
   style?: string | Record<string, string>
 }
 
-// Props cho components có label
+// Props for components with label
 export interface LabeledProps extends BaseProps {
   label?: string
   hint?: string
   hideHint?: boolean
 }
 
-// Props cho components có validation
+// Props for components with validation
 export interface ValidatableProps extends LabeledProps {
   rules?: ((val: unknown) => boolean | string)[]
   errorMessage?: string
@@ -325,66 +366,30 @@ import type { BaseProps, VariantType, SizeType } from './base'
 import type { RouteLocationRaw } from 'vue-router'
 
 export interface AppButtonProps extends BaseProps {
-  /** Variant style của button */
+  /** Variant style of button */
   variant?: VariantType
-  /** Kích thước button */
+  /** Button size */
   size?: SizeType
-  /** Hiển thị outline style */
+  /** Display outline style */
   outlined?: boolean
-  /** Trạng thái loading */
+  /** Loading state */
   loading?: boolean
-  /** Vô hiệu hóa button */
+  /** Disable button */
   disabled?: boolean
-  /** Icon bên trái */
+  /** Icon on left */
   icon?: string
-  /** Icon bên phải */
+  /** Icon on right */
   iconRight?: string
   /** Vue Router navigation */
   to?: RouteLocationRaw
   /** Label text */
   label?: string
-  /** Nền trong suốt */
+  /** Transparent background */
   flat?: boolean
-  /** Button tròn */
+  /** Round button */
   round?: boolean
   /** Dense mode */
   dense?: boolean
-}
-
-export interface IconButtonProps extends BaseProps {
-  icon: string
-  size?: SizeType
-  color?: ColorType
-  flat?: boolean
-  round?: boolean
-  disabled?: boolean
-  tooltip?: string
-}
-
-export interface ButtonGroupProps extends BaseProps {
-  outlined?: boolean
-  spread?: boolean
-  push?: boolean
-}
-
-export interface ButtonToggleProps extends BaseProps {
-  modelValue?: string | number
-  options: Array<{
-    value: string | number
-    label?: string
-    icon?: string
-    slot?: string
-  }>
-  spread?: boolean
-  outline?: boolean
-  color?: ColorType
-}
-
-export interface ButtonDropdownProps extends AppButtonProps {
-  split?: boolean
-  dropdownIcon?: string
-  menuAnchor?: string
-  menuSelf?: string
 }
 ```
 
@@ -428,33 +433,9 @@ export interface AppSelectProps<T = unknown> extends ValidatableProps {
   filled?: boolean
   dense?: boolean
   loading?: boolean
-  emptyLabel?: string // Mặc định: "Không có lựa chọn"
-}
-
-export interface AppCheckboxProps extends BaseProps {
-  modelValue?: boolean | null
-  label?: string
-  leftLabel?: boolean
-  color?: ColorType
-  disabled?: boolean
-  indeterminateValue?: unknown
-}
-
-export interface AppToggleProps extends BaseProps {
-  modelValue?: boolean
-  label?: string
-  leftLabel?: boolean
-  color?: ColorType
-  disabled?: boolean
-  icon?: string
-  checkedIcon?: string
-  uncheckedIcon?: string
-}
-
-export interface SearchInputProps extends Omit<AppInputProps, 'type'> {
-  debounce?: number
-  minLength?: number
-  loading?: boolean
+  emptyLabel?: string // Default: "Khong co lua chon"
+  /** Popup behavior mode - 'dialog' recommended when use-input=false */
+  behavior?: 'menu' | 'dialog'
 }
 ```
 
@@ -463,7 +444,7 @@ export interface SearchInputProps extends Omit<AppInputProps, 'type'> {
 ### Category-level export (`src/components/ui/buttons/index.ts`)
 
 ```typescript
-// Re-export tất cả button components
+// Re-export all button components
 export { default as AppButton } from './AppButton.vue'
 export { default as IconButton } from './IconButton.vue'
 export { default as ButtonGroup } from './ButtonGroup.vue'
@@ -514,295 +495,43 @@ export * from './scroll'
 export * from './common'
 ```
 
-### Types barrel (`src/types/ui/index.ts`)
+## Composables
 
-```typescript
-export * from './base'
-export * from './buttons'
-export * from './inputs'
-export * from './feedback'
-export * from './tables'
-export * from './dialogs'
-// ... các category khác
-```
+### useConfirm.ts - Wrap $q.dialog()
 
-## Vite Config Integration
+See `src/composables/useConfirm.ts` for full implementation.
 
-Cập nhật `vite.config.mts` để thêm QuasarResolver:
+API: `confirm()`, `confirmWarning()`, `confirmDelete()`
 
-```typescript
-import { quasar, transformAssetUrls } from '@quasar/vite-plugin'
-import Components from 'unplugin-vue-components/vite'
-import { QuasarResolver } from 'unplugin-vue-components/resolvers'
-// ... other imports
+### useSnackbar.ts - Wrap $q.notify()
 
-export default defineConfig({
-  plugins: [
-    // ... existing plugins
-    Components({
-      dts: 'src/components.d.ts',
-      dirs: ['src/components'],
-      resolvers: [
-        QuasarResolver(), // Thêm dòng này
-      ],
-    }),
-  ],
-  // ... rest of config
-})
-```
+See `src/composables/useSnackbar.ts` for full implementation.
 
-## Composables Update Pattern
+API: `show()`, `success()`, `error()`, `warning()`, `info()`, `loading()`
 
-### useConfirm.ts - Wrap $q.dialog() ✅ IMPLEMENTED
+### useDialog.ts - Generic Dialog State
 
-```typescript
-import { useQuasar } from 'quasar'
+See `src/composables/useDialog.ts:1-29` for full implementation.
 
-interface ConfirmOptions {
-  title?: string
-  message: string
-  confirmText?: string
-  cancelText?: string
-  type?: 'info' | 'warning' | 'error'
-  persistent?: boolean
-}
+API: `isOpen`, `data`, `open(payload?)`, `close()`, `toggle()`
 
-export function useConfirm() {
-  const $q = useQuasar()
+### useLoading.ts - Count-based Loading State
 
-  const confirm = (config: string | ConfirmOptions): Promise<boolean> => {
-    const options = typeof config === 'string' 
-      ? { message: config } 
-      : config
+See `src/composables/useLoading.ts:1-43` for full implementation.
 
-    return new Promise((resolve) => {
-      $q.dialog({
-        title: options.title || 'Xác nhận',
-        message: options.message,
-        cancel: {
-          label: options.cancelText || 'Hủy',
-          flat: true,
-        },
-        ok: {
-          label: options.confirmText || 'Đồng ý',
-          color: options.type === 'error' ? 'negative' : 'primary',
-        },
-        persistent: options.persistent,
-      })
-        .onOk(() => resolve(true))
-        .onCancel(() => resolve(false))
-        .onDismiss(() => resolve(false))
-    })
-  }
+API: `isLoading`, `loadingCount`, `start()`, `stop()`, `reset()`, `withLoading(fn)`
 
-  // Warning confirmation
-  const confirmWarning = (options: ConfirmOptions): Promise<boolean> => {
-    return confirm({ ...options, type: 'warning' })
-  }
+### useDarkMode.ts - Theme Switching
 
-  // Delete confirmation with Vietnamese defaults
-  const confirmDelete = (itemName?: string): Promise<boolean> => {
-    return confirm({
-      title: 'Xác nhận xóa',
-      message: itemName 
-        ? `Bạn có chắc muốn xóa "${itemName}"?` 
-        : 'Bạn có chắc muốn xóa mục này?',
-      type: 'error',
-      confirmText: 'Xóa',
-    })
-  }
+See `src/composables/useDarkMode.ts:1-48` for full implementation.
 
-  return {
-    confirm,
-    confirmWarning,
-    confirmDelete,
-  }
-}
-```
+API: `preference`, `setMode(mode)`, `toggle()`, `isDark()`, `init()`
 
-### useSnackbar.ts - Wrap $q.notify() ✅ IMPLEMENTED
+### useSidebar.ts - Global Sidebar State
 
-```typescript
-import { useQuasar } from 'quasar'
+See `src/composables/useSidebar.ts:1-49` for full implementation.
 
-interface SnackbarOptions {
-  message: string
-  color?: string
-  timeout?: number
-  position?: 'top' | 'bottom' | 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left'
-  icon?: string
-  actions?: Array<{ label: string; handler: () => void }>
-}
-
-export function useSnackbar() {
-  const $q = useQuasar()
-
-  const show = (config: string | SnackbarOptions) => {
-    const options = typeof config === 'string'
-      ? { message: config }
-      : config
-
-    $q.notify({
-      message: options.message,
-      color: options.color || 'dark',
-      timeout: options.timeout || 3000,
-      position: options.position || 'bottom',
-      icon: options.icon,
-      actions: options.actions?.map(a => ({
-        label: a.label,
-        color: 'white',
-        handler: a.handler,
-      })),
-    })
-  }
-
-  const success = (message: string, timeout?: number) => {
-    show({ message, color: 'positive', icon: 'check_circle', timeout })
-  }
-
-  const error = (message: string, timeout?: number) => {
-    show({ message, color: 'negative', icon: 'error', timeout: timeout || 5000 })
-  }
-
-  const warning = (message: string, timeout?: number) => {
-    show({ message, color: 'warning', icon: 'warning', timeout })
-  }
-
-  const info = (message: string, timeout?: number) => {
-    show({ message, color: 'info', icon: 'info', timeout })
-  }
-
-  // Loading notification with spinner
-  const loading = (message: string) => {
-    return $q.notify({
-      message,
-      spinner: true,
-      timeout: 0, // Persistent until dismissed
-    })
-  }
-
-  return {
-    show,
-    success,
-    error,
-    warning,
-    info,
-    loading,
-  }
-}
-    success,
-    error,
-    warning,
-    info,
-  }
-}
-```
-
-### useDialog.ts - Generic Dialog State ✅ IMPLEMENTED
-
-See `src/composables/useDialog.ts:1-29` for full implementation
-
-```typescript
-export function useDialog<T = any>(defaultValue?: T) {
-  // Returns:
-  // - isOpen: Ref<boolean> - Dialog visibility state
-  // - data: Ref<T | undefined> - Typed payload data
-  // - open(payload?: T): void - Open dialog with optional payload
-  // - close(): void - Close dialog and reset data
-  // - toggle(): void - Toggle dialog visibility
-}
-```
-
-**Use Case**: Generic dialog state management with typed payloads for edit dialogs, detail views, etc.
-
-### useLoading.ts - Count-based Loading State ✅ IMPLEMENTED
-
-See `src/composables/useLoading.ts:1-43` for full implementation
-
-```typescript
-export function useLoading(initialState = false) {
-  // Returns:
-  // - isLoading: ComputedRef<boolean> - Loading state
-  // - loadingCount: ComputedRef<number> - Active loading operations count
-  // - start(): void - Increment loading count
-  // - stop(): void - Decrement loading count
-  // - reset(): void - Reset to initial state
-  // - withLoading<T>(fn: () => Promise<T>): Promise<T> - Wrapper for async operations
-}
-```
-
-**Use Case**: Count-based loading for concurrent operations. `withLoading()` automatically manages start/stop.
-
-### useDarkMode.ts - Theme Switching ✅ IMPLEMENTED
-
-See `src/composables/useDarkMode.ts:1-48` for full implementation
-
-```typescript
-export function useDarkMode() {
-  // Returns:
-  // - preference: Ref<'auto' | 'light' | 'dark'> - Current preference
-  // - setMode(mode: 'auto' | 'light' | 'dark'): void - Set and persist mode
-  // - toggle(): void - Cycle through light → dark → auto
-  // - isDark(): boolean - Check if dark mode is active
-  // - init(): void - Apply saved preference on mount
-}
-```
-
-**Use Case**: Theme switching with localStorage persistence (`quasar-dark-mode` key).
-
-### useSidebar.ts - Global Sidebar State ✅ IMPLEMENTED
-
-See `src/composables/useSidebar.ts:1-49` for full implementation
-
-```typescript
-export function useSidebar() {
-  // Returns:
-  // - isOpen: WritableComputedRef<boolean> - v-model compatible
-  // - navItems: NavItem[] - Navigation items (defined at module level)
-  // - toggle(): void - Toggle sidebar visibility
-  // - open(): void - Open sidebar
-  // - close(): void - Close sidebar
-}
-
-// Uses module-level ref for shared state across components
-// NavItem type from @/types/navigation (not @/types/ui)
-```
-
-**Use Case**: Global sidebar state shared across layout components.
-
-## Naming Conventions
-
-| Category | Pattern | Example |
-|----------|---------|---------|
-| Wrapper components | `App[Name]` | `AppButton`, `AppInput`, `AppDialog` |
-| Composite components | `[Context][Name]` | `DataTable`, `FormDialog`, `StatCard` |
-| Item components | `[Parent]Item` | `ListItem`, `TimelineEntry`, `StepperStep` |
-| Types | `[Component]Props` | `AppButtonProps`, `DataTableProps` |
-| Composables | `use[Feature]` | `useConfirm`, `useSnackbar` |
-
-## Integration với Existing Codebase
-
-### Types Migration
-
-Existing types tại `src/types/components.ts` (lines 1-98) sẽ được:
-1. Di chuyển vào các file tương ứng trong `src/types/ui/`
-2. Cập nhật imports trong code hiện tại
-3. Giữ backward compatibility qua re-export từ `src/types/index.ts`
-
-### Composables Migration
-
-Existing composables tại `src/composables/` sẽ được:
-1. `useConfirm.ts` - Refactor để wrap `$q.dialog()` thay vì manual state
-2. `useSnackbar.ts` - Refactor để wrap `$q.notify()` thay vì manual state
-3. `useDarkMode.ts` - Giữ nguyên, component DarkModeToggle migrate vào ui/common/
-
-### Demo Page
-
-`src/pages/components.vue` (1237 lines) sẽ được split thành:
-- `src/pages/components/index.vue` - Overview page
-- `src/pages/components/buttons.vue` - Button demos
-- `src/pages/components/inputs.vue` - Input demos
-- ... và các category khác (8 sections total)
+API: `isOpen`, `navItems`, `toggle()`, `open()`, `close()`
 
 ## Key Flows
 
@@ -833,35 +562,53 @@ sequenceDiagram
     participant Quasar as $q.dialog()
     participant User as User
     
-    Page->>Hook: confirm('Xác nhận xóa?')
+    Page->>Hook: confirm('Xac nhan xoa?')
     Hook->>Quasar: Create dialog with options
     Quasar-->>User: Show dialog
-    User->>Quasar: Click 'Đồng ý'
+    User->>Quasar: Click 'Dong y'
     Quasar->>Hook: onOk callback
     Hook-->>Page: Promise resolves true
     Page->>Page: Perform delete action
 ```
 
+## Naming Conventions
+
+| Category | Pattern | Example |
+|----------|---------|---------|
+| Wrapper components | `App[Name]` | `AppButton`, `AppInput`, `AppDialog` |
+| Composite components | `[Context][Name]` | `DataTable`, `FormDialog`, `StatCard` |
+| Item components | `[Parent]Item` | `ListItem`, `TimelineEntry`, `StepperStep` |
+| Types | `[Component]Props` | `AppButtonProps`, `DataTableProps` |
+| Composables | `use[Feature]` | `useConfirm`, `useSnackbar` |
+
 ## Error Handling
 
 | Error Case | Response |
 |------------|----------|
-| Component import fail | Dev build error với clear path suggestion |
+| Component import fail | Dev build error with clear path suggestion |
 | Invalid props | TypeScript compile error + runtime warning |
 | Slot not found | Fallback to default content |
-| Validation fail | Hiển thị error message tiếng Việt |
+| Validation fail | Display Vietnamese error message |
+| Invalid behavior value | TypeScript compile error (union type enforcement) |
 
 ## Test Strategy
 
-- **Unit**: Test individual component props/emit với Vue Test Utils
-- **Integration**: Test composables với Quasar plugins mock
-- **Visual**: Manual testing qua demo pages (Story 11)
+- **Unit**: Test individual component props/emit with Vue Test Utils
+- **Integration**: Test composables with Quasar plugins mock
+- **Visual**: Manual testing via demo pages (Story 11)
+
+### AppSelect Behavior Verification
+
+1. Click AppSelect with `use-input=false` -> popup opens
+2. Click AppSelect with `use-input=true` -> popup opens with search
+3. Click AppSelect with `behavior="menu"` -> popup opens as dropdown menu
+4. Default behavior is 'dialog' without explicit prop
 
 ---
 
 ## Implementation Notes
 
-**Last Synced**: 2026-01-28  
+**Last Synced**: 2026-01-29
 **Status**: Synced from implementation analysis
 
 ### Key Patterns Discovered
@@ -869,6 +616,7 @@ sequenceDiagram
 1. **Computed v-model Pattern**: All input/toggle/picker components use `computed({ get, set })` for two-way binding
 2. **Vietnamese Defaults**: Consistently applied across confirm dialogs, empty states, and form validations
 3. **Type Consolidation**: Types organized into `data-display.ts` (tables, lists, cards) instead of separate files
+4. **Behavior Prop Pattern**: AppSelect uses explicit `behavior='dialog'` default for reliable popup opening
 
 ### Components Deferred
 
