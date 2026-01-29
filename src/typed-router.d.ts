@@ -31,6 +31,9 @@ declare module 'vue-router/auto-routes' {
     '/thread/allocations': RouteRecordInfo<'/thread/allocations', '/thread/allocations', Record<never, never>, Record<never, never>>,
     '/thread/dashboard': RouteRecordInfo<'/thread/dashboard', '/thread/dashboard', Record<never, never>, Record<never, never>>,
     '/thread/inventory': RouteRecordInfo<'/thread/inventory', '/thread/inventory', Record<never, never>, Record<never, never>>,
+    '/thread/mobile/issue': RouteRecordInfo<'/thread/mobile/issue', '/thread/mobile/issue', Record<never, never>, Record<never, never>>,
+    '/thread/mobile/receive': RouteRecordInfo<'/thread/mobile/receive', '/thread/mobile/receive', Record<never, never>, Record<never, never>>,
+    '/thread/mobile/recovery': RouteRecordInfo<'/thread/mobile/recovery', '/thread/mobile/recovery', Record<never, never>, Record<never, never>>,
     '/thread/recovery': RouteRecordInfo<'/thread/recovery', '/thread/recovery', Record<never, never>, Record<never, never>>,
   }
 
@@ -95,6 +98,18 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/thread/inventory.vue': {
       routes: '/thread/inventory'
+      views: never
+    }
+    'src/pages/thread/mobile/issue.vue': {
+      routes: '/thread/mobile/issue'
+      views: never
+    }
+    'src/pages/thread/mobile/receive.vue': {
+      routes: '/thread/mobile/receive'
+      views: never
+    }
+    'src/pages/thread/mobile/recovery.vue': {
+      routes: '/thread/mobile/recovery'
       views: never
     }
     'src/pages/thread/recovery.vue': {

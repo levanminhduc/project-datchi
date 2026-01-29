@@ -7,6 +7,11 @@ dotenv.config()
 
 import employeesRouter from './routes/employees'
 import positionsRouter from './routes/positions'
+import inventoryRouter from './routes/inventory'
+import threadsRouter from './routes/threads'
+import allocationsRouter from './routes/allocations'
+import recoveryRouter from './routes/recovery'
+import dashboardRouter from './routes/dashboard'
 
 const app = new Hono()
 
@@ -33,8 +38,11 @@ app.get('/health', (c) => {
 
 app.route('/api/employees', employeesRouter)
 app.route('/api/positions', positionsRouter)
-
-// TODO: thread-management-35 Register thread management routes (threads, inventory, allocations, recovery, dashboard)
+app.route('/api/inventory', inventoryRouter)
+app.route('/api/threads', threadsRouter)
+app.route('/api/allocations', allocationsRouter)
+app.route('/api/recovery', recoveryRouter)
+app.route('/api/dashboard', dashboardRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
@@ -69,3 +77,8 @@ console.log(`Server is running at http://localhost:${PORT}`)
 console.log(`Health check: http://localhost:${PORT}/health`)
 console.log(`Employees API: http://localhost:${PORT}/api/employees`)
 console.log(`Positions API: http://localhost:${PORT}/api/positions`)
+console.log(`Inventory API: http://localhost:${PORT}/api/inventory`)
+console.log(`Threads API: http://localhost:${PORT}/api/threads`)
+console.log(`Allocations API: http://localhost:${PORT}/api/allocations`)
+console.log(`Recovery API: http://localhost:${PORT}/api/recovery`)
+console.log(`Dashboard API: http://localhost:${PORT}/api/dashboard`)
