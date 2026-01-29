@@ -74,37 +74,44 @@ src/
 
 ```typescript
 interface Employee {
-  id: string              // UUID from Supabase
+  id: number              // Auto-increment primary key (NOT UUID/string)
+  employee_id: string     // Mã Nhân Viên (UNIQUE, IMMUTABLE)
   full_name: string       // Tên Nhân Viên
-  employee_id: string     // Mã Nhân Viên (immutable)
   department: string      // Phòng Ban
-  chuc_vu: ChucVu         // Chức Vụ
+  chuc_vu: string         // Chức Vụ (plain string, NOT enum type)
+  is_active: boolean      // Trạng thái hoạt động
   created_at: string      // ISO timestamp
   updated_at: string      // ISO timestamp
 }
 
-// Position/Role enum type
-type ChucVu = 'quan_ly' | 'nhan_vien' | 'truong_phong'
+// ChucVu options are computed dynamically from employees data
+// See src/pages/employees.vue:617-620
+const chucVuOptions = computed(() => {
+  const positions = [...new Set(employees.value.map(e => e.chuc_vu).filter(Boolean))]
+  return positions.sort().map(pos => ({ label: pos, value: pos }))
+})
 
-// Vietnamese labels for ChucVu dropdown display
-const chucVuLabels: Record<ChucVu, string> = {
-  quan_ly: 'Quản lý',
-  nhan_vien: 'Nhân viên',
-  truong_phong: 'Trưởng phòng'
-}
+// No hardcoded labels - chuc_vu values are displayed as-is
+// This follows the same pattern as Department dropdown
 ```
 
-This structure was updated to match implementation:
-- Field names: snake_case (preserve exact casing)
-- `employee_code` renamed to `employee_id` (immutable field)
-- `position` renamed to `chuc_vu` with enum type
-- Types: string for most fields, ChucVu enum for position
+**Key differences from original spec**:
+- `id` is `number` (auto-increment), NOT `string` (UUID)
+- `chuc_vu` is `string`, NOT enum type `ChucVu`
+- `is_active: boolean` field exists (was not previously documented)
+- Type definitions: see `src/types/employee.ts` and `server/types/employee.ts`
 
 **Derived Types**:
 
 ```typescript
-// For create/update operations (without id, timestamps)
-type EmployeeInput = Pick<Employee, 'full_name' | 'employee_id' | 'department' | 'chuc_vu'>
+// For create/update operations (without id, timestamps, is_active)
+// See src/types/employee.ts:26-31
+interface EmployeeFormData {
+  employee_id: string     // Mã Nhân Viên
+  full_name: string       // Tên Nhân Viên
+  department: string      // Phòng Ban
+  chuc_vu: string         // Chức Vụ
+}
 
 // Table column definition - follow pattern from src/types/components.ts:10-19
 interface EmployeeColumn extends DataTableColumn {
@@ -114,8 +121,9 @@ interface EmployeeColumn extends DataTableColumn {
 
 // API response wrapper
 interface ApiResponse<T> {
-  data: T
-  error?: string
+  data: T | null
+  error: string | null
+  message?: string
 }
 
 // Paginated response
@@ -276,8 +284,8 @@ export function useEmployees() {
   // Actions
   const fetchEmployees = async () => { /* ... */ }
   const createEmployee = async (data: EmployeeInput) => { /* ... */ }
-  const updateEmployee = async (id: string, data: Partial<EmployeeInput>) => { /* ... */ }
-  const deleteEmployee = async (id: string) => { /* ... */ }
+  const updateEmployee = async (id: number, data: Partial<EmployeeFormData>) => { /* ... */ }
+  const deleteEmployee = async (id: number) => { /* ... */ }
   
   // Computed
   const filteredEmployees = computed(() => { /* client-side filter */ })
@@ -285,6 +293,23 @@ export function useEmployees() {
   return {
     // State
     employees,
+    isLoading,
+    error,
+    pagination,
+    searchQuery,
+    formDialog,
+    // Actions
+    fetchEmployees,
+    createEmployee,
+    updateEmployee,
+    deleteEmployee,
+    // Computed
+    filteredEmployees
+  }
+}
+```
+
+**Note**: The `usePositions` composable previously used for ChucVu options has been removed. ChucVu options are now computed directly in the page component from the employees array, following the same pattern as Department options.
     isLoading,
     error,
     pagination,
@@ -542,6 +567,7 @@ try {
 | Code | employee_id | Mã NV |
 | Department | department | Phòng Ban |
 | Position | chuc_vu | Chức Vụ |
+| Status | is_active | Trạng Thái |
 | Actions | - | Thao tác |
 | Add | - | Thêm nhân viên |
 | Edit | - | Sửa |
@@ -549,6 +575,162 @@ try {
 | Search | - | Tìm kiếm |
 | Confirm | - | Xác nhận |
 | Cancel | - | Hủy |
+| Active | - | Đang hoạt động |
+| Inactive | - | Ngừng hoạt động |
+
+## Detail Dialog
+
+Employee details are displayed in a modal dialog when user clicks on a table row.
+
+**Implementation**: `src/pages/employees.vue:350-540`
+
+### Dialog Structure
+
+```mermaid
+flowchart TD
+    subgraph DetailDialog["Detail Dialog"]
+        Header["Header: Mã NV badge"]
+        Section1["Employee Info Section"]
+        Section2["Timestamps Section"]
+        Actions["Action Buttons"]
+    end
+    
+    Section1 --> FieldID["employee_id - Mã Nhân Viên"]
+    Section1 --> FieldName["full_name - Tên Nhân Viên"]
+    Section1 --> FieldDept["department - Phòng Ban"]
+    Section1 --> FieldPos["chuc_vu - Chức Vụ"]
+    Section1 --> FieldActive["is_active - Trạng Thái"]
+    
+    Section2 --> Created["created_at - Ngày tạo"]
+    Section2 --> Updated["updated_at - Cập nhật lần cuối"]
+    
+    Actions --> EditBtn["Sửa - opens edit dialog"]
+    Actions --> CloseBtn["Đóng - closes dialog"]
+```
+
+### Fields Displayed
+
+| Field | Icon | Display Format |
+|-------|------|----------------|
+| employee_id | badge | Badge with primary color |
+| full_name | person | Plain text |
+| department | business | Plain text or "Chưa xác định" |
+| chuc_vu | work | Raw value (no label mapping) |
+| is_active | check_circle/cancel | Color-coded chip (positive/negative) |
+| created_at | event | formatDateTime() |
+| updated_at | update | formatDateTime() |
+
+### State Management
+
+```typescript
+// src/pages/employees.vue:725-728
+interface DetailDialogState {
+  isOpen: boolean
+  employee: Employee | null
+}
+
+const detailDialog = reactive<DetailDialogState>({
+  isOpen: false,
+  employee: null,
+})
+```
+
+## Department Dropdown with new-value-mode
+
+The department dropdown supports adding new values that don't exist in the current list.
+
+**Implementation**: `src/pages/employees.vue:276-289`
+
+### Configuration
+
+```vue
+<AppSelect
+  v-model="formData.department"
+  label="Phòng Ban"
+  :options="filteredDepartmentOptions"
+  use-input
+  new-value-mode="add-unique"
+  clearable
+  @filter="filterDepartments"
+/>
+```
+
+### Behavior
+
+| Feature | Description |
+|---------|-------------|
+| Dynamic options | Computed from existing employees' departments |
+| Type-ahead search | `use-input` enables filtering as user types |
+| Add new values | `new-value-mode="add-unique"` allows creating new departments |
+| Filter function | `filterDepartments()` filters options based on input |
+
+### Options Source
+
+```typescript
+// src/pages/employees.vue:611-614
+const departmentOptions = computed(() => {
+  const departments = [...new Set(employees.value.map(e => e.department).filter(Boolean))]
+  return departments.sort().map(dept => ({ label: dept, value: dept }))
+})
+```
+
+## ChucVu (Position) Dropdown - Dynamic Options
+
+The ChucVu dropdown follows the exact same pattern as Department - options are computed dynamically from existing employee data.
+
+**Implementation**: `src/pages/employees.vue:291-301` (form), `src/pages/employees.vue:194-207` (inline edit)
+
+### Configuration
+
+```vue
+<!-- In form dialog -->
+<AppSelect
+  v-model="formData.chuc_vu"
+  label="Chức Vụ"
+  :options="chucVuOptions"
+  clearable
+/>
+
+<!-- In inline edit popup -->
+<q-select
+  v-model="scope.value"
+  :options="chucVuOptions"
+  option-value="value"
+  option-label="label"
+  emit-value
+  map-options
+/>
+```
+
+### Behavior
+
+| Feature | Description |
+|---------|-------------|
+| Dynamic options | Computed from existing employees' chuc_vu values |
+| No hardcoded list | Options are data-driven from employees table |
+| Same pattern as Department | Uses identical extraction logic |
+| No separate API | No dependency on usePositions or /unique-positions endpoint |
+
+### Options Source
+
+```typescript
+// src/pages/employees.vue:617-620
+const chucVuOptions = computed(() => {
+  const positions = [...new Set(employees.value.map(e => e.chuc_vu).filter(Boolean))]
+  return positions.sort().map(pos => ({ label: pos, value: pos }))
+})
+```
+
+### Key Changes from Previous Implementation
+
+| Aspect | OLD | NEW |
+|--------|-----|-----|
+| Data source | usePositions composable + API | Computed from employees array |
+| API dependency | GET /api/employees/unique-positions | None - no separate API call |
+| Options type | Hardcoded list (quan_ly, nhan_vien, truong_phong) | Dynamic from database |
+| Initialization | fetchPositions() in onMounted | Reactive computed property |
+| Pattern | Separate logic from Department | Identical pattern to Department |
+```
 
 ## Risk Mitigations
 
@@ -600,3 +782,16 @@ Beyond the spec, these methods were added for convenience:
 | 408 | TIMEOUT | Yêu cầu quá thời gian. Vui lòng thử lại |
 | 409 | DUPLICATE | Mã nhân viên đã tồn tại |
 | 500 | SERVER_ERROR | Lỗi hệ thống |
+
+### Spec Sync (2026-01-29)
+
+| Change | Old Value | New Value |
+|--------|-----------| ----------|
+| Employee.id type | `string` (UUID) | `number` (auto-increment) |
+| Employee.chuc_vu type | `ChucVu` (enum) | `string` (plain) |
+| is_active field | Not documented | `boolean` field added |
+| Detail Dialog | Not documented | Full section added |
+| Department dropdown | Not documented | `new-value-mode="add-unique"` documented |
+| **ChucVu dropdown source** | **Hardcoded options** | **Computed from employees.chuc_vu** |
+| **ChucVu API dependency** | **usePositions + /unique-positions** | **None - computed locally** |
+| **ChucVu pattern** | **Separate implementation** | **Same as Department dropdown** |

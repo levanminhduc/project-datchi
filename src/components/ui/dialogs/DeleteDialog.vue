@@ -79,23 +79,47 @@ const onCancel = () => {
 </script>
 
 <template>
-  <q-dialog v-model="dialogValue" :persistent="loading">
+  <q-dialog
+    v-model="dialogValue"
+    :persistent="loading"
+  >
     <q-card style="min-width: 350px; max-width: 500px">
       <q-card-section class="row items-center q-pb-none">
-        <q-avatar icon="mdi-alert-circle" color="negative" text-color="white" />
-        <div class="text-h6 q-ml-md text-negative">{{ title }}</div>
+        <q-avatar
+          icon="mdi-alert-circle"
+          color="negative"
+          text-color="white"
+        />
+        <div class="text-h6 q-ml-md text-negative">
+          {{ title }}
+        </div>
         <q-space />
-        <q-btn icon="mdi-close" flat round dense v-close-popup :disable="loading" />
+        <q-btn
+          v-close-popup
+          icon="mdi-close"
+          flat
+          round
+          dense
+          :disable="loading"
+        />
       </q-card-section>
 
       <q-card-section class="q-pt-md">
-        <p class="text-body1 q-mb-md">{{ message }}</p>
+        <p class="text-body1 q-mb-md">
+          {{ message }}
+        </p>
         
-        <div v-if="itemName" class="q-mb-md">
+        <div
+          v-if="itemName"
+          class="q-mb-md"
+        >
           Bạn sắp xóa: <strong class="text-negative">{{ itemName }}</strong>
         </div>
 
-        <div v-if="requireConfirmation" class="q-mt-md">
+        <div
+          v-if="requireConfirmation"
+          class="q-mt-md"
+        >
           <p class="q-mb-sm text-weight-medium">
             Nhập '<span class="text-negative">{{ requiredText }}</span>' để xác nhận:
           </p>
@@ -105,13 +129,16 @@ const onCancel = () => {
             dense
             placeholder="Nhập văn bản xác nhận"
             :disable="loading"
-            @keyup.enter="onConfirm"
             autofocus
+            @keyup.enter="onConfirm"
           />
         </div>
       </q-card-section>
 
-      <q-card-actions align="right" class="q-pa-md">
+      <q-card-actions
+        align="right"
+        class="q-pa-md"
+      >
         <q-btn
           flat
           :label="cancelText"

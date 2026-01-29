@@ -10,6 +10,59 @@ import type {
 
 const employees = new Hono()
 
+/**
+ * GET /api/employees/unique-positions - Fetch all positions from positions table
+ * Returns position objects with value (internal name) and label (display name)
+ * for proper matching with employees.chuc_vu column
+ */
+employees.get('/unique-positions', async (c) => {
+  try {
+    // Fetch ALL positions from the positions table (no filtering by is_active)
+    // This ensures the dropdown shows all available positions regardless of status
+    const { data, error } = await supabase
+      .from('positions')
+      .select('name, display_name')
+      .order('display_name', { ascending: true })
+
+    // Fallback to default positions if table doesn't exist
+    if (error) {
+      console.error('Supabase error (falling back to defaults):', error)
+      const defaultPositions = [
+        { value: 'giam_doc', label: 'Giám Đốc' },
+        { value: 'nhan_vien', label: 'Nhân Viên' },
+        { value: 'nhan_vien_ky_thuat', label: 'Nhân Viên Kỹ Thuật' },
+        { value: 'pho_giam_doc', label: 'Phó Giám Đốc' },
+        { value: 'quan_ly', label: 'Quản Lý' },
+        { value: 'truong_phong', label: 'Trưởng Phòng' },
+      ]
+      return c.json<ApiResponse<Array<{ value: string; label: string }>>>({
+        data: defaultPositions,
+        error: null,
+      })
+    }
+
+    // Return position objects with value (name) and label (display_name)
+    // employees.chuc_vu stores the 'name' field, so value must be 'name'
+    const uniquePositions = (data || [])
+      .filter(pos => pos.name && pos.display_name)
+      .map(pos => ({
+        value: pos.name,
+        label: pos.display_name,
+      }))
+
+    return c.json<ApiResponse<Array<{ value: string; label: string }>>>({
+      data: uniquePositions,
+      error: null,
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ApiResponse<null>>(
+      { data: null, error: 'Lỗi hệ thống' },
+      500
+    )
+  }
+})
+
 employees.get('/', async (c) => {
   try {
     const page = parseInt(c.req.query('page') || '1', 10)
@@ -64,7 +117,7 @@ employees.get('/', async (c) => {
     }
 
     const BATCH_SIZE = 1000
-    let allData: Employee[] = []
+    const allData: Employee[] = []
     let offset = 0
 
     while (true) {

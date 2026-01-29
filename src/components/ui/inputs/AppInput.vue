@@ -33,11 +33,17 @@
     @focus="emit('focus', $event)"
     @blur="emit('blur', $event)"
   >
-    <template v-if="prependIcon" #prepend>
+    <template
+      v-if="prependIcon"
+      #prepend
+    >
       <q-icon :name="prependIcon" />
     </template>
 
-    <template v-if="appendIcon || clearable || $slots.append" #append>
+    <template
+      v-if="appendIcon || clearable || $slots.append"
+      #append
+    >
       <slot name="append">
         <q-icon
           v-if="clearable && modelValue"
@@ -45,19 +51,31 @@
           class="cursor-pointer"
           @click.stop="handleClear"
         />
-        <q-icon v-else-if="appendIcon" :name="appendIcon" />
+        <q-icon
+          v-else-if="appendIcon"
+          :name="appendIcon"
+        />
       </slot>
     </template>
 
-    <template v-if="$slots.prepend" #prepend>
+    <template
+      v-if="$slots.prepend"
+      #prepend
+    >
       <slot name="prepend" />
     </template>
 
-    <template v-if="$slots.before" #before>
+    <template
+      v-if="$slots.before"
+      #before
+    >
       <slot name="before" />
     </template>
 
-    <template v-if="$slots.after" #after>
+    <template
+      v-if="$slots.after"
+      #after
+    >
       <slot name="after" />
     </template>
 

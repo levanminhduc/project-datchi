@@ -6,7 +6,7 @@ Thư viện UI component sử dụng pattern "Wrapper Component" - bọc Quasar 
 
 Pattern tham khảo: `src/components/DarkModeToggle.vue` (lines 1-25)
 
-**Implementation Status**: 62 components implemented across 12 categories
+**Implementation Status**: 63 components implemented across 12 categories
 
 ## Implemented Component Inventory
 
@@ -19,11 +19,13 @@ Pattern tham khảo: `src/components/DarkModeToggle.vue` (lines 1-25)
 | tables | DataTable | 1 |
 | lists | AppList, ListItem | 2 |
 | cards | AppCard, AppBadge, AppChip, InfoCard, StatCard | 5 |
-| navigation | AppBreadcrumbs, AppPagination, AppTabs, TabPanel, AppStepper, StepperStep | 6 |
+| navigation | AppBreadcrumbs, AppPagination, AppTabs, TabPanel, AppStepper, StepperStep, SidebarItem | 7 |
 | layout | PageHeader, SectionHeader, AppDrawer, AppToolbar, AppSeparator, AppSpace | 6 |
 | media | AppCarousel, AppImage, AppVideo, AppParallax | 4 |
 | pickers | DatePicker, TimePicker, ColorPicker, AppEditor, FilePicker | 5 |
 | scroll | ScrollArea, VirtualScroll, InfiniteScroll, PullToRefresh, Timeline, TimelineEntry | 6 |
+
+**Note**: SidebarItem uses `@/types/navigation` (NavItem type), not `@/types/ui`
 
 **Type Files**: base.ts, buttons.ts, inputs.ts, feedback.ts, data-display.ts, dialogs.ts, navigation.ts, layout.ts, media.ts, pickers.ts, scroll.ts, index.ts (12 files)
 
@@ -100,7 +102,8 @@ src/
 │       │   ├── AppBreadcrumbs.vue      ✅
 │       │   ├── AppPagination.vue       ✅
 │       │   ├── AppStepper.vue          ✅
-│       │   └── StepperStep.vue         ✅
+│       │   ├── StepperStep.vue         ✅
+│       │   └── SidebarItem.vue         ✅ (uses @/types/navigation, not @/types/ui)
 │       ├── layout/
 │       │   ├── index.ts
 │       │   ├── AppToolbar.vue          ✅
@@ -150,9 +153,12 @@ src/
 │       └── scroll.ts                   # Scroll types ✅
 │
 └── composables/
-    ├── useConfirm.ts                   # ✅ Refactored to wrap $q.dialog()
-    ├── useSnackbar.ts                  # ✅ Refactored to wrap $q.notify()
-    └── useDialog.ts                    # Giữ nguyên
+    ├── useConfirm.ts                   # ✅ Wraps $q.dialog()
+    ├── useSnackbar.ts                  # ✅ Wraps $q.notify()
+    ├── useDialog.ts                    # ✅ Generic dialog state with typed payloads
+    ├── useLoading.ts                   # ✅ Count-based loading with withLoading wrapper
+    ├── useDarkMode.ts                  # ✅ Theme switching with localStorage persistence
+    └── useSidebar.ts                   # ✅ Global sidebar state with nav items
 ```
 
 ## Component Wrapper Pattern
@@ -692,6 +698,78 @@ export function useSnackbar() {
 }
 ```
 
+### useDialog.ts - Generic Dialog State ✅ IMPLEMENTED
+
+See `src/composables/useDialog.ts:1-29` for full implementation
+
+```typescript
+export function useDialog<T = any>(defaultValue?: T) {
+  // Returns:
+  // - isOpen: Ref<boolean> - Dialog visibility state
+  // - data: Ref<T | undefined> - Typed payload data
+  // - open(payload?: T): void - Open dialog with optional payload
+  // - close(): void - Close dialog and reset data
+  // - toggle(): void - Toggle dialog visibility
+}
+```
+
+**Use Case**: Generic dialog state management with typed payloads for edit dialogs, detail views, etc.
+
+### useLoading.ts - Count-based Loading State ✅ IMPLEMENTED
+
+See `src/composables/useLoading.ts:1-43` for full implementation
+
+```typescript
+export function useLoading(initialState = false) {
+  // Returns:
+  // - isLoading: ComputedRef<boolean> - Loading state
+  // - loadingCount: ComputedRef<number> - Active loading operations count
+  // - start(): void - Increment loading count
+  // - stop(): void - Decrement loading count
+  // - reset(): void - Reset to initial state
+  // - withLoading<T>(fn: () => Promise<T>): Promise<T> - Wrapper for async operations
+}
+```
+
+**Use Case**: Count-based loading for concurrent operations. `withLoading()` automatically manages start/stop.
+
+### useDarkMode.ts - Theme Switching ✅ IMPLEMENTED
+
+See `src/composables/useDarkMode.ts:1-48` for full implementation
+
+```typescript
+export function useDarkMode() {
+  // Returns:
+  // - preference: Ref<'auto' | 'light' | 'dark'> - Current preference
+  // - setMode(mode: 'auto' | 'light' | 'dark'): void - Set and persist mode
+  // - toggle(): void - Cycle through light → dark → auto
+  // - isDark(): boolean - Check if dark mode is active
+  // - init(): void - Apply saved preference on mount
+}
+```
+
+**Use Case**: Theme switching with localStorage persistence (`quasar-dark-mode` key).
+
+### useSidebar.ts - Global Sidebar State ✅ IMPLEMENTED
+
+See `src/composables/useSidebar.ts:1-49` for full implementation
+
+```typescript
+export function useSidebar() {
+  // Returns:
+  // - isOpen: WritableComputedRef<boolean> - v-model compatible
+  // - navItems: NavItem[] - Navigation items (defined at module level)
+  // - toggle(): void - Toggle sidebar visibility
+  // - open(): void - Open sidebar
+  // - close(): void - Close sidebar
+}
+
+// Uses module-level ref for shared state across components
+// NavItem type from @/types/navigation (not @/types/ui)
+```
+
+**Use Case**: Global sidebar state shared across layout components.
+
 ## Naming Conventions
 
 | Category | Pattern | Example |
@@ -720,11 +798,11 @@ Existing composables tại `src/composables/` sẽ được:
 
 ### Demo Page
 
-`src/pages/components.vue` (600+ lines) sẽ được split thành:
+`src/pages/components.vue` (1237 lines) sẽ được split thành:
 - `src/pages/components/index.vue` - Overview page
 - `src/pages/components/buttons.vue` - Button demos
 - `src/pages/components/inputs.vue` - Input demos
-- ... và các category khác
+- ... và các category khác (8 sections total)
 
 ## Key Flows
 
@@ -783,7 +861,7 @@ sequenceDiagram
 
 ## Implementation Notes
 
-**Last Synced**: 2026-01-27  
+**Last Synced**: 2026-01-28  
 **Status**: Synced from implementation analysis
 
 ### Key Patterns Discovered

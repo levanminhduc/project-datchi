@@ -63,14 +63,17 @@ const isExpanded = computed(() => {
   <!-- Render leaf item -->
   <q-item
     v-else
-    clickable
     v-ripple
+    clickable
     :to="item.to"
     :active="isRouteActive(item)"
     active-class="bg-primary text-white"
     :inset-level="level"
   >
-    <q-item-section v-if="item.icon" avatar>
+    <q-item-section
+      v-if="item.icon"
+      avatar
+    >
       <q-icon :name="item.icon" />
     </q-item-section>
 
@@ -78,8 +81,14 @@ const isExpanded = computed(() => {
       <q-item-label>{{ item.label }}</q-item-label>
     </q-item-section>
 
-    <q-item-section v-if="item.badge" side>
-      <q-badge :color="item.badgeColor || 'red'" :label="item.badge" />
+    <q-item-section
+      v-if="item.badge"
+      side
+    >
+      <q-badge
+        :color="item.badgeColor || 'red'"
+        :label="item.badge"
+      />
     </q-item-section>
   </q-item>
 </template>

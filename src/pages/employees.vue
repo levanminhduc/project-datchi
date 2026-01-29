@@ -177,7 +177,7 @@
             color="primary"
           />
           <template v-else>
-            <span class="cell-value">{{ chucVuLabels[props.row.chuc_vu] || props.row.chuc_vu }}</span>
+            <span class="cell-value">{{ props.row.chuc_vu }}</span>
             <q-icon
               name="edit"
               size="xs"
@@ -279,7 +279,9 @@
           :options="filteredDepartmentOptions"
           use-input
           new-value-mode="add-unique"
+          behavior="menu"
           clearable
+          popup-content-class="z-max"
           @filter="filterDepartments"
         >
           <template #prepend>
@@ -287,15 +289,22 @@
           </template>
         </AppSelect>
 
-        <AppSelect
+        <q-select
           v-model="formData.chuc_vu"
           label="Chức Vụ"
           :options="chucVuOptions"
+          option-value="value"
+          option-label="label"
+          emit-value
+          map-options
+          outlined
+          popup-content-class="z-max"
+          clearable
         >
           <template #prepend>
             <q-icon name="work" />
           </template>
-        </AppSelect>
+        </q-select>
       </div>
     </FormDialog>
 
@@ -454,7 +463,7 @@
                   Chức Vụ
                 </q-item-label>
                 <q-item-label class="text-weight-medium">
-                  {{ chucVuLabels[detailDialog.employee.chuc_vu] || detailDialog.employee.chuc_vu || 'Chưa xác định' }}
+                  {{ detailDialog.employee.chuc_vu || 'Chưa xác định' }}
                 </q-item-label>
               </q-item-section>
             </q-item>
@@ -599,16 +608,15 @@ watch(searchQuery, () => {
 // Inline edit loading state - tracks which cells are being saved
 const inlineEditLoading = ref<Record<string, boolean>>({})
 
-// Chức Vụ options for dropdown selection
-const chucVuOptions = [
-  { label: 'Quản Lý', value: 'quan_ly' },
-  { label: 'Nhân Viên', value: 'nhan_vien' },
-  { label: 'Trưởng Phòng', value: 'truong_phong' },
-]
-
 const departmentOptions = computed(() => {
   const departments = [...new Set(employees.value.map(e => e.department).filter(Boolean))]
   return departments.sort().map(dept => ({ label: dept, value: dept }))
+})
+
+// Chức vụ options computed from employees data (same pattern as departmentOptions)
+const chucVuOptions = computed(() => {
+  const positions = [...new Set(employees.value.map(e => e.chuc_vu).filter(Boolean))]
+  return positions.sort().map(pos => ({ label: pos, value: pos }))
 })
 
 // Filtered options for department dropdown with use-input
@@ -632,13 +640,6 @@ const filterDepartments = (val: string, update: (fn: () => void) => void) => {
 watch(departmentOptions, (newOpts) => {
   filteredDepartmentOptions.value = newOpts
 }, { immediate: true })
-
-// Mapping chuc_vu values to display labels
-const chucVuLabels: Record<string, string> = {
-  quan_ly: 'Quản Lý',
-  nhan_vien: 'Nhân Viên',
-  truong_phong: 'Trưởng Phòng',
-}
 
 /**
  * Generate unique key for tracking cell loading state
@@ -712,6 +713,8 @@ const formData = reactive<EmployeeFormData>({
   department: '',
   chuc_vu: '',
 })
+
+
 
 // Delete dialog state
 const deleteDialog = reactive<DeleteDialogState>({
@@ -803,8 +806,8 @@ const openEditDialog = (employee: Employee) => {
   formDialog.employeeId = employee.id
   formData.employee_id = employee.employee_id
   formData.full_name = employee.full_name
-  formData.department = employee.department
-  formData.chuc_vu = employee.chuc_vu
+  formData.department = employee.department || ''
+  formData.chuc_vu = employee.chuc_vu || ''
   formDialog.isOpen = true
 }
 
@@ -884,6 +887,7 @@ const formatDateTime = (dateString: string): string => {
 }
 
 onMounted(() => {
+  // Fetch employees for table (chuc_vu options computed from employees data)
   fetchEmployees()
 })
 </script>

@@ -101,7 +101,10 @@ const stepValue = computed({
       :disable="step.disable"
       :header-nav="headerNav"
     >
-      <slot :name="`step-${step.name}`" :step="step" />
+      <slot
+        :name="`step-${step.name}`"
+        :step="step"
+      />
     </q-step>
     <slot />
 

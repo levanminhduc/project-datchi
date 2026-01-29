@@ -14,9 +14,16 @@
     :size="size"
     :dark="dark"
   >
-    <template v-if="showValue && !indeterminate" #default>
+    <template
+      v-if="showValue && !indeterminate"
+      #default
+    >
       <div class="absolute-full flex flex-center">
-        <q-badge color="white" text-color="primary" :label="progressLabel" />
+        <q-badge
+          color="white"
+          text-color="primary"
+          :label="progressLabel"
+        />
       </div>
     </template>
     <slot />

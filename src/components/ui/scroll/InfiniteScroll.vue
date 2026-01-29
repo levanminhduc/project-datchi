@@ -53,7 +53,10 @@ defineExpose({
     <template #loading>
       <slot name="loading">
         <div class="row justify-center q-my-md">
-          <q-spinner color="primary" size="40px" />
+          <q-spinner
+            color="primary"
+            size="40px"
+          />
         </div>
       </slot>
     </template>

@@ -30,7 +30,11 @@ const headerStyle = computed(() =>
 </script>
 
 <template>
-  <div class="section-header row items-center" :class="headerClass" :style="headerStyle">
+  <div
+    class="section-header row items-center"
+    :class="headerClass"
+    :style="headerStyle"
+  >
     <!-- Icon -->
     <q-icon
       v-if="icon"
@@ -41,8 +45,15 @@ const headerStyle = computed(() =>
 
     <!-- Title & Subtitle -->
     <div class="col">
-      <div class="text-subtitle1 text-weight-medium">{{ title }}</div>
-      <div v-if="subtitle" class="text-caption text-grey">{{ subtitle }}</div>
+      <div class="text-subtitle1 text-weight-medium">
+        {{ title }}
+      </div>
+      <div
+        v-if="subtitle"
+        class="text-caption text-grey"
+      >
+        {{ subtitle }}
+      </div>
     </div>
 
     <!-- Action slot -->

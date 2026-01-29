@@ -16,7 +16,10 @@ const props = withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
-  <q-toolbar :inset="inset" :dense="dense">
+  <q-toolbar
+    :inset="inset"
+    :dense="dense"
+  >
     <slot name="left" />
     <q-toolbar-title>
       <slot name="title" />

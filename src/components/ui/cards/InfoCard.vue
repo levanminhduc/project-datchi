@@ -7,10 +7,25 @@
   >
     <q-card-section>
       <div class="row items-center no-wrap">
-        <q-avatar v-if="icon" :color="iconColor" text-color="white" :icon="icon" />
+        <q-avatar
+          v-if="icon"
+          :color="iconColor"
+          text-color="white"
+          :icon="icon"
+        />
         <div class="q-ml-md">
-          <div v-if="title" class="text-subtitle1 text-weight-medium">{{ title }}</div>
-          <div v-if="subtitle" class="text-caption text-grey">{{ subtitle }}</div>
+          <div
+            v-if="title"
+            class="text-subtitle1 text-weight-medium"
+          >
+            {{ title }}
+          </div>
+          <div
+            v-if="subtitle"
+            class="text-caption text-grey"
+          >
+            {{ subtitle }}
+          </div>
         </div>
       </div>
     </q-card-section>

@@ -39,6 +39,7 @@ defineExpose({
 <template>
   <q-virtual-scroll
     ref="virtualScrollRef"
+    v-slot="{ item, index }"
     :items="items"
     :items-fn="itemsFn"
     :items-size="itemsSize"
@@ -49,8 +50,10 @@ defineExpose({
     :virtual-scroll-sticky-size-start="virtualScrollStickySizeStart"
     :virtual-scroll-sticky-size-end="virtualScrollStickySizeEnd"
     :scroll-target="scrollTarget"
-    v-slot="{ item, index }"
   >
-    <slot :item="item" :index="index" />
+    <slot
+      :item="item"
+      :index="index"
+    />
   </q-virtual-scroll>
 </template>

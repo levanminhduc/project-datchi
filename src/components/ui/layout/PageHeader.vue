@@ -37,7 +37,10 @@ const headerClass = computed(() => ({
 </script>
 
 <template>
-  <div class="page-header row items-center q-mb-md" :class="headerClass">
+  <div
+    class="page-header row items-center q-mb-md"
+    :class="headerClass"
+  >
     <!-- Back button -->
     <q-btn
       v-if="showBack"
@@ -59,8 +62,15 @@ const headerClass = computed(() => ({
 
     <!-- Title & Subtitle -->
     <div class="col">
-      <div class="text-h5 text-weight-medium">{{ title }}</div>
-      <div v-if="subtitle" class="text-caption text-grey">{{ subtitle }}</div>
+      <div class="text-h5 text-weight-medium">
+        {{ title }}
+      </div>
+      <div
+        v-if="subtitle"
+        class="text-caption text-grey"
+      >
+        {{ subtitle }}
+      </div>
     </div>
 
     <!-- Breadcrumbs slot -->

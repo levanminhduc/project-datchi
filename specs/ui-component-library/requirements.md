@@ -4,7 +4,7 @@
 
 Xây dựng thư viện UI component toàn diện tại `src/components/ui/` bọc lại các component của Quasar Framework với props chuẩn hóa, TypeScript interfaces, và mặc định tiếng Việt. Giải quyết vấn đề thiếu tính nhất quán và khó bảo trì khi sử dụng trực tiếp Quasar components.
 
-**Implementation Status**: ~80% Complete (62/80+ components implemented)
+**Implementation Status**: ~80% Complete (63/80+ components implemented)
 
 ## User Stories
 
@@ -98,10 +98,22 @@ Là một developer, tôi muốn có dialog components với pattern confirm/del
 - [x] THE SYSTEM SHALL cung cấp 7 overlay components: AppDialog, ConfirmDialog, FormDialog, DeleteDialog, AppMenu, AppTooltip, PopupEdit
 - [x] WHEN sử dụng ConfirmDialog, THE SYSTEM SHALL hiển thị title, message, confirmText, cancelText với mặc định tiếng Việt
 - [x] WHEN sử dụng DeleteDialog, THE SYSTEM SHALL hiển thị warning message và require confirmation text
-- [x] THE SYSTEM SHALL cập nhật useConfirm.ts để wrap $q.dialog() thay vì manual state management
+- [x] THE SYSTEM SHALL cung cấp useConfirm() composable wrap $q.dialog()
   - API: confirm(), confirmWarning(), confirmDelete()
-- [x] THE SYSTEM SHALL cập nhật useSnackbar.ts để wrap $q.notify() thay vì manual state management
+- [x] THE SYSTEM SHALL cung cấp useSnackbar() composable wrap $q.notify()
   - API: show(), success(), error(), warning(), info(), loading()
+- [x] THE SYSTEM SHALL cung cấp useDialog<T>() composable for generic dialog state management
+  - API: isOpen, data, open(payload?), close(), toggle()
+  - Typed payloads with generic <T> support
+- [x] THE SYSTEM SHALL cung cấp useLoading() composable for count-based loading state
+  - API: isLoading, loadingCount, start(), stop(), reset(), withLoading(fn)
+  - Count-based for concurrent loading operations
+- [x] THE SYSTEM SHALL cung cấp useDarkMode() composable for theme switching
+  - API: preference, setMode(mode), toggle(), isDark(), init()
+  - Modes: 'auto' | 'light' | 'dark' with localStorage persistence
+- [x] THE SYSTEM SHALL cung cấp useSidebar() composable for global sidebar state
+  - API: isOpen (v-model compatible), navItems, toggle(), open(), close()
+  - Shared state across components (module-level ref)
 
 ### Story 8: Navigation & Layout (Priority: P2) ✅ COMPLETE
 
@@ -110,7 +122,8 @@ Là một developer, tôi muốn có navigation và layout components để xây
 **Independent Test**: Render AppTabs, AppBreadcrumbs, kiểm tra navigation hoạt động.
 
 **Acceptance Criteria**:
-- [x] THE SYSTEM SHALL cung cấp 6 navigation components: AppTabs, TabPanel, AppBreadcrumbs, AppPagination, AppStepper, StepperStep
+- [x] THE SYSTEM SHALL cung cấp 7 navigation components: AppTabs, TabPanel, AppBreadcrumbs, AppPagination, AppStepper, StepperStep, SidebarItem
+  - ✨ **SidebarItem**: Recursive navigation item with expansion support, uses `@/types/navigation` (NavItem type)
 - [x] THE SYSTEM SHALL cung cấp 6 layout components: AppToolbar, AppSeparator, AppSpace, PageHeader, SectionHeader, AppDrawer
 - [x] WHEN sử dụng PageHeader, THE SYSTEM SHALL hiển thị title, subtitle, breadcrumbs, và action slot
 - [x] WHEN sử dụng AppStepper, THE SYSTEM SHALL hỗ trợ horizontal/vertical layout với step validation
@@ -146,6 +159,16 @@ Là một developer, tôi muốn có documentation và demo pages để tham kh�
 
 **Acceptance Criteria**:
 - [ ] THE SYSTEM SHALL split pages/components.vue thành các demo sections riêng biệt
+  - ⚠️ **Current state**: 1237 lines in single file, needs splitting
+  - **Sections identified** (8 total):
+    1. Section 1: Navigation & Actions (lines 16-131)
+    2. Section 2: Form Controls (lines 132-335)
+    3. Section 3: Data Display (lines 336-466)
+    4. Section 4: Feedback (lines 467-604)
+    5. Section 5: Containment (lines 605-739)
+    6. Section 6: Selection & Tabs (lines 740-886)
+    7. Section 7: Navigation (lines 887-978)
+    8. Section 8: Layout & Others (lines 979-end)
 - [ ] THE SYSTEM SHALL migrate DarkModeToggle.vue vào ui/common/
   - ⚠️ Still in `src/components/`
 - [x] THE SYSTEM SHALL consolidate tất cả types vào src/types/ui/ với barrel exports
@@ -183,3 +206,13 @@ Là một developer, tôi muốn có documentation và demo pages để tham kh�
 - Component theming system phức tạp
 - Accessibility audit toàn diện
 - Mobile-specific components
+
+## Implementation Notes
+
+**Last Synced**: 2026-01-28  
+**Status**: Synced from implementation analysis
+
+### Sync Update Summary
+- Added SidebarItem to navigation components (63 total)
+- Documented all 6 composables: useDialog, useLoading, useDarkMode, useSidebar, useConfirm, useSnackbar
+- Updated Story 11 with components.vue split analysis (1237 lines, 8 sections)

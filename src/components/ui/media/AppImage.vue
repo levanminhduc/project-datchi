@@ -76,7 +76,11 @@ const emit = defineEmits<{
     <template #error>
       <slot name="error">
         <div class="absolute-full flex flex-center bg-grey-3">
-          <q-icon :name="errorIcon" size="40px" color="grey-6" />
+          <q-icon
+            :name="errorIcon"
+            size="40px"
+            color="grey-6"
+          />
         </div>
       </slot>
     </template>

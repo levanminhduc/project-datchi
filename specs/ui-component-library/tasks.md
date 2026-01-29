@@ -12,14 +12,14 @@
 | Phase 2B | ⚠️ Partial | 3/8 | Only AppList, ListItem done |
 | Phase 2C | ✅ Complete | 7/7 | All 5 card components |
 | Phase 3 | ✅ Complete | 11/11 | All dialogs + composables refactored |
-| Phase 4A | ✅ Complete | 8/8 | All 6 navigation components |
+| Phase 4A | ✅ Complete | 9/9 | All 7 navigation components (including SidebarItem) |
 | Phase 4B | ✅ Complete | 8/8 | All 6 layout components |
 | Phase 5A | ✅ Complete | 6/6 | All 4 media components |
 | Phase 5B | ✅ Complete | 7/7 | All 5 picker components |
 | Phase 6 | ✅ Complete | 8/8 | All 6 scroll components |
 | Phase 7 | ⚠️ Partial | 2/8 | DarkModeToggle not migrated |
 
-**Total Components Implemented**: 62 (vs 80+ originally planned)
+**Total Components Implemented**: 63 (vs 80+ originally planned)
 
 ---
 
@@ -220,7 +220,8 @@
 | 4A.5 | Tạo AppPagination component | `src/components/ui/navigation/AppPagination.vue` | Wrap QPagination với v-model, max, boundary-links, direction-links, Vietnamese labels | [x] |
 | 4A.6 | Tạo AppStepper component | `src/components/ui/navigation/AppStepper.vue` | Wrap QStepper với v-model, vertical/horizontal, header-nav, keep-alive | [x] |
 | 4A.7 | Tạo StepperStep component | `src/components/ui/navigation/StepperStep.vue` | Wrap QStep với name, title, caption, icon, done, error | [x] |
-| 4A.8 | Update barrel exports | `src/components/ui/navigation/index.ts`, `src/components/ui/index.ts` | Export tất cả navigation components | [x] |
+| 4A.8 | Tạo SidebarItem component | `src/components/ui/navigation/SidebarItem.vue` | Recursive nav item with expansion, uses @/types/navigation (NavItem) | [x] ✨ |
+| 4A.9 | Update barrel exports | `src/components/ui/navigation/index.ts`, `src/components/ui/index.ts` | Export tất cả navigation components | [x] |
 
 **Checkpoint**: ✅ Tabs và Stepper navigate đúng giữa các steps
 
@@ -321,15 +322,27 @@
 | # | Task | Files | DoD | Status |
 |---|------|-------|-----|--------|
 | 7.1 | Split components.vue thành demo pages | `src/pages/components/*.vue` | Tạo overview page và sub-pages cho mỗi category | [ ] |
+| 7.1a | → Create Section 1: Navigation & Actions | `src/pages/components/navigation-actions.vue` | Extract lines 16-131 from components.vue | [ ] |
+| 7.1b | → Create Section 2: Form Controls | `src/pages/components/forms.vue` | Extract lines 132-335 from components.vue | [ ] |
+| 7.1c | → Create Section 3: Data Display | `src/pages/components/data-display.vue` | Extract lines 336-466 from components.vue | [ ] |
+| 7.1d | → Create Section 4: Feedback | `src/pages/components/feedback.vue` | Extract lines 467-604 from components.vue | [ ] |
+| 7.1e | → Create Section 5: Containment | `src/pages/components/containment.vue` | Extract lines 605-739 from components.vue | [ ] |
+| 7.1f | → Create Section 6: Selection & Tabs | `src/pages/components/selection-tabs.vue` | Extract lines 740-886 from components.vue | [ ] |
+| 7.1g | → Create Section 7: Navigation | `src/pages/components/navigation.vue` | Extract lines 887-978 from components.vue | [ ] |
+| 7.1h | → Create Section 8: Layout & Others | `src/pages/components/layout.vue` | Extract lines 979-1237 from components.vue | [ ] |
+| 7.1i | → Create index with links to sections | `src/pages/components/index.vue` | Overview page linking to 8 section pages | [ ] |
 | 7.2 | Migrate DarkModeToggle | `src/components/ui/common/DarkModeToggle.vue` | Di chuyển từ `src/components/`, update imports trong App.vue | [ ] ⚠️ NOT MIGRATED |
 | 7.3 | Consolidate existing types | `src/types/ui/*.ts` | Di chuyển types từ `src/types/components.ts` vào files tương ứng, keep backward compat | [x] |
 | 7.4 | Update src/types/index.ts | `src/types/index.ts` | Re-export từ ui/ để backward compatible | [x] |
 | 7.5 | Thêm JSDoc cho button components | `src/components/ui/buttons/*.vue` | JSDoc cho tất cả props và methods | [ ] |
 | 7.6 | Thêm JSDoc cho input components | `src/components/ui/inputs/*.vue` | JSDoc cho tất cả props và methods | [ ] |
 | 7.7 | Thêm JSDoc cho các components còn lại | `src/components/ui/**/*.vue` | JSDoc cho tất cả props và methods | [ ] |
-| 7.8 | Final type-check và build test | N/A | `npm run type-check` và `npm run build` pass không lỗi | [ ] |
+| 7.8 | Document composables API | `src/composables/*.ts` | JSDoc cho all 6 composables (useDialog, useLoading, useDarkMode, useSidebar, useConfirm, useSnackbar) | [ ] |
+| 7.9 | Final type-check và build test | N/A | `npm run type-check` và `npm run build` pass không lỗi | [ ] |
 
 **Checkpoint**: ⚠️ Types consolidated, demo pages và documentation pending
+
+**Note**: components.vue is 1237 lines with 8 sections that need to be split into individual page files.
 
 ---
 
@@ -390,7 +403,7 @@ flowchart TD
 
 ## Implementation Notes
 
-**Last Synced**: 2026-01-27  
+**Last Synced**: 2026-01-28  
 **Status**: Synced from implementation analysis
 
 ### Components NOT Implemented (Deferred)
@@ -408,20 +421,48 @@ flowchart TD
 |----------|-----------|-------------|
 | feedback | CircularProgress | Wraps QCircularProgress with standard props |
 
-### Composables Refactored API
+### Composables Implemented (6 total)
 
-**useConfirm.ts** (now uses $q.dialog()):
+**useConfirm.ts** (wraps $q.dialog()):
 - `confirm(options)` - Generic confirmation dialog
 - `confirmWarning(options)` - Warning-styled confirmation
 - `confirmDelete(itemName?)` - Delete confirmation with Vietnamese defaults
 
-**useSnackbar.ts** (now uses $q.notify()):
+**useSnackbar.ts** (wraps $q.notify()):
 - `show(options)` - Generic notification
 - `success(message)` - Green success notification
 - `error(message)` - Red error notification  
 - `warning(message)` - Orange warning notification
 - `info(message)` - Blue info notification
 - `loading(message)` - Loading notification with spinner
+
+**useDialog.ts** (generic dialog state):
+- `isOpen` - Ref<boolean> for visibility
+- `data` - Ref<T> for typed payload
+- `open(payload?)` - Open with optional data
+- `close()` - Close and reset
+- `toggle()` - Toggle visibility
+
+**useLoading.ts** (count-based loading):
+- `isLoading` - ComputedRef<boolean> for state
+- `loadingCount` - Number of active operations
+- `start()` / `stop()` - Manual control
+- `reset()` - Reset to initial
+- `withLoading(fn)` - Async wrapper (auto start/stop)
+
+**useDarkMode.ts** (theme switching):
+- `preference` - 'auto' | 'light' | 'dark'
+- `setMode(mode)` - Set and persist to localStorage
+- `toggle()` - Cycle light → dark → auto
+- `isDark()` - Check if dark active
+- `init()` - Apply on mount
+
+**useSidebar.ts** (global sidebar state):
+- `isOpen` - WritableComputedRef (v-model compatible)
+- `navItems` - Navigation items array
+- `toggle()` / `open()` / `close()` - State control
+- Uses module-level ref for shared state
+- Types from `@/types/navigation` (NavItem)
 
 ### Vietnamese Default Strings Used
 

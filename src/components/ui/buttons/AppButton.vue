@@ -19,7 +19,10 @@
     @click="handleClick"
   >
     <slot />
-    <template v-if="$slots.loading" #loading>
+    <template
+      v-if="$slots.loading"
+      #loading
+    >
       <slot name="loading" />
     </template>
   </q-btn>

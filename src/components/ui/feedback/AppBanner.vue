@@ -6,13 +6,19 @@
     :rounded="rounded"
     :dark="dark"
   >
-    <template v-if="$slots.avatar" #avatar>
+    <template
+      v-if="$slots.avatar"
+      #avatar
+    >
       <slot name="avatar" />
     </template>
     
     <slot />
     
-    <template v-if="$slots.action" #action>
+    <template
+      v-if="$slots.action"
+      #action
+    >
       <slot name="action" />
     </template>
   </q-banner>

@@ -89,8 +89,13 @@ const slideValue = computed({
       :name="index"
       :img-src="slide.src"
     >
-      <div v-if="slide.caption" class="absolute-bottom custom-caption">
-        <div class="text-subtitle1">{{ slide.caption }}</div>
+      <div
+        v-if="slide.caption"
+        class="absolute-bottom custom-caption"
+      >
+        <div class="text-subtitle1">
+          {{ slide.caption }}
+        </div>
       </div>
     </q-carousel-slide>
     <slot />

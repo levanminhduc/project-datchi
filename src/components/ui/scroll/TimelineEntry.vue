@@ -36,13 +36,22 @@ const props = withDefaults(defineProps<Props>(), {
     :heading="heading"
     :tag="tag"
   >
-    <template v-if="$slots.title" #title>
+    <template
+      v-if="$slots.title"
+      #title
+    >
       <slot name="title" />
     </template>
-    <template v-if="$slots.subtitle" #subtitle>
+    <template
+      v-if="$slots.subtitle"
+      #subtitle
+    >
       <slot name="subtitle" />
     </template>
-    <template v-if="$slots.body" #default>
+    <template
+      v-if="$slots.body"
+      #default
+    >
       <slot name="body" />
     </template>
     <slot />

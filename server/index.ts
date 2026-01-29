@@ -6,6 +6,7 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 import employeesRouter from './routes/employees'
+import positionsRouter from './routes/positions'
 
 const app = new Hono()
 
@@ -15,7 +16,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
 app.use(
   '/api/*',
   cors({
-    origin: [FRONTEND_URL, 'http://127.0.0.1:5173', 'http://localhost:5173'],
+    origin: [FRONTEND_URL, 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:5174', 'http://localhost:5174'],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
@@ -31,6 +32,7 @@ app.get('/health', (c) => {
 })
 
 app.route('/api/employees', employeesRouter)
+app.route('/api/positions', positionsRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
@@ -64,3 +66,4 @@ serve({
 console.log(`Server is running at http://localhost:${PORT}`)
 console.log(`Health check: http://localhost:${PORT}/health`)
 console.log(`Employees API: http://localhost:${PORT}/api/employees`)
+console.log(`Positions API: http://localhost:${PORT}/api/positions`)

@@ -63,15 +63,17 @@ const onHide = () => {
     <q-card :style="{ maxWidth: maxWidth, width: '100%' }">
       <q-form @submit.prevent="onSubmit">
         <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">{{ title }}</div>
+          <div class="text-h6">
+            {{ title }}
+          </div>
           <q-space />
           <q-btn
             v-if="!loading"
+            v-close-popup
             icon="close"
             flat
             round
             dense
-            v-close-popup
           />
         </q-card-section>
 
@@ -79,7 +81,10 @@ const onHide = () => {
           <slot />
         </q-card-section>
 
-        <q-card-actions align="right" class="text-primary q-pa-md">
+        <q-card-actions
+          align="right"
+          class="text-primary q-pa-md"
+        >
           <q-btn
             flat
             :label="cancelText"

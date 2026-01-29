@@ -112,6 +112,22 @@ As an administrator, I want to delete an employee record so that I can remove ou
 - [x] WHEN the user confirms deletion, THE SYSTEM SHALL remove the employee and display "Xóa nhân viên thành công".
 - [x] WHEN the user cancels deletion, THE SYSTEM SHALL close the dialog without changes.
 
+### Story 8: View Employee Details (Priority: P2)
+
+As an administrator, I want to view complete employee details in a dialog so that I can see all information including timestamps and status.
+
+**Independent Test**: Click on employee row, verify detail dialog displays all fields including is_active status and timestamps.
+
+**Acceptance Criteria**:
+- [x] WHEN the user clicks on an employee row, THE SYSTEM SHALL display a detail dialog with all employee fields.
+- [x] THE SYSTEM SHALL display employee_id (Mã Nhân Viên) with badge styling.
+- [x] THE SYSTEM SHALL display full_name, department, and chuc_vu with appropriate icons.
+- [x] THE SYSTEM SHALL display is_active status with color-coded badge ("Đang hoạt động" / "Ngừng hoạt động").
+- [x] THE SYSTEM SHALL display created_at and updated_at timestamps formatted with formatDateTime().
+- [x] THE SYSTEM SHALL provide action buttons: Edit (opens edit dialog), Close.
+
+> **Implementation**: See `src/pages/employees.vue:350-540` for detail dialog template.
+
 ### Story 6: Error Handling (Priority: P1) 🎯 MVP
 
 As a user, I want clear error messages when operations fail so that I understand what went wrong.
@@ -137,6 +153,8 @@ As a user, I want clear error messages when operations fail so that I understand
 | Form validation | Client + Server | UX + data integrity | Client only |
 | Inline edit fields | 3 fields | full_name, department, chuc_vu editable | All fields |
 | Inline save trigger | Enter/blur | Standard UX for popup edit | Button only |
+| Department dropdown | Dynamic with add | Derived from existing + user can add new | Fixed list |
+| ChucVu dropdown | Dynamic (computed) | Extracted from employees.chuc_vu column (same pattern as Department) | Fixed list, Separate API |
 
 > These assumptions were made autonomously based on codebase patterns and industry standards.
 > Override in spec if different behavior is required.
@@ -172,6 +190,28 @@ These features were added during implementation beyond original spec:
 | Position search | Search now includes `position` field |
 | Immutable employee_code | Code cannot be changed during edit (data integrity) |
 | Mobile column labels | "Mã Nhân Viên" → "Mã NV" for mobile responsiveness |
+| Detail Dialog | View all employee fields including is_active status and timestamps |
+| Department new-value-mode | Users can add new department values via dropdown |
+
+## Data Model
+
+**Employee Interface** (matches `src/types/employee.ts`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | number | Auto-increment primary key (NOT UUID) |
+| employee_id | string | Mã Nhân Viên (UNIQUE, IMMUTABLE) |
+| full_name | string | Tên Nhân Viên |
+| department | string | Phòng Ban |
+| chuc_vu | string | Chức Vụ (plain string, not enum) |
+| is_active | boolean | Trạng thái hoạt động |
+| created_at | string | ISO timestamp |
+| updated_at | string | ISO timestamp |
+
+**ChucVu Options** (computed dynamically from `src/pages/employees.vue:617-620`):
+- Extracted from unique values in `employees.chuc_vu` column
+- Uses same pattern as Department dropdown
+- No hardcoded list - options are data-driven
 
 ## Implementation Notes
 
@@ -198,3 +238,9 @@ These features were added during implementation beyond original spec:
 - Added `supabaseAdmin` client using `SERVICE_ROLE_KEY` for backend CRUD operations
 - US-004 (Edit Employee) and US-007 (Inline Edit) now fully operational
 - Backend routes use `supabaseAdmin` to bypass RLS for server-side operations
+
+**Spec Sync (2026-01-29)**:
+- ChucVu dropdown changed from hardcoded options to dynamic computed values
+- Removed dependency on usePositions composable and positions API
+- ChucVu now follows same pattern as Department: extracted from employees.chuc_vu column
+- Updated Data Model section to reflect dynamic ChucVu options source

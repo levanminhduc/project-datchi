@@ -102,15 +102,17 @@ const onCancel = () => {
           size="md"
           class="q-mr-sm"
         />
-        <div class="text-h6 text-weight-bold">{{ title }}</div>
+        <div class="text-h6 text-weight-bold">
+          {{ title }}
+        </div>
         <q-space />
         <q-btn
           v-if="!persistent && !loading"
+          v-close-popup
           icon="mdi-close"
           flat
           round
           dense
-          v-close-popup
         />
       </q-card-section>
 
@@ -120,7 +122,10 @@ const onCancel = () => {
         </div>
       </q-card-section>
 
-      <q-card-actions align="right" class="q-pa-md q-gutter-sm">
+      <q-card-actions
+        align="right"
+        class="q-pa-md q-gutter-sm"
+      >
         <q-btn
           flat
           :label="cancelText"

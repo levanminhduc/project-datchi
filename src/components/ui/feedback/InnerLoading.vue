@@ -11,7 +11,10 @@
     :label-style="labelStyle"
   >
     <slot>
-      <AppSpinner :size="size" :color="color" />
+      <AppSpinner
+        :size="size"
+        :color="color"
+      />
     </slot>
   </q-inner-loading>
 </template>

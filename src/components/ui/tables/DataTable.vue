@@ -53,7 +53,10 @@
     <!-- Loading State -->
     <template #loading>
       <q-inner-loading showing>
-        <q-spinner-dots size="50px" color="primary" />
+        <q-spinner-dots
+          size="50px"
+          color="primary"
+        />
       </q-inner-loading>
     </template>
 
@@ -69,8 +72,14 @@
     </template>
 
     <!-- Pass through all slots -->
-    <template v-for="(_, slotName) in $slots" #[slotName]="slotProps">
-      <slot :name="slotName" v-bind="slotProps || {}" />
+    <template
+      v-for="(_, slotName) in $slots"
+      #[slotName]="slotProps"
+    >
+      <slot
+        :name="slotName"
+        v-bind="slotProps || {}"
+      />
     </template>
   </q-table>
 </template>

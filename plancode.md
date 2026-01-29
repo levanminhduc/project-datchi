@@ -57,17 +57,22 @@
 | `:rules="[(val) => !!val?.trim() \|\| '...']"` | `required` (tự động thêm validation) |
 | `<template #prepend><q-icon name="person" /></template>` | `prepend-icon="person"` |
 
-#### Phòng Ban
-| Thuộc tính cũ | Thuộc tính mới |
-|---------------|----------------|
+#### Phòng Ban (AppSelect với dynamic options)
+| Thuộc tính cũ | Thuộc tính mới (AppSelect) |
+|---------------|----------------------------|
+| `AppInput` | `AppSelect` với `:options="departmentOptions"` |
 | `label="Phòng Ban"` | `label="Phòng Ban"` |
-| `<template #prepend><q-icon name="business" /></template>` | `prepend-icon="business"` |
+| `<template #prepend><q-icon name="business" /></template>` | `<template #prepend><q-icon name="business" /></template>` |
+| - | `use-input` (cho phép tìm kiếm) |
+| - | `new-value-mode="add-unique"` (cho phép thêm mới) |
+| - | `clearable` |
 
-#### Chức Vụ
-| Thuộc tính cũ | Thuộc tính mới |
-|---------------|----------------|
+#### Chức Vụ (AppSelect với static options)
+| Thuộc tính cũ | Thuộc tính mới (AppSelect) |
+|---------------|----------------------------|
+| `AppInput` | `AppSelect` với `:options="chucVuOptions"` |
 | `label="Chức Vụ"` | `label="Chức Vụ"` |
-| `<template #prepend><q-icon name="work" /></template>` | `prepend-icon="work"` |
+| `<template #prepend><q-icon name="work" /></template>` | `<template #prepend><q-icon name="work" /></template>` |
 
 ---
 
@@ -106,19 +111,30 @@
       required
     />
 
-    <!-- Phòng Ban -->
-    <AppInput
+    <!-- Phòng Ban (AppSelect với dynamic options) -->
+    <AppSelect
       v-model="formData.department"
       label="Phòng Ban"
-      prepend-icon="business"
-    />
+      :options="departmentOptions"
+      use-input
+      new-value-mode="add-unique"
+      clearable
+    >
+      <template #prepend>
+        <q-icon name="business" />
+      </template>
+    </AppSelect>
 
-    <!-- Chức Vụ -->
-    <AppInput
+    <!-- Chức Vụ (AppSelect với static options) -->
+    <AppSelect
       v-model="formData.chuc_vu"
       label="Chức Vụ"
-      prepend-icon="work"
-    />
+      :options="chucVuOptions"
+    >
+      <template #prepend>
+        <q-icon name="work" />
+      </template>
+    </AppSelect>
   </div>
 </FormDialog>
 ```
@@ -129,13 +145,45 @@ Thêm import cho wrapper components:
 
 ```typescript
 import { FormDialog } from '@/components/ui/dialogs'
-import { AppInput } from '@/components/ui/inputs'
+import { AppInput, AppSelect } from '@/components/ui/inputs'
 ```
 
 **Hoặc sử dụng named imports từ barrel file:**
 
 ```typescript
-import { FormDialog, AppInput } from '@/components/ui'
+import { FormDialog, AppInput, AppSelect } from '@/components/ui'
+```
+
+### 3.2.1. Computed Property cho departmentOptions
+
+Thêm computed property để tạo danh sách phòng ban động từ dữ liệu employees:
+
+```typescript
+const departmentOptions = computed(() => {
+  const departments = [...new Set(employees.value.map(e => e.department).filter(Boolean))]
+  return departments.sort()
+})
+```
+
+**Giải thích:**
+- Lấy tất cả `department` từ danh sách nhân viên hiện có
+- Sử dụng `Set` để loại bỏ trùng lặp
+- `filter(Boolean)` để loại bỏ các giá trị null/undefined/empty
+- `sort()` để sắp xếp theo thứ tự alphabet
+
+### 3.2.2. Static Options cho chucVuOptions
+
+Danh sách chức vụ là static, định nghĩa trong ref:
+
+```typescript
+const chucVuOptions = ref([
+  'Công Nhân',
+  'Nhân Viên',
+  'Nhân Viên Văn Phòng',
+  'Tổ Trưởng',
+  'Phó Giám Đốc',
+  'Giám Đốc'
+])
 ```
 
 ### 3.3. Code Hoàn Chỉnh Cho Section Template (có thể copy-paste)
@@ -169,17 +217,28 @@ import { FormDialog, AppInput } from '@/components/ui'
       required
     />
 
-    <AppInput
+    <AppSelect
       v-model="formData.department"
       label="Phòng Ban"
-      prepend-icon="business"
-    />
+      :options="departmentOptions"
+      use-input
+      new-value-mode="add-unique"
+      clearable
+    >
+      <template #prepend>
+        <q-icon name="business" />
+      </template>
+    </AppSelect>
 
-    <AppInput
+    <AppSelect
       v-model="formData.chuc_vu"
       label="Chức Vụ"
-      prepend-icon="work"
-    />
+      :options="chucVuOptions"
+    >
+      <template #prepend>
+        <q-icon name="work" />
+      </template>
+    </AppSelect>
   </div>
 </FormDialog>
 ```
@@ -228,14 +287,18 @@ import { FormDialog, AppInput } from '@/components/ui'
 
 ## 5. Checklist Thực Hiện
 
-- [ ] Thêm import cho `FormDialog` và `AppInput`
-- [ ] Thay thế block code dòng 249-348 bằng code mẫu mới
+- [x] Thêm import cho `FormDialog`, `AppInput` và `AppSelect`
+- [x] Thay thế block code dòng 249-348 bằng code mẫu mới
+- [x] Thêm `departmentOptions` computed property
+- [x] Thêm `chucVuOptions` ref
 - [ ] Xóa các import không cần thiết (nếu có)
 - [ ] Test chức năng thêm nhân viên mới
 - [ ] Test chức năng chỉnh sửa nhân viên
 - [ ] Kiểm tra validation hoạt động đúng
 - [ ] Kiểm tra loading state hiển thị đúng
 - [ ] Kiểm tra dialog đóng đúng cách khi cancel
+- [ ] Test AppSelect cho Phòng Ban (tìm kiếm, thêm mới, xóa)
+- [ ] Test AppSelect cho Chức Vụ (chọn từ danh sách)
 
 ---
 

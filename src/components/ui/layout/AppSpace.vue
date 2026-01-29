@@ -32,5 +32,8 @@ const spaceStyle = computed(() => {
 </script>
 
 <template>
-  <div :style="spaceStyle" aria-hidden="true" />
+  <div
+    :style="spaceStyle"
+    aria-hidden="true"
+  />
 </template>

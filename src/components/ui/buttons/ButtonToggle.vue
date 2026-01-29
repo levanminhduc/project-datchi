@@ -26,7 +26,11 @@
     @update:model-value="emit('update:modelValue', $event)"
   >
     <!-- Forward named slots for custom button content -->
-    <template v-for="(_, name) in $slots" :key="name" #[name]>
+    <template
+      v-for="(_, name) in $slots"
+      :key="name"
+      #[name]
+    >
       <slot :name="name" />
     </template>
   </q-btn-toggle>

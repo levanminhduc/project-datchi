@@ -44,22 +44,22 @@ const emit = defineEmits<{
 
 <template>
   <q-popup-edit
+    v-slot="scope"
     :model-value="modelValue"
-    @update:model-value="emit('update:modelValue', $event)"
     :title="title"
     :buttons="buttons"
     :label-set="labelSet"
     :label-cancel="labelCancel"
     :auto-save="autoSave"
+    @update:model-value="emit('update:modelValue', $event)"
     @save="emit('save', $event)"
     @cancel="emit('cancel')"
-    v-slot="scope"
   >
     <q-input
       v-if="inputType === 'textarea'"
+      v-model="scope.value"
       type="textarea"
       autogrow
-      v-model="scope.value"
       :placeholder="placeholder"
       :rules="rules"
       autofocus
@@ -68,8 +68,8 @@ const emit = defineEmits<{
     />
     <q-input
       v-else
-      :type="inputType"
       v-model="scope.value"
+      :type="inputType"
       :placeholder="placeholder"
       :rules="rules"
       autofocus

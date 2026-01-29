@@ -14,9 +14,18 @@ onMounted(() => {
 
 <template>
   <q-layout view="hHh Lpr fFf">
-    <q-header elevated class="bg-primary text-white">
+    <q-header
+      elevated
+      class="bg-primary text-white"
+    >
       <q-toolbar>
-        <q-btn flat round dense icon="menu" @click="toggle" />
+        <q-btn
+          flat
+          round
+          dense
+          icon="menu"
+          @click="toggle"
+        />
         <q-toolbar-title>
           App Title
         </q-toolbar-title>

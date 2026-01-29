@@ -61,19 +61,25 @@ const handleItemClick = (item: UIMenuItem) => {
     :style="{ maxHeight: props.maxHeight }"
   >
     <q-list dense>
-      <template v-for="(item, index) in items" :key="index">
+      <template
+        v-for="(item, index) in items"
+        :key="index"
+      >
         <q-separator v-if="item.separator" />
         <q-item
           v-else
-          :clickable="!item.disable"
           v-close-popup="props.autoClose"
+          :clickable="!item.disable"
           :disable="item.disable"
           :to="item.to"
           :href="item.href"
           :target="item.href ? '_blank' : undefined"
           @click="handleItemClick(item)"
         >
-          <q-item-section v-if="item.icon" avatar>
+          <q-item-section
+            v-if="item.icon"
+            avatar
+          >
             <q-icon :name="item.icon" />
           </q-item-section>
 

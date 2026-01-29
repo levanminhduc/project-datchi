@@ -8,9 +8,16 @@
     <q-card-section>
       <div class="row items-center justify-between">
         <div>
-          <div class="text-caption text-grey text-uppercase">{{ label }}</div>
-          <div class="text-h4 text-weight-bold q-mt-xs">{{ value }}</div>
-          <div v-if="trend" class="q-mt-sm">
+          <div class="text-caption text-grey text-uppercase">
+            {{ label }}
+          </div>
+          <div class="text-h4 text-weight-bold q-mt-xs">
+            {{ value }}
+          </div>
+          <div
+            v-if="trend"
+            class="q-mt-sm"
+          >
             <q-badge
               :color="trendPositive ? 'positive' : 'negative'"
               :label="trend"

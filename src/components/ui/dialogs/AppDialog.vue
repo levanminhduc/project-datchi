@@ -14,12 +14,27 @@
     @hide="emit('hide')"
     @show="emit('show')"
   >
-    <q-card class="column no-wrap" :style="cardStyle">
+    <q-card
+      class="column no-wrap"
+      :style="cardStyle"
+    >
       <!-- Header slot -->
-      <q-card-section v-if="$slots.header" class="row items-center q-pb-none">
-        <div class="text-h6"><slot name="header" /></div>
+      <q-card-section
+        v-if="$slots.header"
+        class="row items-center q-pb-none"
+      >
+        <div class="text-h6">
+          <slot name="header" />
+        </div>
         <q-space />
-        <q-btn v-if="!persistent" icon="close" flat round dense v-close-popup />
+        <q-btn
+          v-if="!persistent"
+          v-close-popup
+          icon="close"
+          flat
+          round
+          dense
+        />
       </q-card-section>
 
       <!-- Default content slot -->
@@ -28,7 +43,11 @@
       </q-card-section>
 
       <!-- Actions slot -->
-      <q-card-actions v-if="$slots.actions" align="right" class="q-px-md q-pb-md">
+      <q-card-actions
+        v-if="$slots.actions"
+        align="right"
+        class="q-px-md q-pb-md"
+      >
         <slot name="actions" />
       </q-card-actions>
     </q-card>
