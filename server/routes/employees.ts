@@ -63,6 +63,38 @@ employees.get('/unique-positions', async (c) => {
   }
 })
 
+/**
+ * GET /api/employees/count - Get count of active employees
+ * Returns the total count of employees where is_active = true
+ */
+employees.get('/count', async (c) => {
+  try {
+    const { count, error } = await supabase
+      .from('employees')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_active', true)
+
+    if (error) {
+      console.error('Supabase error:', error)
+      return c.json<ApiResponse<null>>(
+        { data: null, error: 'Lỗi khi lấy số lượng nhân viên' },
+        500
+      )
+    }
+
+    return c.json<ApiResponse<{ count: number }>>({
+      data: { count: count || 0 },
+      error: null,
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ApiResponse<null>>(
+      { data: null, error: 'Lỗi hệ thống' },
+      500
+    )
+  }
+})
+
 employees.get('/', async (c) => {
   try {
     const page = parseInt(c.req.query('page') || '1', 10)
@@ -184,6 +216,21 @@ employees.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
+    // Guard: skip if id matches a known static route name
+    // This prevents parameterized route from capturing static routes
+    if (id === 'count' || id === 'unique-positions') {
+      return c.notFound()
+    }
+
+    // Validate that id is a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(id)) {
+      return c.json<ApiResponse<null>>(
+        { data: null, error: 'ID không hợp lệ' },
+        400
+      )
+    }
+
     const { data, error } = await supabase
       .from('employees')
       .select('id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at')
@@ -259,6 +306,7 @@ employees.post('/', async (c) => {
         employee_id: body.employee_id.trim(),
         department: body.department.trim(),
         chuc_vu: body.chuc_vu.trim(),
+        is_active: true,
       })
       .select()
       .single()
@@ -291,6 +339,16 @@ employees.post('/', async (c) => {
 employees.put('/:id', async (c) => {
   try {
     const id = c.req.param('id')
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(id)) {
+      return c.json<ApiResponse<null>>(
+        { data: null, error: 'ID không hợp lệ' },
+        400
+      )
+    }
+
     const body = await c.req.json<UpdateEmployeeDTO>()
 
     const { data: existing, error: findError } = await supabase
@@ -360,6 +418,15 @@ employees.put('/:id', async (c) => {
 employees.delete('/:id', async (c) => {
   try {
     const id = c.req.param('id')
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(id)) {
+      return c.json<ApiResponse<null>>(
+        { data: null, error: 'ID không hợp lệ' },
+        400
+      )
+    }
 
     const { data: existing, error: findError } = await supabase
       .from('employees')

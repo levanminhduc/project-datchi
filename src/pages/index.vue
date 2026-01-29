@@ -1,13 +1,30 @@
 <script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import StatCard from '@/components/ui/cards/StatCard.vue'
+import { employeeService } from '@/services/employeeService'
 
-const stats = [
+// Active employee count from API
+const activeEmployeeCount = ref<number>(0)
+const isLoadingEmployeeCount = ref(true)
+
+// Fetch active employee count on mount
+onMounted(async () => {
+  try {
+    activeEmployeeCount.value = await employeeService.getActiveCount()
+  } catch {
+    // Silently fail - show 0 if count cannot be fetched
+    activeEmployeeCount.value = 0
+  } finally {
+    isLoadingEmployeeCount.value = false
+  }
+})
+
+const stats = computed(() => [
   {
-    label: 'Tổng nhân viên',
-    value: 156,
+    label: 'Nhân viên hoạt động',
+    value: isLoadingEmployeeCount.value ? '...' : activeEmployeeCount.value,
     icon: 'people',
-    trend: '+12%',
     color: 'primary',
     trendPositive: true
   },
@@ -35,7 +52,7 @@ const stats = [
     color: 'info',
     trendPositive: true
   }
-]
+])
 </script>
 
 <template>

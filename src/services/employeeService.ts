@@ -70,4 +70,13 @@ export const employeeService = {
       method: 'DELETE',
     })
   },
+
+  /**
+   * Lấy số lượng nhân viên đang hoạt động
+   * @returns Count of active employees
+   */
+  async getActiveCount(): Promise<number> {
+    const response = await fetchApi<ApiResponse<{ count: number }>>('/api/employees/count')
+    return response.data?.count || 0
+  },
 }
