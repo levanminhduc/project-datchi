@@ -5,7 +5,7 @@
  */
 
 // Quasar (CSS is imported in main.ts to avoid duplicates)
-import { Quasar, Dialog, Notify, Loading, BottomSheet } from 'quasar'
+import { Quasar, Dialog, Notify, Loading, BottomSheet, ClosePopup, Ripple } from 'quasar'
 import type { QuasarPluginOptions } from 'quasar'
 
 export default Quasar
@@ -16,6 +16,10 @@ export const quasarConfig: QuasarPluginOptions = {
     Notify,
     Loading,
     BottomSheet,
+  },
+  directives: {
+    ClosePopup,
+    Ripple,
   },
   config: {
     dark: 'auto' as const,
