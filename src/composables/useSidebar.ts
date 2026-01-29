@@ -17,6 +17,7 @@ const navItems: NavItem[] = [
   { label: 'Kế Hoạch', icon: 'event_note', to: '/ke-hoach#top' },
   { label: 'Kỹ Thuật', icon: 'engineering', to: '/ky-thuat#top' },
   { label: 'Kho', icon: 'inventory_2', to: '/kho#top' },
+  // TODO: thread-management-50 Add Thread Management menu section (Loai Chi, Ton Kho, Phan Bo, Thu Hoi, Dashboard)
   { label: 'Phân Quyền', icon: 'admin_panel_settings', to: '/phan-quyen#top' }
 ]
 

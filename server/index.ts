@@ -34,6 +34,8 @@ app.get('/health', (c) => {
 app.route('/api/employees', employeesRouter)
 app.route('/api/positions', positionsRouter)
 
+// TODO: thread-management-35 Register thread management routes (threads, inventory, allocations, recovery, dashboard)
+
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
   return c.json(

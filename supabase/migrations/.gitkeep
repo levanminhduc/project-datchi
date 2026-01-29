@@ -1,0 +1,12 @@
+# Thread Management Migrations
+# TODO: thread-management-1 Create 001_thread_types.sql - Thread master data table
+# TODO: thread-management-2 Create 002_thread_inventory.sql - Cone tracking with dual UoM (cones + meters)
+# TODO: thread-management-3 Create 003_thread_allocations.sql - Soft/hard allocation tables
+# TODO: thread-management-4 Create 004_thread_movements.sql - Transaction log table
+# TODO: thread-management-5 Create 005_thread_recovery.sql - Partial cone recovery tracking
+# TODO: thread-management-6 Create 006_thread_conflicts.sql - Allocation conflict tracking
+# TODO: thread-management-7 Create 007_thread_audit.sql - Audit log with triggers
+# TODO: thread-management-8 Create 008_warehouses.sql - Warehouse locations table
+# TODO: thread-management-9 Create 009_rpc_allocate.sql - HIGH RISK: FEFO allocation RPC function
+# TODO: thread-management-10 Create 010_rpc_issue.sql - HIGH RISK: Soft to Hard allocation RPC
+# TODO: thread-management-11 Create 011_rpc_recover.sql - Partial cone recovery RPC

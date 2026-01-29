@@ -27,6 +27,11 @@ declare module 'vue-router/auto-routes' {
     '/nhan-su': RouteRecordInfo<'/nhan-su', '/nhan-su', Record<never, never>, Record<never, never>, '/nhan-su/danh-sach'>,
     '/nhan-su/danh-sach': RouteRecordInfo<'/nhan-su/danh-sach', '/nhan-su/danh-sach', Record<never, never>, Record<never, never>>,
     '/phan-quyen': RouteRecordInfo<'/phan-quyen', '/phan-quyen', Record<never, never>, Record<never, never>>,
+    '/thread/': RouteRecordInfo<'/thread/', '/thread', Record<never, never>, Record<never, never>>,
+    '/thread/allocations': RouteRecordInfo<'/thread/allocations', '/thread/allocations', Record<never, never>, Record<never, never>>,
+    '/thread/dashboard': RouteRecordInfo<'/thread/dashboard', '/thread/dashboard', Record<never, never>, Record<never, never>>,
+    '/thread/inventory': RouteRecordInfo<'/thread/inventory', '/thread/inventory', Record<never, never>, Record<never, never>>,
+    '/thread/recovery': RouteRecordInfo<'/thread/recovery', '/thread/recovery', Record<never, never>, Record<never, never>>,
   }
 
   /**
@@ -74,6 +79,26 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/phan-quyen.vue': {
       routes: '/phan-quyen'
+      views: never
+    }
+    'src/pages/thread/index.vue': {
+      routes: '/thread/'
+      views: never
+    }
+    'src/pages/thread/allocations.vue': {
+      routes: '/thread/allocations'
+      views: never
+    }
+    'src/pages/thread/dashboard.vue': {
+      routes: '/thread/dashboard'
+      views: never
+    }
+    'src/pages/thread/inventory.vue': {
+      routes: '/thread/inventory'
+      views: never
+    }
+    'src/pages/thread/recovery.vue': {
+      routes: '/thread/recovery'
       views: never
     }
   }

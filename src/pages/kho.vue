@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/feedback'
     />
     
     <AppCard class="q-mt-md">
+      <!-- TODO: thread-management-51 Replace EmptyState with thread management quick links -->
       <EmptyState
         icon="inventory_2"
         title="Chưa có dữ liệu"
