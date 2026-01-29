@@ -41,7 +41,7 @@
     <!-- List Mode: Show pending allocations -->
     <template v-else>
       <div class="text-subtitle2 q-mb-sm text-grey-8">Đơn chờ xuất xưởng</div>
-      <q-list separator bordered class="rounded-borders q-mb-md bg-white">
+      <q-list separator bordered class="rounded-borders q-mb-md">
         <q-item
           v-for="alloc in pendingAllocations"
           :key="alloc.id"
@@ -104,7 +104,7 @@
             <q-icon name="list" class="q-mr-xs" />
             Cuộn đã phân bổ:
           </div>
-          <q-list dense separator class="bg-white rounded-borders border-grey-3">
+          <q-list dense separator class="rounded-borders">
             <q-item v-for="ac in selectedAllocation.allocated_cones" :key="ac.id">
               <q-item-section avatar>
                 <q-icon name="inventory_2" color="primary" />
@@ -393,6 +393,6 @@ onMounted(() => {
 }
 
 .border-grey-3 {
-  border: 1px solid #eeeeee;
+  border: 1px solid rgba(128, 128, 128, 0.3);
 }
 </style>

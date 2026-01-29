@@ -723,7 +723,5 @@ onMounted(() => {
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
-  color: #616161;
-  background-color: #fafafa;
 }
 </style>

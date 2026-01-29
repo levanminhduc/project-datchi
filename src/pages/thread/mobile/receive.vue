@@ -27,7 +27,7 @@
       </q-card-section>
       
       <!-- Selected Thread Type Info -->
-      <q-card-section v-if="selectedThreadType" class="bg-grey-2">
+      <q-card-section v-if="selectedThreadType">
         <div class="row items-center q-gutter-sm">
           <div
             class="color-dot"
@@ -277,6 +277,6 @@ onMounted(async () => {
 }
 
 .scale-display {
-  border: 1px dashed #ccc;
+  border: 1px dashed rgba(128, 128, 128, 0.4);
 }
 </style>

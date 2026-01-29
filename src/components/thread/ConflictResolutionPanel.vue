@@ -55,7 +55,7 @@ const handleResolve = () => {
 </script>
 
 <template>
-  <div class="conflict-resolution-panel bg-white rounded-borders shadow-1 overflow-hidden">
+  <div class="conflict-resolution-panel rounded-borders shadow-1 overflow-hidden">
     <!-- Header Summary -->
     <div class="bg-primary text-white q-pa-md">
       <div class="row items-center justify-between">

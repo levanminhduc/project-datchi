@@ -16,7 +16,6 @@
               placeholder="Tìm kiếm mã, tên, nhà cung cấp..."
               outlined
               dense
-              bg-color="white"
               clearable
             >
               <template #prepend>
@@ -801,8 +800,6 @@ const editFromDetail = () => {
 
 <style scoped lang="scss">
 .thread-type-table {
-  background-color: white;
-  
   :deep(.q-table__top) {
     padding: 0;
   }

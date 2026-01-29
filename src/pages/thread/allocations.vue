@@ -17,7 +17,6 @@
               placeholder="Tìm mã đơn hàng..."
               outlined
               dense
-              bg-color="white"
               clearable
               debounce="300"
             >
@@ -343,7 +342,7 @@
             <!-- Basic Info -->
             <div class="col-12 col-md-6">
               <div class="text-subtitle2 text-grey-7 q-mb-xs">Thông Tin Đơn Hàng</div>
-              <div class="q-pa-sm bg-grey-1 rounded-borders">
+              <div class="q-pa-sm rounded-borders" style="background: rgba(128, 128, 128, 0.08)">
                 <div class="row q-mb-xs">
                   <div class="col-5 text-grey-7">Mã đơn hàng:</div>
                   <div class="col-7 text-weight-bold">{{ detailDialog.allocation.order_id }}</div>
@@ -372,7 +371,7 @@
             <!-- Thread Info -->
             <div class="col-12 col-md-6">
               <div class="text-subtitle2 text-grey-7 q-mb-xs">Yêu Cầu Vật Tư</div>
-              <div class="q-pa-sm bg-grey-1 rounded-borders">
+              <div class="q-pa-sm rounded-borders" style="background: rgba(128, 128, 128, 0.08)">
                 <div class="row q-mb-xs">
                   <div class="col-5 text-grey-7">Loại chỉ:</div>
                   <div class="col-7 text-weight-medium text-primary">
@@ -410,7 +409,7 @@
                 :rows="detailDialog.allocation.allocated_cones || []"
                 :columns="coneColumns"
                 row-key="id"
-                class="bg-white"
+                class=""
                 no-data-label="Chưa có cuộn chỉ nào được gán"
               >
                 <template #body-cell-cone_id="props">
@@ -429,7 +428,7 @@
             <!-- Notes -->
             <div class="col-12" v-if="detailDialog.allocation.notes">
               <div class="text-subtitle2 text-grey-7 q-mb-xs">Ghi Chú</div>
-              <div class="q-pa-sm bg-grey-1 rounded-borders text-italic">
+              <div class="q-pa-sm rounded-borders text-italic" style="background: rgba(128, 128, 128, 0.08)">
                 {{ detailDialog.allocation.notes }}
               </div>
             </div>
@@ -824,8 +823,6 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .allocation-table {
-  background-color: white;
-  
   :deep(.q-table__top) {
     padding: 0;
   }

@@ -43,7 +43,7 @@
     </q-page-container>
 
     <!-- Bottom Navigation -->
-    <q-footer elevated class="bg-white text-grey-8">
+    <q-footer elevated class="text-grey-8">
       <q-tabs
         v-model="activeTab"
         class="mobile-nav"

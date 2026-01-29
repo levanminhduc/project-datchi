@@ -24,7 +24,7 @@
 
     <!-- Active Recovery Info -->
     <q-card v-if="activeRecovery" class="q-mb-md">
-      <q-card-section class="bg-blue-1">
+      <q-card-section>
         <div class="row items-center q-gutter-sm">
           <div
             class="color-dot"
@@ -78,7 +78,7 @@
         </div>
 
         <!-- Scale Display -->
-        <div v-else class="scale-display text-center q-pa-lg bg-grey-2 rounded-borders q-mb-md">
+        <div v-else class="scale-display text-center q-pa-lg rounded-borders q-mb-md" style="background: rgba(128, 128, 128, 0.08)">
           <div class="text-h2 text-weight-bold">{{ scale.currentWeight.value || 0 }}</div>
           <div class="text-subtitle1">grams</div>
           <q-badge :color="scale.isStable.value ? 'positive' : 'warning'" class="q-mt-sm">
@@ -98,7 +98,7 @@
         />
 
         <!-- Calculated Values -->
-        <div v-if="currentWeight" class="q-pa-md bg-grey-1 rounded-borders">
+        <div v-if="currentWeight" class="q-pa-md rounded-borders" style="background: rgba(128, 128, 128, 0.08)">
           <div class="row q-col-gutter-md">
             <div class="col-6 text-center">
               <div class="text-caption text-grey-7">Còn lại</div>

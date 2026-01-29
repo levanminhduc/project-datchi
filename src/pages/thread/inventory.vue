@@ -17,7 +17,6 @@
               placeholder="Tìm mã cuộn, số lô..."
               outlined
               dense
-              bg-color="white"
               clearable
               debounce="300"
             >
@@ -281,7 +280,7 @@
             <!-- Basic Info Section -->
             <div class="col-12">
               <div class="text-subtitle2 text-grey-7 q-mb-sm">Thông Tin Cơ Bản</div>
-              <div class="row q-col-gutter-sm bg-grey-1 q-pa-sm rounded-borders">
+              <div class="row q-col-gutter-sm q-pa-sm rounded-borders" style="background: rgba(128, 128, 128, 0.08)">
                 <div class="col-12 col-sm-6">
                   <div class="text-caption text-grey-7">Mã cuộn</div>
                   <div class="text-subtitle1 text-weight-bold text-primary">{{ detailDialog.cone.cone_id }}</div>
@@ -633,8 +632,6 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .inventory-table {
-  background-color: white;
-  
   :deep(.q-table__top) {
     padding: 0;
   }
