@@ -1232,6 +1232,18 @@ export function useInventory() {
 }
 ```
 
+### StockReceiptDialog Data Fetching (Updated 2026-01-30)
+
+**Previous Issue**: Dialog had hardcoded warehouse options and relied on parent to pass threadTypes prop.
+
+**Current Implementation**:
+- Uses `useWarehouses()` composable for warehouse options (fetched from API)
+- Uses `useThreadTypes()` composable for thread type options (fetched from API)
+- Data is fetched when dialog opens via `Promise.all([fetchWarehouses(), fetchThreadTypes()])`
+- Backward compatible: `threadTypes` prop still supported but deprecated
+
+**Pattern**: Self-sufficient dialogs fetch their own data on open, following the AllocationFormDialog pattern.
+
 ---
 
 ## Real-time Subscription Design

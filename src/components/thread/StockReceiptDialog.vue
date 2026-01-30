@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import type { ThreadType } from '@/types/thread'
+import { ref, watch } from 'vue'
 import type { ReceiveStockDTO } from '@/types/thread/inventory'
 import { useWarehouses, useThreadTypes } from '@/composables'
 import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
@@ -10,13 +9,10 @@ import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 
 interface Props {
   modelValue: boolean
-  /** @deprecated Use composable instead - kept for backward compatibility */
-  threadTypes?: ThreadType[]
   loading?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  threadTypes: () => [],
   loading: false
 })
 
@@ -29,21 +25,6 @@ const emit = defineEmits<{
 // Composables for fetching dropdown data
 const { warehouseOptions, fetchWarehouses } = useWarehouses()
 const { activeThreadTypes, fetchThreadTypes } = useThreadTypes()
-
-// Thread type options - use composable data, fallback to prop for backward compatibility
-const threadTypeOptions = computed(() => {
-  const types = activeThreadTypes.value.length > 0 
-    ? activeThreadTypes.value 
-    : props.threadTypes
-  
-  return types.map(t => ({
-    id: t.id,
-    name: t.name,
-    code: t.code,
-    color_code: t.color_code,
-    material: t.material
-  }))
-})
 
 const initialForm: ReceiveStockDTO = {
   thread_type_id: null as any,
@@ -98,7 +79,7 @@ const onCancel = () => {
         <AppSelect
           v-model="form.thread_type_id"
           label="Loại chỉ"
-          :options="threadTypeOptions"
+          :options="activeThreadTypes"
           option-value="id"
           option-label="name"
           required
