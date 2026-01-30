@@ -289,22 +289,18 @@
           </template>
         </AppSelect>
 
-        <q-select
+        <AppSelect
           v-model="formData.chuc_vu"
           label="Chức Vụ"
-          :options="chucVuOptions"
-          option-value="value"
-          option-label="label"
-          emit-value
-          map-options
-          outlined
-          popup-content-class="z-max"
+          :options="positionOptions"
+          :loading="isLoadingPositions"
           clearable
+          popup-content-class="z-max"
         >
           <template #prepend>
             <q-icon name="work" />
           </template>
-        </q-select>
+        </AppSelect>
       </div>
     </FormDialog>
 
@@ -556,7 +552,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { type QTableColumn } from 'quasar'
-import { useEmployees, useSnackbar } from '@/composables'
+import { useEmployees, useSnackbar, usePositions } from '@/composables'
 import type { Employee, EmployeeFormData } from '@/types'
 
 interface FormDialogState {
@@ -587,6 +583,12 @@ const {
   deleteEmployee,
 } = useEmployees()
 
+const {
+  positionOptions,
+  loading: isLoadingPositions,
+  fetchPositions,
+} = usePositions()
+
 // Local state
 const searchQuery = ref('')
 
@@ -613,11 +615,9 @@ const departmentOptions = computed(() => {
   return departments.sort().map(dept => ({ label: dept, value: dept }))
 })
 
-// Chức vụ options computed from employees data (same pattern as departmentOptions)
-const chucVuOptions = computed(() => {
-  const positions = [...new Set(employees.value.map(e => e.chuc_vu).filter(Boolean))]
-  return positions.sort().map(pos => ({ label: pos, value: pos }))
-})
+// Chức vụ options from usePositions composable
+// Use chucVuOptions for inline editing to maintain backward compatibility
+const chucVuOptions = computed(() => positionOptions.value)
 
 // Filtered options for department dropdown with use-input
 const filteredDepartmentOptions = ref<{ label: string; value: string }[]>([])
@@ -887,8 +887,9 @@ const formatDateTime = (dateString: string): string => {
 }
 
 onMounted(() => {
-  // Fetch employees for table (chuc_vu options computed from employees data)
+  // Fetch employees and positions for dropdowns
   fetchEmployees()
+  fetchPositions()
 })
 </script>
 

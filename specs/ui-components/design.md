@@ -279,7 +279,7 @@ This pattern is used consistently across:
 When `use-input=false`, QSelect's default behavior mode can fail to trigger popup on click.
 
 ### Solution
-Add explicit `behavior` prop with default `'dialog'` mode.
+Add explicit `behavior` prop with default `'menu'` mode to align with Quasar Framework conventions.
 
 ### Implementation
 
@@ -295,7 +295,7 @@ export interface AppSelectProps extends BaseComponentProps, LabeledProps, Valida
 
 **File: `src/components/ui/inputs/AppSelect.vue`**:
 - Template: Add `:behavior="behavior"` binding
-- Script: Add `behavior: 'dialog'` to withDefaults
+- Script: Add `behavior: 'menu'` to withDefaults
 
 ### Flow
 
@@ -434,7 +434,7 @@ export interface AppSelectProps<T = unknown> extends ValidatableProps {
   dense?: boolean
   loading?: boolean
   emptyLabel?: string // Default: "Khong co lua chon"
-  /** Popup behavior mode - 'dialog' recommended when use-input=false */
+  /** Popup behavior mode - 'menu' is default, 'dialog' for mobile/nested dialogs */
   behavior?: 'menu' | 'dialog'
 }
 ```
@@ -601,8 +601,8 @@ sequenceDiagram
 
 1. Click AppSelect with `use-input=false` -> popup opens
 2. Click AppSelect with `use-input=true` -> popup opens with search
-3. Click AppSelect with `behavior="menu"` -> popup opens as dropdown menu
-4. Default behavior is 'dialog' without explicit prop
+3. Click AppSelect with `behavior="dialog"` -> popup opens as dialog overlay
+4. Default behavior is 'menu' without explicit prop (standard dropdown UX)
 
 ---
 
@@ -616,7 +616,7 @@ sequenceDiagram
 1. **Computed v-model Pattern**: All input/toggle/picker components use `computed({ get, set })` for two-way binding
 2. **Vietnamese Defaults**: Consistently applied across confirm dialogs, empty states, and form validations
 3. **Type Consolidation**: Types organized into `data-display.ts` (tables, lists, cards) instead of separate files
-4. **Behavior Prop Pattern**: AppSelect uses explicit `behavior='dialog'` default for reliable popup opening
+4. **Behavior Prop Pattern**: AppSelect uses explicit `behavior='menu'` default to align with Quasar conventions for standard dropdown UX
 
 ### Components Deferred
 

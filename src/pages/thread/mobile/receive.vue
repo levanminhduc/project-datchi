@@ -127,14 +127,11 @@
       <q-card-section>
         <div class="row q-col-gutter-sm">
           <div class="col-6">
-            <q-select
+            <AppSelect
               v-model="warehouseId"
               :options="warehouseOptions"
               label="Kho"
-              outlined
               dense
-              emit-value
-              map-options
             />
           </div>
           <div class="col-6">
@@ -166,13 +163,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useInventory, useThreadTypes, useSnackbar } from '@/composables'
+import { useInventory, useThreadTypes, useSnackbar, useWarehouses } from '@/composables'
 import { useScale, useScanner, useAudioFeedback } from '@/composables/hardware'
 import type { ThreadType } from '@/types/thread'
 
 const { threadTypes, fetchThreadTypes } = useThreadTypes()
 const { receiveStock } = useInventory()
 const snackbar = useSnackbar()
+const { warehouseOptions, fetchWarehouses } = useWarehouses()
 const scale = useScale()
 const { playBeep } = useAudioFeedback()
 
@@ -193,12 +191,6 @@ const location = ref('')
 const isSubmitting = ref(false)
 const showManualWeight = ref(false)
 const manualWeight = ref<number | null>(null)
-
-const warehouseOptions = [
-  { label: 'Kho Chính', value: 1 },
-  { label: 'Kho Phụ', value: 2 },
-  { label: 'Kho SX', value: 3 },
-]
 
 const lookupThreadType = () => {
   if (!threadTypeCode.value) return
@@ -250,7 +242,10 @@ const confirmReceive = async () => {
 }
 
 onMounted(async () => {
-  await fetchThreadTypes()
+  await Promise.all([
+    fetchThreadTypes(),
+    fetchWarehouses()
+  ])
 })
 </script>
 

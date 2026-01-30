@@ -372,7 +372,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { type QTableColumn } from 'quasar'
-import { useInventory, useThreadTypes, useSnackbar } from '@/composables'
+import { useInventory, useThreadTypes, useSnackbar, useWarehouses } from '@/composables'
 import { ConeStatus } from '@/types/thread/enums'
 import type { Cone, ReceiveStockDTO } from '@/types/thread/inventory'
 
@@ -390,6 +390,8 @@ const {
   activeThreadTypes,
   fetchThreadTypes,
 } = useThreadTypes()
+
+const { warehouseOptions, fetchWarehouses } = useWarehouses()
 
 // Local State
 const searchQuery = ref('')
@@ -450,12 +452,7 @@ const threadTypeOptions = computed(() =>
   }))
 )
 
-// TODO: Replace with actual warehouse service/composable when available
-const warehouseOptions = [
-  { label: 'Kho Chính (WH-01)', value: 1 },
-  { label: 'Kho Phụ (WH-02)', value: 2 },
-  { label: 'Kho Thành Phẩm (WH-03)', value: 3 },
-]
+// Warehouse options from centralized composable
 
 // Table Configuration
 const columns: QTableColumn[] = [
@@ -625,7 +622,8 @@ const formatDate = (dateString: string): string => {
 onMounted(async () => {
   await Promise.all([
     fetchInventory(),
-    fetchThreadTypes()
+    fetchThreadTypes(),
+    fetchWarehouses()
   ])
 })
 </script>

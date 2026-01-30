@@ -78,7 +78,7 @@ const props = withDefaults(defineProps<AppSelectProps>(), {
   mapOptions: true,
   loading: false,
   hideDropdownIcon: false,
-  behavior: 'dialog',
+  behavior: 'menu',
   optionsDense: false,
   inputDebounce: 0,
   hideSelected: false,

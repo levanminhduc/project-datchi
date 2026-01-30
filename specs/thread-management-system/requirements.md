@@ -587,9 +587,9 @@ These features were implemented during development to improve UX but were not in
 | P2 | 922 Line Backend Route | server/routes/allocations.ts | 12h | Maintainability - needs function extraction |
 | P2 | Duplicate getErrorMessage | 5 files across codebase | 4h | DRY violation - extract to shared utility |
 | P3 | Warehouse Service Hardcoded | inventory.vue, multiple services | 24h | Scalability - single warehouse assumption |
-| P3 | Hardcoded Warehouse Options | inventory.vue | 4h | Should use useWarehouses composable |
+| P3 | Hardcoded Warehouse Options | inventory.vue | 4h | ✅ RESOLVED - useWarehouses composable implemented |
 
-**Total Technical Debt Effort**: ~208 hours
+**Total Technical Debt Effort**: ~204 hours (4h resolved - warehouse service)
 
 ### Future Enhancements (Out of Current Scope)
 

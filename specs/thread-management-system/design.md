@@ -7,8 +7,8 @@
 **Validation Results**: 82% pass rate (62/76 criteria)
 
 **Implementation Files**:
-- Frontend: 8 pages, 6 composables, 5 services (see Component Architecture section)
-- Backend: 5 API route files matching spec exactly
+- Frontend: 8 pages, 7 composables, 6 services (see Component Architecture section)
+- Backend: 6 API route files matching spec exactly
 - Database: 7 migrations + 3 RPC functions deployed
 - **Spec Drift**: 5 undocumented features discovered and added to spec
 
@@ -808,6 +808,32 @@ stateDiagram-v2
 
 ## API Contracts
 
+#### `GET /api/warehouses`
+
+List all active warehouses.
+
+**Query Parameters**: None
+
+**Response**:
+```typescript
+interface ApiResponse<Warehouse[]> {
+  data: Warehouse[] | null;
+  error: string | null;
+}
+
+interface Warehouse {
+  id: string;
+  warehouse_code: string;
+  name: string;
+  location: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+```
+
+---
+
 ### Thread Types API
 
 #### `GET /api/threads`
@@ -1121,6 +1147,7 @@ src/
 │   ├── hardware/
 │   │   ├── useScanner.ts             # Barcode scanner
 │   │   └── useScale.ts               # Electronic scale
+│   ├── useWarehouses.ts              # Warehouse management
 │   └── useRealtime.ts                # Supabase realtime
 │
 ├── services/
@@ -1128,7 +1155,8 @@ src/
 │   ├── inventoryService.ts           # Inventory API
 │   ├── allocationService.ts          # Allocations API
 │   ├── recoveryService.ts            # Recovery API
-│   └── dashboardService.ts           # Dashboard API
+│   ├── dashboardService.ts           # Dashboard API
+│   └── warehouseService.ts           # Warehouse API
 │
 ├── types/
 │   └── thread/
@@ -1149,7 +1177,8 @@ server/
 │   ├── inventory.ts                  # Inventory routes
 │   ├── allocations.ts                # Allocation routes
 │   ├── recovery.ts                   # Recovery routes
-│   └── dashboard.ts                  # Dashboard routes
+│   ├── dashboard.ts                  # Dashboard routes
+│   └── warehouses.ts                 # Warehouse routes
 │
 └── types/
     └── thread.ts                     # Backend types
@@ -1605,8 +1634,8 @@ const statusText = computed(() => {
 
 ## Technical Debt
 
-**Last Updated**: January 29, 2026 after validation  
-**Total Estimated Effort**: ~208 hours
+**Last Updated**: January 30, 2026 after warehouse service implementation  
+**Total Estimated Effort**: ~204 hours (4h resolved)
 
 ### Code Quality Issues
 
@@ -1615,7 +1644,6 @@ const statusText = computed(() => {
 | P2 | Oversized Component | `src/pages/thread/allocations.vue` | 859 | Maintainability - hard to understand and modify | 12h |
 | P2 | Oversized Route File | `server/routes/allocations.ts` | 922 | Maintainability - needs function extraction | 12h |
 | P2 | Duplicate Error Handling | 5 files across codebase | - | DRY violation - getErrorMessage duplicated | 4h |
-| P3 | Hardcoded Warehouse Options | `src/pages/thread/inventory.vue` | - | Should use useWarehouses composable | 4h |
 
 **Recommended Actions**:
 1. **Split allocations.vue** into components:
@@ -1632,10 +1660,6 @@ const statusText = computed(() => {
 3. **Create shared utility**:
    - Extract `getErrorMessage()` to `src/utils/errors.ts`
    - Add unit tests for error message mapping
-
-4. **Create useWarehouses composable**:
-   - Replace hardcoded options with dynamic fetch
-   - Add caching for warehouse list
 
 ### Architecture Issues
 

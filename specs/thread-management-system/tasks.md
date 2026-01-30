@@ -2,10 +2,10 @@
 
 ## Status: ✅ PHASES 1-5 COMPLETE, PHASE 6 PARTIAL, VALIDATION COMPLETE
 
-**Last Updated**: January 29, 2026  
+**Last Updated**: January 30, 2026  
 **Validation Date**: January 29, 2026  
 **Implementation Status**: Production deployed (82% pass rate - 62/76 criteria)  
-**Technical Debt**: 208 hours identified  
+**Technical Debt**: 204 hours identified (4h resolved - warehouse service)  
 
 | Phase | Status | Completion | Notes |
 |-------|--------|------------|-------|
@@ -642,7 +642,8 @@ See `design.md` Technical Debt section for full analysis. Priority items:
 
 **Goal**: Address critical issues discovered during validation  
 **Validation Date**: January 29, 2026  
-**Total Effort**: ~208 hours
+**Last Updated**: January 30, 2026 (warehouse service implemented)  
+**Total Effort**: ~204 hours (4h resolved)
 
 ### Priority 1 Tasks (Critical - Security & Quality)
 
@@ -664,11 +665,11 @@ See `design.md` Technical Debt section for full analysis. Priority items:
 | TD-007 | Split allocations.vue into components | `thread/allocations/` folder | 12h | Low |
 | TD-008 | Split allocations.ts route file | `server/routes/allocations/`, `server/utils/` | 12h | Medium |
 | TD-009 | Extract shared getErrorMessage utility | `src/utils/errors.ts` | 4h | Low |
-| TD-010 | Create useWarehouses composable | `src/composables/useWarehouses.ts` | 4h | Low |
+| TD-010 | ✅ Create useWarehouses composable | `src/composables/useWarehouses.ts` | 4h | Low |
 | TD-011 | Migrate dashboard from polling to Realtime | `useDashboard.ts`, `useConflicts.ts` | 16h | Medium |
 | TD-012 | Add consolidation workflow for partial cones | `thread/inventory.vue`, backend route | 12h | Medium |
 
-**P2 Total Effort**: ~60 hours
+**P2 Total Effort**: ~56 hours (4h completed)
 
 ### Priority 3 Tasks (Features & Scalability)
 
@@ -702,7 +703,7 @@ See `design.md` Technical Debt section for full analysis. Priority items:
 - allocations.vue: 859 lines (needs splitting)
 - server/routes/allocations.ts: 922 lines (needs extraction)
 - Duplicate getErrorMessage function across 5 files
-- Hardcoded warehouse options in inventory.vue
+- ~~Hardcoded warehouse options in inventory.vue~~ ✅ RESOLVED (January 30, 2026)
 
 ### Definition of Done (Technical Debt Phase)
 
@@ -718,7 +719,7 @@ See `design.md` Technical Debt section for full analysis. Priority items:
 - [ ] allocations.vue split into 4+ components, each <300 lines
 - [ ] allocations.ts extracted into 3+ modules
 - [ ] getErrorMessage utility used in all 5 locations
-- [ ] useWarehouses composable replaces hardcoded options
+- [x] useWarehouses composable replaces hardcoded options (✅ January 30, 2026)
 - [ ] Dashboard uses Supabase Realtime (no polling)
 - [ ] Consolidation workflow tested with 3+ partial cones
 
@@ -751,3 +752,56 @@ See `design.md` Technical Debt section for full analysis. Priority items:
 - Set component size limits (e.g., max 300 lines)
 - Prototype complex features (offline, hardware) earlier
 - Document API contracts before implementation
+
+---
+
+## Recent Updates
+
+### January 30, 2026 - Warehouse Service Implementation (TD-010)
+
+**Task**: Create useWarehouses composable  
+**Status**: ✅ COMPLETE  
+**Effort**: 4 hours  
+**Priority**: P2  
+
+**Changes Implemented**:
+
+1. **Created `GET /api/warehouses` endpoint**
+   - File: `server/routes/warehouses.ts`
+   - Fetches all active warehouses from database
+   - Returns: `{ data: Warehouse[], error: null }`
+
+2. **Created `src/services/warehouseService.ts`**
+   - Service layer for warehouse API calls
+   - Uses existing API client pattern
+   - Error handling with Vietnamese messages
+
+3. **Rewrote `src/composables/useWarehouses.ts`**
+   - Replaced hardcoded warehouse array with database fetch
+   - Uses `useSnackbar` and `useLoading` composables
+   - Caches warehouse list in reactive ref
+   - Auto-fetches on composable initialization
+
+4. **Updated pages to use new composable**:
+   - `src/pages/thread/inventory.vue` - calls `fetchWarehouses()` on mount
+   - `src/pages/thread/mobile/receive.vue` - calls `fetchWarehouses()` on mount
+
+**Files Modified**:
+- `server/routes/warehouses.ts` (NEW - 48 lines)
+- `src/services/warehouseService.ts` (NEW - 24 lines)
+- `src/composables/useWarehouses.ts` (REWRITTEN - 40 lines)
+- `src/pages/thread/inventory.vue` (UPDATED - onMounted hook)
+- `src/pages/thread/mobile/receive.vue` (UPDATED - onMounted hook)
+
+**Technical Debt Resolved**:
+- ✅ TD-010: Hardcoded Warehouse Options (P3 - 4h)
+- Removed hardcoded array: `[{ id: '1', label: 'Kho chính', value: 'main' }, ...]`
+- Now dynamically fetches from `warehouses` table
+
+**Benefits**:
+- Warehouses can be managed via database instead of code changes
+- Consistent with other composable patterns in the codebase
+- Supports multi-warehouse setups without code modification
+- Follows existing service/composable architecture
+
+**Remaining Technical Debt**: 204 hours (down from 208 hours)

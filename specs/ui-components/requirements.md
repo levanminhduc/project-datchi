@@ -185,7 +185,7 @@ As a developer using AppSelect component, I want the dropdown popup to open cons
 - [x] WHEN user clicks on AppSelect with use-input=true, THE SYSTEM SHALL open popup and maintain existing search behavior
 - [x] WHEN behavior prop is set to 'menu', THE SYSTEM SHALL display popup as menu dropdown
 - [x] WHEN behavior prop is set to 'dialog', THE SYSTEM SHALL display popup as dialog overlay
-- [x] WHEN behavior prop is not specified, THE SYSTEM SHALL default to 'dialog' mode
+- [x] WHEN behavior prop is not specified, THE SYSTEM SHALL default to 'menu' mode
 
 **Root Cause**: When `use-input=false`, QSelect's default behavior mode can fail to trigger popup on click. Explicitly setting `behavior='dialog'` resolves this.
 
@@ -217,7 +217,7 @@ As a developer using AppSelect component, I want the dropdown popup to open cons
 | Vietnamese defaults | Yes | Project target audience is Vietnamese users | English, no defaults |
 | TypeScript strict | Yes | Project uses strict mode | Loose types |
 | QuasarResolver | Add to vite config | Enable auto-import Quasar components | Manual imports |
-| AppSelect default behavior | `'dialog'` | Dialog mode works reliably when use-input=false; Quasar's default 'menu' can fail to open | `'menu'` (Quasar default) |
+| AppSelect default behavior | `'menu'` | Menu mode aligns with Quasar defaults for standard dropdown UX on desktop | `'dialog'` (alternative for mobile/nested dialogs) |
 
 ## Out of Scope
 
