@@ -13,6 +13,7 @@ import allocationsRouter from './routes/allocations'
 import recoveryRouter from './routes/recovery'
 import dashboardRouter from './routes/dashboard'
 import warehousesRouter from './routes/warehouses'
+import reportsRouter from './routes/reports'
 
 const app = new Hono()
 
@@ -45,6 +46,7 @@ app.route('/api/allocations', allocationsRouter)
 app.route('/api/recovery', recoveryRouter)
 app.route('/api/dashboard', dashboardRouter)
 app.route('/api/warehouses', warehousesRouter)
+app.route('/api/reports', reportsRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
@@ -85,3 +87,4 @@ console.log(`Allocations API: http://localhost:${PORT}/api/allocations`)
 console.log(`Recovery API: http://localhost:${PORT}/api/recovery`)
 console.log(`Dashboard API: http://localhost:${PORT}/api/dashboard`)
 console.log(`Warehouses API: http://localhost:${PORT}/api/warehouses`)
+console.log(`Reports API: http://localhost:${PORT}/api/reports`)

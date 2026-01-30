@@ -21,6 +21,9 @@ export type {
   ConflictFilters,
 } from './thread/useConflicts'
 
+// Reports
+export { useReports } from './useReports'
+
 // Real-time subscriptions
 export { useRealtime } from './useRealtime'
 export type {

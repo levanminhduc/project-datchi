@@ -19,3 +19,11 @@ export type {
   ActivityItem,
   ConflictsSummary,
 } from './dashboardService'
+
+// Reports
+export { reportService } from './reportService'
+export type {
+  ReportFilters,
+  AllocationReportRow,
+  AllocationReportData,
+} from './reportService'
