@@ -294,26 +294,26 @@
         </div>
 
         <div class="col-12 col-sm-6">
-          <q-input
+          <AppInput
             v-model="createData.due_date"
             label="Hạn Giao"
-            outlined
-            dense
-            mask="date"
-            placeholder="YYYY/MM/DD"
+            placeholder="DD/MM/YYYY"
+            readonly
           >
             <template #append>
               <q-icon name="event" class="cursor-pointer">
                 <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-                  <q-date v-model="createData.due_date">
-                    <div class="row items-center justify-end">
-                      <q-btn v-close-popup label="Đóng" color="primary" flat />
-                    </div>
-                  </q-date>
+                  <DatePicker v-model="createData.due_date">
+                    <template #default>
+                      <div class="row items-center justify-end q-pa-sm">
+                        <q-btn v-close-popup label="Đóng" color="primary" flat />
+                      </div>
+                    </template>
+                  </DatePicker>
                 </q-popup-proxy>
               </q-icon>
             </template>
-          </q-input>
+          </AppInput>
         </div>
 
         <div class="col-12">
@@ -534,15 +534,19 @@ const priorityLabels: Record<AllocationPriority, string> = {
 }
 
 // Options
-const statusOptions = Object.entries(statusLabels).map(([value, label]) => ({
-  label,
-  value: value as AllocationStatus,
-}))
+const statusOptions = computed(() =>
+  Object.entries(statusLabels).map(([value, label]) => ({
+    label,
+    value: value as AllocationStatus,
+  }))
+)
 
-const priorityOptions = Object.entries(priorityLabels).map(([value, label]) => ({
-  label,
-  value: value as AllocationPriority,
-}))
+const priorityOptions = computed(() =>
+  Object.entries(priorityLabels).map(([value, label]) => ({
+    label,
+    value: value as AllocationPriority,
+  }))
+)
 
 const threadTypeOptions = computed(() =>
   activeThreadTypes.value.map(t => ({

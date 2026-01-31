@@ -2,7 +2,8 @@
   <q-select
     v-bind="$attrs"
     :model-value="modelValue"
-    :options="options"
+    @update:model-value="handleUpdateModelValue"
+    :options="computedOptions"
     :option-value="optionValue"
     :option-label="optionLabel"
     :option-disable="optionDisable"
@@ -23,8 +24,8 @@
     :loading="loading"
     :popup-content-class="popupContentClass"
     :popup-content-style="popupContentStyle"
-    :behavior="behavior"
     :hide-dropdown-icon="hideDropdownIcon"
+    :behavior="behavior"
     :dropdown-icon="dropdownIcon"
     :new-value-mode="newValueMode"
     :max-values="maxValues"
@@ -39,15 +40,14 @@
     :error="!!errorMessage"
     :error-message="errorMessage"
     lazy-rules
-    @update:model-value="handleUpdateModelValue"
-    @filter="(val: string, update: (fn: () => void) => void, abort: () => void) => emit('filter', val, update, abort)"
+    @filter="handleFilter"
     @input-value="emit('inputValue', $event)"
-    @popup-show="handlePopupShow"
-    @popup-hide="handlePopupHide"
-    @click="handleClick"
+    @popup-show="emit('popup-show')"
+    @popup-hide="emit('popup-hide')"
   >
     <template
       v-for="(_, slotName) in $slots"
+      :key="slotName"
       #[slotName]="slotProps"
     >
       <slot
@@ -59,8 +59,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useAttrs } from 'vue'
 import type { AppSelectProps } from '@/types/ui'
+
+defineOptions({
+  name: 'AppSelect',
+  inheritAttrs: false
+})
+
+const attrs = useAttrs()
 
 const props = withDefaults(defineProps<AppSelectProps>(), {
   optionValue: 'value',
@@ -94,24 +101,15 @@ const emit = defineEmits<{
   inputValue: [value: string]
   'popup-show': []
   'popup-hide': []
-  click: [evt: Event]
 }>()
 
+// Explicit v-model handler - key fix for wrapper component
 const handleUpdateModelValue = (val: unknown) => {
   emit('update:modelValue', val)
 }
 
-const handlePopupShow = () => {
-  emit('popup-show')
-}
-
-const handlePopupHide = () => {
-  emit('popup-hide')
-}
-
-const handleClick = (evt: Event) => {
-  emit('click', evt)
-}
+// Computed wrapper for options to ensure reactivity
+const computedOptions = computed(() => props.options ?? [])
 
 const computedRules = computed(() => {
   const rules = [...(props.rules || [])]
@@ -125,4 +123,18 @@ const computedRules = computed(() => {
   }
   return rules
 })
+
+// Handle @filter event - auto-calls update() if no parent handler exists
+// This prevents infinite loading when QSelect waits for update() to be called
+const handleFilter = (val: string, update: (fn: () => void) => void, abort: () => void) => {
+  // If parent has a filter handler, emit to let them handle it
+  // Otherwise, just call update() immediately to show all options
+  if (attrs.onFilter) {
+    emit('filter', val, update, abort)
+  } else {
+    update(() => {
+      // No filtering needed, show all options
+    })
+  }
+}
 </script>

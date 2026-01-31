@@ -285,25 +285,33 @@ export function useConflicts() {
 
   /**
    * Split an allocation to partially resolve a conflict
-   * Note: This requires a backend endpoint - placeholder implementation
+   * Releases all allocated cones and sets both allocations to PENDING
    * @param allocationId - Allocation ID to split
-   * @param splitQuantity - Quantity to allocate (rest will be pending)
+   * @param splitQuantity - Number of meters for the new allocation
+   * @param reason - Optional reason for the split
+   * @returns true if split was successful
    */
   const splitAllocation = async (
     allocationId: number,
-    splitQuantity: number
+    splitQuantity: number,
+    reason?: string
   ): Promise<boolean> => {
     clearError()
 
     try {
-      // TODO: Implement when backend endpoint is available
-      // await loading.withLoading(async () => {
-      //   return await allocationService.split(allocationId, splitQuantity)
-      // })
+      const result = await loading.withLoading(async () => {
+        return await allocationService.split(allocationId, splitQuantity, reason)
+      })
 
-      console.warn('[useConflicts] splitAllocation: Backend endpoint not yet implemented')
-      snackbar.warning('Chức năng chia nhỏ phân bổ chưa được triển khai')
-      return false
+      if (result?.result?.success) {
+        snackbar.success(MESSAGES.SPLIT_SUCCESS)
+        // Refresh conflicts list after split
+        await fetchConflicts()
+        return true
+      } else {
+        snackbar.error(result?.result?.message || MESSAGES.SPLIT_ERROR)
+        return false
+      }
     } catch (err) {
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
@@ -315,7 +323,6 @@ export function useConflicts() {
 
   /**
    * Escalate a conflict for manual resolution
-   * Note: This requires a backend endpoint - placeholder implementation
    * @param conflictId - Conflict ID to escalate
    * @param notes - Optional notes for escalation
    */
@@ -326,18 +333,18 @@ export function useConflicts() {
     clearError()
 
     try {
-      // TODO: Implement when backend endpoint is available
-      // await loading.withLoading(async () => {
-      //   return await allocationService.escalate(conflictId, notes)
-      // })
+      await loading.withLoading(async () => {
+        await allocationService.escalate(conflictId, notes)
+      })
 
-      console.warn('[useConflicts] escalateConflict: Backend endpoint not yet implemented')
-      snackbar.warning('Chức năng leo thang xung đột chưa được triển khai')
-      return false
+      snackbar.success(MESSAGES.ESCALATE_SUCCESS)
+      // Refresh data
+      await fetchConflicts()
+      return true
     } catch (err) {
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
-      snackbar.error(MESSAGES.ESCALATE_ERROR)
+      snackbar.error(errorMessage)
       console.error('[useConflicts] escalateConflict error:', err)
       return false
     }

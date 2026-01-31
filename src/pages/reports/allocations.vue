@@ -14,17 +14,15 @@
       class="q-mb-md"
     >
       <q-card-section>
-        <div class="row q-col-gutter-md items-end">
+        <div class="row q-col-gutter-md">
           <!-- From Date -->
           <div class="col-12 col-sm-6 col-md-2">
-            <q-input
+            <AppInput
               v-model="filters.from_date"
               label="Từ ngày"
+              placeholder="DD/MM/YYYY"
               dense
-              outlined
-              readonly
-              mask="date"
-              placeholder="YYYY/MM/DD"
+              clearable
             >
               <template #append>
                 <q-icon
@@ -36,35 +34,21 @@
                     transition-show="scale"
                     transition-hide="scale"
                   >
-                    <q-date
-                      v-model="filters.from_date"
-                      mask="YYYY-MM-DD"
-                    >
-                      <div class="row items-center justify-end">
-                        <q-btn
-                          v-close-popup
-                          label="Đóng"
-                          color="primary"
-                          flat
-                        />
-                      </div>
-                    </q-date>
+                    <DatePicker v-model="filters.from_date" />
                   </q-popup-proxy>
                 </q-icon>
               </template>
-            </q-input>
+            </AppInput>
           </div>
 
           <!-- To Date -->
           <div class="col-12 col-sm-6 col-md-2">
-            <q-input
+            <AppInput
               v-model="filters.to_date"
               label="Đến ngày"
+              placeholder="DD/MM/YYYY"
               dense
-              outlined
-              readonly
-              mask="date"
-              placeholder="YYYY/MM/DD"
+              clearable
             >
               <template #append>
                 <q-icon
@@ -76,23 +60,11 @@
                     transition-show="scale"
                     transition-hide="scale"
                   >
-                    <q-date
-                      v-model="filters.to_date"
-                      mask="YYYY-MM-DD"
-                    >
-                      <div class="row items-center justify-end">
-                        <q-btn
-                          v-close-popup
-                          label="Đóng"
-                          color="primary"
-                          flat
-                        />
-                      </div>
-                    </q-date>
+                    <DatePicker v-model="filters.to_date" />
                   </q-popup-proxy>
                 </q-icon>
               </template>
-            </q-input>
+            </AppInput>
           </div>
 
           <!-- Thread Type Filter -->
@@ -124,26 +96,26 @@
           </div>
 
           <!-- Generate Button -->
-          <div class="col-12 col-sm-6 col-md-2">
+          <div class="col-12 col-sm-auto">
             <q-btn
               label="Tạo Báo Cáo"
               color="primary"
               icon="assessment"
               :loading="isLoading"
-              class="full-width"
+              class="full-width-xs"
               unelevated
               @click="handleGenerateReport"
             />
           </div>
 
           <!-- Clear Button -->
-          <div class="col-12 col-sm-6 col-md-2">
+          <div class="col-12 col-sm-auto">
             <q-btn
               label="Xóa Bộ Lọc"
               color="grey"
               icon="clear"
               flat
-              class="full-width"
+              class="full-width-xs"
               @click="handleClearFilters"
             />
           </div>
@@ -321,6 +293,8 @@ import { computed, onMounted, reactive } from 'vue'
 import { useReports } from '@/composables/useReports'
 import { useThreadTypes } from '@/composables/thread/useThreadTypes'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
+import AppInput from '@/components/ui/inputs/AppInput.vue'
+import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import type { QTableColumn } from 'quasar'
 
 // Composables

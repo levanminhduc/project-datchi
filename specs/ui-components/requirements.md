@@ -193,6 +193,27 @@ As a developer using AppSelect component, I want the dropdown popup to open cons
 - `src/types/ui/inputs.ts` - Added `behavior?: 'menu' | 'dialog'` prop (line 97-98)
 - `src/components/ui/inputs/AppSelect.vue` - Added `:behavior` binding (line 26) and default (line 81)
 
+**Filter Handler Auto-Update Fix (2026-01-30)**
+
+- [x] WHEN use-input=true AND parent has @filter handler THEN emit filter event to parent for handling
+- [x] WHEN use-input=true AND parent has NO @filter handler THEN auto-call update() to show all options immediately
+- [x] THE SYSTEM SHALL use useAttrs() to detect parent filter handler presence
+- [x] THE SYSTEM SHALL NOT require parent components to handle @filter event when not using filtering
+
+**Root Cause (Filter Issue)**: `@filter` handler always emitted event without calling `update()`. When parent doesn't handle it, QSelect waits forever → infinite loading spinner.
+
+**Solution**: Smart `handleFilter` function that:
+1. Checks for parent handler via `attrs.onFilter`
+2. Emits to parent if handler exists
+3. Auto-calls `update()` if no parent handler
+
+**Files Modified**:
+- `src/components/ui/inputs/AppSelect.vue`:
+  - Added `useAttrs` import
+  - Added `const attrs = useAttrs()`
+  - Created `handleFilter` function (lines 127-139)
+  - Changed template from inline emit to `@filter="handleFilter"`
+
 ## Non-Functional Requirements
 
 ### Performance
@@ -232,7 +253,7 @@ As a developer using AppSelect component, I want the dropdown popup to open cons
 
 ## Implementation Notes
 
-**Last Synced**: 2026-01-29
+**Last Synced**: 2026-01-30
 **Status**: Synced from implementation analysis
 
 ### Sync Update Summary
@@ -240,3 +261,4 @@ As a developer using AppSelect component, I want the dropdown popup to open cons
 - Documented all 6 composables: useDialog, useLoading, useDarkMode, useSidebar, useConfirm, useSnackbar
 - Updated Story 11 with components.vue split analysis (1237 lines, 8 sections)
 - Added Story 12: AppSelect behavior prop fix (completed 2026-01-29)
+- Added Story 12 Filter Handler Auto-Update Fix (completed 2026-01-30)

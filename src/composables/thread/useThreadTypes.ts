@@ -78,9 +78,9 @@ export function useThreadTypes() {
   const isLoading = computed(() => loading.isLoading.value)
   const hasThreadTypes = computed(() => threadTypes.value.length > 0)
   const threadTypeCount = computed(() => threadTypes.value.length)
-  const activeThreadTypes = computed(() =>
-    threadTypes.value.filter((t) => t.is_active)
-  )
+  const activeThreadTypes = computed(() => {
+    return threadTypes.value.filter((t) => t.is_active)
+  })
 
   /**
    * Clear error state

@@ -1,5 +1,11 @@
 <template>
   <q-page padding class="mobile-receive-page">
+    <!-- Offline Sync Banner -->
+    <OfflineSyncBanner @show-conflicts="showConflictDialog = true" />
+
+    <!-- Conflict Dialog -->
+    <ConflictDialog v-model="showConflictDialog" />
+
     <!-- Scan Section -->
     <q-card class="q-mb-md">
       <q-card-section>
@@ -163,8 +169,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useInventory, useThreadTypes, useSnackbar, useWarehouses } from '@/composables'
+import { useInventory, useThreadTypes, useSnackbar, useWarehouses, useOfflineOperation } from '@/composables'
 import { useScale, useScanner, useAudioFeedback } from '@/composables/hardware'
+import { OfflineSyncBanner, ConflictDialog } from '@/components/offline'
 import type { ThreadType } from '@/types/thread'
 
 const { threadTypes, fetchThreadTypes } = useThreadTypes()
@@ -173,6 +180,10 @@ const snackbar = useSnackbar()
 const { warehouseOptions, fetchWarehouses } = useWarehouses()
 const scale = useScale()
 const { playBeep } = useAudioFeedback()
+const offline = useOfflineOperation()
+
+// Conflict dialog state
+const showConflictDialog = ref(false)
 
 useScanner({
   onScan: (barcode) => {
@@ -215,15 +226,24 @@ const confirmReceive = async () => {
       ? scale.currentWeight.value 
       : (showManualWeight.value ? manualWeight.value : null)
 
-    const result = await receiveStock({
+    const payload = {
       thread_type_id: selectedThreadType.value.id,
       warehouse_id: warehouseId.value,
       quantity_cones: quantity.value,
       weight_per_cone_grams: weight || undefined,
       location: location.value || undefined,
+    }
+
+    // Use offline-aware operation
+    const result = await offline.execute({
+      type: 'stock_receipt',
+      onlineExecutor: () => receiveStock({ ...payload }),
+      payload,
+      successMessage: `Đã nhập ${quantity.value} cuộn thành công`,
+      queuedMessage: 'Đã lưu thao tác nhập kho, sẽ đồng bộ khi có mạng',
     })
     
-    if (result) {
+    if (result.success || result.queued) {
       playBeep('success')
       
       // Reset form
@@ -233,6 +253,8 @@ const confirmReceive = async () => {
       location.value = ''
       manualWeight.value = null
       showManualWeight.value = false
+    } else {
+      playBeep('error')
     }
   } catch (err) {
     playBeep('error')
@@ -244,7 +266,8 @@ const confirmReceive = async () => {
 onMounted(async () => {
   await Promise.all([
     fetchThreadTypes(),
-    fetchWarehouses()
+    fetchWarehouses(),
+    offline.initialize(),
   ])
 })
 </script>

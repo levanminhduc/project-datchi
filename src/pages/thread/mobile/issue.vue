@@ -1,5 +1,11 @@
 <template>
   <q-page padding class="mobile-issue-page">
+    <!-- Offline Sync Banner -->
+    <OfflineSyncBanner @show-conflicts="showConflictDialog = true" />
+
+    <!-- Conflict Dialog -->
+    <ConflictDialog v-model="showConflictDialog" />
+
     <!-- Mode Selection -->
     <q-btn-toggle
       v-model="mode"
@@ -173,7 +179,7 @@
         :loading="isSubmitting"
         :disabled="!canIssue"
         unelevated
-        @click="issueAllocation"
+        @click="handleIssueAllocation"
       />
       
       <div v-if="!canIssue" class="text-caption text-negative text-center q-px-md">
@@ -185,7 +191,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
-import { useAllocations, useSnackbar, useAudioFeedback, useScanner } from '@/composables'
+import { useAllocations, useSnackbar, useOfflineOperation } from '@/composables'
+import { useScanner, useAudioFeedback } from '@/composables/hardware'
+import { OfflineSyncBanner, ConflictDialog } from '@/components/offline'
 import { AllocationStatus } from '@/types/thread/enums'
 import type { Allocation } from '@/types/thread/allocation'
 
@@ -198,6 +206,10 @@ const {
 } = useAllocations()
 const snackbar = useSnackbar()
 const { playBeep } = useAudioFeedback()
+const offline = useOfflineOperation()
+
+// Conflict dialog state
+const showConflictDialog = ref(false)
 
 // Refs
 const mode = ref<'allocation' | 'list'>('list')
@@ -327,7 +339,7 @@ const scanCone = () => {
   coneBarcode.value = ''
 }
 
-const issueAllocation = async () => {
+const handleIssueAllocation = async () => {
   if (!selectedAllocation.value) return
   
   if (!canIssue.value) {
@@ -337,28 +349,46 @@ const issueAllocation = async () => {
   
   isSubmitting.value = true
   try {
-    await issueAlloc(selectedAllocation.value.id)
-    playBeep('success')
-    
-    // Reset state after success
-    selectedAllocation.value = null
-    issuedCones.value = []
-    
-    // Refresh list
-    await fetchAllocations({ status: AllocationStatus.SOFT })
-    
-    snackbar.success('Đã xuất xưởng thành công')
+    const allocationId = selectedAllocation.value.id
+    const payload = {
+      allocation_id: allocationId,
+      cone_ids: issuedCones.value,
+    }
+
+    // Use offline-aware operation
+    const result = await offline.execute({
+      type: 'issue',
+      onlineExecutor: () => issueAlloc(allocationId),
+      payload,
+      successMessage: 'Đã xuất xưởng thành công',
+      queuedMessage: 'Đã lưu thao tác xuất xưởng, sẽ đồng bộ khi có mạng',
+    })
+
+    if (result.success || result.queued) {
+      playBeep('success')
+      
+      // Reset state after success
+      selectedAllocation.value = null
+      issuedCones.value = []
+      
+      // Refresh list
+      await fetchAllocations({ status: AllocationStatus.SOFT })
+    } else {
+      playBeep('error')
+    }
   } catch (err) {
     playBeep('error')
-    // Error is handled by composable
   } finally {
     isSubmitting.value = false
   }
 }
 
 // Initialization
-onMounted(() => {
-  fetchAllocations({ status: AllocationStatus.SOFT })
+onMounted(async () => {
+  await Promise.all([
+    fetchAllocations({ status: AllocationStatus.SOFT }),
+    offline.initialize(),
+  ])
 })
 </script>
 

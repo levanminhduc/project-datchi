@@ -1,0 +1,11 @@
+// Global styles that apply across the entire application
+
+// z-index fix for popup dropdowns inside dialogs
+.z-max {
+  z-index: 9999 !important;
+}
+
+// QSelect popup menu needs high z-index when inside dialogs
+.q-menu {
+  z-index: 7000 !important;
+}

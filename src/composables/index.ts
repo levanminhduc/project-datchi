@@ -41,3 +41,11 @@ export type { UseScannerOptions, ScaleReading, AudioFeedbackType } from './hardw
 // Offline sync
 export { useOfflineSync } from './useOfflineSync'
 export type { PendingOperation } from './useOfflineSync'
+
+// Offline operation (queue-aware wrapper)
+export { useOfflineOperation } from './useOfflineOperation'
+export type {
+  OperationType,
+  OfflineOperationOptions,
+  OfflineOperationResult,
+} from './useOfflineOperation'

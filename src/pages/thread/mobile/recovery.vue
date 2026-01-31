@@ -1,5 +1,11 @@
 <template>
   <q-page padding class="mobile-recovery-page">
+    <!-- Offline Sync Banner -->
+    <OfflineSyncBanner @show-conflicts="showConflictDialog = true" />
+
+    <!-- Conflict Dialog -->
+    <ConflictDialog v-model="showConflictDialog" />
+
     <!-- Scan Section -->
     <q-card class="q-mb-md">
       <q-card-section>
@@ -251,8 +257,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRecovery, useSnackbar } from '@/composables'
+import { useRecovery, useSnackbar, useOfflineOperation } from '@/composables'
 import { useScanner, useScale, useAudioFeedback } from '@/composables/hardware'
+import { OfflineSyncBanner, ConflictDialog } from '@/components/offline'
 import { RecoveryStatus } from '@/types/thread/enums'
 import type { Recovery } from '@/types/thread'
 
@@ -267,6 +274,10 @@ const {
 const snackbar = useSnackbar()
 const scale = useScale()
 const { playBeep } = useAudioFeedback()
+const offline = useOfflineOperation()
+
+// Conflict dialog state
+const showConflictDialog = ref(false)
 
 useScanner({
   onScan: (barcode) => {
@@ -347,10 +358,23 @@ const getStatusLabel = (status: RecoveryStatus) => {
 const handleInitiateReturn = async () => {
   if (!coneBarcode.value) return
   
-  const result = await initiateReturn({ cone_id: coneBarcode.value })
-  if (result) {
-    activeRecovery.value = result
+  const payload = { cone_id: coneBarcode.value }
+
+  // Use offline-aware operation
+  const result = await offline.execute({
+    type: 'recovery',
+    onlineExecutor: () => initiateReturn(payload),
+    payload,
+    successMessage: 'Đã tạo yêu cầu hoàn trả',
+    queuedMessage: 'Đã lưu yêu cầu hoàn trả, sẽ đồng bộ khi có mạng',
+  })
+
+  if (result.success && result.data) {
+    activeRecovery.value = result.data as Recovery
     playBeep('success')
+  } else if (result.queued) {
+    playBeep('success')
+    snackbar.info('Yêu cầu hoàn trả đã được lưu offline')
   } else {
     playBeep('error')
   }
@@ -366,11 +390,24 @@ const handleWeightSubmit = async () => {
   
   isWeighing.value = true
   try {
-    const result = await weighCone(activeRecovery.value.id, {
+    const payload = {
+      recovery_id: activeRecovery.value.id,
       weight_grams: currentWeight.value,
+    }
+
+    // Use offline-aware operation
+    const result = await offline.execute({
+      type: 'recovery',
+      onlineExecutor: () => weighCone(activeRecovery.value!.id, { weight_grams: currentWeight.value! }),
+      payload,
+      successMessage: 'Đã lưu trọng lượng',
+      queuedMessage: 'Đã lưu trọng lượng, sẽ đồng bộ khi có mạng',
     })
-    if (result) {
-      activeRecovery.value = result
+
+    if (result.success && result.data) {
+      activeRecovery.value = result.data as Recovery
+      playBeep('success')
+    } else if (result.queued) {
       playBeep('success')
     }
   } finally {
@@ -383,8 +420,21 @@ const handleConfirmRecovery = async () => {
   
   isConfirming.value = true
   try {
-    const success = await confirmRecovery(activeRecovery.value.id)
-    if (success) {
+    const payload = {
+      recovery_id: activeRecovery.value.id,
+      action: 'confirm',
+    }
+
+    // Use offline-aware operation
+    const result = await offline.execute({
+      type: 'recovery',
+      onlineExecutor: () => confirmRecovery(activeRecovery.value!.id),
+      payload,
+      successMessage: 'Đã xác nhận nhập kho thành công',
+      queuedMessage: 'Đã lưu xác nhận, sẽ đồng bộ khi có mạng',
+    })
+
+    if (result.success || result.queued) {
       playBeep('success')
       activeRecovery.value = null
       await fetchRecoveries()
@@ -397,12 +447,26 @@ const handleConfirmRecovery = async () => {
 const handleWriteOffSubmit = async () => {
   if (!activeRecovery.value) return
   
-  const success = await writeOffCone(activeRecovery.value.id, {
+  const payload = {
+    recovery_id: activeRecovery.value.id,
+    action: 'write_off',
     reason: writeOffReason.value,
     approved_by: approvedBy.value,
+  }
+
+  // Use offline-aware operation
+  const result = await offline.execute({
+    type: 'recovery',
+    onlineExecutor: () => writeOffCone(activeRecovery.value!.id, {
+      reason: writeOffReason.value,
+      approved_by: approvedBy.value,
+    }),
+    payload,
+    successMessage: 'Đã loại bỏ cuộn chỉ thành công',
+    queuedMessage: 'Đã lưu yêu cầu loại bỏ, sẽ đồng bộ khi có mạng',
   })
   
-  if (success) {
+  if (result.success || result.queued) {
     playBeep('success')
     showWriteOffDialog.value = false
     activeRecovery.value = null
@@ -410,8 +474,11 @@ const handleWriteOffSubmit = async () => {
   }
 }
 
-onMounted(() => {
-  fetchRecoveries()
+onMounted(async () => {
+  await Promise.all([
+    fetchRecoveries(),
+    offline.initialize(),
+  ])
 })
 </script>
 

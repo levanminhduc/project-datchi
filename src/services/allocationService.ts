@@ -219,4 +219,75 @@ export const allocationService = {
 
     return response.data
   },
+
+  /**
+   * Escalate a conflict to management
+   * @param conflictId - Conflict ID to escalate
+   * @param notes - Optional notes for escalation
+   * @returns Updated conflict
+   */
+  async escalate(conflictId: number, notes?: string): Promise<AllocationConflict> {
+    const response = await fetchApi<ApiResponse<AllocationConflict>>(
+      `/api/allocations/conflicts/${conflictId}/escalate`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ notes }),
+      }
+    )
+
+    if (response.error || !response.data) {
+      throw new Error(response.error || 'Không thể leo thang xung đột')
+    }
+
+    return response.data
+  },
+
+  /**
+   * Chia nhỏ phân bổ thành hai phân bổ riêng biệt
+   * Giải phóng tất cả cone đã phân bổ và đặt cả hai phân bổ về trạng thái PENDING
+   * @param id - Allocation ID to split
+   * @param splitMeters - Number of meters for the new allocation
+   * @param reason - Optional reason for the split
+   * @returns Split result with both allocations
+   */
+  async split(
+    id: number,
+    splitMeters: number,
+    reason?: string
+  ): Promise<{
+    original: Allocation
+    new_allocation: Allocation
+    result: {
+      success: boolean
+      original_allocation_id: number
+      new_allocation_id: number
+      original_meters: number
+      split_meters: number
+      message: string
+    }
+  }> {
+    const response = await fetchApi<
+      ApiResponse<{
+        original: Allocation
+        new_allocation: Allocation
+        result: {
+          success: boolean
+          original_allocation_id: number
+          new_allocation_id: number
+          original_meters: number
+          split_meters: number
+          message: string
+        }
+      }>
+    >(`/api/allocations/${id}/split`, {
+      method: 'POST',
+      body: JSON.stringify({ split_meters: splitMeters, reason }),
+    })
+
+    if (response.error || !response.data) {
+      throw new Error(response.error || 'Không thể chia nhỏ phân bổ')
+    }
+
+    return response.data
+  },
 }

@@ -61,12 +61,12 @@ export function useWarehouses() {
    * Transform warehouses to dropdown options
    * Format: "Tên Kho (MÃ KHO)"
    */
-  const warehouseOptions = computed<WarehouseOption[]>(() =>
-    warehouses.value.map((w) => ({
+  const warehouseOptions = computed<WarehouseOption[]>(() => {
+    return warehouses.value.map((w) => ({
       label: `${w.name} (${w.code})`,
       value: w.id,
     }))
-  )
+  })
 
   /**
    * Clear error state

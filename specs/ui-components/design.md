@@ -279,7 +279,7 @@ This pattern is used consistently across:
 When `use-input=false`, QSelect's default behavior mode can fail to trigger popup on click.
 
 ### Solution
-Add explicit `behavior` prop with default `'menu'` mode to align with Quasar Framework conventions.
+Add explicit `behavior` prop with default `'dialog'` mode to ensure popup opens reliably when `use-input=false`.
 
 ### Implementation
 
@@ -295,7 +295,7 @@ export interface AppSelectProps extends BaseComponentProps, LabeledProps, Valida
 
 **File: `src/components/ui/inputs/AppSelect.vue`**:
 - Template: Add `:behavior="behavior"` binding
-- Script: Add `behavior: 'menu'` to withDefaults
+- Script: Add `behavior: 'dialog'` to withDefaults
 
 ### Flow
 
@@ -602,13 +602,88 @@ sequenceDiagram
 1. Click AppSelect with `use-input=false` -> popup opens
 2. Click AppSelect with `use-input=true` -> popup opens with search
 3. Click AppSelect with `behavior="dialog"` -> popup opens as dialog overlay
-4. Default behavior is 'menu' without explicit prop (standard dropdown UX)
+4. Default behavior is 'dialog' without explicit prop (ensures reliable popup opening)
+
+## AppSelect Filter Handler Auto-Update (2026-01-30)
+
+### Problem
+When `use-input=true`, QSelect emits `@filter` event expecting the handler to call `update()` callback. If parent doesn't handle `@filter`, dropdown shows infinite loading.
+
+### Solution
+Detect parent handler using `useAttrs().onFilter`. Auto-call `update()` when no handler exists.
+
+### Implementation
+
+**File**: `src/components/ui/inputs/AppSelect.vue`
+
+```typescript
+import { computed, useAttrs } from 'vue'
+
+defineOptions({
+  name: 'AppSelect',
+  inheritAttrs: false  // Required for useAttrs() to work
+})
+
+const attrs = useAttrs()
+
+// Smart filter handler - auto-completes when parent doesn't handle @filter
+const handleFilter = (val: string, update: (fn: () => void) => void, abort: () => void) => {
+  if (attrs.onFilter) {
+    emit('filter', val, update, abort)  // Parent handles filtering
+  } else {
+    update(() => {})  // Auto-complete, show all options
+  }
+}
+```
+
+### Usage Pattern
+
+**With filtering (parent handles @filter)**:
+```vue
+<AppSelect
+  v-model="value"
+  :options="filteredOptions"
+  use-input
+  @filter="handleFilter"
+/>
+```
+
+**Without filtering (auto-complete)**:
+```vue
+<AppSelect
+  v-model="value"
+  :options="options"
+  use-input
+  <!-- No @filter needed - auto-completes -->
+/>
+```
+
+### Flow Diagram
+
+```
+User types in search box (use-input=true)
+           ↓
+handleFilter called with (val, update, abort)
+           ↓
+     ┌─────────────────────────┐
+     │ Check attrs.onFilter    │
+     └─────────────────────────┘
+           ↓
+  ┌────────┴────────┐
+  │                 │
+Has handler    No handler
+  ↓                 ↓
+emit('filter')  update(() => {})
+  ↓                 ↓
+Parent calls    Show all
+update()        options
+```
 
 ---
 
 ## Implementation Notes
 
-**Last Synced**: 2026-01-29
+**Last Synced**: 2026-01-30
 **Status**: Synced from implementation analysis
 
 ### Key Patterns Discovered
@@ -616,7 +691,8 @@ sequenceDiagram
 1. **Computed v-model Pattern**: All input/toggle/picker components use `computed({ get, set })` for two-way binding
 2. **Vietnamese Defaults**: Consistently applied across confirm dialogs, empty states, and form validations
 3. **Type Consolidation**: Types organized into `data-display.ts` (tables, lists, cards) instead of separate files
-4. **Behavior Prop Pattern**: AppSelect uses explicit `behavior='menu'` default to align with Quasar conventions for standard dropdown UX
+4. **Behavior Prop Pattern**: AppSelect uses explicit `behavior='dialog'` default to ensure popup opens reliably when `use-input=false`
+5. **Filter Handler Auto-Update Pattern**: AppSelect uses `useAttrs()` to detect parent handler presence and auto-completes when no handler exists (2026-01-30)
 
 ### Components Deferred
 

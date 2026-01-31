@@ -759,6 +759,163 @@ allocations.post('/:id/resolve', async (c) => {
 })
 
 /**
+ * POST /api/allocations/conflicts/:id/escalate - Escalate a conflict
+ */
+allocations.post('/conflicts/:id/escalate', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id) || id <= 0) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID không hợp lệ',
+      }, 400)
+    }
+
+    const { notes } = await c.req.json<{ notes?: string }>()
+
+    // Check conflict exists
+    const { data: conflict, error: checkError } = await supabase
+      .from('thread_allocation_conflicts')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (checkError || !conflict) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Không tìm thấy xung đột',
+      }, 404)
+    }
+
+    if (conflict.status !== 'PENDING') {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Chỉ có thể leo thang xung đột đang chờ xử lý',
+      }, 400)
+    }
+
+    // Update conflict status to ESCALATED
+    const { data, error } = await supabase
+      .from('thread_allocation_conflicts')
+      .update({
+        status: 'ESCALATED',
+        resolution_notes: notes || 'Đã leo thang lên cấp quản lý',
+        resolved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('[Allocations] Escalate conflict error:', error)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Không thể leo thang xung đột',
+      }, 500)
+    }
+
+    return c.json<ThreadApiResponse<ConflictRow>>({
+      data: data as ConflictRow,
+      error: null,
+      message: 'Đã leo thang xung đột thành công',
+    })
+  } catch (error) {
+    console.error('[Allocations] Escalate conflict error:', error)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi server khi leo thang xung đột',
+    }, 500)
+  }
+})
+
+/**
+ * POST /api/allocations/:id/split - Split allocation into two
+ * Calls RPC split_allocation to atomically split the allocation
+ */
+allocations.post('/:id/split', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id) || id <= 0) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID không hợp lệ',
+      }, 400)
+    }
+
+    const body = await c.req.json<{ split_meters: number; reason?: string }>()
+
+    if (!body.split_meters || body.split_meters <= 0) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Số mét chia phải lớn hơn 0',
+      }, 400)
+    }
+
+    // Call RPC to split allocation
+    const { data: result, error: rpcError } = await supabase
+      .rpc('split_allocation', {
+        p_allocation_id: id,
+        p_split_meters: body.split_meters,
+        p_split_reason: body.reason || null,
+      })
+
+    if (rpcError) {
+      console.error('[Allocations] Split RPC error:', rpcError)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi chia nhỏ phân bổ: ' + rpcError.message,
+      }, 500)
+    }
+
+    const splitResult = result as {
+      success: boolean
+      original_allocation_id: number
+      new_allocation_id: number | null
+      original_meters: number
+      split_meters: number
+      message: string
+    }
+
+    if (!splitResult.success) {
+      return c.json<ThreadApiResponse<typeof splitResult>>({
+        data: splitResult,
+        error: splitResult.message,
+      }, 400)
+    }
+
+    // Fetch both allocations to return complete data
+    const { data: allocations_data } = await supabase
+      .from('thread_allocations')
+      .select(`
+        *,
+        thread_types(id, code, name, color, color_code)
+      `)
+      .in('id', [splitResult.original_allocation_id, splitResult.new_allocation_id])
+
+    return c.json<ThreadApiResponse<{
+      original: AllocationWithRelations
+      new_allocation: AllocationWithRelations
+      result: typeof splitResult
+    }>>({
+      data: {
+        original: allocations_data?.find(a => a.id === splitResult.original_allocation_id) as AllocationWithRelations,
+        new_allocation: allocations_data?.find(a => a.id === splitResult.new_allocation_id) as AllocationWithRelations,
+        result: splitResult,
+      },
+      error: null,
+      message: splitResult.message,
+    })
+  } catch (error) {
+    console.error('[Allocations] Split error:', error)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi server khi chia nhỏ phân bổ',
+    }, 500)
+  }
+})
+
+/**
  * PUT /api/allocations/:id - Update allocation details
  */
 allocations.put('/:id', async (c) => {
