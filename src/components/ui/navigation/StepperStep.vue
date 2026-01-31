@@ -46,9 +46,5 @@ const props = withDefaults(defineProps<Props>(), {
     :header-nav="headerNav"
   >
     <slot />
-
-    <template #default>
-      <slot name="content" />
-    </template>
   </q-step>
 </template>

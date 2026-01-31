@@ -53,6 +53,7 @@ declare module 'vue' {
     ButtonToggle: typeof import('./components/ui/buttons/ButtonToggle.vue')['default']
     CircularProgress: typeof import('./components/ui/feedback/CircularProgress.vue')['default']
     ColorPicker: typeof import('./components/ui/pickers/ColorPicker.vue')['default']
+    ComponentCard: typeof import('./components/showcase/ComponentCard.vue')['default']
     ConfirmDialog: typeof import('./components/ui/dialogs/ConfirmDialog.vue')['default']
     ConflictDialog: typeof import('./components/offline/ConflictDialog.vue')['default']
     ConflictResolutionPanel: typeof import('./components/thread/ConflictResolutionPanel.vue')['default']

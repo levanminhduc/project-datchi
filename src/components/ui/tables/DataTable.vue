@@ -14,7 +14,7 @@
     :bordered="bordered"
     :square="square"
     :dense="dense"
-    :dark="dark"
+    :dark="isDark"
     :hide-header="hideHeader"
     :hide-bottom="hideBottom"
     :hide-pagination="hidePagination"
@@ -86,8 +86,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useQuasar } from 'quasar'
 import type { DataTableProps } from '@/types/ui'
 import EmptyState from '../feedback/EmptyState.vue'
+
+const $q = useQuasar()
 
 const props = withDefaults(defineProps<DataTableProps>(), {
   rowKey: 'id',
@@ -135,6 +138,9 @@ const selectedModel = computed({
   get: () => props.selected,
   set: (value) => emit('update:selected', value),
 })
+
+// Auto-detect dark mode: use prop if explicitly set, otherwise follow global dark mode
+const isDark = computed(() => props.dark ?? $q.dark.isActive)
 </script>
 
 <style scoped>

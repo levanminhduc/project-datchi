@@ -51,9 +51,9 @@
         <q-card flat bordered class="workflow-card">
           <q-card-section class="row items-center no-wrap">
             <div class="col">
-              <div class="text-overline text-grey-7">{{ step.overline }}</div>
+              <div class="text-overline text-secondary">{{ step.overline }}</div>
               <div class="text-h6">{{ step.title }}</div>
-              <div class="text-caption text-grey-8">{{ step.description }}</div>
+              <div class="text-caption text-secondary">{{ step.description }}</div>
             </div>
             <div class="col-auto">
               <q-avatar :color="step.color" text-color="white" :icon="step.icon" />
@@ -64,11 +64,14 @@
     </div>
 
     <!-- Data Table -->
-    <DataTable
+    <q-table
+      flat
+      bordered
       :rows="recoveries"
       :columns="columns"
       :loading="isLoading"
       row-key="id"
+      :rows-per-page-options="[10, 25, 50, 100]"
       class="recovery-table shadow-1"
     >
       <!-- Thread Type Column -->
@@ -99,7 +102,7 @@
           <span v-if="props.row.returned_weight_grams">
             {{ formatNumber(props.row.returned_weight_grams) }}g
           </span>
-          <span v-else class="text-grey-5">—</span>
+          <span v-else class="text-hint">—</span>
         </q-td>
       </template>
 
@@ -109,7 +112,7 @@
           <span v-if="props.row.calculated_meters" class="text-weight-bold">
             {{ formatNumber(props.row.calculated_meters) }}m
           </span>
-          <span v-else class="text-grey-5">—</span>
+          <span v-else class="text-hint">—</span>
         </q-td>
       </template>
 
@@ -119,7 +122,7 @@
           <span v-if="props.row.consumption_meters" class="text-negative">
             -{{ formatNumber(props.row.consumption_meters) }}m
           </span>
-          <span v-else class="text-grey-5">—</span>
+          <span v-else class="text-hint">—</span>
         </q-td>
       </template>
 
@@ -177,13 +180,13 @@
 
       <!-- Empty State -->
       <template #no-data>
-        <div class="full-width q-pa-xl text-center text-grey-6">
+        <div class="full-width q-pa-xl text-center text-secondary">
           <q-icon name="inventory_2" size="64px" class="q-mb-md" />
           <div class="text-h6">Không tìm thấy bản ghi hoàn trả nào</div>
           <div class="text-caption">Hãy thử thay đổi bộ lọc hoặc quét mã mới</div>
         </div>
       </template>
-    </DataTable>
+    </q-table>
 
     <!-- Initiate/Scan Dialog -->
     <FormDialog
@@ -251,7 +254,7 @@
         </AppInput>
 
         <!-- Calculation Display -->
-        <div v-if="weighDialog.weight" class="bg-grey-2 q-pa-md rounded-borders">
+        <div v-if="weighDialog.weight" class="bg-surface q-pa-md rounded-borders">
           <div class="row justify-between q-mb-xs">
             <span>Mét còn lại dự kiến:</span>
             <span class="text-weight-bold text-primary">{{ formatNumber(calculatedMeters) }}m</span>
@@ -290,7 +293,7 @@
         </q-banner>
 
         <div class="text-subtitle2 q-mb-xs">Thông tin cuộn:</div>
-        <div class="bg-grey-2 q-pa-sm rounded-borders">
+        <div class="bg-surface q-pa-sm rounded-borders">
           <div>Loại: {{ writeOffDialog.recovery.cone?.thread_type?.name }}</div>
           <div>Mã: {{ writeOffDialog.recovery.cone?.barcode }}</div>
           <div v-if="writeOffDialog.recovery.returned_weight_grams">
@@ -356,17 +359,17 @@
             <div class="text-subtitle1 text-weight-bold q-mb-sm">Thông số đo đạc</div>
             <div class="row q-col-gutter-sm">
               <div class="col-6">
-                <q-card flat bordered class="bg-grey-1">
+                <q-card flat bordered class="bg-surface">
                   <q-card-section class="q-pa-sm">
-                    <div class="text-caption text-grey-7">Mét gốc</div>
+                    <div class="text-caption text-secondary">Mét gốc</div>
                     <div class="text-h6">{{ formatNumber(detailDialog.recovery.original_meters) }}m</div>
                   </q-card-section>
                 </q-card>
               </div>
               <div class="col-6">
-                <q-card flat bordered class="bg-grey-1">
+                <q-card flat bordered class="bg-surface">
                   <q-card-section class="q-pa-sm">
-                    <div class="text-caption text-grey-7">Trọng lượng (net)</div>
+                    <div class="text-caption text-secondary">Trọng lượng (net)</div>
                     <div class="text-h6">
                       {{ detailDialog.recovery.returned_weight_grams ? formatNumber(detailDialog.recovery.returned_weight_grams) + 'g' : '—' }}
                     </div>
@@ -723,5 +726,30 @@ onMounted(() => {
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
+}
+
+// Dark mode compatible surface background
+.bg-surface {
+  background: rgba(128, 128, 128, 0.08);
+}
+
+// Hint/placeholder text color - adapts to dark mode
+.text-hint {
+  color: rgba(0, 0, 0, 0.38);
+}
+
+// Dark mode overrides using Quasar's body class
+.body--dark {
+  .workflow-card {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+  
+  .text-hint {
+    color: rgba(255, 255, 255, 0.5);
+  }
+  
+  .bg-surface {
+    background: rgba(255, 255, 255, 0.08);
+  }
 }
 </style>
