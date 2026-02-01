@@ -31,8 +31,7 @@ const handleScan = (barcode: string) => {
 }
 
 const { isScanning } = useScanner({
-  onScan: handleScan,
-  enabled: !isManualMode.value
+  onScan: handleScan
 })
 
 const onInputSubmit = () => {
@@ -64,15 +63,15 @@ const handleClear = () => {
       :label="label"
       :placeholder="placeholder"
       :outlined="true"
-      :loading="isScanning.value"
-      :class="{ 'scanning-glow': isScanning.value }"
+      :loading="isScanning"
+      :input-class="isScanning ? 'scanning-glow' : ''"
       @update:model-value="val => emit('update:modelValue', val as string)"
       @keyup.enter="onInputSubmit"
     >
       <template #prepend>
         <q-icon
           :name="isManualMode ? 'keyboard' : 'qr_code_scanner'"
-          :color="isScanning.value ? 'primary' : 'grey-7'"
+          :color="isScanning ? 'primary' : 'grey-7'"
         />
       </template>
 
@@ -104,8 +103,8 @@ const handleClear = () => {
     </AppInput>
     
     <div v-if="!isManualMode" class="text-caption text-grey-6 q-mt-xs q-px-sm row items-center">
-      <q-spinner-dots v-if="isScanning.value" size="12px" class="q-mr-xs" />
-      <span>{{ isScanning.value ? 'Đang nhận tín hiệu...' : 'Sẵn sàng quét mã' }}</span>
+      <q-spinner-dots v-if="isScanning" size="12px" class="q-mr-xs" />
+      <span>{{ isScanning ? 'Đang nhận tín hiệu...' : 'Sẵn sàng quét mã' }}</span>
     </div>
   </div>
 </template>

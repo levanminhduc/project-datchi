@@ -3,7 +3,7 @@
  * SidebarItem - Recursive sidebar navigation item
  * Renders either a simple q-item or a q-expansion-item for nested menus
  */
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { NavItem } from '@/types/navigation'
 
@@ -27,26 +27,39 @@ const isRouteActive = (item: NavItem): boolean => {
   return route.path === itemPath || route.path === itemPath + '/'
 }
 
-const isChildActive = computed(() => {
-  if (!props.item.children) return false
-  return props.item.children.some(child => isRouteActive(child))
-})
+// Local expansion state - avoids reactivity cascade from computed
+const expanded = ref(false)
 
-const isExpanded = computed(() => {
-  return isChildActive.value
-})
+// Only expand when navigating TO a child route, not on every route change
+watch(
+  () => route.path,
+  (newPath) => {
+    if (!props.item.children) return
+    const hasActiveChild = props.item.children.some((child) => {
+      if (!child.to) return false
+      const childPath = child.to.replace('#top', '')
+      return newPath === childPath || newPath === childPath + '/'
+    })
+    if (hasActiveChild) {
+      expanded.value = true
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
   <!-- Render nested menu if children exist -->
   <q-expansion-item
     v-if="item.children?.length"
-    :model-value="isExpanded"
+    v-model="expanded"
     :icon="item.icon"
     :label="item.label"
     :default-opened="false"
     :header-inset-level="level"
-    :header-class="isExpanded ? 'sidebar-item--active' : 'sidebar-item'"
+    :header-class="expanded ? 'sidebar-item--active' : 'sidebar-item'"
+    :duration="0"
+    :ripple="false"
     expand-separator
   >
     <SidebarItem

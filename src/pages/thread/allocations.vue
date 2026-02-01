@@ -466,7 +466,7 @@ import type { Allocation, CreateAllocationDTO, AllocationCone } from '@/types/th
 
 // Composables
 const snackbar = useSnackbar()
-const confirm = useConfirm()
+const { confirm } = useConfirm()
 const {
   allocations,
   conflicts,
@@ -714,7 +714,7 @@ const openCreateDialog = () => {
     thread_type_id: activeThreadTypes.value[0]?.id || 0,
     requested_meters: 0,
     priority: AllocationPriority.NORMAL,
-    due_date: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
+    due_date: new Date().toISOString().split('T')[0]!.replace(/-/g, '/'),
     notes: '',
   })
   createDialog.isOpen = true

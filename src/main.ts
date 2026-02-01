@@ -6,6 +6,7 @@
 
 // Quasar styles (must be before plugins)
 import '@quasar/extras/material-icons/material-icons.css'
+import '@quasar/extras/material-icons-outlined/material-icons-outlined.css'
 import 'quasar/src/css/index.sass'
 
 // Plugins

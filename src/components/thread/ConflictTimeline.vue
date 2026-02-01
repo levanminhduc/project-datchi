@@ -62,12 +62,16 @@ const formatQty = (qty: number) => {
 const getAllocationMetrics = (index: number) => {
   let cumulativeDemand = 0
   for (let i = 0; i <= index; i++) {
-    cumulativeDemand += sortedAllocations.value[i].requested_meters
+    const alloc = sortedAllocations.value[i]
+    if (alloc) {
+      cumulativeDemand += alloc.requested_meters
+    }
   }
 
   const available = props.conflict.total_available
   const isShortage = cumulativeDemand > available
-  const shortageAmount = isShortage ? Math.min(sortedAllocations.value[index].requested_meters, cumulativeDemand - available) : 0
+  const currentAlloc = sortedAllocations.value[index]
+  const shortageAmount = isShortage && currentAlloc ? Math.min(currentAlloc.requested_meters, cumulativeDemand - available) : 0
   
   return {
     isShortage,

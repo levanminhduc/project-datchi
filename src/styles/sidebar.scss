@@ -1,6 +1,7 @@
 // ============================================
 // SIDEBAR DESIGN SYSTEM
 // Clean Minimalism with Subtle Depth
+// NO ANIMATIONS - Instant response
 // ============================================
 
 // --------------------------------------------
@@ -11,12 +12,12 @@
   // Light Mode Colors
   --sidebar-bg: #ffffff;
   --sidebar-item-hover-bg: #f8fafc;
-  --sidebar-item-active-bg: rgba(14, 165, 233, 0.08);
-  --sidebar-item-active-border: #0ea5e9;
+  --sidebar-item-active-bg: rgba(0, 0, 0, 0.06);
+  --sidebar-item-active-border: #475569;
   --sidebar-text-primary: #1e293b;
   --sidebar-text-muted: #64748b;
   --sidebar-icon-default: #64748b;
-  --sidebar-icon-active: #0ea5e9;
+  --sidebar-icon-active: #334155;
   --sidebar-divider: #e2e8f0;
   
   // Dimensions
@@ -25,7 +26,6 @@
   --sidebar-item-margin: 4px 8px;
   --sidebar-icon-size: 20px;
   --sidebar-active-border-width: 3px;
-  --sidebar-transition: 150ms ease-out;
 }
 
 // --------------------------------------------
@@ -35,12 +35,12 @@
 .body--dark {
   --sidebar-bg: #1e1e1e;
   --sidebar-item-hover-bg: rgba(255, 255, 255, 0.05);
-  --sidebar-item-active-bg: rgba(14, 165, 233, 0.15);
-  --sidebar-item-active-border: #38bdf8;
+  --sidebar-item-active-bg: rgba(255, 255, 255, 0.08);
+  --sidebar-item-active-border: #94a3b8;
   --sidebar-text-primary: #f1f5f9;
   --sidebar-text-muted: #94a3b8;
   --sidebar-icon-default: #94a3b8;
-  --sidebar-icon-active: #38bdf8;
+  --sidebar-icon-active: #e2e8f0;
   --sidebar-divider: rgba(255, 255, 255, 0.1);
 }
 
@@ -81,15 +81,10 @@
   color: var(--sidebar-text-primary);
   background-color: transparent;
   cursor: pointer;
-  transition: 
-    background-color var(--sidebar-transition),
-    border-color var(--sidebar-transition),
-    color var(--sidebar-transition);
   
   .q-icon {
     font-size: var(--sidebar-icon-size);
     color: var(--sidebar-icon-default);
-    transition: color var(--sidebar-transition);
   }
   
   .q-item__label {
@@ -147,29 +142,63 @@
 }
 
 // --------------------------------------------
-// 12. EXPANSION ITEMS
+// 12. EXPANSION ITEMS - EAGER LOADING (NO LAG)
 // --------------------------------------------
 
+// CRITICAL: Bypass QSlideTransition's JavaScript-based animation completely
+// QSlideTransition uses setTimeout(100ms) even with duration=0
+// Solution: Override height manipulation with CSS !important
+
+// 1. Override Quasar's slide transition completely
+.sidebar .q-slide-transition {
+  transition: none !important;
+  
+  // Force immediate height based on content
+  height: auto !important;
+  overflow: visible !important;
+}
+
+// 2. Force instant height changes - bypass JS height manipulation
+.sidebar .q-expansion-item__content {
+  transition: none !important;
+  animation: none !important;
+  
+  // Override any inline height styles set by QSlideTransition
+  height: auto !important;
+  overflow: visible !important;
+}
+
+// 3. Hide content when collapsed (using display instead of height for instant toggle)
+.sidebar .q-expansion-item--collapsed .q-expansion-item__content {
+  display: none !important;
+}
+
+// 4. Show content when expanded (instant, no transition)
+.sidebar .q-expansion-item--expanded .q-expansion-item__content {
+  display: block !important;
+}
+
+// Simple expansion item styles
 .sidebar .q-expansion-item {
   margin: var(--sidebar-item-margin);
   
-  :deep(.q-expansion-item__container) {
+  .q-expansion-item__container {
     border: none;
   }
   
-  :deep(.q-item) {
+  .q-expansion-item__content {
+    padding-left: 0;
+  }
+  
+  .q-item {
     min-height: var(--sidebar-item-height);
     border-radius: var(--sidebar-item-radius);
     border-left: var(--sidebar-active-border-width) solid transparent;
     color: var(--sidebar-text-primary);
-    transition: 
-      background-color var(--sidebar-transition),
-      border-color var(--sidebar-transition);
     
     .q-icon {
       font-size: var(--sidebar-icon-size);
       color: var(--sidebar-icon-default);
-      transition: color var(--sidebar-transition);
     }
     
     &:hover {
@@ -177,36 +206,36 @@
     }
   }
   
-  :deep(.q-expansion-item__toggle-icon) {
+  // Toggle icon - no rotation animation
+  .q-expansion-item__toggle-icon {
     color: var(--sidebar-icon-default);
-    transition: transform 200ms ease-out, color var(--sidebar-transition);
-  }
-  
-  :deep(.q-expansion-item__content) {
-    padding-left: 0;
+    transition: none !important;
   }
 }
 
-.sidebar .q-expansion-item--expanded {
-  :deep(.q-item) {
-    background-color: var(--sidebar-item-active-bg);
-    border-left-color: var(--sidebar-item-active-border);
-    
-    .q-icon {
-      color: var(--sidebar-icon-active);
-    }
-  }
+// Active styling for expanded parent menu - HEADER ONLY
+// Use child combinator (>) to avoid styling nested child items
+.sidebar .q-expansion-item--expanded > .q-expansion-item__container > .q-expansion-item__header > .q-item {
+  background-color: var(--sidebar-item-active-bg);
+  border-left-color: var(--sidebar-item-active-border);
   
-  :deep(.q-expansion-item__toggle-icon) {
+  .q-icon {
     color: var(--sidebar-icon-active);
   }
 }
 
-// Reduced motion support
+.sidebar .q-expansion-item--expanded > .q-expansion-item__container > .q-expansion-item__header .q-expansion-item__toggle-icon {
+  color: var(--sidebar-icon-active);
+}
+
+// Reduced motion support - already no animations, but keep for clarity
 @media (prefers-reduced-motion: reduce) {
   .sidebar-item,
   .sidebar-item .q-icon,
-  .sidebar .q-expansion-item :deep(.q-expansion-item__toggle-icon) {
-    transition: none;
+  .sidebar .q-expansion-item :deep(.q-expansion-item__toggle-icon),
+  .sidebar .q-slide-transition,
+  .sidebar .q-expansion-item__content {
+    transition: none !important;
+    animation: none !important;
   }
 }

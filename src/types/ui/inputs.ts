@@ -4,7 +4,7 @@ export interface AppInputProps extends BaseComponentProps, LabeledProps, Validat
   /** v-model value */
   modelValue?: string | number | null
   /** Input type */
-  type?: 'text' | 'password' | 'email' | 'number' | 'tel' | 'url' | 'textarea' | 'search'
+  type?: 'text' | 'password' | 'email' | 'number' | 'tel' | 'url' | 'textarea' | 'search' | 'date' | 'datetime-local' | 'time'
   /** Placeholder text */
   placeholder?: string
   /** Outlined style */

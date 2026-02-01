@@ -11,6 +11,8 @@ interface ConfirmOptions {
   icon?: string
   html?: boolean
   persistent?: boolean
+  color?: string
+  ok?: string
 }
 
 interface DeleteConfirmOptions {
@@ -64,7 +66,9 @@ export function useConfirm() {
       type = 'info',
       icon,
       html = false,
-      persistent = false
+      persistent = false,
+      color,
+      ok
     } = options
 
     return new Promise((resolve) => {
@@ -79,8 +83,8 @@ export function useConfirm() {
           color: 'grey'
         },
         ok: {
-          label: confirmText,
-          color: getColor(type)
+          label: ok || confirmText,
+          color: color || getColor(type)
         },
         focus: 'cancel'
       })

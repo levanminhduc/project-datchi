@@ -146,13 +146,13 @@
           <q-item>
             <q-item-section>
               <q-item-label caption>Mét còn lại</q-item-label>
-              <q-item-label class="text-positive">{{ formatNumber(activeRecovery.calculated_meters) }}m</q-item-label>
+              <q-item-label class="text-positive">{{ formatNumber(activeRecovery.remaining_meters) }}m</q-item-label>
             </q-item-section>
           </q-item>
           <q-item>
             <q-item-section>
               <q-item-label caption>Đã tiêu thụ</q-item-label>
-              <q-item-label class="text-negative">{{ formatNumber(activeRecovery.consumption_meters) }}m</q-item-label>
+              <q-item-label class="text-negative">{{ formatNumber(activeRecovery.consumed_meters) }}m</q-item-label>
             </q-item-section>
           </q-item>
         </q-list>

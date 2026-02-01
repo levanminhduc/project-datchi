@@ -235,7 +235,7 @@
             {{ weighDialog.recovery.cone?.thread_type?.name }}
           </div>
           <div class="text-caption">
-            Mã: {{ weighDialog.recovery.cone?.barcode }} | Gốc: {{ formatNumber(weighDialog.recovery.original_meters) }}m
+            Mã: {{ weighDialog.recovery.cone?.cone_id }} | Gốc: {{ formatNumber(weighDialog.recovery.original_meters) }}m
           </div>
         </q-banner>
 
@@ -295,10 +295,10 @@
         <div class="text-subtitle2 q-mb-xs">Thông tin cuộn:</div>
         <div class="bg-surface q-pa-sm rounded-borders">
           <div>Loại: {{ writeOffDialog.recovery.cone?.thread_type?.name }}</div>
-          <div>Mã: {{ writeOffDialog.recovery.cone?.barcode }}</div>
+          <div>Mã: {{ writeOffDialog.recovery.cone?.cone_id }}</div>
           <div v-if="writeOffDialog.recovery.returned_weight_grams">
             TL: {{ formatNumber(writeOffDialog.recovery.returned_weight_grams) }}g 
-            (~{{ formatNumber(writeOffDialog.recovery.calculated_meters) }}m)
+            (~{{ formatNumber(writeOffDialog.recovery.remaining_meters) }}m)
           </div>
         </div>
 
@@ -334,7 +334,7 @@
               <q-item>
                 <q-item-section>
                   <q-item-label caption>Mã Barcode</q-item-label>
-                  <q-item-label class="text-weight-medium">{{ detailDialog.recovery.cone?.barcode }}</q-item-label>
+                  <q-item-label class="text-weight-medium">{{ detailDialog.recovery.cone?.cone_id }}</q-item-label>
                 </q-item-section>
               </q-item>
               <q-item>
@@ -343,7 +343,7 @@
                   <q-item-label class="row items-center">
                     <q-badge
                       rounded
-                      :style="{ backgroundColor: detailDialog.recovery.cone?.thread_type?.hex_color || '#ccc' }"
+                      :style="{ backgroundColor: detailDialog.recovery.cone?.thread_type?.color_code || '#ccc' }"
                       class="q-mr-xs"
                       style="width: 10px; height: 10px"
                     />
@@ -381,7 +381,7 @@
                   <q-card-section class="q-pa-sm">
                     <div class="text-caption text-blue-1">Mét còn lại</div>
                     <div class="text-h6">
-                      {{ detailDialog.recovery.calculated_meters ? formatNumber(detailDialog.recovery.calculated_meters) + 'm' : '—' }}
+                      {{ detailDialog.recovery.remaining_meters ? formatNumber(detailDialog.recovery.remaining_meters) + 'm' : '—' }}
                     </div>
                   </q-card-section>
                 </q-card>
@@ -391,7 +391,7 @@
                   <q-card-section class="q-pa-sm">
                     <div class="text-caption text-red-1">Đã tiêu thụ</div>
                     <div class="text-h6">
-                      {{ detailDialog.recovery.consumption_meters ? formatNumber(detailDialog.recovery.consumption_meters) + 'm' : '—' }}
+                      {{ detailDialog.recovery.consumed_meters ? formatNumber(detailDialog.recovery.consumed_meters) + 'm' : '—' }}
                     </div>
                   </q-card-section>
                 </q-card>
@@ -413,10 +413,10 @@
                   </q-item-label>
                 </q-item-section>
               </q-item>
-              <q-item v-if="detailDialog.recovery.initiated_by">
+              <q-item v-if="detailDialog.recovery.returned_by">
                 <q-item-section>
                   <q-item-label caption>Người khởi tạo</q-item-label>
-                  <q-item-label>{{ detailDialog.recovery.initiated_by }}</q-item-label>
+                  <q-item-label>{{ detailDialog.recovery.returned_by }}</q-item-label>
                 </q-item-section>
                 <q-item-section side>
                   <q-item-label caption>{{ formatDate(detailDialog.recovery.created_at) }}</q-item-label>
@@ -468,7 +468,7 @@ import type { Recovery, RecoveryFilters } from '@/types/thread'
 
 // Composables
 const snackbar = useSnackbar()
-const confirm = useConfirm()
+const { confirm } = useConfirm()
 const {
   recoveries,
   isLoading,
@@ -555,7 +555,7 @@ const workflowSteps = [
 
 // Table Columns
 const columns: QTableColumn[] = [
-  { name: 'cone_id', label: 'Mã cuộn', field: row => row.cone?.barcode || 'N/A', align: 'left', sortable: true },
+  { name: 'cone_id', label: 'Mã cuộn', field: row => row.cone?.cone_id || 'N/A', align: 'left', sortable: true },
   { name: 'thread_type', label: 'Loại chỉ', field: 'thread_type', align: 'left', sortable: true },
   { name: 'original_meters', label: 'Mét gốc', field: 'original_meters', align: 'right', sortable: true },
   { name: 'returned_weight', label: 'TL hoàn (g)', field: 'returned_weight_grams', align: 'right', sortable: true },
@@ -647,7 +647,7 @@ const handleWeighSubmit = async () => {
 const handleConfirm = async (recovery: Recovery) => {
   const confirmed = await confirm({
     title: 'Xác nhận nhập kho',
-    message: `Bạn có chắc chắn muốn xác nhận hoàn trả cuộn chỉ ${recovery.cone?.barcode} với ${formatNumber(recovery.calculated_meters)}m về kho?`,
+    message: `Bạn có chắc chắn muốn xác nhận hoàn trả cuộn chỉ ${recovery.cone?.cone_id} với ${formatNumber(recovery.remaining_meters)}m về kho?`,
     color: 'positive',
     ok: 'Xác nhận'
   })
