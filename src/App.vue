@@ -38,6 +38,7 @@ onMounted(() => {
       side="left"
       bordered
       :width="280"
+      class="sidebar"
     >
       <q-scroll-area class="fit">
         <q-list>

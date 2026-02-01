@@ -23,11 +23,8 @@ const isRouteActive = (item: NavItem): boolean => {
 
   const itemPath = item.to.replace('#top', '')
 
-  if (itemPath === '/') {
-    return route.path === '/'
-  }
-
-  return route.path.startsWith(itemPath)
+  // Exact match only - handles both '/thread' and '/thread/'
+  return route.path === itemPath || route.path === itemPath + '/'
 }
 
 const isChildActive = computed(() => {
@@ -49,7 +46,7 @@ const isExpanded = computed(() => {
     :label="item.label"
     :default-opened="false"
     :header-inset-level="level"
-    :header-class="isExpanded ? 'bg-primary text-white' : ''"
+    :header-class="isExpanded ? 'sidebar-item--active' : 'sidebar-item'"
     expand-separator
   >
     <SidebarItem
@@ -67,8 +64,10 @@ const isExpanded = computed(() => {
     clickable
     :to="item.to"
     :active="isRouteActive(item)"
-    active-class="bg-primary text-white"
+    active-class="sidebar-item--active"
     :inset-level="level"
+    class="sidebar-item"
+    :class="{ 'sidebar-item--nested': level > 0 }"
   >
     <q-item-section
       v-if="item.icon"

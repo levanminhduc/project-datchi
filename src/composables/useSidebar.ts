@@ -4,32 +4,32 @@ import type { NavItem } from '@/types/navigation'
 const isOpen = ref(true)
 
 const navItems: NavItem[] = [
-  { label: 'Trang Chủ', icon: 'home', to: '/#top' },
+  { label: 'Trang Chủ', icon: 'o_home', to: '/#top' },
   { 
     label: 'Nhân Sự', 
-    icon: 'people', 
+    icon: 'o_people', 
     to: '/nhan-su#top',
     children: [
-      { label: 'Danh Sách Nhân Viên', icon: 'list', to: '/nhan-su/danh-sach' },
-      { label: 'Thêm Mới', icon: 'person_add', to: '/nhan-su/them-moi' }
+      { label: 'Danh Sách Nhân Viên', icon: 'o_list', to: '/nhan-su/danh-sach' },
+      { label: 'Thêm Mới', icon: 'o_person_add', to: '/nhan-su/them-moi' }
     ]
   },
-  { label: 'Kế Hoạch', icon: 'event_note', to: '/ke-hoach#top' },
-  { label: 'Kỹ Thuật', icon: 'engineering', to: '/ky-thuat#top' },
-  { label: 'Kho', icon: 'inventory_2', to: '/kho#top' },
+  { label: 'Kế Hoạch', icon: 'o_event_note', to: '/ke-hoach#top' },
+  { label: 'Kỹ Thuật', icon: 'o_engineering', to: '/ky-thuat#top' },
+  { label: 'Kho', icon: 'o_inventory_2', to: '/kho#top' },
   { 
     label: 'Quản Lý Chỉ', 
-    icon: 'linear_scale', 
+    icon: 'o_linear_scale', 
     to: '/thread#top',
     children: [
-      { label: 'Dashboard', icon: 'dashboard', to: '/thread/dashboard' },
-      { label: 'Loại Chỉ', icon: 'category', to: '/thread' },
-      { label: 'Tồn Kho', icon: 'inventory', to: '/thread/inventory' },
-      { label: 'Phân Bổ', icon: 'assignment', to: '/thread/allocations' },
-      { label: 'Thu Hồi', icon: 'assignment_return', to: '/thread/recovery' }
+      { label: 'Dashboard', icon: 'o_dashboard', to: '/thread/dashboard' },
+      { label: 'Loại Chỉ', icon: 'o_category', to: '/thread' },
+      { label: 'Tồn Kho', icon: 'o_inventory', to: '/thread/inventory' },
+      { label: 'Phân Bổ', icon: 'o_assignment', to: '/thread/allocations' },
+      { label: 'Thu Hồi', icon: 'o_assignment_return', to: '/thread/recovery' }
     ]
   },
-  { label: 'Phân Quyền', icon: 'admin_panel_settings', to: '/phan-quyen#top' }
+  { label: 'Phân Quyền', icon: 'o_admin_panel_settings', to: '/phan-quyen#top' }
 ]
 
 export function useSidebar() {
