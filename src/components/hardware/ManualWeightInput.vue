@@ -69,12 +69,33 @@ const clear = () => {
           :min="0"
         >
           <template #append>
-            <q-btn flat round dense icon="backspace" size="sm" @click="clear" />
+            <q-btn
+              flat
+              round
+              dense
+              icon="backspace"
+              size="sm"
+              @click="clear"
+            />
           </template>
           <template #after>
             <div class="column q-gutter-xs">
-              <q-btn dense flat icon="add" size="sm" class="bg-grey-2" @click="adjust(localUnit === 'kg' ? 0.1 : 10)" />
-              <q-btn dense flat icon="remove" size="sm" class="bg-grey-2" @click="adjust(localUnit === 'kg' ? -0.1 : -10)" />
+              <q-btn
+                dense
+                flat
+                icon="add"
+                size="sm"
+                class="bg-grey-2"
+                @click="adjust(localUnit === 'kg' ? 0.1 : 10)"
+              />
+              <q-btn
+                dense
+                flat
+                icon="remove"
+                size="sm"
+                class="bg-grey-2"
+                @click="adjust(localUnit === 'kg' ? -0.1 : -10)"
+              />
             </div>
           </template>
         </AppInput>
@@ -90,7 +111,10 @@ const clear = () => {
       </div>
     </div>
 
-    <div v-if="threadType && weightInGrams" class="q-mt-xs q-px-sm">
+    <div
+      v-if="threadType && weightInGrams"
+      class="q-mt-xs q-px-sm"
+    >
       <div class="row justify-between items-center text-caption text-grey-8">
         <span>Tương đương:</span>
         <span class="text-weight-bold text-primary">{{ meters.toLocaleString() }} m</span>

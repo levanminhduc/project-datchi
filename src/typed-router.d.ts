@@ -27,6 +27,7 @@ declare module 'vue-router/auto-routes' {
     '/nhan-su': RouteRecordInfo<'/nhan-su', '/nhan-su', Record<never, never>, Record<never, never>, '/nhan-su/danh-sach'>,
     '/nhan-su/danh-sach': RouteRecordInfo<'/nhan-su/danh-sach', '/nhan-su/danh-sach', Record<never, never>, Record<never, never>>,
     '/phan-quyen': RouteRecordInfo<'/phan-quyen', '/phan-quyen', Record<never, never>, Record<never, never>>,
+    '/qr-demo': RouteRecordInfo<'/qr-demo', '/qr-demo', Record<never, never>, Record<never, never>>,
     '/reports/allocations': RouteRecordInfo<'/reports/allocations', '/reports/allocations', Record<never, never>, Record<never, never>>,
     '/thread/': RouteRecordInfo<'/thread/', '/thread', Record<never, never>, Record<never, never>>,
     '/thread/allocations': RouteRecordInfo<'/thread/allocations', '/thread/allocations', Record<never, never>, Record<never, never>>,
@@ -83,6 +84,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/phan-quyen.vue': {
       routes: '/phan-quyen'
+      views: never
+    }
+    'src/pages/qr-demo.vue': {
+      routes: '/qr-demo'
       views: never
     }
     'src/pages/reports/allocations.vue': {

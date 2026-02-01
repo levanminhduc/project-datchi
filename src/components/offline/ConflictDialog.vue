@@ -1,11 +1,27 @@
 <template>
-  <q-dialog v-model="isOpen" persistent>
+  <q-dialog
+    v-model="isOpen"
+    persistent
+  >
     <q-card style="min-width: 350px; max-width: 500px">
       <q-card-section class="row items-center q-pb-none">
-        <q-icon name="error" color="negative" size="24px" class="q-mr-sm" />
-        <div class="text-h6">Xung Đột Dữ Liệu</div>
+        <q-icon
+          name="error"
+          color="negative"
+          size="24px"
+          class="q-mr-sm"
+        />
+        <div class="text-h6">
+          Xung Đột Dữ Liệu
+        </div>
         <q-space />
-        <q-btn flat round dense icon="close" v-close-popup />
+        <q-btn
+          v-close-popup
+          flat
+          round
+          dense
+          icon="close"
+        />
       </q-card-section>
 
       <q-card-section class="text-body2 text-grey-7">
@@ -15,9 +31,16 @@
 
       <q-separator />
 
-      <q-card-section class="q-pa-none" style="max-height: 400px; overflow-y: auto">
+      <q-card-section
+        class="q-pa-none"
+        style="max-height: 400px; overflow-y: auto"
+      >
         <q-list separator>
-          <q-item v-for="op in conflicts" :key="op.id" class="q-py-md">
+          <q-item
+            v-for="op in conflicts"
+            :key="op.id"
+            class="q-py-md"
+          >
             <q-item-section>
               <q-item-label class="text-weight-medium">
                 {{ getOperationLabel(op.type) }}
@@ -25,7 +48,10 @@
               <q-item-label caption>
                 {{ formatDate(op.createdAt) }}
               </q-item-label>
-              <q-item-label caption class="text-negative">
+              <q-item-label
+                caption
+                class="text-negative"
+              >
                 {{ op.error }}
               </q-item-label>
               
@@ -76,7 +102,12 @@
 
           <q-item v-if="conflicts.length === 0">
             <q-item-section class="text-center text-grey-6 q-pa-lg">
-              <q-icon name="check_circle" size="48px" color="positive" class="q-mb-sm" />
+              <q-icon
+                name="check_circle"
+                size="48px"
+                color="positive"
+                class="q-mb-sm"
+              />
               <div>Không có xung đột nào</div>
             </q-item-section>
           </q-item>
@@ -85,7 +116,10 @@
 
       <q-separator v-if="conflicts.length > 1" />
 
-      <q-card-actions v-if="conflicts.length > 1" align="right">
+      <q-card-actions
+        v-if="conflicts.length > 1"
+        align="right"
+      >
         <q-btn
           flat
           color="negative"

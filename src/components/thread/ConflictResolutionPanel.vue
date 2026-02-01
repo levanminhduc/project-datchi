@@ -59,23 +59,40 @@ const handleResolve = () => {
     <!-- Header Summary -->
     <div class="bg-primary text-white q-pa-md">
       <div class="row items-center justify-between">
-        <div class="text-h6">Giải quyết xung đột</div>
-        <q-chip color="white" text-color="primary" dense class="text-weight-bold">
+        <div class="text-h6">
+          Giải quyết xung đột
+        </div>
+        <q-chip
+          color="white"
+          text-color="primary"
+          dense
+          class="text-weight-bold"
+        >
           {{ conflict.thread_type?.code || 'Chỉ' }}
         </q-chip>
       </div>
       
       <div class="row q-col-gutter-md q-mt-sm">
         <div class="col-4 text-center">
-          <div class="text-caption opacity-80">Tổng nhu cầu</div>
-          <div class="text-subtitle1 text-weight-bold">{{ formatMeters(conflict.total_requested) }}</div>
+          <div class="text-caption opacity-80">
+            Tổng nhu cầu
+          </div>
+          <div class="text-subtitle1 text-weight-bold">
+            {{ formatMeters(conflict.total_requested) }}
+          </div>
         </div>
         <div class="col-4 text-center border-left-white">
-          <div class="text-caption opacity-80">Hiện có</div>
-          <div class="text-subtitle1 text-weight-bold text-light-green-11">{{ formatMeters(conflict.total_available) }}</div>
+          <div class="text-caption opacity-80">
+            Hiện có
+          </div>
+          <div class="text-subtitle1 text-weight-bold text-light-green-11">
+            {{ formatMeters(conflict.total_available) }}
+          </div>
         </div>
         <div class="col-4 text-center border-left-white">
-          <div class="text-caption opacity-80">Thiếu hụt</div>
+          <div class="text-caption opacity-80">
+            Thiếu hụt
+          </div>
           <div class="text-subtitle1 text-weight-bold text-orange-11">
             {{ formatMeters(conflict.shortage) }}
             <span class="text-caption">({{ shortagePercent }}%)</span>
@@ -85,18 +102,37 @@ const handleResolve = () => {
     </div>
 
     <!-- Selection Reminder -->
-    <div v-if="!isAllocationSelected" class="q-pa-xl flex flex-center text-grey-7 text-center">
+    <div
+      v-if="!isAllocationSelected"
+      class="q-pa-xl flex flex-center text-grey-7 text-center"
+    >
       <div>
-        <q-icon name="touch_app" size="3rem" color="grey-4" class="q-mb-md" />
-        <div class="text-subtitle1">Chọn một lệnh sản xuất từ dòng thời gian</div>
-        <div class="text-caption">để thực hiện các hành động giải quyết</div>
+        <q-icon
+          name="touch_app"
+          size="3rem"
+          color="grey-4"
+          class="q-mb-md"
+        />
+        <div class="text-subtitle1">
+          Chọn một lệnh sản xuất từ dòng thời gian
+        </div>
+        <div class="text-caption">
+          để thực hiện các hành động giải quyết
+        </div>
       </div>
     </div>
 
     <!-- Resolution Options -->
-    <div v-else class="q-pa-md">
+    <div
+      v-else
+      class="q-pa-md"
+    >
       <div class="text-subtitle2 q-mb-md flex items-center">
-        <q-icon name="settings" class="q-mr-xs" color="primary" />
+        <q-icon
+          name="settings"
+          class="q-mr-xs"
+          color="primary"
+        />
         Xử lý LSX: <span class="text-primary q-ml-xs">{{ selectedAllocation?.order_id }}</span>
       </div>
 
@@ -120,11 +156,20 @@ const handleResolve = () => {
         />
 
         <!-- Dynamic Inputs based on Action -->
-        <q-card flat bordered class="bg-grey-1">
+        <q-card
+          flat
+          bordered
+          class="bg-grey-1"
+        >
           <q-card-section>
             <!-- Adjust Priority -->
-            <div v-if="resolutionAction === 'ADJUST_PRIORITY'" class="q-gutter-y-sm">
-              <div class="text-caption text-grey-7">Điều chỉnh mức độ ưu tiên</div>
+            <div
+              v-if="resolutionAction === 'ADJUST_PRIORITY'"
+              class="q-gutter-y-sm"
+            >
+              <div class="text-caption text-grey-7">
+                Điều chỉnh mức độ ưu tiên
+              </div>
               <AppSelect
                 v-model="newPriority"
                 :options="priorityOptions"
@@ -135,14 +180,22 @@ const handleResolve = () => {
                 outlined
               />
               <div class="text-caption text-blue-9 bg-blue-1 q-pa-sm rounded-borders">
-                <q-icon name="info" class="q-mr-xs" />
+                <q-icon
+                  name="info"
+                  class="q-mr-xs"
+                />
                 LSX sẽ được sắp xếp lại trong danh sách chờ dựa trên điểm số ưu tiên mới.
               </div>
             </div>
 
             <!-- Split Allocation -->
-            <div v-if="resolutionAction === 'SPLIT'" class="q-gutter-y-sm">
-              <div class="text-caption text-grey-7">Số lượng cấp trước (m)</div>
+            <div
+              v-if="resolutionAction === 'SPLIT'"
+              class="q-gutter-y-sm"
+            >
+              <div class="text-caption text-grey-7">
+                Số lượng cấp trước (m)
+              </div>
               <q-input
                 v-model.number="splitMeters"
                 type="number"
@@ -153,26 +206,51 @@ const handleResolve = () => {
                 :rules="[val => val > 0 && val < (selectedAllocation?.requested_meters || 0) || 'Số lượng phải lớn hơn 0 và nhỏ hơn yêu cầu ban đầu']"
               />
               <div class="text-caption text-amber-9 bg-amber-1 q-pa-sm rounded-borders">
-                <q-icon name="info" class="q-mr-xs" />
+                <q-icon
+                  name="info"
+                  class="q-mr-xs"
+                />
                 Phần còn lại sẽ được chuyển vào danh sách chờ.
               </div>
             </div>
 
             <!-- Cancel -->
-            <div v-if="resolutionAction === 'CANCEL'" class="flex flex-center q-pa-sm">
+            <div
+              v-if="resolutionAction === 'CANCEL'"
+              class="flex flex-center q-pa-sm"
+            >
               <div class="text-center">
-                <q-icon name="warning" color="negative" size="md" />
-                <div class="text-subtitle2 text-negative">Xác nhận hủy yêu cầu</div>
-                <div class="text-caption">Yêu cầu phân bổ cho LSX này sẽ bị loại bỏ khỏi danh sách.</div>
+                <q-icon
+                  name="warning"
+                  color="negative"
+                  size="md"
+                />
+                <div class="text-subtitle2 text-negative">
+                  Xác nhận hủy yêu cầu
+                </div>
+                <div class="text-caption">
+                  Yêu cầu phân bổ cho LSX này sẽ bị loại bỏ khỏi danh sách.
+                </div>
               </div>
             </div>
 
             <!-- Escalate -->
-            <div v-if="resolutionAction === 'ESCALATE'" class="flex flex-center q-pa-sm">
+            <div
+              v-if="resolutionAction === 'ESCALATE'"
+              class="flex flex-center q-pa-sm"
+            >
               <div class="text-center">
-                <q-icon name="assignment_late" color="orange" size="md" />
-                <div class="text-subtitle2 text-orange-9">Báo cáo lên cấp trên</div>
-                <div class="text-caption">Gửi thông báo cho quản lý kho/sản xuất để xin ý kiến chỉ đạo.</div>
+                <q-icon
+                  name="assignment_late"
+                  color="orange"
+                  size="md"
+                />
+                <div class="text-subtitle2 text-orange-9">
+                  Báo cáo lên cấp trên
+                </div>
+                <div class="text-caption">
+                  Gửi thông báo cho quản lý kho/sản xuất để xin ý kiến chỉ đạo.
+                </div>
               </div>
             </div>
           </q-card-section>

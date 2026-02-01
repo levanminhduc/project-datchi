@@ -103,7 +103,9 @@ const onCancel = () => {
               </q-item-section>
               <q-item-section>
                 <q-item-label>{{ opt.code }} - {{ opt.name }}</q-item-label>
-                <q-item-label caption>{{ opt.material }}</q-item-label>
+                <q-item-label caption>
+                  {{ opt.material }}
+                </q-item-label>
               </q-item-section>
             </q-item>
           </template>

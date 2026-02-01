@@ -1,23 +1,35 @@
 <template>
   <div :class="[inline ? 'row items-center no-wrap' : 'column']">
     <!-- Primary Weight -->
-    <span v-if="hasWeight" :class="sizeClass">
+    <span
+      v-if="hasWeight"
+      :class="sizeClass"
+    >
       {{ formatNumber(props.weightGrams!, 1) }} g
     </span>
 
     <!-- Separator for primary values if inline -->
-    <span v-if="inline && hasWeight && hasMeters" class="text-grey-6 q-mx-xs">
+    <span
+      v-if="inline && hasWeight && hasMeters"
+      class="text-grey-6 q-mx-xs"
+    >
       •
     </span>
 
     <!-- Primary Meters -->
-    <span v-if="hasMeters" :class="sizeClass">
+    <span
+      v-if="hasMeters"
+      :class="sizeClass"
+    >
       {{ formatNumber(props.quantityMeters!, 0) }} m
     </span>
 
     <!-- Calculated Weight -->
     <template v-if="calculatedWeight !== null">
-      <span v-if="inline" class="text-grey-6 q-mx-xs">•</span>
+      <span
+        v-if="inline"
+        class="text-grey-6 q-mx-xs"
+      >•</span>
       <span :class="['text-grey-6', !inline ? 'text-caption' : (size === 'sm' ? 'text-caption' : 'text-caption')]">
         <template v-if="!inline">≈ </template>
         {{ formatNumber(calculatedWeight, 1) }} g
@@ -27,7 +39,10 @@
 
     <!-- Calculated Meters -->
     <template v-if="calculatedMeters !== null">
-      <span v-if="inline" class="text-grey-6 q-mx-xs">•</span>
+      <span
+        v-if="inline"
+        class="text-grey-6 q-mx-xs"
+      >•</span>
       <span :class="['text-grey-6', !inline ? 'text-caption' : (size === 'sm' ? 'text-caption' : 'text-caption')]">
         <template v-if="!inline">≈ </template>
         {{ formatNumber(calculatedMeters, 0) }} m

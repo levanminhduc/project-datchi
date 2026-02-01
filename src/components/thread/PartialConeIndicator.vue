@@ -32,8 +32,15 @@ const label = computed(() => `${Math.round(props.percentage)}%`)
     :outline="percentage < 10"
   >
     <div class="row items-center no-wrap">
-      <q-icon :name="icon" size="14px" class="q-mr-xs" />
-      <span v-if="showLabel" class="text-weight-bold">{{ label }}</span>
+      <q-icon
+        :name="icon"
+        size="14px"
+        class="q-mr-xs"
+      />
+      <span
+        v-if="showLabel"
+        class="text-weight-bold"
+      >{{ label }}</span>
       <q-tooltip>
         Còn lại khoảng {{ label }} (cuộn dở)
       </q-tooltip>

@@ -1,9 +1,16 @@
 <template>
-  <q-card v-bind="$attrs" bordered>
+  <q-card
+    v-bind="$attrs"
+    bordered
+  >
     <q-card-section>
       <div class="row items-center justify-between q-mb-md">
         <div class="row items-center q-gutter-sm">
-          <q-icon name="warning" color="warning" size="24px" />
+          <q-icon
+            name="warning"
+            color="warning"
+            size="24px"
+          />
           <span class="text-h6">Xung đột cấp phát</span>
         </div>
         <q-badge
@@ -15,15 +22,26 @@
       </div>
 
       <!-- Empty State -->
-      <div v-if="conflictCount === 0" class="text-center q-py-md">
-        <q-icon name="check_circle" color="positive" size="48px" />
+      <div
+        v-if="conflictCount === 0"
+        class="text-center q-py-md"
+      >
+        <q-icon
+          name="check_circle"
+          color="positive"
+          size="48px"
+        />
         <div class="text-subtitle2 text-grey q-mt-sm">
           Không có xung đột
         </div>
       </div>
 
       <!-- Conflicts List -->
-      <q-list v-else separator dense>
+      <q-list
+        v-else
+        separator
+        dense
+      >
         <q-item
           v-for="conflict in topConflicts"
           :key="conflict.id"
@@ -31,14 +49,24 @@
           @click="viewConflict(conflict)"
         >
           <q-item-section avatar>
-            <q-avatar color="negative" text-color="white" size="32px">
-              <q-icon name="priority_high" size="18px" />
+            <q-avatar
+              color="negative"
+              text-color="white"
+              size="32px"
+            >
+              <q-icon
+                name="priority_high"
+                size="18px"
+              />
             </q-avatar>
           </q-item-section>
 
           <q-item-section>
             <q-item-label>{{ conflict.thread_type_name || conflict.thread_type_code }}</q-item-label>
-            <q-item-label caption class="text-negative">
+            <q-item-label
+              caption
+              class="text-negative"
+            >
               Thiếu {{ formatNumber(conflict.shortage) }}m
             </q-item-label>
           </q-item-section>

@@ -1,9 +1,14 @@
 <template>
-  <q-page padding class="recovery-page">
+  <q-page
+    padding
+    class="recovery-page"
+  >
     <!-- Page Header -->
     <div class="row items-center q-mb-md">
       <div class="col">
-        <h1 class="text-h4 q-my-none">Hoàn Trả Chỉ Dư</h1>
+        <h1 class="text-h4 q-my-none">
+          Hoàn Trả Chỉ Dư
+        </h1>
       </div>
       <div class="col-auto">
         <AppButton
@@ -47,16 +52,34 @@
 
     <!-- Workflow Summary Cards -->
     <div class="row q-col-gutter-md q-mb-lg">
-      <div v-for="(step, index) in workflowSteps" :key="index" class="col-12 col-sm-4">
-        <q-card flat bordered class="workflow-card">
+      <div
+        v-for="(step, index) in workflowSteps"
+        :key="index"
+        class="col-12 col-sm-4"
+      >
+        <q-card
+          flat
+          bordered
+          class="workflow-card"
+        >
           <q-card-section class="row items-center no-wrap">
             <div class="col">
-              <div class="text-overline text-secondary">{{ step.overline }}</div>
-              <div class="text-h6">{{ step.title }}</div>
-              <div class="text-caption text-secondary">{{ step.description }}</div>
+              <div class="text-overline text-secondary">
+                {{ step.overline }}
+              </div>
+              <div class="text-h6">
+                {{ step.title }}
+              </div>
+              <div class="text-caption text-secondary">
+                {{ step.description }}
+              </div>
             </div>
             <div class="col-auto">
-              <q-avatar :color="step.color" text-color="white" :icon="step.icon" />
+              <q-avatar
+                :color="step.color"
+                text-color="white"
+                :icon="step.icon"
+              />
             </div>
           </q-card-section>
         </q-card>
@@ -102,35 +125,57 @@
           <span v-if="props.row.returned_weight_grams">
             {{ formatNumber(props.row.returned_weight_grams) }}g
           </span>
-          <span v-else class="text-hint">—</span>
+          <span
+            v-else
+            class="text-hint"
+          >—</span>
         </q-td>
       </template>
 
       <!-- Remaining Meters Column -->
       <template #body-cell-remaining_meters="props">
         <q-td :props="props">
-          <span v-if="props.row.calculated_meters" class="text-weight-bold">
+          <span
+            v-if="props.row.calculated_meters"
+            class="text-weight-bold"
+          >
             {{ formatNumber(props.row.calculated_meters) }}m
           </span>
-          <span v-else class="text-hint">—</span>
+          <span
+            v-else
+            class="text-hint"
+          >—</span>
         </q-td>
       </template>
 
       <!-- Consumed Meters Column -->
       <template #body-cell-consumed_meters="props">
         <q-td :props="props">
-          <span v-if="props.row.consumption_meters" class="text-negative">
+          <span
+            v-if="props.row.consumption_meters"
+            class="text-negative"
+          >
             -{{ formatNumber(props.row.consumption_meters) }}m
           </span>
-          <span v-else class="text-hint">—</span>
+          <span
+            v-else
+            class="text-hint"
+          >—</span>
         </q-td>
       </template>
 
       <!-- Status Column -->
       <template #body-cell-status="props">
         <q-td :props="props">
-          <q-badge :color="getStatusConfig(props.row.status).color" class="q-pa-xs">
-            <q-icon :name="getStatusConfig(props.row.status).icon" size="14px" class="q-mr-xs" />
+          <q-badge
+            :color="getStatusConfig(props.row.status).color"
+            class="q-pa-xs"
+          >
+            <q-icon
+              :name="getStatusConfig(props.row.status).icon"
+              size="14px"
+              class="q-mr-xs"
+            />
             {{ getStatusConfig(props.row.status).label }}
           </q-badge>
         </q-td>
@@ -138,7 +183,10 @@
 
       <!-- Actions Column -->
       <template #body-cell-actions="props">
-        <q-td :props="props" class="text-right">
+        <q-td
+          :props="props"
+          class="text-right"
+        >
           <div class="row justify-end q-gutter-xs">
             <!-- Details -->
             <IconButton
@@ -181,9 +229,17 @@
       <!-- Empty State -->
       <template #no-data>
         <div class="full-width q-pa-xl text-center text-secondary">
-          <q-icon name="inventory_2" size="64px" class="q-mb-md" />
-          <div class="text-h6">Không tìm thấy bản ghi hoàn trả nào</div>
-          <div class="text-caption">Hãy thử thay đổi bộ lọc hoặc quét mã mới</div>
+          <q-icon
+            name="inventory_2"
+            size="64px"
+            class="q-mb-md"
+          />
+          <div class="text-h6">
+            Không tìm thấy bản ghi hoàn trả nào
+          </div>
+          <div class="text-caption">
+            Hãy thử thay đổi bộ lọc hoặc quét mã mới
+          </div>
         </div>
       </template>
     </q-table>
@@ -225,11 +281,20 @@
       :loading="isLoading"
       @submit="handleWeighSubmit"
     >
-      <div v-if="weighDialog.recovery" class="q-gutter-y-md">
+      <div
+        v-if="weighDialog.recovery"
+        class="q-gutter-y-md"
+      >
         <!-- Cone Info Summary -->
-        <q-banner dense class="bg-blue-1 text-blue-9 rounded-borders">
+        <q-banner
+          dense
+          class="bg-blue-1 text-blue-9 rounded-borders"
+        >
           <template #avatar>
-            <q-icon name="info" color="blue" />
+            <q-icon
+              name="info"
+              color="blue"
+            />
           </template>
           <div class="text-weight-bold">
             {{ weighDialog.recovery.cone?.thread_type?.name }}
@@ -254,7 +319,10 @@
         </AppInput>
 
         <!-- Calculation Display -->
-        <div v-if="weighDialog.weight" class="bg-surface q-pa-md rounded-borders">
+        <div
+          v-if="weighDialog.weight"
+          class="bg-surface q-pa-md rounded-borders"
+        >
           <div class="row justify-between q-mb-xs">
             <span>Mét còn lại dự kiến:</span>
             <span class="text-weight-bold text-primary">{{ formatNumber(calculatedMeters) }}m</span>
@@ -263,8 +331,14 @@
             <span>Lượng đã tiêu thụ:</span>
             <span class="text-weight-bold text-negative">{{ formatNumber(calculatedConsumption) }}m</span>
           </div>
-          <div v-if="weighDialog.weight < 50" class="text-caption text-negative q-mt-sm">
-            <q-icon name="warning" size="14px" /> Trọng lượng thấp (&lt;50g), hệ thống sẽ gợi ý loại bỏ.
+          <div
+            v-if="weighDialog.weight < 50"
+            class="text-caption text-negative q-mt-sm"
+          >
+            <q-icon
+              name="warning"
+              size="14px"
+            /> Trọng lượng thấp (&lt;50g), hệ thống sẽ gợi ý loại bỏ.
           </div>
         </div>
 
@@ -284,15 +358,26 @@
       :loading="isLoading"
       @submit="handleWriteOffSubmit"
     >
-      <div v-if="writeOffDialog.recovery" class="q-gutter-y-md">
-        <q-banner dense class="bg-red-1 text-red-9 rounded-borders">
+      <div
+        v-if="writeOffDialog.recovery"
+        class="q-gutter-y-md"
+      >
+        <q-banner
+          dense
+          class="bg-red-1 text-red-9 rounded-borders"
+        >
           <template #avatar>
-            <q-icon name="warning" color="negative" />
+            <q-icon
+              name="warning"
+              color="negative"
+            />
           </template>
           <b>Cảnh báo:</b> Thao tác này sẽ loại bỏ vĩnh viễn cuộn chỉ khỏi danh sách sử dụng.
         </q-banner>
 
-        <div class="text-subtitle2 q-mb-xs">Thông tin cuộn:</div>
+        <div class="text-subtitle2 q-mb-xs">
+          Thông tin cuộn:
+        </div>
         <div class="bg-surface q-pa-sm rounded-borders">
           <div>Loại: {{ writeOffDialog.recovery.cone?.thread_type?.name }}</div>
           <div>Mã: {{ writeOffDialog.recovery.cone?.cone_id }}</div>
@@ -325,21 +410,37 @@
       title="Chi Tiết Hoàn Trả"
       width="600px"
     >
-      <div v-if="detailDialog.recovery" class="q-pa-md">
+      <div
+        v-if="detailDialog.recovery"
+        class="q-pa-md"
+      >
         <div class="row q-col-gutter-md">
           <!-- Cone Info Section -->
           <div class="col-12">
-            <div class="text-subtitle1 text-weight-bold q-mb-sm">Thông tin cuộn chỉ</div>
-            <q-list bordered separator padding class="rounded-borders">
+            <div class="text-subtitle1 text-weight-bold q-mb-sm">
+              Thông tin cuộn chỉ
+            </div>
+            <q-list
+              bordered
+              separator
+              padding
+              class="rounded-borders"
+            >
               <q-item>
                 <q-item-section>
-                  <q-item-label caption>Mã Barcode</q-item-label>
-                  <q-item-label class="text-weight-medium">{{ detailDialog.recovery.cone?.cone_id }}</q-item-label>
+                  <q-item-label caption>
+                    Mã Barcode
+                  </q-item-label>
+                  <q-item-label class="text-weight-medium">
+                    {{ detailDialog.recovery.cone?.cone_id }}
+                  </q-item-label>
                 </q-item-section>
               </q-item>
               <q-item>
                 <q-item-section>
-                  <q-item-label caption>Loại chỉ</q-item-label>
+                  <q-item-label caption>
+                    Loại chỉ
+                  </q-item-label>
                   <q-item-label class="row items-center">
                     <q-badge
                       rounded
@@ -356,20 +457,36 @@
 
           <!-- Statistics Section -->
           <div class="col-12">
-            <div class="text-subtitle1 text-weight-bold q-mb-sm">Thông số đo đạc</div>
+            <div class="text-subtitle1 text-weight-bold q-mb-sm">
+              Thông số đo đạc
+            </div>
             <div class="row q-col-gutter-sm">
               <div class="col-6">
-                <q-card flat bordered class="bg-surface">
+                <q-card
+                  flat
+                  bordered
+                  class="bg-surface"
+                >
                   <q-card-section class="q-pa-sm">
-                    <div class="text-caption text-secondary">Mét gốc</div>
-                    <div class="text-h6">{{ formatNumber(detailDialog.recovery.original_meters) }}m</div>
+                    <div class="text-caption text-secondary">
+                      Mét gốc
+                    </div>
+                    <div class="text-h6">
+                      {{ formatNumber(detailDialog.recovery.original_meters) }}m
+                    </div>
                   </q-card-section>
                 </q-card>
               </div>
               <div class="col-6">
-                <q-card flat bordered class="bg-surface">
+                <q-card
+                  flat
+                  bordered
+                  class="bg-surface"
+                >
                   <q-card-section class="q-pa-sm">
-                    <div class="text-caption text-secondary">Trọng lượng (net)</div>
+                    <div class="text-caption text-secondary">
+                      Trọng lượng (net)
+                    </div>
                     <div class="text-h6">
                       {{ detailDialog.recovery.returned_weight_grams ? formatNumber(detailDialog.recovery.returned_weight_grams) + 'g' : '—' }}
                     </div>
@@ -377,9 +494,15 @@
                 </q-card>
               </div>
               <div class="col-6">
-                <q-card flat bordered class="bg-primary text-white">
+                <q-card
+                  flat
+                  bordered
+                  class="bg-primary text-white"
+                >
                   <q-card-section class="q-pa-sm">
-                    <div class="text-caption text-blue-1">Mét còn lại</div>
+                    <div class="text-caption text-blue-1">
+                      Mét còn lại
+                    </div>
                     <div class="text-h6">
                       {{ detailDialog.recovery.remaining_meters ? formatNumber(detailDialog.recovery.remaining_meters) + 'm' : '—' }}
                     </div>
@@ -387,9 +510,15 @@
                 </q-card>
               </div>
               <div class="col-6">
-                <q-card flat bordered class="bg-negative text-white">
+                <q-card
+                  flat
+                  bordered
+                  class="bg-negative text-white"
+                >
                   <q-card-section class="q-pa-sm">
-                    <div class="text-caption text-red-1">Đã tiêu thụ</div>
+                    <div class="text-caption text-red-1">
+                      Đã tiêu thụ
+                    </div>
                     <div class="text-h6">
                       {{ detailDialog.recovery.consumed_meters ? formatNumber(detailDialog.recovery.consumed_meters) + 'm' : '—' }}
                     </div>
@@ -401,11 +530,20 @@
 
           <!-- History Section -->
           <div class="col-12">
-            <div class="text-subtitle1 text-weight-bold q-mb-sm">Trạng thái & Lịch sử</div>
-            <q-list bordered separator padding class="rounded-borders">
+            <div class="text-subtitle1 text-weight-bold q-mb-sm">
+              Trạng thái & Lịch sử
+            </div>
+            <q-list
+              bordered
+              separator
+              padding
+              class="rounded-borders"
+            >
               <q-item>
                 <q-item-section>
-                  <q-item-label caption>Trạng thái hiện tại</q-item-label>
+                  <q-item-label caption>
+                    Trạng thái hiện tại
+                  </q-item-label>
                   <q-item-label>
                     <q-badge :color="getStatusConfig(detailDialog.recovery.status).color">
                       {{ getStatusConfig(detailDialog.recovery.status).label }}
@@ -415,22 +553,30 @@
               </q-item>
               <q-item v-if="detailDialog.recovery.returned_by">
                 <q-item-section>
-                  <q-item-label caption>Người khởi tạo</q-item-label>
+                  <q-item-label caption>
+                    Người khởi tạo
+                  </q-item-label>
                   <q-item-label>{{ detailDialog.recovery.returned_by }}</q-item-label>
                 </q-item-section>
                 <q-item-section side>
-                  <q-item-label caption>{{ formatDate(detailDialog.recovery.created_at) }}</q-item-label>
+                  <q-item-label caption>
+                    {{ formatDate(detailDialog.recovery.created_at) }}
+                  </q-item-label>
                 </q-item-section>
               </q-item>
               <q-item v-if="detailDialog.recovery.weighed_by">
                 <q-item-section>
-                  <q-item-label caption>Người cân</q-item-label>
+                  <q-item-label caption>
+                    Người cân
+                  </q-item-label>
                   <q-item-label>{{ detailDialog.recovery.weighed_by }}</q-item-label>
                 </q-item-section>
               </q-item>
               <q-item v-if="detailDialog.recovery.notes">
                 <q-item-section>
-                  <q-item-label caption>Ghi chú</q-item-label>
+                  <q-item-label caption>
+                    Ghi chú
+                  </q-item-label>
                   <q-item-label>{{ detailDialog.recovery.notes }}</q-item-label>
                 </q-item-section>
               </q-item>
@@ -439,7 +585,12 @@
         </div>
       </div>
       <template #actions>
-        <AppButton label="Đóng" flat color="grey-7" v-close-popup />
+        <AppButton
+          v-close-popup
+          label="Đóng"
+          flat
+          color="grey-7"
+        />
         <AppButton 
           v-if="canWeigh(detailDialog.recovery?.status)"
           label="Cân Ngay" 

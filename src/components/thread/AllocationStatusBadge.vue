@@ -45,7 +45,12 @@ const sizeClass = computed(() => {
     :class="sizeClass"
     class="allocation-status-badge"
   >
-    <q-icon v-if="showIcon" :name="config.icon" size="xs" class="q-mr-xs" />
+    <q-icon
+      v-if="showIcon"
+      :name="config.icon"
+      size="xs"
+      class="q-mr-xs"
+    />
     {{ config.label }}
   </q-badge>
 </template>

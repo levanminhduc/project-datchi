@@ -1,7 +1,10 @@
 <template>
   <q-layout view="hHh lpR fFf">
     <!-- Header -->
-    <q-header elevated class="bg-primary">
+    <q-header
+      elevated
+      class="bg-primary"
+    >
       <q-toolbar>
         <q-btn
           flat
@@ -23,12 +26,24 @@
         >
           <q-menu>
             <q-list>
-              <q-item clickable v-close-popup @click="$router.push('/thread/dashboard')">
-                <q-item-section avatar><q-icon name="dashboard" /></q-item-section>
+              <q-item
+                v-close-popup
+                clickable
+                @click="$router.push('/thread/dashboard')"
+              >
+                <q-item-section avatar>
+                  <q-icon name="dashboard" />
+                </q-item-section>
                 <q-item-section>Dashboard</q-item-section>
               </q-item>
-              <q-item clickable v-close-popup @click="toggleDarkMode">
-                <q-item-section avatar><q-icon name="dark_mode" /></q-item-section>
+              <q-item
+                v-close-popup
+                clickable
+                @click="toggleDarkMode"
+              >
+                <q-item-section avatar>
+                  <q-icon name="dark_mode" />
+                </q-item-section>
                 <q-item-section>Chế độ tối</q-item-section>
               </q-item>
             </q-list>
@@ -43,7 +58,10 @@
     </q-page-container>
 
     <!-- Bottom Navigation -->
-    <q-footer elevated class="text-grey-8">
+    <q-footer
+      elevated
+      class="text-grey-8"
+    >
       <q-tabs
         v-model="activeTab"
         class="mobile-nav"

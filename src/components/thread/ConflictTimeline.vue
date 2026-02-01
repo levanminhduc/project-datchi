@@ -83,7 +83,12 @@ const getAllocationMetrics = (index: number) => {
 <template>
   <div class="conflict-timeline q-pa-md">
     <div class="text-subtitle1 q-mb-md flex items-center">
-      <q-icon name="history" color="primary" size="sm" class="q-mr-sm" />
+      <q-icon
+        name="history"
+        color="primary"
+        size="sm"
+        class="q-mr-sm"
+      />
       Dòng thời gian ưu tiên phân bổ
     </div>
 
@@ -102,10 +107,18 @@ const getAllocationMetrics = (index: number) => {
           <div class="row items-center justify-between no-wrap">
             <span class="text-weight-bold text-primary">LSX: {{ alloc.order_id }}</span>
             <div class="row items-center q-gutter-x-xs">
-              <q-chip size="sm" color="blue-1" text-color="blue-9" dense>
+              <q-chip
+                size="sm"
+                color="blue-1"
+                text-color="blue-9"
+                dense
+              >
                 Ưu tiên: {{ alloc.priority_score }}
               </q-chip>
-              <AllocationStatusBadge :status="alloc.status" size="sm" />
+              <AllocationStatusBadge
+                :status="alloc.status"
+                size="sm"
+              />
             </div>
           </div>
         </template>
@@ -117,31 +130,56 @@ const getAllocationMetrics = (index: number) => {
         <div>
           <div class="row q-col-gutter-sm text-caption">
             <div class="col-6">
-              <div class="text-grey-7">Yêu cầu:</div>
-              <div class="text-weight-medium">{{ formatQty(alloc.requested_meters) }}</div>
+              <div class="text-grey-7">
+                Yêu cầu:
+              </div>
+              <div class="text-weight-medium">
+                {{ formatQty(alloc.requested_meters) }}
+              </div>
             </div>
             <div class="col-6">
-              <div class="text-grey-7">Đã cấp:</div>
-              <div class="text-weight-medium">{{ formatQty(alloc.allocated_meters) }}</div>
+              <div class="text-grey-7">
+                Đã cấp:
+              </div>
+              <div class="text-weight-medium">
+                {{ formatQty(alloc.allocated_meters) }}
+              </div>
             </div>
           </div>
 
-          <div v-if="getAllocationMetrics(index).isShortage" class="shortage-warning q-mt-sm q-pa-xs bg-red-1 border-red rounded-borders">
+          <div
+            v-if="getAllocationMetrics(index).isShortage"
+            class="shortage-warning q-mt-sm q-pa-xs bg-red-1 border-red rounded-borders"
+          >
             <div class="row items-center text-red-9">
-              <q-icon name="warning" size="xs" class="q-mr-xs" />
+              <q-icon
+                name="warning"
+                size="xs"
+                class="q-mr-xs"
+              />
               <span class="text-weight-bold">Thiếu: {{ formatQty(getAllocationMetrics(index).shortageAmount) }}</span>
             </div>
           </div>
 
-          <div v-if="alloc.notes" class="text-italic text-grey-8 q-mt-xs ellipsis-2-lines text-caption">
+          <div
+            v-if="alloc.notes"
+            class="text-italic text-grey-8 q-mt-xs ellipsis-2-lines text-caption"
+          >
             "{{ alloc.notes }}"
           </div>
         </div>
       </q-timeline-entry>
     </q-timeline>
     
-    <div v-if="sortedAllocations.length === 0" class="flex flex-center q-pa-xl text-grey-6">
-      <q-icon name="event_busy" size="lg" class="q-mb-sm" />
+    <div
+      v-if="sortedAllocations.length === 0"
+      class="flex flex-center q-pa-xl text-grey-6"
+    >
+      <q-icon
+        name="event_busy"
+        size="lg"
+        class="q-mb-sm"
+      />
       <div>Không có dữ liệu phân bổ</div>
     </div>
   </div>

@@ -73,7 +73,10 @@ const getStepLabel = (step: typeof steps[0], index: number) => {
 
 <template>
   <div class="recovery-timeline q-pa-sm">
-    <q-timeline color="primary" layout="dense">
+    <q-timeline
+      color="primary"
+      layout="dense"
+    >
       <q-timeline-entry
         v-for="(step, index) in steps"
         :key="step.status"
@@ -82,22 +85,40 @@ const getStepLabel = (step: typeof steps[0], index: number) => {
         :color="getStepColor(index)"
       >
         <template #default>
-          <div v-if="index === 0" class="text-caption">
+          <div
+            v-if="index === 0"
+            class="text-caption"
+          >
             Người trả: {{ recovery.returned_by || 'N/A' }}
-            <div class="text-grey-6">{{ formatDate(recovery.created_at) }}</div>
+            <div class="text-grey-6">
+              {{ formatDate(recovery.created_at) }}
+            </div>
           </div>
           
-          <div v-else-if="index === 2 && recovery.weighed_by" class="text-caption">
+          <div
+            v-else-if="index === 2 && recovery.weighed_by"
+            class="text-caption"
+          >
             Người cân: {{ recovery.weighed_by }}
-            <div class="text-grey-6">{{ formatDate(recovery.updated_at) }}</div>
+            <div class="text-grey-6">
+              {{ formatDate(recovery.updated_at) }}
+            </div>
           </div>
           
-          <div v-else-if="index === 3 && recovery.confirmed_by" class="text-caption">
+          <div
+            v-else-if="index === 3 && recovery.confirmed_by"
+            class="text-caption"
+          >
             Xác nhận: {{ recovery.confirmed_by }}
-            <div class="text-grey-6">{{ formatDate(recovery.updated_at) }}</div>
+            <div class="text-grey-6">
+              {{ formatDate(recovery.updated_at) }}
+            </div>
           </div>
 
-          <div v-if="index === currentStepIndex && recovery.notes" class="text-caption italic q-mt-xs">
+          <div
+            v-if="index === currentStepIndex && recovery.notes"
+            class="text-caption italic q-mt-xs"
+          >
             "{{ recovery.notes }}"
           </div>
         </template>

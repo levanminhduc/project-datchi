@@ -402,7 +402,9 @@
         style="width: 700px; max-width: 90vw"
       >
         <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">Chi Tiết Loại Chỉ</div>
+          <div class="text-h6">
+            Chi Tiết Loại Chỉ
+          </div>
           <q-space />
           <q-btn
             v-close-popup
@@ -416,62 +418,104 @@
         <q-card-section class="q-pa-md">
           <div class="row q-col-gutter-sm">
             <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">Mã loại chỉ</div>
-              <div class="text-subtitle1 text-weight-medium">{{ detailDialog.threadType.code }}</div>
+              <div class="text-caption text-grey-7">
+                Mã loại chỉ
+              </div>
+              <div class="text-subtitle1 text-weight-medium">
+                {{ detailDialog.threadType.code }}
+              </div>
             </div>
             <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">Tên loại chỉ</div>
-              <div class="text-subtitle1 text-weight-medium">{{ detailDialog.threadType.name }}</div>
+              <div class="text-caption text-grey-7">
+                Tên loại chỉ
+              </div>
+              <div class="text-subtitle1 text-weight-medium">
+                {{ detailDialog.threadType.name }}
+              </div>
             </div>
             
             <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">Màu sắc</div>
+              <div class="text-caption text-grey-7">
+                Màu sắc
+              </div>
               <div class="row items-center q-gutter-x-sm">
                 <div
                   v-if="detailDialog.threadType.color_code"
                   class="color-indicator shadow-1"
                   :style="{ backgroundColor: detailDialog.threadType.color_code }"
                 />
-                <div class="text-subtitle1">{{ detailDialog.threadType.color || '---' }}</div>
+                <div class="text-subtitle1">
+                  {{ detailDialog.threadType.color || '---' }}
+                </div>
               </div>
             </div>
             <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">Chất liệu</div>
-              <div class="text-subtitle1">{{ getMaterialLabel(detailDialog.threadType.material) }}</div>
+              <div class="text-caption text-grey-7">
+                Chất liệu
+              </div>
+              <div class="text-subtitle1">
+                {{ getMaterialLabel(detailDialog.threadType.material) }}
+              </div>
             </div>
 
             <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">Mật độ (g/m)</div>
-              <div class="text-subtitle1 font-mono">{{ detailDialog.threadType.density_grams_per_meter }}</div>
+              <div class="text-caption text-grey-7">
+                Mật độ (g/m)
+              </div>
+              <div class="text-subtitle1 font-mono">
+                {{ detailDialog.threadType.density_grams_per_meter }}
+              </div>
             </div>
             <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">Số Tex</div>
-              <div class="text-subtitle1">{{ detailDialog.threadType.tex_number || '---' }}</div>
+              <div class="text-caption text-grey-7">
+                Số Tex
+              </div>
+              <div class="text-subtitle1">
+                {{ detailDialog.threadType.tex_number || '---' }}
+              </div>
             </div>
 
             <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">Mét mỗi ống</div>
-              <div class="text-subtitle1">{{ detailDialog.threadType.meters_per_cone ? detailDialog.threadType.meters_per_cone.toLocaleString() + ' m' : '---' }}</div>
+              <div class="text-caption text-grey-7">
+                Mét mỗi ống
+              </div>
+              <div class="text-subtitle1">
+                {{ detailDialog.threadType.meters_per_cone ? detailDialog.threadType.meters_per_cone.toLocaleString() + ' m' : '---' }}
+              </div>
             </div>
             <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">Nhà cung cấp</div>
-              <div class="text-subtitle1">{{ detailDialog.threadType.supplier || '---' }}</div>
+              <div class="text-caption text-grey-7">
+                Nhà cung cấp
+              </div>
+              <div class="text-subtitle1">
+                {{ detailDialog.threadType.supplier || '---' }}
+              </div>
             </div>
 
             <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">Mức tái đặt</div>
-              <div class="text-subtitle1">{{ detailDialog.threadType.reorder_level_meters.toLocaleString() }} m</div>
+              <div class="text-caption text-grey-7">
+                Mức tái đặt
+              </div>
+              <div class="text-subtitle1">
+                {{ detailDialog.threadType.reorder_level_meters.toLocaleString() }} m
+              </div>
             </div>
             <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">Thời gian giao hàng</div>
-              <div class="text-subtitle1">{{ detailDialog.threadType.lead_time_days }} ngày</div>
+              <div class="text-caption text-grey-7">
+                Thời gian giao hàng
+              </div>
+              <div class="text-subtitle1">
+                {{ detailDialog.threadType.lead_time_days }} ngày
+              </div>
             </div>
 
             <div class="col-12">
               <q-separator q-my-sm />
               <div class="row justify-between items-center">
                 <div>
-                  <div class="text-caption text-grey-7">Trạng thái</div>
+                  <div class="text-caption text-grey-7">
+                    Trạng thái
+                  </div>
                   <q-badge :color="detailDialog.threadType.is_active ? 'positive' : 'negative'">
                     {{ detailDialog.threadType.is_active ? 'Hoạt động' : 'Ngừng' }}
                   </q-badge>

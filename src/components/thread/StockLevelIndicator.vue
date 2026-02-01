@@ -5,12 +5,22 @@
     @click="handleClick"
   >
     <!-- Traffic Light Icon -->
-    <q-avatar :size="size" :color="indicatorColor" text-color="white">
-      <q-icon :name="indicatorIcon" :size="iconSize" />
+    <q-avatar
+      :size="size"
+      :color="indicatorColor"
+      text-color="white"
+    >
+      <q-icon
+        :name="indicatorIcon"
+        :size="iconSize"
+      />
     </q-avatar>
 
     <!-- Info -->
-    <div v-if="showDetails" class="column">
+    <div
+      v-if="showDetails"
+      class="column"
+    >
       <span class="text-subtitle2 text-weight-medium">{{ threadType }}</span>
       <div class="row items-center q-gutter-xs">
         <span :class="['text-caption', `text-${indicatorColor}`]">

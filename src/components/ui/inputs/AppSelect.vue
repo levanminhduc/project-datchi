@@ -2,7 +2,6 @@
   <q-select
     v-bind="$attrs"
     :model-value="modelValue"
-    @update:model-value="handleUpdateModelValue"
     :options="computedOptions"
     :option-value="optionValue"
     :option-label="optionLabel"
@@ -23,6 +22,7 @@
     :color="color"
     :loading="loading"
     :popup-content-class="popupContentClass"
+    @update:model-value="handleUpdateModelValue"
     :popup-content-style="popupContentStyle"
     :hide-dropdown-icon="hideDropdownIcon"
     :behavior="behavior"

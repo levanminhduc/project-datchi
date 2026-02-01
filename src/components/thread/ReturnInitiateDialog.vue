@@ -73,9 +73,16 @@ const onCancel = () => {
         placeholder="Quét hoặc nhập mã cuộn chỉ..."
       />
 
-      <div v-if="productionOrderId" class="q-px-sm">
-        <div class="text-caption text-grey-7">Lệnh sản xuất</div>
-        <div class="text-subtitle2">{{ productionOrderId }}</div>
+      <div
+        v-if="productionOrderId"
+        class="q-px-sm"
+      >
+        <div class="text-caption text-grey-7">
+          Lệnh sản xuất
+        </div>
+        <div class="text-subtitle2">
+          {{ productionOrderId }}
+        </div>
       </div>
 
       <AppSelect

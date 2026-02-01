@@ -58,18 +58,31 @@ const handleUseManual = () => {
         <div class="text-h6">
           {{ scale.isConnected.value ? 'Đã kết nối' : 'Chưa kết nối' }}
         </div>
-        <div v-if="scale.error.value" class="text-caption text-negative q-mt-xs">
+        <div
+          v-if="scale.error.value"
+          class="text-caption text-negative q-mt-xs"
+        >
           {{ scale.error.value }}
         </div>
-        <div v-else class="text-caption text-grey-7">
+        <div
+          v-else
+          class="text-caption text-grey-7"
+        >
           {{ scale.isConnected.value ? 'Đang nhận dữ liệu từ cân qua cổng Serial' : 'Vui lòng chọn cổng để kết nối với cân USB' }}
         </div>
       </div>
 
       <!-- Scale Display -->
-      <q-card v-if="scale.isConnected.value" flat bordered class="full-width bg-grey-2">
+      <q-card
+        v-if="scale.isConnected.value"
+        flat
+        bordered
+        class="full-width bg-grey-2"
+      >
         <q-card-section class="text-center">
-          <div class="text-caption text-grey-7">Trọng lượng hiện tại</div>
+          <div class="text-caption text-grey-7">
+            Trọng lượng hiện tại
+          </div>
           <div class="row justify-center items-end q-gutter-xs">
             <span class="text-h3 text-mono">
               {{ scale.currentWeight.value !== null ? scale.currentWeight.value.toFixed(1) : '---.-' }}

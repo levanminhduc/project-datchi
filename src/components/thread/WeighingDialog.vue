@@ -91,21 +91,40 @@ const onCancel = () => {
     @submit="onConfirm"
     @cancel="onCancel"
   >
-    <div v-if="recovery" class="column q-gutter-sm">
+    <div
+      v-if="recovery"
+      class="column q-gutter-sm"
+    >
       <!-- Info Section -->
-      <q-card flat bordered class="bg-grey-1">
+      <q-card
+        flat
+        bordered
+        class="bg-grey-1"
+      >
         <q-card-section class="q-py-sm">
           <div class="row justify-between items-center">
-            <div class="text-caption text-grey-7">Mã cuộn:</div>
-            <div class="text-weight-bold">{{ recovery.cone?.cone_id }}</div>
+            <div class="text-caption text-grey-7">
+              Mã cuộn:
+            </div>
+            <div class="text-weight-bold">
+              {{ recovery.cone?.cone_id }}
+            </div>
           </div>
           <div class="row justify-between items-center">
-            <div class="text-caption text-grey-7">Loại chỉ:</div>
-            <div class="text-subtitle2 text-primary">{{ threadType?.name || 'N/A' }}</div>
+            <div class="text-caption text-grey-7">
+              Loại chỉ:
+            </div>
+            <div class="text-subtitle2 text-primary">
+              {{ threadType?.name || 'N/A' }}
+            </div>
           </div>
           <div class="row justify-between items-center">
-            <div class="text-caption text-grey-7">Độ dài ban đầu:</div>
-            <div class="text-weight-medium">{{ recovery.original_meters.toLocaleString() }} m</div>
+            <div class="text-caption text-grey-7">
+              Độ dài ban đầu:
+            </div>
+            <div class="text-weight-medium">
+              {{ recovery.original_meters.toLocaleString() }} m
+            </div>
           </div>
         </q-card-section>
       </q-card>
@@ -127,7 +146,10 @@ const onCancel = () => {
       </div>
 
       <!-- Live Conversion -->
-      <div v-if="weight" class="q-pa-sm rounded-borders bg-blue-1 text-blue-9">
+      <div
+        v-if="weight"
+        class="q-pa-sm rounded-borders bg-blue-1 text-blue-9"
+      >
         <div class="row justify-between">
           <span>Độ dài còn lại ước tính:</span>
           <span class="text-weight-bold">{{ remainingMeters.toLocaleString() }} m</span>
@@ -139,9 +161,16 @@ const onCancel = () => {
       </div>
 
       <!-- Abnormal Warning -->
-      <q-banner v-if="isAbnormal" dense class="bg-amber-1 text-amber-9 rounded-borders">
+      <q-banner
+        v-if="isAbnormal"
+        dense
+        class="bg-amber-1 text-amber-9 rounded-borders"
+      >
         <template #avatar>
-          <q-icon name="warning" color="amber-9" />
+          <q-icon
+            name="warning"
+            color="amber-9"
+          />
         </template>
         Lượng tiêu thụ có vẻ bất thường (> 95% độ dài ban đầu).
       </q-banner>
@@ -153,7 +182,10 @@ const onCancel = () => {
       />
 
       <!-- Reject Section -->
-      <div v-if="showRejectInput" class="q-mt-sm">
+      <div
+        v-if="showRejectInput"
+        class="q-mt-sm"
+      >
         <AppInput
           v-model="rejectReason"
           label="Lý do từ chối"

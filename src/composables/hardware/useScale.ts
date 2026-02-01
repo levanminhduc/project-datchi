@@ -154,7 +154,7 @@ export function useScale() {
   const tare = async (): Promise<void> => {
     if (!port?.writable) return
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const writer = (port.writable as WritableStream<Uint8Array>).getWriter()
     try {
       // Common tare command

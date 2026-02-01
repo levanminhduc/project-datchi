@@ -1,8 +1,13 @@
 <template>
-  <q-card v-bind="$attrs" bordered>
+  <q-card
+    v-bind="$attrs"
+    bordered
+  >
     <q-card-section>
       <div class="row items-center justify-between q-mb-md">
-        <div class="text-h6">Tổng quan tồn kho</div>
+        <div class="text-h6">
+          Tổng quan tồn kho
+        </div>
         <q-btn
           flat
           round
@@ -47,7 +52,11 @@
           @click="emitFilter(status.key)"
         >
           <div class="row items-center no-wrap q-gutter-xs">
-            <q-badge :color="status.color" rounded class="q-pa-xs" />
+            <q-badge
+              :color="status.color"
+              rounded
+              class="q-pa-xs"
+            />
             <span class="text-caption">{{ status.label }}</span>
             <span class="text-caption text-weight-bold">
               {{ formatNumber(status.meters) }}m

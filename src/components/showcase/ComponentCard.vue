@@ -5,16 +5,25 @@
     class="component-card"
   >
     <q-card-section class="bg-grey-2 q-py-sm">
-      <div class="text-h6 text-weight-bold">{{ name }}</div>
-      <div class="text-caption text-grey-7">{{ description }}</div>
+      <div class="text-h6 text-weight-bold">
+        {{ name }}
+      </div>
+      <div class="text-caption text-grey-7">
+        {{ description }}
+      </div>
     </q-card-section>
 
     <q-card-section>
-      <div class="text-subtitle2 text-grey-8 q-mb-sm">Demo</div>
+      <div class="text-subtitle2 text-grey-8 q-mb-sm">
+        Demo
+      </div>
       <slot />
     </q-card-section>
 
-    <q-card-section v-if="props.length > 0" class="q-pt-none">
+    <q-card-section
+      v-if="props.length > 0"
+      class="q-pt-none"
+    >
       <q-expansion-item
         dense
         header-class="text-subtitle2 text-grey-8"
@@ -29,18 +38,33 @@
         >
           <thead>
             <tr class="bg-grey-2">
-              <th class="text-left">Prop</th>
-              <th class="text-left">Type</th>
-              <th class="text-left">Default</th>
-              <th class="text-left">Description</th>
+              <th class="text-left">
+                Prop
+              </th>
+              <th class="text-left">
+                Type
+              </th>
+              <th class="text-left">
+                Default
+              </th>
+              <th class="text-left">
+                Description
+              </th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="prop in props" :key="prop.name">
-              <td class="text-primary text-weight-medium">{{ prop.name }}</td>
+            <tr
+              v-for="prop in props"
+              :key="prop.name"
+            >
+              <td class="text-primary text-weight-medium">
+                {{ prop.name }}
+              </td>
               <td><code class="text-purple">{{ prop.type }}</code></td>
               <td><code class="text-orange">{{ prop.default }}</code></td>
-              <td class="text-grey-8">{{ prop.description }}</td>
+              <td class="text-grey-8">
+                {{ prop.description }}
+              </td>
             </tr>
           </tbody>
         </q-markup-table>

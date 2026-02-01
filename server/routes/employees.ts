@@ -340,12 +340,12 @@ employees.put('/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
-    // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (!uuidRegex.test(id)) {
+    // Validate numeric ID format (auto-increment integer)
+    const numericId = Number(id)
+    if (!Number.isInteger(numericId) || numericId <= 0) {
       return c.json<ApiResponse<null>>(
         { data: null, error: 'ID không hợp lệ' },
-        400
+        400,
       )
     }
 
@@ -419,12 +419,12 @@ employees.delete('/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
-    // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (!uuidRegex.test(id)) {
+    // Validate numeric ID format (auto-increment integer)
+    const numericId = Number(id)
+    if (!Number.isInteger(numericId) || numericId <= 0) {
       return c.json<ApiResponse<null>>(
         { data: null, error: 'ID không hợp lệ' },
-        400
+        400,
       )
     }
 

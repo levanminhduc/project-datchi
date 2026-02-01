@@ -1,9 +1,16 @@
 <template>
-  <q-card v-bind="$attrs" bordered>
+  <q-card
+    v-bind="$attrs"
+    bordered
+  >
     <q-card-section>
       <div class="row items-center justify-between q-mb-md">
         <div class="row items-center q-gutter-sm">
-          <q-icon name="pending_actions" color="primary" size="24px" />
+          <q-icon
+            name="pending_actions"
+            color="primary"
+            size="24px"
+          />
           <span class="text-h6">Đang chờ cấp phát</span>
         </div>
         <q-badge
@@ -15,25 +22,41 @@
       </div>
 
       <!-- Empty State -->
-      <div v-if="totalPending === 0" class="text-center q-py-md">
-        <q-icon name="done_all" color="positive" size="48px" />
+      <div
+        v-if="totalPending === 0"
+        class="text-center q-py-md"
+      >
+        <q-icon
+          name="done_all"
+          color="positive"
+          size="48px"
+        />
         <div class="text-subtitle2 text-grey q-mt-sm">
           Không có yêu cầu chờ xử lý
         </div>
       </div>
 
       <!-- Priority Groups -->
-      <div v-else class="column q-gutter-sm">
+      <div
+        v-else
+        class="column q-gutter-sm"
+      >
         <!-- High Priority -->
         <div
           v-if="priorityGroups.high > 0"
           class="priority-row row items-center justify-between q-pa-sm rounded-borders bg-red-1"
         >
           <div class="row items-center q-gutter-sm">
-            <q-icon name="keyboard_double_arrow_up" color="negative" />
+            <q-icon
+              name="keyboard_double_arrow_up"
+              color="negative"
+            />
             <span class="text-body2">Ưu tiên cao</span>
           </div>
-          <q-badge color="negative" :label="priorityGroups.high" />
+          <q-badge
+            color="negative"
+            :label="priorityGroups.high"
+          />
         </div>
 
         <!-- Medium Priority -->
@@ -42,10 +65,16 @@
           class="priority-row row items-center justify-between q-pa-sm rounded-borders bg-orange-1"
         >
           <div class="row items-center q-gutter-sm">
-            <q-icon name="remove" color="warning" />
+            <q-icon
+              name="remove"
+              color="warning"
+            />
             <span class="text-body2">Ưu tiên trung bình</span>
           </div>
-          <q-badge color="warning" :label="priorityGroups.medium" />
+          <q-badge
+            color="warning"
+            :label="priorityGroups.medium"
+          />
         </div>
 
         <!-- Low Priority -->
@@ -54,17 +83,29 @@
           class="priority-row row items-center justify-between q-pa-sm rounded-borders bg-blue-1"
         >
           <div class="row items-center q-gutter-sm">
-            <q-icon name="keyboard_double_arrow_down" color="info" />
+            <q-icon
+              name="keyboard_double_arrow_down"
+              color="info"
+            />
             <span class="text-body2">Ưu tiên thấp</span>
           </div>
-          <q-badge color="info" :label="priorityGroups.low" />
+          <q-badge
+            color="info"
+            :label="priorityGroups.low"
+          />
         </div>
 
         <!-- Oldest Pending -->
-        <div v-if="oldestPendingDate" class="q-mt-sm">
+        <div
+          v-if="oldestPendingDate"
+          class="q-mt-sm"
+        >
           <q-separator class="q-mb-sm" />
           <div class="row items-center q-gutter-xs text-caption text-grey">
-            <q-icon name="schedule" size="16px" />
+            <q-icon
+              name="schedule"
+              size="16px"
+            />
             <span>Yêu cầu cũ nhất: {{ formatDate(oldestPendingDate) }}</span>
           </div>
         </div>

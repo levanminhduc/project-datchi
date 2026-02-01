@@ -292,8 +292,7 @@
         <AppSelect
           v-model="formData.chuc_vu"
           label="Chức Vụ"
-          :options="positionOptions"
-          :loading="isLoadingPositions"
+          :options="chucVuOptions"
           clearable
           popup-content-class="z-max"
         >
@@ -552,7 +551,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { type QTableColumn } from 'quasar'
-import { useEmployees, useSnackbar, usePositions } from '@/composables'
+import { useEmployees, useSnackbar } from '@/composables'
 import type { Employee, EmployeeFormData } from '@/types'
 
 interface FormDialogState {
@@ -583,12 +582,6 @@ const {
   deleteEmployee,
 } = useEmployees()
 
-const {
-  positionOptions,
-  loading: isLoadingPositions,
-  fetchPositions,
-} = usePositions()
-
 // Local state
 const searchQuery = ref('')
 
@@ -615,9 +608,11 @@ const departmentOptions = computed(() => {
   return departments.sort().map(dept => ({ label: dept, value: dept }))
 })
 
-// Chức vụ options from usePositions composable
-// Use chucVuOptions for inline editing to maintain backward compatibility
-const chucVuOptions = computed(() => positionOptions.value)
+// Chức vụ options - computed from unique values in employees (same pattern as departmentOptions)
+const chucVuOptions = computed(() => {
+  const positions = [...new Set(employees.value.map(e => e.chuc_vu).filter(Boolean))]
+  return positions.sort().map(pos => ({ label: pos, value: pos }))
+})
 
 // Filtered options for department dropdown with use-input
 const filteredDepartmentOptions = ref<{ label: string; value: string }[]>([])
@@ -887,9 +882,8 @@ const formatDateTime = (dateString: string): string => {
 }
 
 onMounted(() => {
-  // Fetch employees and positions for dropdowns
+  // Fetch employees - chucVuOptions computed from loaded employees
   fetchEmployees()
-  fetchPositions()
 })
 </script>
 

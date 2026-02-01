@@ -173,10 +173,18 @@ const onCancel = () => {
             <q-item v-bind="scope.itemProps">
               <q-item-section>
                 <q-item-label>{{ scope.opt.name }}</q-item-label>
-                <q-item-label caption>{{ scope.opt.code }} - {{ scope.opt.color }}</q-item-label>
+                <q-item-label caption>
+                  {{ scope.opt.code }} - {{ scope.opt.color }}
+                </q-item-label>
               </q-item-section>
               <q-item-section side>
-                <q-chip size="xs" color="grey-2" dense>{{ scope.opt.material }}</q-chip>
+                <q-chip
+                  size="xs"
+                  color="grey-2"
+                  dense
+                >
+                  {{ scope.opt.material }}
+                </q-chip>
               </q-item-section>
             </q-item>
           </template>
@@ -184,10 +192,17 @@ const onCancel = () => {
       </div>
 
       <!-- Stock Info (Contextual) -->
-      <div v-if="selectedThreadType" class="col-12">
+      <div
+        v-if="selectedThreadType"
+        class="col-12"
+      >
         <div class="bg-blue-1 q-pa-sm rounded-borders flex items-center justify-between border-blue">
           <div class="row items-center">
-            <q-icon name="inventory_2" color="blue-9" class="q-mr-sm" />
+            <q-icon
+              name="inventory_2"
+              color="blue-9"
+              class="q-mr-sm"
+            />
             <span class="text-caption text-blue-9">Tồn kho khả dụng:</span>
             <span class="text-subtitle2 text-blue-9 q-ml-sm">{{ availableStock.toLocaleString() }} m</span>
           </div>
@@ -200,7 +215,9 @@ const onCancel = () => {
       <!-- Quantity Inputs -->
       <div class="col-12">
         <div class="row items-center justify-between q-mb-xs">
-          <div class="text-subtitle2">Số lượng yêu cầu</div>
+          <div class="text-subtitle2">
+            Số lượng yêu cầu
+          </div>
           <q-btn-toggle
             v-model="qtyMode"
             toggle-color="primary"

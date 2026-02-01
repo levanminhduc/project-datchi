@@ -1,5 +1,8 @@
 <template>
-  <q-page padding class="mobile-issue-page">
+  <q-page
+    padding
+    class="mobile-issue-page"
+  >
     <!-- Offline Sync Banner -->
     <OfflineSyncBanner @show-conflicts="showConflictDialog = true" />
 
@@ -24,7 +27,10 @@
       <q-card class="q-mb-md shadow-2 border-radius-md">
         <q-card-section>
           <div class="text-subtitle1 text-weight-medium q-mb-sm">
-            <q-icon name="assignment" class="q-mr-xs text-primary" />
+            <q-icon
+              name="assignment"
+              class="q-mr-xs text-primary"
+            />
             Quét Mã Đơn Phân Bổ
           </div>
           <q-input
@@ -46,18 +52,26 @@
 
     <!-- List Mode: Show pending allocations -->
     <template v-else>
-      <div class="text-subtitle2 q-mb-sm text-grey-8">Đơn chờ xuất xưởng</div>
-      <q-list separator bordered class="rounded-borders q-mb-md">
+      <div class="text-subtitle2 q-mb-sm text-grey-8">
+        Đơn chờ xuất xưởng
+      </div>
+      <q-list
+        separator
+        bordered
+        class="rounded-borders q-mb-md"
+      >
         <q-item
           v-for="alloc in pendingAllocations"
           :key="alloc.id"
-          clickable
           v-ripple
-          @click="selectAllocation(alloc)"
+          clickable
           :class="{ 'bg-blue-1': selectedAllocation?.id === alloc.id }"
+          @click="selectAllocation(alloc)"
         >
           <q-item-section>
-            <q-item-label class="text-weight-bold">{{ alloc.order_id }}</q-item-label>
+            <q-item-label class="text-weight-bold">
+              {{ alloc.order_id }}
+            </q-item-label>
             <q-item-label caption>
               {{ alloc.thread_type?.name }} - {{ alloc.requested_meters }}m
             </q-item-label>
@@ -71,14 +85,21 @@
         
         <q-item v-if="!pendingAllocations.length && !isLoading">
           <q-item-section class="text-center text-grey-6 q-pa-md">
-            <q-icon name="inbox" size="32px" class="q-mb-xs" />
+            <q-icon
+              name="inbox"
+              size="32px"
+              class="q-mb-xs"
+            />
             <div>Không có đơn chờ xuất</div>
           </q-item-section>
         </q-item>
 
         <q-item v-if="isLoading">
           <q-item-section class="text-center text-grey-6 q-pa-md">
-            <q-spinner-dots color="primary" size="2em" />
+            <q-spinner-dots
+              color="primary"
+              size="2em"
+            />
           </q-item-section>
         </q-item>
       </q-list>
@@ -90,34 +111,63 @@
       enter-active-class="animated fadeIn"
       leave-active-class="animated fadeOut"
     >
-      <q-card v-if="selectedAllocation" class="q-mb-md bg-primary-1 border-primary">
+      <q-card
+        v-if="selectedAllocation"
+        class="q-mb-md bg-primary-1 border-primary"
+      >
         <q-card-section class="q-pb-none">
           <div class="row items-center justify-between no-wrap">
             <div class="ellipsis">
-              <div class="text-h6 text-primary">{{ selectedAllocation.order_id }}</div>
+              <div class="text-h6 text-primary">
+                {{ selectedAllocation.order_id }}
+              </div>
               <div class="text-caption text-weight-medium">
                 {{ selectedAllocation.thread_type?.name }} •
                 {{ selectedAllocation.requested_meters }}m yêu cầu
               </div>
             </div>
-            <q-btn flat round dense icon="close" color="grey-7" @click="selectedAllocation = null" />
+            <q-btn
+              flat
+              round
+              dense
+              icon="close"
+              color="grey-7"
+              @click="selectedAllocation = null"
+            />
           </div>
         </q-card-section>
         
         <!-- Allocated Cones List -->
         <q-card-section v-if="selectedAllocation.allocated_cones?.length">
           <div class="text-subtitle2 q-mb-sm row items-center">
-            <q-icon name="list" class="q-mr-xs" />
+            <q-icon
+              name="list"
+              class="q-mr-xs"
+            />
             Cuộn đã phân bổ:
           </div>
-          <q-list dense separator class="rounded-borders">
-            <q-item v-for="ac in selectedAllocation.allocated_cones" :key="ac.id">
+          <q-list
+            dense
+            separator
+            class="rounded-borders"
+          >
+            <q-item
+              v-for="ac in selectedAllocation.allocated_cones"
+              :key="ac.id"
+            >
               <q-item-section avatar>
-                <q-icon name="inventory_2" color="primary" />
+                <q-icon
+                  name="inventory_2"
+                  color="primary"
+                />
               </q-item-section>
               <q-item-section>
-                <q-item-label class="text-weight-medium">{{ ac.cone?.cone_id }}</q-item-label>
-                <q-item-label caption>{{ ac.allocated_meters }}m</q-item-label>
+                <q-item-label class="text-weight-medium">
+                  {{ ac.cone?.cone_id }}
+                </q-item-label>
+                <q-item-label caption>
+                  {{ ac.allocated_meters }}m
+                </q-item-label>
               </q-item-section>
               <q-item-section side>
                 <q-icon
@@ -133,10 +183,16 @@
     </transition>
 
     <!-- Scan Cones Section -->
-    <q-card v-if="selectedAllocation" class="q-mb-md shadow-2 border-radius-md">
+    <q-card
+      v-if="selectedAllocation"
+      class="q-mb-md shadow-2 border-radius-md"
+    >
       <q-card-section>
         <div class="text-subtitle1 text-weight-medium q-mb-sm">
-          <q-icon name="qr_code_scanner" class="q-mr-xs text-primary" />
+          <q-icon
+            name="qr_code_scanner"
+            class="q-mr-xs text-primary"
+          />
           Quét Cuộn Chỉ Để Xuất
         </div>
         <q-input
@@ -169,7 +225,10 @@
     </q-card>
 
     <!-- Issue All Button -->
-    <div v-if="selectedAllocation" class="q-gutter-y-sm">
+    <div
+      v-if="selectedAllocation"
+      class="q-gutter-y-sm"
+    >
       <q-btn
         color="positive"
         size="lg"
@@ -182,7 +241,10 @@
         @click="handleIssueAllocation"
       />
       
-      <div v-if="!canIssue" class="text-caption text-negative text-center q-px-md">
+      <div
+        v-if="!canIssue"
+        class="text-caption text-negative text-center q-px-md"
+      >
         Vui lòng quét đủ tất cả các cuộn chỉ đã phân bổ trước khi xuất xưởng.
       </div>
     </div>

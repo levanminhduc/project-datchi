@@ -1,9 +1,16 @@
 <template>
-  <q-card v-bind="$attrs" bordered>
+  <q-card
+    v-bind="$attrs"
+    bordered
+  >
     <q-card-section>
       <div class="row items-center justify-between q-mb-md">
         <div class="row items-center q-gutter-sm">
-          <q-icon name="hourglass_empty" color="orange" size="24px" />
+          <q-icon
+            name="hourglass_empty"
+            color="orange"
+            size="24px"
+          />
           <span class="text-h6">Danh sách chờ</span>
         </div>
         <q-badge
@@ -15,15 +22,26 @@
       </div>
 
       <!-- Empty State -->
-      <div v-if="waitlistCount === 0" class="text-center q-py-md">
-        <q-icon name="playlist_add_check" color="positive" size="48px" />
+      <div
+        v-if="waitlistCount === 0"
+        class="text-center q-py-md"
+      >
+        <q-icon
+          name="playlist_add_check"
+          color="positive"
+          size="48px"
+        />
         <div class="text-subtitle2 text-grey q-mt-sm">
           Không có yêu cầu chờ
         </div>
       </div>
 
       <!-- Waitlist Items -->
-      <q-list v-else separator dense>
+      <q-list
+        v-else
+        separator
+        dense
+      >
         <q-item
           v-for="item in waitlistItems"
           :key="item.id"
@@ -50,7 +68,10 @@
           </q-item-section>
 
           <q-item-section side>
-            <q-item-label caption class="text-grey">
+            <q-item-label
+              caption
+              class="text-grey"
+            >
               {{ formatWaitingTime(item.createdAt) }}
             </q-item-label>
           </q-item-section>

@@ -52,39 +52,104 @@
               :props="appButtonProps"
             >
               <div class="q-gutter-md">
-                <div class="text-subtitle2 q-mb-sm">Variants</div>
+                <div class="text-subtitle2 q-mb-sm">
+                  Variants
+                </div>
                 <div class="flex flex-wrap q-gutter-sm">
-                  <AppButton variant="filled" label="Filled" />
-                  <AppButton variant="outlined" label="Outlined" />
-                  <AppButton variant="flat" label="Flat" />
-                  <AppButton variant="text" label="Text" />
+                  <AppButton
+                    variant="filled"
+                    label="Filled"
+                  />
+                  <AppButton
+                    variant="outlined"
+                    label="Outlined"
+                  />
+                  <AppButton
+                    variant="flat"
+                    label="Flat"
+                  />
+                  <AppButton
+                    variant="text"
+                    label="Text"
+                  />
                 </div>
 
-                <div class="text-subtitle2 q-mb-sm q-mt-md">Colors</div>
+                <div class="text-subtitle2 q-mb-sm q-mt-md">
+                  Colors
+                </div>
                 <div class="flex flex-wrap q-gutter-sm">
-                  <AppButton color="primary" label="Primary" />
-                  <AppButton color="secondary" label="Secondary" />
-                  <AppButton color="positive" label="Positive" />
-                  <AppButton color="negative" label="Negative" />
-                  <AppButton color="warning" label="Warning" />
-                  <AppButton color="info" label="Info" />
+                  <AppButton
+                    color="primary"
+                    label="Primary"
+                  />
+                  <AppButton
+                    color="secondary"
+                    label="Secondary"
+                  />
+                  <AppButton
+                    color="positive"
+                    label="Positive"
+                  />
+                  <AppButton
+                    color="negative"
+                    label="Negative"
+                  />
+                  <AppButton
+                    color="warning"
+                    label="Warning"
+                  />
+                  <AppButton
+                    color="info"
+                    label="Info"
+                  />
                 </div>
 
-                <div class="text-subtitle2 q-mb-sm q-mt-md">States</div>
+                <div class="text-subtitle2 q-mb-sm q-mt-md">
+                  States
+                </div>
                 <div class="flex flex-wrap q-gutter-sm">
-                  <AppButton label="Loading" loading />
-                  <AppButton label="Disabled" disable />
-                  <AppButton icon="add" label="With Icon" />
-                  <AppButton icon="save" round />
+                  <AppButton
+                    label="Loading"
+                    loading
+                  />
+                  <AppButton
+                    label="Disabled"
+                    disable
+                  />
+                  <AppButton
+                    icon="add"
+                    label="With Icon"
+                  />
+                  <AppButton
+                    icon="save"
+                    round
+                  />
                 </div>
 
-                <div class="text-subtitle2 q-mb-sm q-mt-md">Sizes</div>
+                <div class="text-subtitle2 q-mb-sm q-mt-md">
+                  Sizes
+                </div>
                 <div class="flex flex-wrap items-center q-gutter-sm">
-                  <AppButton size="xs" label="XS" />
-                  <AppButton size="sm" label="SM" />
-                  <AppButton size="md" label="MD" />
-                  <AppButton size="lg" label="LG" />
-                  <AppButton size="xl" label="XL" />
+                  <AppButton
+                    size="xs"
+                    label="XS"
+                  />
+                  <AppButton
+                    size="sm"
+                    label="SM"
+                  />
+                  <AppButton
+                    size="md"
+                    label="MD"
+                  />
+                  <AppButton
+                    size="lg"
+                    label="LG"
+                  />
+                  <AppButton
+                    size="xl"
+                    label="XL"
+                  />
                 </div>
               </div>
             </ComponentCard>
@@ -99,11 +164,26 @@
             >
               <div class="flex flex-wrap q-gutter-sm">
                 <IconButton icon="edit" />
-                <IconButton icon="delete" color="negative" />
-                <IconButton icon="visibility" color="info" />
-                <IconButton icon="favorite" color="pink" />
-                <IconButton icon="share" color="positive" />
-                <IconButton icon="settings" loading />
+                <IconButton
+                  icon="delete"
+                  color="negative"
+                />
+                <IconButton
+                  icon="visibility"
+                  color="info"
+                />
+                <IconButton
+                  icon="favorite"
+                  color="pink"
+                />
+                <IconButton
+                  icon="share"
+                  color="positive"
+                />
+                <IconButton
+                  icon="settings"
+                  loading
+                />
               </div>
             </ComponentCard>
           </div>
@@ -116,9 +196,18 @@
               :props="buttonGroupProps"
             >
               <ButtonGroup outline>
-                <AppButton variant="outlined" icon="format_bold" />
-                <AppButton variant="outlined" icon="format_italic" />
-                <AppButton variant="outlined" icon="format_underlined" />
+                <AppButton
+                  variant="outlined"
+                  icon="format_bold"
+                />
+                <AppButton
+                  variant="outlined"
+                  icon="format_italic"
+                />
+                <AppButton
+                  variant="outlined"
+                  icon="format_underlined"
+                />
               </ButtonGroup>
             </ComponentCard>
           </div>
@@ -138,7 +227,9 @@
                   { label: 'Phải', value: 'right', icon: 'format_align_right' }
                 ]"
               />
-              <div class="text-caption q-mt-sm">Giá trị: {{ toggleValue }}</div>
+              <div class="text-caption q-mt-sm">
+                Giá trị: {{ toggleValue }}
+              </div>
             </ComponentCard>
           </div>
 
@@ -149,14 +240,27 @@
               description="Button with dropdown menu"
               :props="buttonDropdownProps"
             >
-              <ButtonDropdown label="Tùy chọn" icon="arrow_drop_down">
+              <ButtonDropdown
+                label="Tùy chọn"
+                icon="arrow_drop_down"
+              >
                 <q-list>
-                  <q-item clickable @click="() => {}">
-                    <q-item-section avatar><q-icon name="edit" /></q-item-section>
+                  <q-item
+                    clickable
+                    @click="() => {}"
+                  >
+                    <q-item-section avatar>
+                      <q-icon name="edit" />
+                    </q-item-section>
                     <q-item-section>Chỉnh sửa</q-item-section>
                   </q-item>
-                  <q-item clickable @click="() => {}">
-                    <q-item-section avatar><q-icon name="delete" /></q-item-section>
+                  <q-item
+                    clickable
+                    @click="() => {}"
+                  >
+                    <q-item-section avatar>
+                      <q-icon name="delete" />
+                    </q-item-section>
                     <q-item-section>Xóa</q-item-section>
                   </q-item>
                 </q-list>
@@ -276,9 +380,19 @@
               :props="appCheckboxProps"
             >
               <div class="q-gutter-sm">
-                <AppCheckbox v-model="checkbox1" label="Đồng ý điều khoản" />
-                <AppCheckbox v-model="checkbox2" label="Nhận thông báo" color="positive" />
-                <AppCheckbox label="Disabled" disable />
+                <AppCheckbox
+                  v-model="checkbox1"
+                  label="Đồng ý điều khoản"
+                />
+                <AppCheckbox
+                  v-model="checkbox2"
+                  label="Nhận thông báo"
+                  color="positive"
+                />
+                <AppCheckbox
+                  label="Disabled"
+                  disable
+                />
               </div>
             </ComponentCard>
           </div>
@@ -290,9 +404,19 @@
               :props="appToggleProps"
             >
               <div class="q-gutter-sm">
-                <AppToggle v-model="toggle1" label="Chế độ tối" />
-                <AppToggle v-model="toggle2" label="Thông báo" color="positive" />
-                <AppToggle label="Disabled" disable />
+                <AppToggle
+                  v-model="toggle1"
+                  label="Chế độ tối"
+                />
+                <AppToggle
+                  v-model="toggle2"
+                  label="Thông báo"
+                  color="positive"
+                />
+                <AppToggle
+                  label="Disabled"
+                  disable
+                />
               </div>
             </ComponentCard>
           </div>
@@ -305,7 +429,9 @@
               :props="appSliderProps"
             >
               <div class="q-px-md">
-                <div class="text-caption q-mb-sm">Âm lượng: {{ sliderValue }}%</div>
+                <div class="text-caption q-mb-sm">
+                  Âm lượng: {{ sliderValue }}%
+                </div>
                 <AppSlider
                   v-model="sliderValue"
                   :min="0"
@@ -351,7 +477,9 @@
                 :debounce="300"
                 clearable
               />
-              <div class="text-caption q-mt-sm">Giá trị: {{ searchValue }}</div>
+              <div class="text-caption q-mt-sm">
+                Giá trị: {{ searchValue }}
+              </div>
             </ComponentCard>
           </div>
         </div>
@@ -367,17 +495,26 @@
               description="Base dialog wrapper component"
               :props="appDialogProps"
             >
-              <AppButton label="Mở Dialog" @click="showAppDialog = true" />
+              <AppButton
+                label="Mở Dialog"
+                @click="showAppDialog = true"
+              />
               <AppDialog v-model="showAppDialog">
                 <q-card style="min-width: 350px">
                   <q-card-section>
-                    <div class="text-h6">AppDialog Demo</div>
+                    <div class="text-h6">
+                      AppDialog Demo
+                    </div>
                   </q-card-section>
                   <q-card-section>
                     Đây là nội dung của dialog cơ bản.
                   </q-card-section>
                   <q-card-actions align="right">
-                    <AppButton variant="flat" label="Đóng" @click="showAppDialog = false" />
+                    <AppButton
+                      variant="flat"
+                      label="Đóng"
+                      @click="showAppDialog = false"
+                    />
                   </q-card-actions>
                 </q-card>
               </AppDialog>
@@ -391,15 +528,24 @@
               description="Dialog with form functionality"
               :props="formDialogProps"
             >
-              <AppButton label="Mở Form Dialog" @click="showFormDialog = true" />
+              <AppButton
+                label="Mở Form Dialog"
+                @click="showFormDialog = true"
+              />
               <FormDialog
                 v-model="showFormDialog"
                 title="Thêm nhân viên"
                 @submit="showFormDialog = false"
               >
                 <div class="q-gutter-md">
-                  <AppInput label="Họ tên" required />
-                  <AppInput label="Email" type="email" />
+                  <AppInput
+                    label="Họ tên"
+                    required
+                  />
+                  <AppInput
+                    label="Email"
+                    type="email"
+                  />
                   <AppSelect
                     label="Phòng ban"
                     :options="['IT', 'HR', 'Sales']"
@@ -416,7 +562,11 @@
               description="Confirmation dialog with actions"
               :props="confirmDialogProps"
             >
-              <AppButton label="Hiện xác nhận" color="info" @click="showConfirmDialog = true" />
+              <AppButton
+                label="Hiện xác nhận"
+                color="info"
+                @click="showConfirmDialog = true"
+              />
               <ConfirmDialog
                 v-model="showConfirmDialog"
                 message="Bạn có chắc chắn muốn thực hiện hành động này?"
@@ -432,7 +582,11 @@
               description="Delete confirmation dialog"
               :props="deleteDialogProps"
             >
-              <AppButton label="Xóa" color="negative" @click="showDeleteDialog = true" />
+              <AppButton
+                label="Xóa"
+                color="negative"
+                @click="showDeleteDialog = true"
+              />
               <DeleteDialog
                 v-model="showDeleteDialog"
                 item-name="Nhân viên ABC"
@@ -472,7 +626,11 @@
                 <AppButton label="Hover me">
                   <AppTooltip text="Đây là tooltip" />
                 </AppButton>
-                <q-icon name="help" size="24px" class="cursor-pointer">
+                <q-icon
+                  name="help"
+                  size="24px"
+                  class="cursor-pointer"
+                >
                   <AppTooltip text="Thông tin trợ giúp" />
                 </q-icon>
               </div>
@@ -509,8 +667,14 @@
                 <AppSpinner size="xs" />
                 <AppSpinner size="sm" />
                 <AppSpinner size="md" />
-                <AppSpinner size="lg" color="positive" />
-                <AppSpinner size="xl" color="negative" />
+                <AppSpinner
+                  size="lg"
+                  color="positive"
+                />
+                <AppSpinner
+                  size="xl"
+                  color="negative"
+                />
               </div>
             </ComponentCard>
           </div>
@@ -523,9 +687,21 @@
               :props="circularProgressProps"
             >
               <div class="flex items-center q-gutter-lg">
-                <CircularProgress indeterminate size="40px" />
-                <CircularProgress :value="0.3" size="50px" show-value />
-                <CircularProgress :value="0.7" size="60px" color="positive" show-value />
+                <CircularProgress
+                  indeterminate
+                  size="40px"
+                />
+                <CircularProgress
+                  :value="0.3"
+                  size="50px"
+                  show-value
+                />
+                <CircularProgress
+                  :value="0.7"
+                  size="60px"
+                  color="positive"
+                  show-value
+                />
               </div>
             </ComponentCard>
           </div>
@@ -539,8 +715,15 @@
             >
               <div class="q-gutter-md">
                 <AppProgress indeterminate />
-                <AppProgress :value="0.4" color="positive" />
-                <AppProgress :value="0.6" stripe color="warning" />
+                <AppProgress
+                  :value="0.4"
+                  color="positive"
+                />
+                <AppProgress
+                  :value="0.6"
+                  stripe
+                  color="warning"
+                />
               </div>
             </ComponentCard>
           </div>
@@ -554,12 +737,21 @@
             >
               <div class="q-gutter-sm">
                 <AppSkeleton type="text" />
-                <AppSkeleton type="text" width="60%" />
+                <AppSkeleton
+                  type="text"
+                  width="60%"
+                />
                 <div class="flex q-gutter-sm">
-                  <AppSkeleton type="circle" size="40px" />
+                  <AppSkeleton
+                    type="circle"
+                    size="40px"
+                  />
                   <div class="flex-grow-1">
                     <AppSkeleton type="text" />
-                    <AppSkeleton type="text" width="50%" />
+                    <AppSkeleton
+                      type="text"
+                      width="50%"
+                    />
                   </div>
                 </div>
               </div>
@@ -588,13 +780,21 @@
               description="Banner notification"
               :props="appBannerProps"
             >
-              <AppBanner v-model="showBanner" rounded class="bg-info text-white">
+              <AppBanner
+                v-model="showBanner"
+                rounded
+                class="bg-info text-white"
+              >
                 <template #avatar>
                   <q-icon name="info" />
                 </template>
                 Đây là thông báo banner quan trọng!
                 <template #action>
-                  <q-btn flat label="Đóng" @click="showBanner = false" />
+                  <q-btn
+                    flat
+                    label="Đóng"
+                    @click="showBanner = false"
+                  />
                 </template>
               </AppBanner>
               <AppButton
@@ -612,9 +812,17 @@
               description="Inner loading overlay"
               :props="innerLoadingProps"
             >
-              <div class="relative-position" style="height: 100px; border: 1px dashed #ccc">
-                <div class="text-center q-pt-lg">Nội dung bên dưới</div>
-                <InnerLoading :showing="showInnerLoading" label="Đang tải..." />
+              <div
+                class="relative-position"
+                style="height: 100px; border: 1px dashed #ccc"
+              >
+                <div class="text-center q-pt-lg">
+                  Nội dung bên dưới
+                </div>
+                <InnerLoading
+                  :showing="showInnerLoading"
+                  label="Đang tải..."
+                />
               </div>
               <AppButton
                 class="q-mt-sm"
@@ -637,14 +845,36 @@
               :props="appTabsProps"
             >
               <AppTabs v-model="demoTab">
-                <q-tab name="tab1" label="Tab 1" icon="home" />
-                <q-tab name="tab2" label="Tab 2" icon="settings" />
-                <q-tab name="tab3" label="Tab 3" icon="person" />
+                <q-tab
+                  name="tab1"
+                  label="Tab 1"
+                  icon="home"
+                />
+                <q-tab
+                  name="tab2"
+                  label="Tab 2"
+                  icon="settings"
+                />
+                <q-tab
+                  name="tab3"
+                  label="Tab 3"
+                  icon="person"
+                />
               </AppTabs>
-              <q-tab-panels v-model="demoTab" animated class="q-mt-sm">
-                <TabPanel name="tab1">Nội dung Tab 1</TabPanel>
-                <TabPanel name="tab2">Nội dung Tab 2</TabPanel>
-                <TabPanel name="tab3">Nội dung Tab 3</TabPanel>
+              <q-tab-panels
+                v-model="demoTab"
+                animated
+                class="q-mt-sm"
+              >
+                <TabPanel name="tab1">
+                  Nội dung Tab 1
+                </TabPanel>
+                <TabPanel name="tab2">
+                  Nội dung Tab 2
+                </TabPanel>
+                <TabPanel name="tab3">
+                  Nội dung Tab 3
+                </TabPanel>
               </q-tab-panels>
             </ComponentCard>
           </div>
@@ -656,14 +886,33 @@
               description="Step-by-step wizard"
               :props="appStepperProps"
             >
-              <AppStepper v-model="(stepValue as string | number)" header-nav animated>
-                <StepperStep :name="1" title="Bước 1" caption="Thông tin cơ bản" icon="person">
+              <AppStepper
+                v-model="(stepValue as string | number)"
+                header-nav
+                animated
+              >
+                <StepperStep
+                  :name="1"
+                  title="Bước 1"
+                  caption="Thông tin cơ bản"
+                  icon="person"
+                >
                   Nội dung bước 1
                 </StepperStep>
-                <StepperStep :name="2" title="Bước 2" caption="Chi tiết" icon="description">
+                <StepperStep
+                  :name="2"
+                  title="Bước 2"
+                  caption="Chi tiết"
+                  icon="description"
+                >
                   Nội dung bước 2
                 </StepperStep>
-                <StepperStep :name="3" title="Bước 3" caption="Xác nhận" icon="check">
+                <StepperStep
+                  :name="3"
+                  title="Bước 3"
+                  caption="Xác nhận"
+                  icon="check"
+                >
                   Nội dung bước 3
                 </StepperStep>
                 <template #navigation>
@@ -698,7 +947,9 @@
                 direction-links
                 boundary-links
               />
-              <div class="text-caption q-mt-sm">Trang: {{ pageValue }}</div>
+              <div class="text-caption q-mt-sm">
+                Trang: {{ pageValue }}
+              </div>
             </ComponentCard>
           </div>
 
@@ -726,7 +977,11 @@
               description="Sidebar navigation item"
               :props="sidebarItemProps"
             >
-              <q-list bordered class="rounded-borders" style="max-width: 300px">
+              <q-list
+                bordered
+                class="rounded-borders"
+                style="max-width: 300px"
+              >
                 <SidebarItem :item="{ icon: 'home', label: 'Trang chủ', to: '/' }" />
                 <SidebarItem :item="{ icon: 'people', label: 'Nhân viên', to: '/employees' }" />
                 <SidebarItem :item="{ icon: 'settings', label: 'Cài đặt' }" />
@@ -752,7 +1007,10 @@
                 icon="people"
               >
                 <template #actions>
-                  <AppButton icon="add" label="Thêm mới" />
+                  <AppButton
+                    icon="add"
+                    label="Thêm mới"
+                  />
                 </template>
               </PageHeader>
             </ComponentCard>
@@ -765,7 +1023,10 @@
               description="Section header divider"
               :props="sectionHeaderProps"
             >
-              <SectionHeader title="Thông tin cá nhân" icon="person" />
+              <SectionHeader
+                title="Thông tin cá nhân"
+                icon="person"
+              />
               <div class="q-pa-md bg-grey-2 rounded-borders">
                 Nội dung section...
               </div>
@@ -780,10 +1041,25 @@
               :props="appToolbarProps"
             >
               <AppToolbar class="bg-primary text-white">
-                <q-btn flat round dense icon="menu" />
+                <q-btn
+                  flat
+                  round
+                  dense
+                  icon="menu"
+                />
                 <q-toolbar-title>Tiêu đề</q-toolbar-title>
-                <q-btn flat round dense icon="search" />
-                <q-btn flat round dense icon="more_vert" />
+                <q-btn
+                  flat
+                  round
+                  dense
+                  icon="search"
+                />
+                <q-btn
+                  flat
+                  round
+                  dense
+                  icon="more_vert"
+                />
               </AppToolbar>
             </ComponentCard>
           </div>
@@ -823,7 +1099,10 @@
               description="Side drawer navigation"
               :props="appDrawerProps"
             >
-              <AppButton label="Mở Drawer" @click="showDrawer = true" />
+              <AppButton
+                label="Mở Drawer"
+                @click="showDrawer = true"
+              />
               <div class="text-caption q-mt-sm">
                 (Demo drawer sẽ hiển thị ở layout chính)
               </div>
@@ -844,14 +1123,21 @@
             >
               <AppCard bordered>
                 <q-card-section>
-                  <div class="text-h6">Card Title</div>
-                  <div class="text-subtitle2">Subtitle</div>
+                  <div class="text-h6">
+                    Card Title
+                  </div>
+                  <div class="text-subtitle2">
+                    Subtitle
+                  </div>
                 </q-card-section>
                 <q-card-section>
                   Nội dung card đơn giản.
                 </q-card-section>
                 <q-card-actions align="right">
-                  <AppButton variant="flat" label="Hành động" />
+                  <AppButton
+                    variant="flat"
+                    label="Hành động"
+                  />
                 </q-card-actions>
               </AppCard>
             </ComponentCard>
@@ -929,11 +1215,29 @@
             >
               <div class="flex flex-wrap q-gutter-sm">
                 <AppChip label="Default" />
-                <AppChip label="Primary" color="primary" />
-                <AppChip label="Positive" color="positive" />
-                <AppChip label="With Icon" icon="star" color="warning" />
-                <AppChip label="Removable" removable color="negative" />
-                <AppChip label="Outlined" outline color="info" />
+                <AppChip
+                  label="Primary"
+                  color="primary"
+                />
+                <AppChip
+                  label="Positive"
+                  color="positive"
+                />
+                <AppChip
+                  label="With Icon"
+                  icon="star"
+                  color="warning"
+                />
+                <AppChip
+                  label="Removable"
+                  removable
+                  color="negative"
+                />
+                <AppChip
+                  label="Outlined"
+                  outline
+                  color="info"
+                />
               </div>
             </ComponentCard>
           </div>
@@ -946,14 +1250,31 @@
               :props="appBadgeProps"
             >
               <div class="flex items-center q-gutter-lg">
-                <q-btn round icon="mail">
-                  <AppBadge label="5" color="negative" floating />
+                <q-btn
+                  round
+                  icon="mail"
+                >
+                  <AppBadge
+                    label="5"
+                    color="negative"
+                    floating
+                  />
                 </q-btn>
-                <q-btn round icon="notifications">
-                  <AppBadge label="99+" color="primary" floating />
+                <q-btn
+                  round
+                  icon="notifications"
+                >
+                  <AppBadge
+                    label="99+"
+                    color="primary"
+                    floating
+                  />
                 </q-btn>
                 <span>
-                  Status: <AppBadge label="Active" color="positive" />
+                  Status: <AppBadge
+                    label="Active"
+                    color="positive"
+                  />
                 </span>
               </div>
             </ComponentCard>
@@ -971,32 +1292,56 @@
               description="List container component"
               :props="appListProps"
             >
-              <AppList bordered separator>
+              <AppList
+                bordered
+                separator
+              >
                 <ListItem clickable>
                   <q-item-section avatar>
-                    <q-avatar color="primary" text-color="white">A</q-avatar>
+                    <q-avatar
+                      color="primary"
+                      text-color="white"
+                    >
+                      A
+                    </q-avatar>
                   </q-item-section>
                   <q-item-section>
                     <q-item-label>Nguyễn Văn A</q-item-label>
-                    <q-item-label caption>Developer</q-item-label>
+                    <q-item-label caption>
+                      Developer
+                    </q-item-label>
                   </q-item-section>
                 </ListItem>
                 <ListItem clickable>
                   <q-item-section avatar>
-                    <q-avatar color="secondary" text-color="white">B</q-avatar>
+                    <q-avatar
+                      color="secondary"
+                      text-color="white"
+                    >
+                      B
+                    </q-avatar>
                   </q-item-section>
                   <q-item-section>
                     <q-item-label>Trần Thị B</q-item-label>
-                    <q-item-label caption>Designer</q-item-label>
+                    <q-item-label caption>
+                      Designer
+                    </q-item-label>
                   </q-item-section>
                 </ListItem>
                 <ListItem clickable>
                   <q-item-section avatar>
-                    <q-avatar color="positive" text-color="white">C</q-avatar>
+                    <q-avatar
+                      color="positive"
+                      text-color="white"
+                    >
+                      C
+                    </q-avatar>
                   </q-item-section>
                   <q-item-section>
                     <q-item-label>Lê Văn C</q-item-label>
-                    <q-item-label caption>Manager</q-item-label>
+                    <q-item-label caption>
+                      Manager
+                    </q-item-label>
                   </q-item-section>
                 </ListItem>
               </AppList>
@@ -1013,16 +1358,25 @@
               <AppList bordered>
                 <ListItem clickable>
                   <q-item-section avatar>
-                    <q-icon name="folder" color="primary" />
+                    <q-icon
+                      name="folder"
+                      color="primary"
+                    />
                   </q-item-section>
                   <q-item-section>With Icon</q-item-section>
                   <q-item-section side>
                     <q-icon name="chevron_right" />
                   </q-item-section>
                 </ListItem>
-                <ListItem clickable active>
+                <ListItem
+                  clickable
+                  active
+                >
                   <q-item-section avatar>
-                    <q-icon name="star" color="warning" />
+                    <q-icon
+                      name="star"
+                      color="warning"
+                    />
                   </q-item-section>
                   <q-item-section>Active Item</q-item-section>
                 </ListItem>
@@ -1131,7 +1485,9 @@
               :props="datePickerProps"
             >
               <DatePicker v-model="dateValue" />
-              <div class="text-caption q-mt-sm">Giá trị: {{ dateValue ?? '(chưa chọn)' }}</div>
+              <div class="text-caption q-mt-sm">
+                Giá trị: {{ dateValue ?? '(chưa chọn)' }}
+              </div>
             </ComponentCard>
           </div>
 
@@ -1143,7 +1499,9 @@
               :props="timePickerProps"
             >
               <TimePicker v-model="timeValue" />
-              <div class="text-caption q-mt-sm">Giá trị: {{ timeValue ?? '(chưa chọn)' }}</div>
+              <div class="text-caption q-mt-sm">
+                Giá trị: {{ timeValue ?? '(chưa chọn)' }}
+              </div>
             </ComponentCard>
           </div>
 
@@ -1200,8 +1558,15 @@
               description="Custom scrollbar area"
               :props="scrollAreaProps"
             >
-              <ScrollArea style="height: 150px" class="rounded-borders bg-grey-2">
-                <div v-for="n in 20" :key="n" class="q-pa-sm">
+              <ScrollArea
+                style="height: 150px"
+                class="rounded-borders bg-grey-2"
+              >
+                <div
+                  v-for="n in 20"
+                  :key="n"
+                  class="q-pa-sm"
+                >
                   Dòng nội dung {{ n }}
                 </div>
               </ScrollArea>
@@ -1235,9 +1600,19 @@
               description="Infinite loading scroll"
               :props="infiniteScrollProps"
             >
-              <div style="height: 150px; overflow: auto" class="rounded-borders bg-grey-2">
-                <InfiniteScroll :offset="100" @load="onInfiniteLoad">
-                  <div v-for="item in infiniteItems" :key="item" class="q-pa-sm border-bottom">
+              <div
+                style="height: 150px; overflow: auto"
+                class="rounded-borders bg-grey-2"
+              >
+                <InfiniteScroll
+                  :offset="100"
+                  @load="onInfiniteLoad"
+                >
+                  <div
+                    v-for="item in infiniteItems"
+                    :key="item"
+                    class="q-pa-sm border-bottom"
+                  >
                     Item {{ item }}
                   </div>
                   <template #loading>
@@ -1258,13 +1633,24 @@
               :props="timelineProps"
             >
               <Timeline color="primary">
-                <TimelineEntry title="Bước 1" subtitle="09:00">
+                <TimelineEntry
+                  title="Bước 1"
+                  subtitle="09:00"
+                >
                   Bắt đầu công việc
                 </TimelineEntry>
-                <TimelineEntry title="Bước 2" subtitle="12:00" color="positive">
+                <TimelineEntry
+                  title="Bước 2"
+                  subtitle="12:00"
+                  color="positive"
+                >
                   Hoàn thành phase 1
                 </TimelineEntry>
-                <TimelineEntry title="Bước 3" subtitle="15:00" color="info">
+                <TimelineEntry
+                  title="Bước 3"
+                  subtitle="15:00"
+                  color="info"
+                >
                   Review và deploy
                 </TimelineEntry>
               </Timeline>

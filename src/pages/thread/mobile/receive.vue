@@ -1,5 +1,8 @@
 <template>
-  <q-page padding class="mobile-receive-page">
+  <q-page
+    padding
+    class="mobile-receive-page"
+  >
     <!-- Offline Sync Banner -->
     <OfflineSyncBanner @show-conflicts="showConflictDialog = true" />
 
@@ -10,7 +13,10 @@
     <q-card class="q-mb-md">
       <q-card-section>
         <div class="text-subtitle1 text-weight-medium q-mb-sm">
-          <q-icon name="qr_code_scanner" class="q-mr-xs" />
+          <q-icon
+            name="qr_code_scanner"
+            class="q-mr-xs"
+          />
           Quét Mã Loại Chỉ
         </div>
         <q-input
@@ -40,17 +46,26 @@
             :style="{ backgroundColor: selectedThreadType.color_code || '#ccc' }"
           />
           <div>
-            <div class="text-weight-medium">{{ selectedThreadType.name }}</div>
-            <div class="text-caption text-grey-7">{{ selectedThreadType.code }}</div>
+            <div class="text-weight-medium">
+              {{ selectedThreadType.name }}
+            </div>
+            <div class="text-caption text-grey-7">
+              {{ selectedThreadType.code }}
+            </div>
           </div>
         </div>
       </q-card-section>
     </q-card>
 
     <!-- Quantity Section -->
-    <q-card class="q-mb-md" v-if="selectedThreadType">
+    <q-card
+      v-if="selectedThreadType"
+      class="q-mb-md"
+    >
       <q-card-section>
-        <div class="text-subtitle1 text-weight-medium q-mb-md">Số Lượng Cuộn</div>
+        <div class="text-subtitle1 text-weight-medium q-mb-md">
+          Số Lượng Cuộn
+        </div>
         <div class="row items-center justify-center q-gutter-md">
           <q-btn
             round
@@ -79,13 +94,19 @@
     </q-card>
 
     <!-- Weight Section (Optional) -->
-    <q-card class="q-mb-md" v-if="selectedThreadType">
+    <q-card
+      v-if="selectedThreadType"
+      class="q-mb-md"
+    >
       <q-card-section>
         <div class="text-subtitle1 text-weight-medium q-mb-sm">
           Trọng Lượng (Tùy Chọn)
         </div>
         
-        <div v-if="!scale.isConnected.value" class="row q-col-gutter-sm">
+        <div
+          v-if="!scale.isConnected.value"
+          class="row q-col-gutter-sm"
+        >
           <div class="col">
             <q-btn
               outline
@@ -108,14 +129,22 @@
           </div>
         </div>
         
-        <div v-else class="scale-display text-center q-pa-md bg-grey-2 rounded-borders">
-          <div class="text-h3">{{ scale.currentWeight.value || 0 }} g</div>
+        <div
+          v-else
+          class="scale-display text-center q-pa-md bg-grey-2 rounded-borders"
+        >
+          <div class="text-h3">
+            {{ scale.currentWeight.value || 0 }} g
+          </div>
           <q-badge :color="scale.isStable.value ? 'positive' : 'warning'">
             {{ scale.isStable.value ? 'Ổn định' : 'Đang cân...' }}
           </q-badge>
         </div>
 
-        <div v-if="showManualWeight && !scale.isConnected.value" class="q-mt-sm">
+        <div
+          v-if="showManualWeight && !scale.isConnected.value"
+          class="q-mt-sm"
+        >
           <q-input
             v-model.number="manualWeight"
             type="number"
@@ -129,7 +158,10 @@
     </q-card>
 
     <!-- Warehouse & Location -->
-    <q-card class="q-mb-md" v-if="selectedThreadType">
+    <q-card
+      v-if="selectedThreadType"
+      class="q-mb-md"
+    >
       <q-card-section>
         <div class="row q-col-gutter-sm">
           <div class="col-6">

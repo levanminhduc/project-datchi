@@ -1,5 +1,8 @@
 <template>
-  <q-page padding class="mobile-recovery-page">
+  <q-page
+    padding
+    class="mobile-recovery-page"
+  >
     <!-- Offline Sync Banner -->
     <OfflineSyncBanner @show-conflicts="showConflictDialog = true" />
 
@@ -10,7 +13,10 @@
     <q-card class="q-mb-md">
       <q-card-section>
         <div class="text-subtitle1 text-weight-medium q-mb-sm">
-          <q-icon name="qr_code_scanner" class="q-mr-xs" />
+          <q-icon
+            name="qr_code_scanner"
+            class="q-mr-xs"
+          />
           Quét Mã Cuộn Hoàn Trả
         </div>
         <q-input
@@ -22,14 +28,22 @@
           @keyup.enter="handleInitiateReturn"
         >
           <template #append>
-            <q-btn flat round icon="search" @click="handleInitiateReturn" />
+            <q-btn
+              flat
+              round
+              icon="search"
+              @click="handleInitiateReturn"
+            />
           </template>
         </q-input>
       </q-card-section>
     </q-card>
 
     <!-- Active Recovery Info -->
-    <q-card v-if="activeRecovery" class="q-mb-md">
+    <q-card
+      v-if="activeRecovery"
+      class="q-mb-md"
+    >
       <q-card-section>
         <div class="row items-center q-gutter-sm">
           <div
@@ -37,7 +51,9 @@
             :style="{ backgroundColor: activeRecovery.cone?.thread_type?.color_code || '#ccc' }"
           />
           <div class="col">
-            <div class="text-weight-medium">{{ activeRecovery.cone?.cone_id }}</div>
+            <div class="text-weight-medium">
+              {{ activeRecovery.cone?.cone_id }}
+            </div>
             <div class="text-caption">
               {{ activeRecovery.cone?.thread_type?.name }} •
               Gốc: {{ formatNumber(activeRecovery.original_meters) }}m
@@ -51,15 +67,24 @@
     </q-card>
 
     <!-- Weighing Section -->
-    <q-card v-if="activeRecovery && needsWeighing" class="q-mb-md">
+    <q-card
+      v-if="activeRecovery && needsWeighing"
+      class="q-mb-md"
+    >
       <q-card-section>
         <div class="text-subtitle1 text-weight-medium q-mb-md">
-          <q-icon name="scale" class="q-mr-xs" />
+          <q-icon
+            name="scale"
+            class="q-mr-xs"
+          />
           Cân Cuộn Chỉ
         </div>
 
         <!-- Scale Connection -->
-        <div v-if="!scale.isConnected.value" class="row q-col-gutter-sm q-mb-md">
+        <div
+          v-if="!scale.isConnected.value"
+          class="row q-col-gutter-sm q-mb-md"
+        >
           <div class="col">
             <q-btn
               outline
@@ -84,10 +109,21 @@
         </div>
 
         <!-- Scale Display -->
-        <div v-else class="scale-display text-center q-pa-lg rounded-borders q-mb-md" style="background: rgba(128, 128, 128, 0.08)">
-          <div class="text-h2 text-weight-bold">{{ scale.currentWeight.value || 0 }}</div>
-          <div class="text-subtitle1">grams</div>
-          <q-badge :color="scale.isStable.value ? 'positive' : 'warning'" class="q-mt-sm">
+        <div
+          v-else
+          class="scale-display text-center q-pa-lg rounded-borders q-mb-md"
+          style="background: rgba(128, 128, 128, 0.08)"
+        >
+          <div class="text-h2 text-weight-bold">
+            {{ scale.currentWeight.value || 0 }}
+          </div>
+          <div class="text-subtitle1">
+            grams
+          </div>
+          <q-badge
+            :color="scale.isStable.value ? 'positive' : 'warning'"
+            class="q-mt-sm"
+          >
             {{ scale.isStable.value ? 'Ổn định' : 'Đang cân...' }}
           </q-badge>
         </div>
@@ -104,15 +140,27 @@
         />
 
         <!-- Calculated Values -->
-        <div v-if="currentWeight" class="q-pa-md rounded-borders" style="background: rgba(128, 128, 128, 0.08)">
+        <div
+          v-if="currentWeight"
+          class="q-pa-md rounded-borders"
+          style="background: rgba(128, 128, 128, 0.08)"
+        >
           <div class="row q-col-gutter-md">
             <div class="col-6 text-center">
-              <div class="text-caption text-grey-7">Còn lại</div>
-              <div class="text-h5 text-positive">{{ formatNumber(calculatedMeters) }}m</div>
+              <div class="text-caption text-grey-7">
+                Còn lại
+              </div>
+              <div class="text-h5 text-positive">
+                {{ formatNumber(calculatedMeters) }}m
+              </div>
             </div>
             <div class="col-6 text-center">
-              <div class="text-caption text-grey-7">Đã dùng</div>
-              <div class="text-h5 text-negative">{{ formatNumber(calculatedConsumption) }}m</div>
+              <div class="text-caption text-grey-7">
+                Đã dùng
+              </div>
+              <div class="text-h5 text-negative">
+                {{ formatNumber(calculatedConsumption) }}m
+              </div>
             </div>
           </div>
         </div>
@@ -132,27 +180,42 @@
     </q-card>
 
     <!-- Confirmation Section -->
-    <q-card v-if="activeRecovery && activeRecovery.status === RecoveryStatus.WEIGHED" class="q-mb-md">
+    <q-card
+      v-if="activeRecovery && activeRecovery.status === RecoveryStatus.WEIGHED"
+      class="q-mb-md"
+    >
       <q-card-section>
-        <div class="text-subtitle1 text-weight-medium q-mb-md">Kết Quả Cân</div>
+        <div class="text-subtitle1 text-weight-medium q-mb-md">
+          Kết Quả Cân
+        </div>
         
         <q-list>
           <q-item>
             <q-item-section>
-              <q-item-label caption>Trọng lượng</q-item-label>
+              <q-item-label caption>
+                Trọng lượng
+              </q-item-label>
               <q-item-label>{{ activeRecovery.returned_weight_grams }}g</q-item-label>
             </q-item-section>
           </q-item>
           <q-item>
             <q-item-section>
-              <q-item-label caption>Mét còn lại</q-item-label>
-              <q-item-label class="text-positive">{{ formatNumber(activeRecovery.remaining_meters) }}m</q-item-label>
+              <q-item-label caption>
+                Mét còn lại
+              </q-item-label>
+              <q-item-label class="text-positive">
+                {{ formatNumber(activeRecovery.remaining_meters) }}m
+              </q-item-label>
             </q-item-section>
           </q-item>
           <q-item>
             <q-item-section>
-              <q-item-label caption>Đã tiêu thụ</q-item-label>
-              <q-item-label class="text-negative">{{ formatNumber(activeRecovery.consumed_meters) }}m</q-item-label>
+              <q-item-label caption>
+                Đã tiêu thụ
+              </q-item-label>
+              <q-item-label class="text-negative">
+                {{ formatNumber(activeRecovery.consumed_meters) }}m
+              </q-item-label>
             </q-item-section>
           </q-item>
         </q-list>
@@ -160,7 +223,10 @@
 
       <q-card-section class="row q-col-gutter-sm">
         <!-- Write-off if < 50g -->
-        <div v-if="(activeRecovery.returned_weight_grams || 0) < 50" class="col-12">
+        <div
+          v-if="(activeRecovery.returned_weight_grams || 0) < 50"
+          class="col-12"
+        >
           <q-banner class="bg-orange-1 text-orange-9 q-mb-sm">
             <template #avatar>
               <q-icon name="warning" />
@@ -181,7 +247,10 @@
             @click="handleConfirmRecovery"
           />
         </div>
-        <div class="col" v-if="(activeRecovery.returned_weight_grams || 0) < 50">
+        <div
+          v-if="(activeRecovery.returned_weight_grams || 0) < 50"
+          class="col"
+        >
           <q-btn
             color="negative"
             size="lg"
@@ -197,7 +266,9 @@
     <!-- Pending Recoveries List -->
     <q-card v-if="!activeRecovery && pendingRecoveries.length">
       <q-card-section>
-        <div class="text-subtitle1 text-weight-medium q-mb-sm">Chờ Xử Lý</div>
+        <div class="text-subtitle1 text-weight-medium q-mb-sm">
+          Chờ Xử Lý
+        </div>
       </q-card-section>
       <q-list separator>
         <q-item
@@ -208,7 +279,9 @@
         >
           <q-item-section>
             <q-item-label>{{ recovery.cone?.cone_id }}</q-item-label>
-            <q-item-label caption>{{ recovery.cone?.thread_type?.name }}</q-item-label>
+            <q-item-label caption>
+              {{ recovery.cone?.thread_type?.name }}
+            </q-item-label>
           </q-item-section>
           <q-item-section side>
             <q-badge :color="getStatusColor(recovery.status)">
@@ -220,10 +293,18 @@
     </q-card>
 
     <!-- Write-off Dialog -->
-    <q-dialog v-model="showWriteOffDialog" persistent>
+    <q-dialog
+      v-model="showWriteOffDialog"
+      persistent
+    >
       <q-card style="min-width: 300px">
         <q-card-section class="row items-center">
-          <q-icon name="warning" color="negative" size="24px" class="q-mr-sm" />
+          <q-icon
+            name="warning"
+            color="negative"
+            size="24px"
+            class="q-mr-sm"
+          />
           <span class="text-h6">Loại Bỏ Cuộn Chỉ</span>
         </q-card-section>
         <q-card-section>
@@ -241,7 +322,11 @@
           />
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn flat label="Hủy" v-close-popup />
+          <q-btn
+            v-close-popup
+            flat
+            label="Hủy"
+          />
           <q-btn
             flat
             label="Xác Nhận Loại Bỏ"

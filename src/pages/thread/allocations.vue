@@ -37,7 +37,7 @@
               clearable
               emit-value
               map-options
-              @update:modelValue="handleFilterChange"
+              @update:model-value="handleFilterChange"
             />
           </div>
 
@@ -52,7 +52,7 @@
               clearable
               emit-value
               map-options
-              @update:modelValue="handleFilterChange"
+              @update:model-value="handleFilterChange"
             />
           </div>
 
@@ -67,7 +67,7 @@
               clearable
               emit-value
               map-options
-              @update:modelValue="handleFilterChange"
+              @update:model-value="handleFilterChange"
             />
           </div>
 
@@ -88,11 +88,24 @@
 
     <!-- Summary Cards -->
     <div class="row q-col-gutter-md q-mb-lg">
-      <div class="col-12 col-sm-6 col-md-2.4" v-for="stat in summaryStats" :key="stat.label">
-        <q-card flat bordered class="stat-card">
+      <div
+        v-for="stat in summaryStats"
+        :key="stat.label"
+        class="col-12 col-sm-6 col-md-2.4"
+      >
+        <q-card
+          flat
+          bordered
+          class="stat-card"
+        >
           <q-card-section class="q-pa-sm">
-            <div class="text-caption text-grey-7">{{ stat.label }}</div>
-            <div class="text-h6 text-weight-bold" :class="stat.colorClass">
+            <div class="text-caption text-grey-7">
+              {{ stat.label }}
+            </div>
+            <div
+              class="text-h6 text-weight-bold"
+              :class="stat.colorClass"
+            >
               {{ stat.value }}
             </div>
           </q-card-section>
@@ -115,7 +128,10 @@
       <!-- Loading Skeleton -->
       <template #loading>
         <q-inner-loading showing>
-          <q-spinner-dots size="50px" color="primary" />
+          <q-spinner-dots
+            size="50px"
+            color="primary"
+          />
         </q-inner-loading>
       </template>
 
@@ -135,16 +151,25 @@
 
       <!-- Requested Meters Column -->
       <template #body-cell-requested_meters="props">
-        <q-td :props="props" align="right">
+        <q-td
+          :props="props"
+          align="right"
+        >
           <span class="font-mono">{{ props.value.toLocaleString() }} m</span>
         </q-td>
       </template>
 
       <!-- Allocated Meters Column -->
       <template #body-cell-allocated_meters="props">
-        <q-td :props="props" align="right">
+        <q-td
+          :props="props"
+          align="right"
+        >
           <div class="column items-end">
-            <div class="text-weight-bold" :class="getAllocationRatioClass(props.row)">
+            <div
+              class="text-weight-bold"
+              :class="getAllocationRatioClass(props.row)"
+            >
               {{ props.value.toLocaleString() }} m
             </div>
             <div class="text-caption text-grey-6">
@@ -156,8 +181,14 @@
 
       <!-- Status Column -->
       <template #body-cell-status="props">
-        <q-td :props="props" align="center">
-          <q-badge :color="statusColors[props.row.status as AllocationStatus]" class="q-py-xs q-px-sm">
+        <q-td
+          :props="props"
+          align="center"
+        >
+          <q-badge
+            :color="statusColors[props.row.status as AllocationStatus]"
+            class="q-py-xs q-px-sm"
+          >
             {{ statusLabels[props.row.status as AllocationStatus] }}
           </q-badge>
         </q-td>
@@ -165,8 +196,15 @@
 
       <!-- Priority Column -->
       <template #body-cell-priority="props">
-        <q-td :props="props" align="center">
-          <q-badge :color="priorityColors[props.row.priority as AllocationPriority]" outline class="q-py-xs q-px-sm">
+        <q-td
+          :props="props"
+          align="center"
+        >
+          <q-badge
+            :color="priorityColors[props.row.priority as AllocationPriority]"
+            outline
+            class="q-py-xs q-px-sm"
+          >
             {{ priorityLabels[props.row.priority as AllocationPriority] }}
           </q-badge>
         </q-td>
@@ -183,7 +221,11 @@
 
       <!-- Actions Column -->
       <template #body-cell-actions="props">
-        <q-td :props="props" align="center" class="q-gutter-x-xs">
+        <q-td
+          :props="props"
+          align="center"
+          class="q-gutter-x-xs"
+        >
           <q-btn
             flat
             round
@@ -301,12 +343,24 @@
             readonly
           >
             <template #append>
-              <q-icon name="event" class="cursor-pointer">
-                <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+              <q-icon
+                name="event"
+                class="cursor-pointer"
+              >
+                <q-popup-proxy
+                  cover
+                  transition-show="scale"
+                  transition-hide="scale"
+                >
                   <DatePicker v-model="createData.due_date">
                     <template #default>
                       <div class="row items-center justify-end q-pa-sm">
-                        <q-btn v-close-popup label="Đóng" color="primary" flat />
+                        <q-btn
+                          v-close-popup
+                          label="Đóng"
+                          color="primary"
+                          flat
+                        />
                       </div>
                     </template>
                   </DatePicker>
@@ -330,38 +384,72 @@
 
     <!-- Detail Dialog -->
     <q-dialog v-model="detailDialog.isOpen">
-      <q-card v-if="detailDialog.allocation" style="width: 800px; max-width: 95vw">
+      <q-card
+        v-if="detailDialog.allocation"
+        style="width: 800px; max-width: 95vw"
+      >
         <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">Chi Tiết Phân Bổ #{{ detailDialog.allocation.id }}</div>
+          <div class="text-h6">
+            Chi Tiết Phân Bổ #{{ detailDialog.allocation.id }}
+          </div>
           <q-space />
-          <q-btn v-close-popup icon="close" flat round dense />
+          <q-btn
+            v-close-popup
+            icon="close"
+            flat
+            round
+            dense
+          />
         </q-card-section>
 
         <q-card-section class="q-pa-md">
           <div class="row q-col-gutter-md">
             <!-- Basic Info -->
             <div class="col-12 col-md-6">
-              <div class="text-subtitle2 text-grey-7 q-mb-xs">Thông Tin Đơn Hàng</div>
-              <div class="q-pa-sm rounded-borders" style="background: rgba(128, 128, 128, 0.08)">
+              <div class="text-subtitle2 text-grey-7 q-mb-xs">
+                Thông Tin Đơn Hàng
+              </div>
+              <div
+                class="q-pa-sm rounded-borders"
+                style="background: rgba(128, 128, 128, 0.08)"
+              >
                 <div class="row q-mb-xs">
-                  <div class="col-5 text-grey-7">Mã đơn hàng:</div>
-                  <div class="col-7 text-weight-bold">{{ detailDialog.allocation.order_id }}</div>
+                  <div class="col-5 text-grey-7">
+                    Mã đơn hàng:
+                  </div>
+                  <div class="col-7 text-weight-bold">
+                    {{ detailDialog.allocation.order_id }}
+                  </div>
                 </div>
                 <div class="row q-mb-xs">
-                  <div class="col-5 text-grey-7">Tham chiếu:</div>
-                  <div class="col-7">{{ detailDialog.allocation.order_reference || '---' }}</div>
-                </div>
-                <div class="row q-mb-xs">
-                  <div class="col-5 text-grey-7">Mức ưu tiên:</div>
+                  <div class="col-5 text-grey-7">
+                    Tham chiếu:
+                  </div>
                   <div class="col-7">
-                    <q-badge :color="priorityColors[detailDialog.allocation.priority]" outline>
+                    {{ detailDialog.allocation.order_reference || '---' }}
+                  </div>
+                </div>
+                <div class="row q-mb-xs">
+                  <div class="col-5 text-grey-7">
+                    Mức ưu tiên:
+                  </div>
+                  <div class="col-7">
+                    <q-badge
+                      :color="priorityColors[detailDialog.allocation.priority]"
+                      outline
+                    >
                       {{ priorityLabels[detailDialog.allocation.priority] }}
                     </q-badge>
                   </div>
                 </div>
                 <div class="row">
-                  <div class="col-5 text-grey-7">Hạn giao:</div>
-                  <div class="col-7" :class="{ 'text-negative text-weight-bold': isOverdue(detailDialog.allocation.due_date) }">
+                  <div class="col-5 text-grey-7">
+                    Hạn giao:
+                  </div>
+                  <div
+                    class="col-7"
+                    :class="{ 'text-negative text-weight-bold': isOverdue(detailDialog.allocation.due_date) }"
+                  >
                     {{ formatDate(detailDialog.allocation.due_date) }}
                   </div>
                 </div>
@@ -370,26 +458,44 @@
 
             <!-- Thread Info -->
             <div class="col-12 col-md-6">
-              <div class="text-subtitle2 text-grey-7 q-mb-xs">Yêu Cầu Vật Tư</div>
-              <div class="q-pa-sm rounded-borders" style="background: rgba(128, 128, 128, 0.08)">
+              <div class="text-subtitle2 text-grey-7 q-mb-xs">
+                Yêu Cầu Vật Tư
+              </div>
+              <div
+                class="q-pa-sm rounded-borders"
+                style="background: rgba(128, 128, 128, 0.08)"
+              >
                 <div class="row q-mb-xs">
-                  <div class="col-5 text-grey-7">Loại chỉ:</div>
+                  <div class="col-5 text-grey-7">
+                    Loại chỉ:
+                  </div>
                   <div class="col-7 text-weight-medium text-primary">
                     {{ detailDialog.allocation.thread_type?.name }}
                   </div>
                 </div>
                 <div class="row q-mb-xs">
-                  <div class="col-5 text-grey-7">Số mét yêu cầu:</div>
-                  <div class="col-7 text-weight-bold">{{ detailDialog.allocation.requested_meters.toLocaleString() }} m</div>
+                  <div class="col-5 text-grey-7">
+                    Số mét yêu cầu:
+                  </div>
+                  <div class="col-7 text-weight-bold">
+                    {{ detailDialog.allocation.requested_meters.toLocaleString() }} m
+                  </div>
                 </div>
                 <div class="row q-mb-xs">
-                  <div class="col-5 text-grey-7">Đã phân bổ:</div>
-                  <div class="col-7 text-weight-bold" :class="getAllocationRatioClass(detailDialog.allocation)">
+                  <div class="col-5 text-grey-7">
+                    Đã phân bổ:
+                  </div>
+                  <div
+                    class="col-7 text-weight-bold"
+                    :class="getAllocationRatioClass(detailDialog.allocation)"
+                  >
                     {{ detailDialog.allocation.allocated_meters.toLocaleString() }} m
                   </div>
                 </div>
                 <div class="row">
-                  <div class="col-5 text-grey-7">Trạng thái:</div>
+                  <div class="col-5 text-grey-7">
+                    Trạng thái:
+                  </div>
                   <div class="col-7">
                     <q-badge :color="statusColors[detailDialog.allocation.status]">
                       {{ statusLabels[detailDialog.allocation.status] }}
@@ -401,7 +507,9 @@
 
             <!-- Allocated Cones Table -->
             <div class="col-12">
-              <div class="text-subtitle2 text-grey-7 q-mb-xs">Danh Sách Cuộn Đã Gán (Cones)</div>
+              <div class="text-subtitle2 text-grey-7 q-mb-xs">
+                Danh Sách Cuộn Đã Gán (Cones)
+              </div>
               <q-table
                 flat
                 bordered
@@ -414,11 +522,16 @@
               >
                 <template #body-cell-cone_id="props">
                   <q-td :props="props">
-                    <div class="text-weight-medium text-primary">{{ props.row.cone?.cone_id }}</div>
+                    <div class="text-weight-medium text-primary">
+                      {{ props.row.cone?.cone_id }}
+                    </div>
                   </q-td>
                 </template>
                 <template #body-cell-allocated_meters="props">
-                  <q-td :props="props" align="right">
+                  <q-td
+                    :props="props"
+                    align="right"
+                  >
                     <span class="font-mono">{{ props.value.toLocaleString() }} m</span>
                   </q-td>
                 </template>
@@ -426,16 +539,27 @@
             </div>
 
             <!-- Notes -->
-            <div class="col-12" v-if="detailDialog.allocation.notes">
-              <div class="text-subtitle2 text-grey-7 q-mb-xs">Ghi Chú</div>
-              <div class="q-pa-sm rounded-borders text-italic" style="background: rgba(128, 128, 128, 0.08)">
+            <div
+              v-if="detailDialog.allocation.notes"
+              class="col-12"
+            >
+              <div class="text-subtitle2 text-grey-7 q-mb-xs">
+                Ghi Chú
+              </div>
+              <div
+                class="q-pa-sm rounded-borders text-italic"
+                style="background: rgba(128, 128, 128, 0.08)"
+              >
                 {{ detailDialog.allocation.notes }}
               </div>
             </div>
           </div>
         </q-card-section>
 
-        <q-card-actions align="right" class="q-px-md q-pb-md q-gutter-x-sm">
+        <q-card-actions
+          align="right"
+          class="q-px-md q-pb-md q-gutter-x-sm"
+        >
           <q-btn
             v-if="detailDialog.allocation.status === AllocationStatus.PENDING"
             unelevated
@@ -450,7 +574,12 @@
             color="accent"
             @click="handleIssue(detailDialog.allocation!)"
           />
-          <q-btn v-close-popup flat label="Đóng" color="grey" />
+          <q-btn
+            v-close-popup
+            flat
+            label="Đóng"
+            color="grey"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>

@@ -86,7 +86,10 @@ const handleClear = () => {
             size="sm"
             @click="handleClear"
           />
-          <q-separator vertical class="q-mx-sm" />
+          <q-separator
+            vertical
+            class="q-mx-sm"
+          />
           <q-btn
             flat
             round
@@ -102,8 +105,15 @@ const handleClear = () => {
       </template>
     </AppInput>
     
-    <div v-if="!isManualMode" class="text-caption text-grey-6 q-mt-xs q-px-sm row items-center">
-      <q-spinner-dots v-if="isScanning" size="12px" class="q-mr-xs" />
+    <div
+      v-if="!isManualMode"
+      class="text-caption text-grey-6 q-mt-xs q-px-sm row items-center"
+    >
+      <q-spinner-dots
+        v-if="isScanning"
+        size="12px"
+        class="q-mr-xs"
+      />
       <span>{{ isScanning ? 'Đang nhận tín hiệu...' : 'Sẵn sàng quét mã' }}</span>
     </div>
   </div>

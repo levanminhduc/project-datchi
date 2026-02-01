@@ -37,7 +37,7 @@
               clearable
               emit-value
               map-options
-              @update:modelValue="handleFilterChange"
+              @update:model-value="handleFilterChange"
             />
           </div>
 
@@ -52,7 +52,7 @@
               clearable
               emit-value
               map-options
-              @update:modelValue="handleFilterChange"
+              @update:model-value="handleFilterChange"
             />
           </div>
 
@@ -67,7 +67,7 @@
               clearable
               emit-value
               map-options
-              @update:modelValue="handleFilterChange"
+              @update:model-value="handleFilterChange"
             />
           </div>
           
@@ -124,23 +124,41 @@
 
       <!-- Quantity Meters Column -->
       <template #body-cell-quantity_meters="props">
-        <q-td :props="props" align="right">
+        <q-td
+          :props="props"
+          align="right"
+        >
           <span class="font-mono text-weight-bold">{{ props.value }} m</span>
         </q-td>
       </template>
 
       <!-- Weight Grams Column -->
       <template #body-cell-weight_grams="props">
-        <q-td :props="props" align="right">
-          <span v-if="props.value" class="font-mono">{{ props.value }} g</span>
-          <span v-else class="text-grey-5">---</span>
+        <q-td
+          :props="props"
+          align="right"
+        >
+          <span
+            v-if="props.value"
+            class="font-mono"
+          >{{ props.value }} g</span>
+          <span
+            v-else
+            class="text-grey-5"
+          >---</span>
         </q-td>
       </template>
 
       <!-- Status Column -->
       <template #body-cell-status="props">
-        <q-td :props="props" align="center">
-          <q-badge :color="getStatusColor(props.row.status)" class="q-py-xs q-px-sm">
+        <q-td
+          :props="props"
+          align="center"
+        >
+          <q-badge
+            :color="getStatusColor(props.row.status)"
+            class="q-py-xs q-px-sm"
+          >
             {{ statusLabels[props.row.status as ConeStatus] }}
           </q-badge>
         </q-td>
@@ -148,7 +166,10 @@
 
       <!-- Is Partial Column -->
       <template #body-cell-is_partial="props">
-        <q-td :props="props" align="center">
+        <q-td
+          :props="props"
+          align="center"
+        >
           <q-badge
             :color="props.row.is_partial ? 'orange' : 'positive'"
             outline
@@ -160,7 +181,10 @@
 
       <!-- Actions Column -->
       <template #body-cell-actions="props">
-        <q-td :props="props" align="center">
+        <q-td
+          :props="props"
+          align="center"
+        >
           <q-btn
             flat
             round
@@ -242,12 +266,24 @@
             readonly
           >
             <template #append>
-              <q-icon name="event" class="cursor-pointer">
-                <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+              <q-icon
+                name="event"
+                class="cursor-pointer"
+              >
+                <q-popup-proxy
+                  cover
+                  transition-show="scale"
+                  transition-hide="scale"
+                >
                   <DatePicker v-model="receiptData.expiry_date">
                     <template #default>
                       <div class="row items-center justify-end q-pa-sm">
-                        <q-btn v-close-popup label="Đóng" color="primary" flat />
+                        <q-btn
+                          v-close-popup
+                          label="Đóng"
+                          color="primary"
+                          flat
+                        />
                       </div>
                     </template>
                   </DatePicker>
@@ -268,32 +304,56 @@
 
     <!-- Detail Dialog -->
     <q-dialog v-model="detailDialog.isOpen">
-      <q-card v-if="detailDialog.cone" style="width: 700px; max-width: 90vw">
+      <q-card
+        v-if="detailDialog.cone"
+        style="width: 700px; max-width: 90vw"
+      >
         <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">Chi Tiết Cuộn Chỉ</div>
+          <div class="text-h6">
+            Chi Tiết Cuộn Chỉ
+          </div>
           <q-space />
-          <q-btn v-close-popup icon="close" flat round dense />
+          <q-btn
+            v-close-popup
+            icon="close"
+            flat
+            round
+            dense
+          />
         </q-card-section>
 
         <q-card-section class="q-pa-md">
           <div class="row q-col-gutter-md">
             <!-- Basic Info Section -->
             <div class="col-12">
-              <div class="text-subtitle2 text-grey-7 q-mb-sm">Thông Tin Cơ Bản</div>
-              <div class="row q-col-gutter-sm q-pa-sm rounded-borders" style="background: rgba(128, 128, 128, 0.08)">
+              <div class="text-subtitle2 text-grey-7 q-mb-sm">
+                Thông Tin Cơ Bản
+              </div>
+              <div
+                class="row q-col-gutter-sm q-pa-sm rounded-borders"
+                style="background: rgba(128, 128, 128, 0.08)"
+              >
                 <div class="col-12 col-sm-6">
-                  <div class="text-caption text-grey-7">Mã cuộn</div>
-                  <div class="text-subtitle1 text-weight-bold text-primary">{{ detailDialog.cone.cone_id }}</div>
+                  <div class="text-caption text-grey-7">
+                    Mã cuộn
+                  </div>
+                  <div class="text-subtitle1 text-weight-bold text-primary">
+                    {{ detailDialog.cone.cone_id }}
+                  </div>
                 </div>
                 <div class="col-12 col-sm-6">
-                  <div class="text-caption text-grey-7">Loại chỉ</div>
+                  <div class="text-caption text-grey-7">
+                    Loại chỉ
+                  </div>
                   <div class="row items-center q-gutter-x-xs">
                     <div
                       v-if="detailDialog.cone.thread_type?.color_code"
                       class="color-dot shadow-1"
                       :style="{ backgroundColor: detailDialog.cone.thread_type.color_code }"
                     />
-                    <div class="text-subtitle1 text-weight-medium">{{ detailDialog.cone.thread_type?.name }}</div>
+                    <div class="text-subtitle1 text-weight-medium">
+                      {{ detailDialog.cone.thread_type?.name }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -301,34 +361,62 @@
 
             <!-- Inventory Info Section -->
             <div class="col-12">
-              <div class="text-subtitle2 text-grey-7 q-mb-sm">Thông Tin Tồn Kho</div>
+              <div class="text-subtitle2 text-grey-7 q-mb-sm">
+                Thông Tin Tồn Kho
+              </div>
               <div class="row q-col-gutter-sm">
                 <div class="col-12 col-sm-4">
-                  <div class="text-caption text-grey-7">Số lượng mét</div>
-                  <div class="text-subtitle1 font-mono text-weight-bold">{{ detailDialog.cone.quantity_meters.toLocaleString() }} m</div>
+                  <div class="text-caption text-grey-7">
+                    Số lượng mét
+                  </div>
+                  <div class="text-subtitle1 font-mono text-weight-bold">
+                    {{ detailDialog.cone.quantity_meters.toLocaleString() }} m
+                  </div>
                 </div>
                 <div class="col-12 col-sm-4">
-                  <div class="text-caption text-grey-7">Trọng lượng (g)</div>
-                  <div class="text-subtitle1 font-mono">{{ detailDialog.cone.weight_grams?.toLocaleString() || '---' }} g</div>
+                  <div class="text-caption text-grey-7">
+                    Trọng lượng (g)
+                  </div>
+                  <div class="text-subtitle1 font-mono">
+                    {{ detailDialog.cone.weight_grams?.toLocaleString() || '---' }} g
+                  </div>
                 </div>
                 <div class="col-12 col-sm-4">
-                  <div class="text-caption text-grey-7">Trạng thái</div>
-                  <q-badge :color="getStatusColor(detailDialog.cone.status)" class="q-py-xs q-px-sm">
+                  <div class="text-caption text-grey-7">
+                    Trạng thái
+                  </div>
+                  <q-badge
+                    :color="getStatusColor(detailDialog.cone.status)"
+                    class="q-py-xs q-px-sm"
+                  >
                     {{ statusLabels[detailDialog.cone.status as ConeStatus] }}
                   </q-badge>
                 </div>
                 
                 <div class="col-12 col-sm-4">
-                  <div class="text-caption text-grey-7">Kho</div>
-                  <div class="text-subtitle1">{{ detailDialog.cone.warehouse_code || '---' }}</div>
+                  <div class="text-caption text-grey-7">
+                    Kho
+                  </div>
+                  <div class="text-subtitle1">
+                    {{ detailDialog.cone.warehouse_code || '---' }}
+                  </div>
                 </div>
                 <div class="col-12 col-sm-4">
-                  <div class="text-caption text-grey-7">Vị trí</div>
-                  <div class="text-subtitle1">{{ detailDialog.cone.location || '---' }}</div>
+                  <div class="text-caption text-grey-7">
+                    Vị trí
+                  </div>
+                  <div class="text-subtitle1">
+                    {{ detailDialog.cone.location || '---' }}
+                  </div>
                 </div>
                 <div class="col-12 col-sm-4">
-                  <div class="text-caption text-grey-7">Tính chất</div>
-                  <q-badge :color="detailDialog.cone.is_partial ? 'orange' : 'positive'" outline>
+                  <div class="text-caption text-grey-7">
+                    Tính chất
+                  </div>
+                  <q-badge
+                    :color="detailDialog.cone.is_partial ? 'orange' : 'positive'"
+                    outline
+                  >
                     {{ detailDialog.cone.is_partial ? 'Cuộn dư' : 'Cuộn đầy' }}
                   </q-badge>
                 </div>
@@ -338,31 +426,57 @@
             <!-- Traceability Section -->
             <div class="col-12">
               <q-separator q-my-sm />
-              <div class="text-subtitle2 text-grey-7 q-mb-sm">Thông Tin Truy Xuất</div>
+              <div class="text-subtitle2 text-grey-7 q-mb-sm">
+                Thông Tin Truy Xuất
+              </div>
               <div class="row q-col-gutter-sm">
                 <div class="col-12 col-sm-6">
-                  <div class="text-caption text-grey-7">Số lô (Lot number)</div>
-                  <div class="text-subtitle1">{{ detailDialog.cone.lot_number || '---' }}</div>
+                  <div class="text-caption text-grey-7">
+                    Số lô (Lot number)
+                  </div>
+                  <div class="text-subtitle1">
+                    {{ detailDialog.cone.lot_number || '---' }}
+                  </div>
                 </div>
                 <div class="col-12 col-sm-6">
-                  <div class="text-caption text-grey-7">Ngày hết hạn</div>
-                  <div class="text-subtitle1 text-negative">{{ detailDialog.cone.expiry_date || '---' }}</div>
+                  <div class="text-caption text-grey-7">
+                    Ngày hết hạn
+                  </div>
+                  <div class="text-subtitle1 text-negative">
+                    {{ detailDialog.cone.expiry_date || '---' }}
+                  </div>
                 </div>
                 <div class="col-12 col-sm-6">
-                  <div class="text-caption text-grey-7">Ngày nhập kho</div>
-                  <div class="text-subtitle1">{{ formatDate(detailDialog.cone.received_date) }}</div>
+                  <div class="text-caption text-grey-7">
+                    Ngày nhập kho
+                  </div>
+                  <div class="text-subtitle1">
+                    {{ formatDate(detailDialog.cone.received_date) }}
+                  </div>
                 </div>
                 <div class="col-12 col-sm-6">
-                  <div class="text-caption text-grey-7">Ngày cập nhật</div>
-                  <div class="text-subtitle1">{{ formatDate(detailDialog.cone.updated_at) }}</div>
+                  <div class="text-caption text-grey-7">
+                    Ngày cập nhật
+                  </div>
+                  <div class="text-subtitle1">
+                    {{ formatDate(detailDialog.cone.updated_at) }}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </q-card-section>
 
-        <q-card-actions align="right" class="q-px-md q-pb-md">
-          <q-btn v-close-popup unelevated label="Đóng" color="grey" />
+        <q-card-actions
+          align="right"
+          class="q-px-md q-pb-md"
+        >
+          <q-btn
+            v-close-popup
+            unelevated
+            label="Đóng"
+            color="grey"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>

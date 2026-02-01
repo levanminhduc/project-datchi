@@ -82,6 +82,8 @@ declare module 'vue' {
     PendingAllocationsWidget: typeof import('./components/thread/PendingAllocationsWidget.vue')['default']
     PopupEdit: typeof import('./components/ui/dialogs/PopupEdit.vue')['default']
     PullToRefresh: typeof import('./components/ui/scroll/PullToRefresh.vue')['default']
+    QrScannerDialog: typeof import('./components/qr/QrScannerDialog.vue')['default']
+    QrScannerStream: typeof import('./components/qr/QrScannerStream.vue')['default']
     RecoveryTimeline: typeof import('./components/thread/RecoveryTimeline.vue')['default']
     ReturnInitiateDialog: typeof import('./components/thread/ReturnInitiateDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

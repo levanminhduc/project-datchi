@@ -3,7 +3,9 @@
     <!-- 1. Page Header -->
     <div class="row items-center justify-between q-mb-lg">
       <div>
-        <div class="text-h5 text-weight-bold">Dashboard Quản Lý Chỉ</div>
+        <div class="text-h5 text-weight-bold">
+          Dashboard Quản Lý Chỉ
+        </div>
         <div class="text-caption text-grey-7">
           Cập nhật lần cuối: {{ lastUpdated }}
         </div>
@@ -26,7 +28,9 @@
       <div class="col-12 col-sm-6 col-md-3">
         <q-card class="stat-card border-left-primary">
           <q-card-section>
-            <div class="text-overline text-grey-7">Tổng Tồn Kho</div>
+            <div class="text-overline text-grey-7">
+              Tổng Tồn Kho
+            </div>
             <div class="text-h4 text-weight-bold text-primary">
               {{ formatNumber(summary?.total_cones) }}
             </div>
@@ -44,7 +48,9 @@
       <div class="col-12 col-sm-6 col-md-3">
         <q-card class="stat-card border-left-positive">
           <q-card-section>
-            <div class="text-overline text-grey-7">Khả Dụng</div>
+            <div class="text-overline text-grey-7">
+              Khả Dụng
+            </div>
             <div class="text-h4 text-weight-bold text-positive">
               {{ formatNumber(summary?.available_cones) }}
             </div>
@@ -62,7 +68,9 @@
       <div class="col-12 col-sm-6 col-md-3">
         <q-card class="stat-card border-left-info">
           <q-card-section>
-            <div class="text-overline text-grey-7">Đã Phân Bổ</div>
+            <div class="text-overline text-grey-7">
+              Đã Phân Bổ
+            </div>
             <div class="text-h4 text-weight-bold text-info">
               {{ formatNumber(summary?.allocated_cones) }}
             </div>
@@ -80,7 +88,9 @@
       <div class="col-12 col-sm-6 col-md-3">
         <q-card class="stat-card border-left-secondary">
           <q-card-section>
-            <div class="text-overline text-grey-7">Đang Sản Xuất</div>
+            <div class="text-overline text-grey-7">
+              Đang Sản Xuất
+            </div>
             <div class="text-h4 text-weight-bold text-secondary">
               {{ formatNumber(summary?.in_production_cones) }}
             </div>
@@ -119,8 +129,14 @@
 
       <q-separator />
 
-      <q-list separator v-if="alerts.length">
-        <q-item v-for="alert in alerts" :key="alert.id">
+      <q-list
+        v-if="alerts.length"
+        separator
+      >
+        <q-item
+          v-for="alert in alerts"
+          :key="alert.id"
+        >
           <q-item-section avatar>
             <q-icon
               :name="alert.severity === 'critical' ? 'error' : 'warning'"
@@ -158,14 +174,29 @@
         </q-item>
       </q-list>
 
-      <q-card-section v-else-if="!isLoading" class="text-center text-grey-6 q-pa-xl">
-        <q-icon name="check_circle" size="48px" color="positive" class="q-mb-sm" />
-        <div class="text-subtitle1">Tồn kho ổn định</div>
-        <div class="text-caption">Không có loại chỉ nào dưới mức định mức</div>
+      <q-card-section
+        v-else-if="!isLoading"
+        class="text-center text-grey-6 q-pa-xl"
+      >
+        <q-icon
+          name="check_circle"
+          size="48px"
+          color="positive"
+          class="q-mb-sm"
+        />
+        <div class="text-subtitle1">
+          Tồn kho ổn định
+        </div>
+        <div class="text-caption">
+          Không có loại chỉ nào dưới mức định mức
+        </div>
       </q-card-section>
 
       <q-inner-loading :showing="isLoading && alerts.length === 0">
-        <q-spinner-oval color="primary" size="40px" />
+        <q-spinner-oval
+          color="primary"
+          size="40px"
+        />
       </q-inner-loading>
     </q-card>
 
@@ -176,7 +207,11 @@
         <q-card class="full-height shadow-2">
           <q-card-section>
             <div class="text-h6 row items-center">
-              <q-icon name="pending_actions" color="primary" class="q-mr-sm" />
+              <q-icon
+                name="pending_actions"
+                color="primary"
+                class="q-mr-sm"
+              />
               Cần Xử Lý
             </div>
           </q-card-section>
@@ -184,55 +219,115 @@
           <q-separator />
 
           <q-list padding>
-            <q-item clickable v-ripple to="/thread/allocations">
+            <q-item
+              v-ripple
+              clickable
+              to="/thread/allocations"
+            >
               <q-item-section avatar>
-                <q-avatar color="blue-1" text-color="blue" icon="assignment" />
+                <q-avatar
+                  color="blue-1"
+                  text-color="blue"
+                  icon="assignment"
+                />
               </q-item-section>
               <q-item-section>
                 <q-item-label>Phân bổ chờ xử lý</q-item-label>
-                <q-item-label caption>Yêu cầu mới cần xuất kho</q-item-label>
+                <q-item-label caption>
+                  Yêu cầu mới cần xuất kho
+                </q-item-label>
               </q-item-section>
               <q-item-section side>
-                <q-badge color="primary" rounded>{{ pending?.pending_allocations || 0 }}</q-badge>
+                <q-badge
+                  color="primary"
+                  rounded
+                >
+                  {{ pending?.pending_allocations || 0 }}
+                </q-badge>
               </q-item-section>
             </q-item>
 
-            <q-item clickable v-ripple to="/thread/recovery">
+            <q-item
+              v-ripple
+              clickable
+              to="/thread/recovery"
+            >
               <q-item-section avatar>
-                <q-avatar color="green-1" text-color="green" icon="assignment_return" />
+                <q-avatar
+                  color="green-1"
+                  text-color="green"
+                  icon="assignment_return"
+                />
               </q-item-section>
               <q-item-section>
                 <q-item-label>Thu hồi chờ xử lý</q-item-label>
-                <q-item-label caption>Chỉ dư từ sản xuất cần nhập lại kho</q-item-label>
+                <q-item-label caption>
+                  Chỉ dư từ sản xuất cần nhập lại kho
+                </q-item-label>
               </q-item-section>
               <q-item-section side>
-                <q-badge color="positive" rounded>{{ pending?.pending_recovery || 0 }}</q-badge>
+                <q-badge
+                  color="positive"
+                  rounded
+                >
+                  {{ pending?.pending_recovery || 0 }}
+                </q-badge>
               </q-item-section>
             </q-item>
 
-            <q-item clickable v-ripple to="/thread/allocations">
+            <q-item
+              v-ripple
+              clickable
+              to="/thread/allocations"
+            >
               <q-item-section avatar>
-                <q-avatar color="orange-1" text-color="orange" icon="hourglass_empty" />
+                <q-avatar
+                  color="orange-1"
+                  text-color="orange"
+                  icon="hourglass_empty"
+                />
               </q-item-section>
               <q-item-section>
                 <q-item-label>Danh sách chờ (Waitlist)</q-item-label>
-                <q-item-label caption>Phân bổ đang đợi nhập thêm chỉ</q-item-label>
+                <q-item-label caption>
+                  Phân bổ đang đợi nhập thêm chỉ
+                </q-item-label>
               </q-item-section>
               <q-item-section side>
-                <q-badge color="warning" rounded>{{ pending?.waitlisted_allocations || 0 }}</q-badge>
+                <q-badge
+                  color="warning"
+                  rounded
+                >
+                  {{ pending?.waitlisted_allocations || 0 }}
+                </q-badge>
               </q-item-section>
             </q-item>
 
-            <q-item clickable v-ripple to="/thread/allocations">
+            <q-item
+              v-ripple
+              clickable
+              to="/thread/allocations"
+            >
               <q-item-section avatar>
-                <q-avatar color="red-1" text-color="red" icon="event_busy" />
+                <q-avatar
+                  color="red-1"
+                  text-color="red"
+                  icon="event_busy"
+                />
               </q-item-section>
               <q-item-section>
                 <q-item-label>Phân bổ quá hạn</q-item-label>
-                <q-item-label caption>Đã quá thời gian dự kiến nhưng chưa xuất</q-item-label>
+                <q-item-label caption>
+                  Đã quá thời gian dự kiến nhưng chưa xuất
+                </q-item-label>
               </q-item-section>
               <q-item-section side>
-                <q-badge color="negative" rounded>{{ pending?.overdue_allocations || 0 }}</q-badge>
+                <q-badge
+                  color="negative"
+                  rounded
+                >
+                  {{ pending?.overdue_allocations || 0 }}
+                </q-badge>
               </q-item-section>
             </q-item>
           </q-list>
@@ -249,10 +344,17 @@
           <q-card-section>
             <div class="row items-center justify-between">
               <div class="text-h6 row items-center">
-                <q-icon name="bolt" color="negative" class="q-mr-sm" />
+                <q-icon
+                  name="bolt"
+                  color="negative"
+                  class="q-mr-sm"
+                />
                 Xung Đột Cấp Phát
               </div>
-              <q-badge v-if="conflicts.total_conflicts" color="negative">
+              <q-badge
+                v-if="conflicts.total_conflicts"
+                color="negative"
+              >
                 {{ conflicts.total_conflicts }} xung đột
               </q-badge>
             </div>
@@ -260,9 +362,15 @@
 
           <q-separator />
 
-          <q-card-section v-if="conflicts.total_conflicts > 0" class="q-pa-none">
+          <q-card-section
+            v-if="conflicts.total_conflicts > 0"
+            class="q-pa-none"
+          >
             <q-list separator>
-              <q-item v-for="(conflict, index) in conflicts.conflicts.slice(0, 5)" :key="index">
+              <q-item
+                v-for="(conflict, index) in conflicts.conflicts.slice(0, 5)"
+                :key="index"
+              >
                 <q-item-section>
                   <q-item-label class="text-weight-medium">
                     {{ conflict.thread_type_code }}
@@ -272,20 +380,46 @@
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
-                  <q-btn flat round dense icon="chevron_right" to="/thread/allocations" />
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="chevron_right"
+                    to="/thread/allocations"
+                  />
                 </q-item-section>
               </q-item>
             </q-list>
             
-            <q-card-actions align="center" v-if="conflicts.total_conflicts > 5">
-              <q-btn flat color="primary" label="Xem tất cả xung đột" to="/thread/allocations" />
+            <q-card-actions
+              v-if="conflicts.total_conflicts > 5"
+              align="center"
+            >
+              <q-btn
+                flat
+                color="primary"
+                label="Xem tất cả xung đột"
+                to="/thread/allocations"
+              />
             </q-card-actions>
           </q-card-section>
 
-          <q-card-section v-else-if="!isLoading" class="text-center text-grey-6 q-pa-xl">
-            <q-icon name="verified" size="48px" color="info" class="q-mb-sm opacity-50" />
-            <div class="text-subtitle1">Không có xung đột</div>
-            <div class="text-caption">Tất cả các phân bổ hiện tại đều đủ tồn kho</div>
+          <q-card-section
+            v-else-if="!isLoading"
+            class="text-center text-grey-6 q-pa-xl"
+          >
+            <q-icon
+              name="verified"
+              size="48px"
+              color="info"
+              class="q-mb-sm opacity-50"
+            />
+            <div class="text-subtitle1">
+              Không có xung đột
+            </div>
+            <div class="text-caption">
+              Tất cả các phân bổ hiện tại đều đủ tồn kho
+            </div>
           </q-card-section>
 
           <q-inner-loading :showing="isLoading && conflicts.total_conflicts === 0">
@@ -300,7 +434,11 @@
       <q-card class="shadow-2">
         <q-card-section>
           <div class="text-h6 row items-center">
-            <q-icon name="history" color="grey-7" class="q-mr-sm" />
+            <q-icon
+              name="history"
+              color="grey-7"
+              class="q-mr-sm"
+            />
             Hoạt Động Gần Đây
           </div>
         </q-card-section>
@@ -308,7 +446,10 @@
         <q-separator />
 
         <q-card-section>
-          <q-timeline color="primary" v-if="activity.length">
+          <q-timeline
+            v-if="activity.length"
+            color="primary"
+          >
             <q-timeline-entry
               v-for="item in activity"
               :key="item.id"
@@ -317,13 +458,19 @@
               :icon="getActivityIcon(item.type)"
               :color="getActivityColor(item.type)"
             >
-              <div v-if="item.metadata" class="text-caption text-grey-7">
+              <div
+                v-if="item.metadata"
+                class="text-caption text-grey-7"
+              >
                 {{ formatMetadata(item) }}
               </div>
             </q-timeline-entry>
           </q-timeline>
           
-          <div v-else-if="!isLoading" class="text-center text-grey-6 q-pa-lg">
+          <div
+            v-else-if="!isLoading"
+            class="text-center text-grey-6 q-pa-lg"
+          >
             Không có hoạt động gần đây
           </div>
         </q-card-section>

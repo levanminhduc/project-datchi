@@ -1,9 +1,16 @@
 <template>
-  <q-card v-bind="$attrs" bordered>
+  <q-card
+    v-bind="$attrs"
+    bordered
+  >
     <q-card-section>
       <div class="row items-center justify-between q-mb-md">
         <div class="row items-center q-gutter-sm">
-          <q-icon name="notifications_active" color="warning" size="24px" />
+          <q-icon
+            name="notifications_active"
+            color="warning"
+            size="24px"
+          />
           <span class="text-h6">Cảnh báo</span>
         </div>
         <q-badge
@@ -15,15 +22,26 @@
       </div>
 
       <!-- Empty State -->
-      <div v-if="alertCount === 0" class="text-center q-py-md">
-        <q-icon name="notifications_off" color="positive" size="48px" />
+      <div
+        v-if="alertCount === 0"
+        class="text-center q-py-md"
+      >
+        <q-icon
+          name="notifications_off"
+          color="positive"
+          size="48px"
+        />
         <div class="text-subtitle2 text-grey q-mt-sm">
           Không có cảnh báo
         </div>
       </div>
 
       <!-- Alerts List -->
-      <q-list v-else separator dense>
+      <q-list
+        v-else
+        separator
+        dense
+      >
         <q-item
           v-for="alert in displayAlerts"
           :key="alert.id"

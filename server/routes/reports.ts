@@ -88,7 +88,7 @@ reports.get('/allocations', async (c) => {
     // Get status transition times from audit log
     const allocationIds = (allocations || []).map(a => a.id)
     
-    let transitionMap = new Map<number, { soft_at: string | null; issued_at: string | null }>()
+    const transitionMap = new Map<number, { soft_at: string | null; issued_at: string | null }>()
     
     if (allocationIds.length > 0) {
       const { data: auditData } = await supabase
@@ -122,7 +122,7 @@ reports.get('/allocations', async (c) => {
     // Build report rows
     let totalRequested = 0
     let totalAllocated = 0
-    let transitionTimes: number[] = []
+    const transitionTimes: number[] = []
 
     const reportRows: AllocationReportRow[] = (allocations || []).map(a => {
       const requested = Number(a.requested_meters) || 0
