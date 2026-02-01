@@ -73,14 +73,22 @@
           
           <!-- Add Button -->
           <div class="col-12 col-sm-auto">
-            <q-btn
-              color="primary"
-              icon="add"
-              label="Nhập Kho"
-              unelevated
-              class="full-width-xs"
-              @click="openReceiptDialog"
-            />
+            <div class="row q-gutter-sm">
+              <q-btn
+                color="secondary"
+                icon="qr_code_scanner"
+                label="Quét tra cứu"
+                outline
+                @click="showQrScanner = true"
+              />
+              <q-btn
+                color="primary"
+                icon="add"
+                label="Nhập Kho"
+                unelevated
+                @click="openReceiptDialog"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -194,6 +202,16 @@
             @click="openDetailDialog(props.row)"
           >
             <q-tooltip>Xem chi tiết</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            round
+            color="secondary"
+            icon="qr_code"
+            size="sm"
+            @click="openPrintSingle(props.row)"
+          >
+            <q-tooltip>In nhãn QR</q-tooltip>
           </q-btn>
         </q-td>
       </template>
@@ -480,28 +498,46 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- QR Scanner Dialog for Lookup -->
+    <QrScannerDialog
+      v-model="showQrScanner"
+      title="Quét mã tra cứu"
+      :formats="['qr_code', 'code_128', 'ean_13']"
+      hint="Đưa mã QR hoặc barcode của cuộn chỉ vào khung"
+      :close-on-detect="true"
+      @confirm="handleQrLookup"
+    />
+
+    <!-- QR Print Dialog -->
+    <QrPrintDialog
+      v-model="showPrintDialog"
+      :cones="printCones"
+      title="In nhãn QR"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { type QTableColumn } from 'quasar'
+import { useQuasar, type QTableColumn } from 'quasar'
 import { useInventory, useThreadTypes, useSnackbar, useWarehouses } from '@/composables'
 import { ConeStatus } from '@/types/thread/enums'
 import type { Cone, ReceiveStockDTO } from '@/types/thread/inventory'
+import { QrScannerDialog, QrPrintDialog } from '@/components/qr'
+import type { ConeLabelData } from '@/types/qr-label'
 
 // Composables
+const $q = useQuasar()
 const snackbar = useSnackbar()
 const {
   inventory,
   isLoading,
-  filters: activeFilters,
   fetchInventory,
   receiveStock,
 } = useInventory()
 
 const {
-  activeThreadTypes,
   threadTypes,
   fetchThreadTypes,
   loading: threadTypesLoading,
@@ -675,6 +711,11 @@ const detailDialog = reactive({
   cone: null as Cone | null,
 })
 
+// QR Scanner and Print states
+const showQrScanner = ref(false)
+const showPrintDialog = ref(false)
+const printCones = ref<ConeLabelData[]>([])
+
 // Receipt Form Data
 const receiptData = reactive<ReceiveStockDTO>({
   thread_type_id: 0,
@@ -714,16 +755,67 @@ const handleReceiptSubmit = async () => {
     return
   }
 
-  const success = await receiveStock({ ...receiptData })
-  if (success) {
+  const newCones = await receiveStock({ ...receiptData })
+  if (newCones && newCones.length > 0) {
     closeReceiptDialog()
     await fetchInventory({ search: searchQuery.value || undefined, ...filters })
+    
+    // Offer to print labels for newly created cones
+    $q.dialog({
+      title: 'In nhãn QR',
+      message: `Đã nhập ${newCones.length} cuộn chỉ thành công. Bạn có muốn in nhãn QR không?`,
+      cancel: { label: 'Bỏ qua', flat: true },
+      ok: { label: 'In nhãn', color: 'primary' },
+      persistent: true,
+    }).onOk(() => {
+      // Convert cones to label data and open print dialog
+      printCones.value = newCones.map(cone => ({
+        cone_id: cone.cone_id,
+        lot_number: cone.lot_number ?? undefined,
+        thread_type_code: cone.thread_type?.code,
+        thread_type_name: cone.thread_type?.name,
+        weight_grams: cone.weight_grams ?? undefined,
+        quantity_meters: cone.quantity_meters,
+      }))
+      showPrintDialog.value = true
+    })
   }
 }
 
 const openDetailDialog = (cone: Cone) => {
   detailDialog.cone = cone
   detailDialog.isOpen = true
+}
+
+// QR Lookup handlers
+const handleQrLookup = (code: string) => {
+  // Find cone in current inventory
+  const cone = inventory.value.find(c => c.cone_id === code)
+  if (cone) {
+    // Clear filters to ensure cone is visible
+    searchQuery.value = code
+    snackbar.success(`Đã tìm thấy: ${code}`)
+    // Open detail dialog
+    openDetailDialog(cone)
+  } else {
+    // Try fetching with search
+    searchQuery.value = code
+    snackbar.info(`Đang tìm kiếm: ${code}`)
+  }
+  showQrScanner.value = false
+}
+
+// Print QR handlers
+const openPrintSingle = (cone: Cone) => {
+  printCones.value = [{
+    cone_id: cone.cone_id,
+    lot_number: cone.lot_number ?? undefined,
+    thread_type_code: cone.thread_type?.code,
+    thread_type_name: cone.thread_type?.name,
+    weight_grams: cone.weight_grams ?? undefined,
+    quantity_meters: cone.quantity_meters,
+  }]
+  showPrintDialog.value = true
 }
 
 const formatDate = (dateString: string): string => {

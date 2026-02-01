@@ -195,6 +195,25 @@ export interface ConfirmRecoveryDTO {
   notes?: string
 }
 
+export interface StocktakeDTO {
+  warehouse_id: number
+  scanned_cone_ids: string[]
+  notes?: string
+  performed_by?: string
+}
+
+export interface StocktakeResult {
+  stocktake_id: number
+  warehouse_id: number
+  total_in_db: number
+  total_scanned: number
+  matched: number
+  missing: string[]
+  extra: string[]
+  match_rate: number
+  performed_at: string
+}
+
 // ============ RPC RESPONSE TYPES ============
 export interface AllocateThreadResult {
   success: boolean

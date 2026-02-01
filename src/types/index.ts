@@ -3,6 +3,7 @@ export * from './position'
 export * from './ui'
 export * from './navigation'
 export * from './qr'
+export * from './qr-label'
 // Re-export only non-conflicting items from components
 export type {
   BaseProps,

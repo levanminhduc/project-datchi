@@ -37,6 +37,7 @@ declare module 'vue-router/auto-routes' {
     '/thread/mobile/receive': RouteRecordInfo<'/thread/mobile/receive', '/thread/mobile/receive', Record<never, never>, Record<never, never>>,
     '/thread/mobile/recovery': RouteRecordInfo<'/thread/mobile/recovery', '/thread/mobile/recovery', Record<never, never>, Record<never, never>>,
     '/thread/recovery': RouteRecordInfo<'/thread/recovery', '/thread/recovery', Record<never, never>, Record<never, never>>,
+    '/thread/stocktake': RouteRecordInfo<'/thread/stocktake', '/thread/stocktake', Record<never, never>, Record<never, never>>,
   }
 
   /**
@@ -124,6 +125,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/thread/recovery.vue': {
       routes: '/thread/recovery'
+      views: never
+    }
+    'src/pages/thread/stocktake.vue': {
+      routes: '/thread/stocktake'
       views: never
     }
   }

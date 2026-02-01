@@ -102,6 +102,18 @@ export const inventoryService = {
   },
 
   /**
+   * Lấy tất cả cone trong một kho cụ thể (cho kiểm kê)
+   * @param warehouseId - Warehouse ID
+   * @returns ApiResponse with array of partial cone data
+   */
+  async getByWarehouse(warehouseId: number): Promise<ApiResponse<Partial<Cone>[]>> {
+    const response = await fetchApi<ApiResponse<Partial<Cone>[]>>(
+      `/api/inventory/by-warehouse/${warehouseId}`
+    )
+    return response
+  },
+
+  /**
    * Lấy tổng hợp số lượng có sẵn theo thread type
    * @param threadTypeId - Optional filter by thread type ID
    * @returns Record mapping thread_type_id to summary (total_meters, full_cones, partial_cones)
@@ -138,4 +150,42 @@ export const inventoryService = {
 
     return response.data || []
   },
+
+  /**
+   * Lưu kết quả kiểm kê
+   * @param warehouseId - Warehouse ID
+   * @param scannedConeIds - Array of scanned cone IDs
+   * @param notes - Optional notes
+   * @returns Stocktake result with comparison data
+   */
+  async saveStocktake(
+    warehouseId: number, 
+    scannedConeIds: string[], 
+    notes?: string
+  ): Promise<ApiResponse<StocktakeResult>> {
+    const response = await fetchApi<ApiResponse<StocktakeResult>>('/api/inventory/stocktake', {
+      method: 'POST',
+      body: JSON.stringify({
+        warehouse_id: warehouseId,
+        scanned_cone_ids: scannedConeIds,
+        notes,
+      }),
+    })
+    return response
+  },
+}
+
+/**
+ * Stocktake result from backend
+ */
+export interface StocktakeResult {
+  stocktake_id: number
+  warehouse_id: number
+  total_in_db: number
+  total_scanned: number
+  matched: number
+  missing: string[]
+  extra: string[]
+  match_rate: number
+  performed_at: string
 }

@@ -31,6 +31,34 @@ After completing the installation, your environment is ready for Quasar developm
 - 🧩 **Automated Component Importing**: Streamline your workflow with unplugin-vue-components, automatically importing components as you use them. [unplugin-vue-components](https://github.com/antfu/unplugin-vue-components)
 - 🛠️ **Strongly-Typed Vue**: Use vue-tsc for type-checking your Vue components. [vue-tsc](https://github.com/vuejs/language-tools)
 
+## 📱 QR Code Features
+
+Tính năng quét và in mã QR cho quản lý kho chỉ:
+
+### Quét mã QR
+
+- **Tra cứu nhanh**: Quét mã QR/barcode để tìm kiếm cuộn chỉ trong kho
+- **Xuất chỉ**: Quét liên tục nhiều cuộn khi xuất chỉ cho sản xuất
+- **Kiểm kê**: Trang kiểm kê chuyên dụng (`/thread/stocktake`) để đối chiếu tồn kho thực tế với database
+
+### In nhãn QR
+
+- **In đơn**: In nhãn QR cho từng cuộn chỉ (50x30mm)
+- **In hàng loạt**: In nhiều nhãn trên giấy A4 (5 cột x 10 hàng)
+- **Sau nhập kho**: Tự động đề xuất in nhãn sau khi nhập kho thành công
+
+### Sử dụng
+
+1. **Quét tra cứu**: Nhấn nút "Quét tra cứu" trên trang Tồn kho
+2. **In nhãn đơn**: Nhấn nút "In QR" trong menu actions của từng cuộn
+3. **Kiểm kê kho**: Truy cập `/thread/stocktake`, chọn kho và bắt đầu quét
+
+### Yêu cầu
+
+- Camera hoặc máy quét barcode USB
+- HTTPS hoặc localhost (yêu cầu của trình duyệt cho camera)
+- Máy in hỗ trợ khổ 50x30mm hoặc A4
+
 ## 💡 Usage
 
 ### Starting the Development Server

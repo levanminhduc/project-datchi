@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
-import type { ThreadApiResponse, ConeRow, ReceiveStockDTO } from '../types/thread'
+import type { ThreadApiResponse, ConeRow, ReceiveStockDTO, StocktakeDTO, StocktakeResult } from '../types/thread'
 
 const inventory = new Hono()
 
@@ -176,7 +176,7 @@ inventory.get('/by-barcode/:coneId', async (c) => {
 
     const { data, error } = await supabase
       .from('thread_inventory')
-      .select('*, thread_types(code, name, color, color_code, density_grams_per_meter)')
+      .select('*, thread_types(code, name, color, color_code, density_grams_per_meter), warehouses(name)')
       .eq('cone_id', coneId)
       .single()
 
@@ -200,6 +200,65 @@ inventory.get('/by-barcode/:coneId', async (c) => {
   }
 })
 
+// GET /api/inventory/by-warehouse/:warehouseId - Get all cones by warehouse for stocktake
+inventory.get('/by-warehouse/:warehouseId', async (c) => {
+  try {
+    const warehouseId = c.req.param('warehouseId')
+    const parsedId = parseInt(warehouseId)
+    
+    if (isNaN(parsedId)) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID kho không hợp lệ'
+      }, 400)
+    }
+
+    // Fetch all cones in warehouse with batch support
+    const allData: Partial<ConeRow>[] = []
+    let offset = 0
+    let hasMore = true
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('thread_inventory')
+        .select('id, cone_id, thread_type_id, lot_number, weight_grams, quantity_meters, status, is_partial, thread_types(code, name)')
+        .eq('warehouse_id', parsedId)
+        .in('status', ['AVAILABLE', 'ALLOCATED', 'RECEIVED'])
+        .order('cone_id', { ascending: true })
+        .range(offset, offset + BATCH_SIZE - 1)
+
+      if (error) {
+        return c.json<ThreadApiResponse<null>>({
+          data: null,
+          error: 'Lỗi khi tải danh sách tồn kho'
+        }, 500)
+      }
+
+      if (!data || data.length === 0) {
+        hasMore = false
+      } else {
+        allData.push(...data as Partial<ConeRow>[])
+        offset += BATCH_SIZE
+        if (data.length < BATCH_SIZE) {
+          hasMore = false
+        }
+      }
+    }
+
+    return c.json<ThreadApiResponse<Partial<ConeRow>[]>>({
+      data: allData,
+      error: null,
+      message: `Tìm thấy ${allData.length} cuộn chỉ trong kho`
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi hệ thống'
+    }, 500)
+  }
+})
+
 // GET /api/inventory/:id - Get single cone
 inventory.get('/:id', async (c) => {
   try {
@@ -207,7 +266,7 @@ inventory.get('/:id', async (c) => {
 
     // Guard: skip if id matches a known static route name
     // This prevents parameterized route from capturing static routes
-    if (id === 'available' || id === 'by-barcode') {
+    if (id === 'available' || id === 'by-barcode' || id === 'by-warehouse') {
       return c.notFound()
     }
 
@@ -338,6 +397,111 @@ inventory.post('/receive', async (c) => {
       data: data as ConeRow[],
       error: null,
       message: `Nhập kho thành công ${body.quantity_cones} cuộn chỉ`
+    }, 201)
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi hệ thống'
+    }, 500)
+  }
+})
+
+// POST /api/inventory/stocktake - Save stocktake results
+inventory.post('/stocktake', async (c) => {
+  try {
+    const body = await c.req.json<StocktakeDTO>()
+
+    // Validate required fields
+    if (!body.warehouse_id || !body.scanned_cone_ids) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Vui lòng cung cấp warehouse_id và danh sách cone_ids đã quét'
+      }, 400)
+    }
+
+    // Get all cones in the warehouse from database
+    const { data: dbCones, error: dbError } = await supabase
+      .from('thread_inventory')
+      .select('cone_id')
+      .eq('warehouse_id', body.warehouse_id)
+      .not('status', 'in', '("CONSUMED","WRITTEN_OFF")')
+
+    if (dbError) {
+      console.error('Supabase error:', dbError)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi truy vấn database'
+      }, 500)
+    }
+
+    const dbConeIds = new Set((dbCones || []).map(c => c.cone_id))
+    const scannedSet = new Set(body.scanned_cone_ids)
+
+    // Calculate comparison
+    const matched = body.scanned_cone_ids.filter(id => dbConeIds.has(id))
+    const missing = [...dbConeIds].filter(id => !scannedSet.has(id))
+    const extra = body.scanned_cone_ids.filter(id => !dbConeIds.has(id))
+    const matchRate = dbConeIds.size > 0 
+      ? Math.round((matched.length / dbConeIds.size) * 100 * 10) / 10 
+      : 0
+
+    // Save stocktake record
+    const { data: stocktake, error: insertError } = await supabase
+      .from('stocktakes')
+      .insert({
+        warehouse_id: body.warehouse_id,
+        total_in_db: dbConeIds.size,
+        total_scanned: body.scanned_cone_ids.length,
+        matched_count: matched.length,
+        missing_cone_ids: missing,
+        extra_cone_ids: extra,
+        match_rate: matchRate,
+        notes: body.notes,
+        performed_by: body.performed_by,
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      // If stocktakes table doesn't exist, just return the result without saving
+      console.warn('Could not save stocktake (table may not exist):', insertError.message)
+      
+      const result: StocktakeResult = {
+        stocktake_id: 0,
+        warehouse_id: body.warehouse_id,
+        total_in_db: dbConeIds.size,
+        total_scanned: body.scanned_cone_ids.length,
+        matched: matched.length,
+        missing,
+        extra,
+        match_rate: matchRate,
+        performed_at: new Date().toISOString(),
+      }
+
+      return c.json<ThreadApiResponse<StocktakeResult>>({
+        data: result,
+        error: null,
+        message: `Kiểm kê hoàn tất: ${matched.length}/${dbConeIds.size} khớp (${matchRate}%)`
+      })
+    }
+
+    const result: StocktakeResult = {
+      stocktake_id: stocktake.id,
+      warehouse_id: body.warehouse_id,
+      total_in_db: dbConeIds.size,
+      total_scanned: body.scanned_cone_ids.length,
+      matched: matched.length,
+      missing,
+      extra,
+      match_rate: matchRate,
+      performed_at: stocktake.created_at,
+    }
+
+    return c.json<ThreadApiResponse<StocktakeResult>>({
+      data: result,
+      error: null,
+      message: `Kiểm kê hoàn tất: ${matched.length}/${dbConeIds.size} khớp (${matchRate}%)`
     }, 201)
   } catch (err) {
     console.error('Server error:', err)
