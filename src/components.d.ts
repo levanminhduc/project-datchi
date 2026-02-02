@@ -47,6 +47,7 @@ declare module 'vue' {
     AppToolbar: typeof import('./components/ui/layout/AppToolbar.vue')['default']
     AppTooltip: typeof import('./components/ui/dialogs/AppTooltip.vue')['default']
     AppVideo: typeof import('./components/ui/media/AppVideo.vue')['default']
+    AppWarehouseSelect: typeof import('./components/ui/inputs/AppWarehouseSelect.vue')['default']
     BarcodeScanField: typeof import('./components/hardware/BarcodeScanField.vue')['default']
     ButtonDropdown: typeof import('./components/ui/buttons/ButtonDropdown.vue')['default']
     ButtonGroup: typeof import('./components/ui/buttons/ButtonGroup.vue')['default']

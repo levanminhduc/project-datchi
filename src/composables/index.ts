@@ -14,6 +14,7 @@ export { useAllocations } from './thread/useAllocations'
 export { useRecovery } from './thread/useRecovery'
 export { useDashboard } from './thread/useDashboard'
 export { useConflicts } from './thread/useConflicts'
+export { useThreadRequests } from './useThreadRequests'
 export type {
   ThreadConflict,
   ConflictAllocation,

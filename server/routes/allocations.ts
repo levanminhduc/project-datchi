@@ -8,6 +8,11 @@ import type {
   CreateAllocationDTO,
   AllocateThreadResult,
   IssueConeResult,
+  ApproveRequestDTO,
+  RejectRequestDTO,
+  MarkReadyDTO,
+  ConfirmReceiptDTO,
+  WorkflowStatusFilter,
 } from '../types/thread'
 
 const allocations = new Hono()
@@ -39,6 +44,16 @@ interface AllocationWithRelations extends AllocationRow {
     name: string
     color: string | null
     color_code: string | null
+  }
+  requesting_warehouse?: {
+    id: number
+    code: string
+    name: string
+  }
+  source_warehouse?: {
+    id: number
+    code: string
+    name: string
   }
   thread_allocation_cones?: {
     id: number
@@ -79,6 +94,10 @@ interface ConflictRow {
  * - thread_type_id: Filter by thread type
  * - status: Filter by AllocationStatus
  * - priority: Filter by priority
+ * - requesting_warehouse_id: Filter by requesting workshop
+ * - source_warehouse_id: Filter by source warehouse
+ * - workflow_status: Filter by workflow stage (pending_approval, pending_preparation, pending_pickup, completed)
+ * - is_request: If true, only return allocations with requesting_warehouse_id
  */
 allocations.get('/', async (c) => {
   try {
@@ -86,12 +105,18 @@ allocations.get('/', async (c) => {
     const threadTypeId = c.req.query('thread_type_id')
     const status = c.req.query('status') as AllocationStatus | undefined
     const priority = c.req.query('priority') as AllocationPriority | undefined
+    const requestingWarehouseId = c.req.query('requesting_warehouse_id')
+    const sourceWarehouseId = c.req.query('source_warehouse_id')
+    const workflowStatus = c.req.query('workflow_status') as WorkflowStatusFilter | undefined
+    const isRequest = c.req.query('is_request')
 
     let query = supabase
       .from('thread_allocations')
       .select(`
         *,
-        thread_types(id, code, name, color, color_code)
+        thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
       .order('priority_score', { ascending: false })
       .order('created_at', { ascending: false })
@@ -107,6 +132,26 @@ allocations.get('/', async (c) => {
     }
     if (priority) {
       query = query.eq('priority', priority)
+    }
+    if (requestingWarehouseId) {
+      query = query.eq('requesting_warehouse_id', parseInt(requestingWarehouseId))
+    }
+    if (sourceWarehouseId) {
+      query = query.eq('source_warehouse_id', parseInt(sourceWarehouseId))
+    }
+    if (isRequest === 'true') {
+      query = query.not('requesting_warehouse_id', 'is', null)
+    }
+    
+    // Workflow status filter
+    if (workflowStatus === 'pending_approval') {
+      query = query.eq('status', 'PENDING').not('requesting_warehouse_id', 'is', null)
+    } else if (workflowStatus === 'pending_preparation') {
+      query = query.eq('status', 'APPROVED')
+    } else if (workflowStatus === 'pending_pickup') {
+      query = query.eq('status', 'READY_FOR_PICKUP')
+    } else if (workflowStatus === 'completed') {
+      query = query.in('status', ['RECEIVED', 'ISSUED'])
     }
 
     const { data, error } = await query
@@ -275,6 +320,52 @@ allocations.post('/', async (c) => {
       }, 400)
     }
 
+    // Validate requesting warehouse if provided
+    if (body.requesting_warehouse_id) {
+      const { data: reqWarehouse, error: reqWError } = await supabase
+        .from('warehouses')
+        .select('id, type')
+        .eq('id', body.requesting_warehouse_id)
+        .single()
+
+      if (reqWError || !reqWarehouse) {
+        return c.json<ThreadApiResponse<null>>({
+          data: null,
+          error: 'Không tìm thấy xưởng yêu cầu',
+        }, 404)
+      }
+
+      if (reqWarehouse.type !== 'STORAGE') {
+        return c.json<ThreadApiResponse<null>>({
+          data: null,
+          error: 'Xưởng yêu cầu phải là kho lưu trữ (STORAGE)',
+        }, 400)
+      }
+    }
+
+    // Validate source warehouse if provided
+    if (body.source_warehouse_id) {
+      const { data: srcWarehouse, error: srcWError } = await supabase
+        .from('warehouses')
+        .select('id, type')
+        .eq('id', body.source_warehouse_id)
+        .single()
+
+      if (srcWError || !srcWarehouse) {
+        return c.json<ThreadApiResponse<null>>({
+          data: null,
+          error: 'Không tìm thấy kho nguồn',
+        }, 404)
+      }
+
+      if (srcWarehouse.type !== 'STORAGE') {
+        return c.json<ThreadApiResponse<null>>({
+          data: null,
+          error: 'Kho nguồn phải là kho lưu trữ (STORAGE)',
+        }, 400)
+      }
+    }
+
     // Calculate priority score
     const now = new Date()
     const priorityScore = calculatePriorityScore(body.priority, now)
@@ -291,6 +382,10 @@ allocations.post('/', async (c) => {
       requested_date: now.toISOString(),
       due_date: body.due_date || null,
       notes: body.notes || null,
+      // Request workflow fields
+      requesting_warehouse_id: body.requesting_warehouse_id || null,
+      source_warehouse_id: body.source_warehouse_id || null,
+      requested_by: body.requested_by || null,
     }
 
     const { data, error } = await supabase
@@ -298,7 +393,9 @@ allocations.post('/', async (c) => {
       .insert(insertData)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code)
+        thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
       .single()
 
@@ -412,6 +509,396 @@ allocations.post('/:id/execute', async (c) => {
       data: updatedAllocation as AllocationWithRelations,
       error: null,
       message: allocateResult.message,
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi hệ thống',
+    }, 500)
+  }
+})
+
+// ============ REQUEST WORKFLOW ENDPOINTS ============
+
+/**
+ * POST /api/allocations/:id/approve - Approve a pending request
+ * Transitions: PENDING → APPROVED
+ */
+allocations.post('/:id/approve', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    const body = await c.req.json<ApproveRequestDTO>()
+
+    if (isNaN(id)) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID không hợp lệ',
+      }, 400)
+    }
+
+    if (!body.approved_by) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Vui lòng cung cấp thông tin người duyệt',
+      }, 400)
+    }
+
+    // Check allocation exists and is pending
+    const { data: allocation, error: fetchError } = await supabase
+      .from('thread_allocations')
+      .select('id, status, requesting_warehouse_id')
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !allocation) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Không tìm thấy yêu cầu',
+      }, 404)
+    }
+
+    if (allocation.status !== 'PENDING') {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Yêu cầu đã được xử lý',
+      }, 400)
+    }
+
+    // Update to APPROVED
+    const { data: updated, error: updateError } = await supabase
+      .from('thread_allocations')
+      .update({
+        status: 'APPROVED',
+        approved_by: body.approved_by,
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
+      `)
+      .single()
+
+    if (updateError) {
+      console.error('Update error:', updateError)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi duyệt yêu cầu',
+      }, 500)
+    }
+
+    return c.json<ThreadApiResponse<AllocationWithRelations>>({
+      data: updated as AllocationWithRelations,
+      error: null,
+      message: 'Đã duyệt yêu cầu',
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi hệ thống',
+    }, 500)
+  }
+})
+
+/**
+ * POST /api/allocations/:id/reject - Reject a pending request
+ * Transitions: PENDING → REJECTED
+ */
+allocations.post('/:id/reject', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    const body = await c.req.json<RejectRequestDTO>()
+
+    if (isNaN(id)) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID không hợp lệ',
+      }, 400)
+    }
+
+    if (!body.rejected_by || !body.reason) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Vui lòng cung cấp người từ chối và lý do',
+      }, 400)
+    }
+
+    // Check allocation exists and is pending
+    const { data: allocation, error: fetchError } = await supabase
+      .from('thread_allocations')
+      .select('id, status')
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !allocation) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Không tìm thấy yêu cầu',
+      }, 404)
+    }
+
+    if (allocation.status !== 'PENDING') {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Yêu cầu đã được xử lý',
+      }, 400)
+    }
+
+    // Update to REJECTED
+    const { data: updated, error: updateError } = await supabase
+      .from('thread_allocations')
+      .update({
+        status: 'REJECTED',
+        approved_by: body.rejected_by,
+        approved_at: new Date().toISOString(),
+        rejection_reason: body.reason,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
+      `)
+      .single()
+
+    if (updateError) {
+      console.error('Update error:', updateError)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi từ chối yêu cầu',
+      }, 500)
+    }
+
+    return c.json<ThreadApiResponse<AllocationWithRelations>>({
+      data: updated as AllocationWithRelations,
+      error: null,
+      message: 'Đã từ chối yêu cầu',
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi hệ thống',
+    }, 500)
+  }
+})
+
+/**
+ * POST /api/allocations/:id/ready - Mark as ready for pickup
+ * Transitions: APPROVED → READY_FOR_PICKUP
+ * Also executes soft allocation to reserve cones
+ */
+allocations.post('/:id/ready', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    // Parse body but don't use it for now (prepared_by is optional)
+    await c.req.json<MarkReadyDTO>().catch(() => ({}))
+
+    if (isNaN(id)) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID không hợp lệ',
+      }, 400)
+    }
+
+    // Check allocation exists and is approved
+    const { data: allocation, error: fetchError } = await supabase
+      .from('thread_allocations')
+      .select('id, status')
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !allocation) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Không tìm thấy yêu cầu',
+      }, 404)
+    }
+
+    if (allocation.status !== 'APPROVED') {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Yêu cầu chưa được duyệt hoặc đã xử lý',
+      }, 400)
+    }
+
+    // Execute soft allocation
+    const { data: result, error: rpcError } = await supabase
+      .rpc('allocate_thread', {
+        p_allocation_id: id,
+      })
+
+    if (rpcError) {
+      console.error('RPC error:', rpcError)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi phân bổ chỉ: ' + rpcError.message,
+      }, 500)
+    }
+
+    const allocateResult = result as AllocateThreadResult
+
+    if (!allocateResult.success) {
+      return c.json<ThreadApiResponse<AllocateThreadResult>>({
+        data: allocateResult,
+        error: allocateResult.message || 'Không đủ chỉ để chuẩn bị',
+      }, 400)
+    }
+
+    // Update status to READY_FOR_PICKUP
+    const { data: updated, error: updateError } = await supabase
+      .from('thread_allocations')
+      .update({
+        status: 'READY_FOR_PICKUP',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name),
+        thread_allocation_cones(
+          id,
+          cone_id,
+          allocated_meters,
+          thread_inventory(cone_id, quantity_meters, status)
+        )
+      `)
+      .single()
+
+    if (updateError) {
+      console.error('Update error:', updateError)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi cập nhật trạng thái',
+      }, 500)
+    }
+
+    return c.json<ThreadApiResponse<AllocationWithRelations>>({
+      data: updated as AllocationWithRelations,
+      error: null,
+      message: 'Đã chuẩn bị xong, sẵn sàng để nhận',
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi hệ thống',
+    }, 500)
+  }
+})
+
+/**
+ * POST /api/allocations/:id/receive - Confirm receipt at workshop
+ * Transitions: READY_FOR_PICKUP → RECEIVED
+ * Also issues the cones
+ */
+allocations.post('/:id/receive', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    const body = await c.req.json<ConfirmReceiptDTO>()
+
+    if (isNaN(id)) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID không hợp lệ',
+      }, 400)
+    }
+
+    if (!body.received_by) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Vui lòng cung cấp thông tin người nhận',
+      }, 400)
+    }
+
+    // Check allocation exists and is ready for pickup
+    const { data: allocation, error: fetchError } = await supabase
+      .from('thread_allocations')
+      .select(`
+        id, 
+        status,
+        thread_allocation_cones(cone_id)
+      `)
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !allocation) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Không tìm thấy yêu cầu',
+      }, 404)
+    }
+
+    if (allocation.status !== 'READY_FOR_PICKUP') {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Yêu cầu chưa sẵn sàng để nhận hoặc đã được nhận',
+      }, 400)
+    }
+
+    const allocatedCones = (allocation as AllocationWithRelations).thread_allocation_cones || []
+
+    // Issue each cone
+    let hasError = false
+    for (const cone of allocatedCones) {
+      const { error: rpcError } = await supabase
+        .rpc('issue_cone', {
+          p_cone_id: cone.cone_id,
+          p_allocation_id: id,
+          p_confirmed_by: body.received_by,
+        })
+
+      if (rpcError) {
+        console.error('RPC error for cone:', cone.cone_id, rpcError)
+        hasError = true
+      }
+    }
+
+    // Update status to RECEIVED
+    const { data: updated, error: updateError } = await supabase
+      .from('thread_allocations')
+      .update({
+        status: 'RECEIVED',
+        received_by: body.received_by,
+        received_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name),
+        thread_allocation_cones(
+          id,
+          cone_id,
+          allocated_meters,
+          thread_inventory(cone_id, quantity_meters, status)
+        )
+      `)
+      .single()
+
+    if (updateError) {
+      console.error('Update error:', updateError)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi xác nhận nhận hàng',
+      }, 500)
+    }
+
+    return c.json<ThreadApiResponse<AllocationWithRelations>>({
+      data: updated as AllocationWithRelations,
+      error: hasError ? 'Một số cuộn chỉ không xuất được' : null,
+      message: `Đã xác nhận nhận ${allocatedCones.length} cuộn chỉ`,
     })
   } catch (err) {
     console.error('Server error:', err)

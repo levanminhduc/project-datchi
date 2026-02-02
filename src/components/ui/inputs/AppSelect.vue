@@ -32,7 +32,6 @@
     :virtual-scroll-slice-size="virtualScrollSliceSize"
     :input-debounce="inputDebounce"
     :hide-selected="hideSelected"
-    @update:model-value="handleUpdateModelValue"
     :fill-input="fillInput"
     :stack-label="stackLabel"
     :hide-bottom-space="hideBottomSpace"
@@ -40,6 +39,7 @@
     :error="!!errorMessage"
     :error-message="errorMessage"
     lazy-rules
+    @update:model-value="handleUpdateModelValue"
     @filter="handleFilter"
     @input-value="emit('inputValue', $event)"
     @popup-show="emit('popup-show')"

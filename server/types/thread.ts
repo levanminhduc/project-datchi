@@ -22,6 +22,10 @@ export type AllocationStatus =
   | 'ISSUED'
   | 'CANCELLED'
   | 'WAITLISTED'
+  | 'APPROVED'
+  | 'READY_FOR_PICKUP'
+  | 'RECEIVED'
+  | 'REJECTED'
 
 export type AllocationPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
 
@@ -48,6 +52,8 @@ export type ThreadMaterial =
   | 'silk'
   | 'rayon'
   | 'mixed'
+
+export type WarehouseType = 'LOCATION' | 'STORAGE'
 
 // ============ DATABASE ROW TYPES ============
 export interface ThreadTypeRow {
@@ -100,6 +106,16 @@ export interface AllocationRow {
   due_date: string | null
   notes: string | null
   created_by: string | null
+  // Request workflow fields
+  requesting_warehouse_id: number | null
+  source_warehouse_id: number | null
+  requested_by: string | null
+  approved_by: string | null
+  approved_at: string | null
+  rejection_reason: string | null
+  received_by: string | null
+  received_at: string | null
+  // Timestamps
   created_at: string
   updated_at: string
 }
@@ -127,9 +143,16 @@ export interface WarehouseRow {
   code: string
   name: string
   location: string | null
+  parent_id: number | null
+  type: WarehouseType
+  sort_order: number
   is_active: boolean
   created_at: string
   updated_at: string
+}
+
+export interface WarehouseTreeNode extends WarehouseRow {
+  children: WarehouseRow[]
 }
 
 // ============ DTOs ============
@@ -169,6 +192,10 @@ export interface CreateAllocationDTO {
   priority: AllocationPriority
   due_date?: string
   notes?: string
+  // Request workflow fields
+  requesting_warehouse_id?: number
+  source_warehouse_id?: number
+  requested_by?: string
 }
 
 export interface IssueAllocationDTO {
@@ -245,3 +272,27 @@ export interface ThreadApiResponse<T> {
   error: string | null
   message?: string
 }
+
+// ============ REQUEST WORKFLOW DTOs ============
+export interface ApproveRequestDTO {
+  approved_by: string
+}
+
+export interface RejectRequestDTO {
+  rejected_by: string
+  reason: string
+}
+
+export interface MarkReadyDTO {
+  prepared_by?: string
+}
+
+export interface ConfirmReceiptDTO {
+  received_by: string
+}
+
+export type WorkflowStatusFilter = 
+  | 'pending_approval' 
+  | 'pending_preparation' 
+  | 'pending_pickup'
+  | 'completed'

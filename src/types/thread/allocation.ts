@@ -30,9 +30,19 @@ export interface Allocation {
   created_by: string | null
   created_at: string
   updated_at: string
-
+  // Request workflow fields
+  requesting_warehouse_id: number | null
+  source_warehouse_id: number | null
+  requested_by: string | null
+  approved_by: string | null
+  approved_at: string | null
+  rejection_reason: string | null
+  received_by: string | null
+  received_at: string | null
   // Joined
   allocated_cones?: AllocationCone[]
+  requesting_warehouse?: { id: number; code: string; name: string }
+  source_warehouse?: { id: number; code: string; name: string }
 }
 
 /**
@@ -58,6 +68,10 @@ export interface CreateAllocationDTO {
   priority: AllocationPriority
   due_date?: string
   notes?: string
+  // Request workflow fields
+  requesting_warehouse_id?: number
+  source_warehouse_id?: number
+  requested_by?: string
 }
 
 /**
@@ -109,4 +123,9 @@ export interface AllocationFilters {
   priority?: AllocationPriority
   from_date?: string
   to_date?: string
+  // Request workflow filters
+  requesting_warehouse_id?: number
+  source_warehouse_id?: number
+  workflow_status?: 'pending_approval' | 'pending_preparation' | 'pending_pickup' | 'completed'
+  is_request?: boolean
 }

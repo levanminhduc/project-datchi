@@ -32,7 +32,12 @@ export enum AllocationStatus {
   HARD = 'HARD',
   ISSUED = 'ISSUED',
   CANCELLED = 'CANCELLED',
-  WAITLISTED = 'WAITLISTED'
+  WAITLISTED = 'WAITLISTED',
+  // Request workflow statuses
+  APPROVED = 'APPROVED',
+  READY_FOR_PICKUP = 'READY_FOR_PICKUP',
+  RECEIVED = 'RECEIVED',
+  REJECTED = 'REJECTED'
 }
 
 /**

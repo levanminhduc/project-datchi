@@ -637,6 +637,11 @@ const statusColors: Record<AllocationStatus, string> = {
   [AllocationStatus.ISSUED]: 'positive',
   [AllocationStatus.CANCELLED]: 'negative',
   [AllocationStatus.WAITLISTED]: 'orange',
+  // Request workflow statuses
+  [AllocationStatus.APPROVED]: 'teal',
+  [AllocationStatus.READY_FOR_PICKUP]: 'amber',
+  [AllocationStatus.RECEIVED]: 'green',
+  [AllocationStatus.REJECTED]: 'red',
 }
 
 const statusLabels: Record<AllocationStatus, string> = {
@@ -646,6 +651,11 @@ const statusLabels: Record<AllocationStatus, string> = {
   [AllocationStatus.ISSUED]: 'Đã xuất',
   [AllocationStatus.CANCELLED]: 'Đã hủy',
   [AllocationStatus.WAITLISTED]: 'Chờ hàng',
+  // Request workflow statuses
+  [AllocationStatus.APPROVED]: 'Đã duyệt',
+  [AllocationStatus.READY_FOR_PICKUP]: 'Sẵn sàng nhận',
+  [AllocationStatus.RECEIVED]: 'Đã nhận',
+  [AllocationStatus.REJECTED]: 'Từ chối',
 }
 
 const priorityColors: Record<AllocationPriority, string> = {

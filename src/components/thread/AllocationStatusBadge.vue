@@ -22,6 +22,11 @@ const statusConfig: Record<AllocationStatus, { color: string; label: string; ico
   [AllocationStatus.ISSUED]: { color: 'positive', label: 'Đã xuất', icon: 'check_circle' },
   [AllocationStatus.CANCELLED]: { color: 'negative', label: 'Đã hủy', icon: 'cancel' },
   [AllocationStatus.WAITLISTED]: { color: 'orange', label: 'Chờ hàng', icon: 'hourglass_empty' },
+  // Request workflow statuses
+  [AllocationStatus.APPROVED]: { color: 'teal', label: 'Đã duyệt', icon: 'thumb_up' },
+  [AllocationStatus.READY_FOR_PICKUP]: { color: 'amber', label: 'Sẵn sàng nhận', icon: 'inventory' },
+  [AllocationStatus.RECEIVED]: { color: 'green', label: 'Đã nhận', icon: 'done_all' },
+  [AllocationStatus.REJECTED]: { color: 'red', label: 'Từ chối', icon: 'block' },
 }
 
 const config = computed(() => statusConfig[props.status] || { color: 'grey', label: props.status, icon: 'help' })

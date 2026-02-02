@@ -34,6 +34,11 @@ function buildQueryString(filters?: AllocationFilters): string {
   if (filters.priority) params.append('priority', filters.priority)
   if (filters.from_date) params.append('from_date', filters.from_date)
   if (filters.to_date) params.append('to_date', filters.to_date)
+  // Request workflow filters
+  if (filters.requesting_warehouse_id !== undefined) params.append('requesting_warehouse_id', String(filters.requesting_warehouse_id))
+  if (filters.source_warehouse_id !== undefined) params.append('source_warehouse_id', String(filters.source_warehouse_id))
+  if (filters.workflow_status) params.append('workflow_status', filters.workflow_status)
+  if (filters.is_request) params.append('is_request', 'true')
 
   const queryString = params.toString()
   return queryString ? `?${queryString}` : ''
@@ -286,6 +291,124 @@ export const allocationService = {
 
     if (response.error || !response.data) {
       throw new Error(response.error || 'Không thể chia nhỏ phân bổ')
+    }
+
+    return response.data
+  },
+
+  // ============ REQUEST WORKFLOW METHODS ============
+
+  /**
+   * Lấy danh sách yêu cầu chỉ (có requesting_warehouse_id)
+   * @param filters - Optional filters
+   * @returns Array of thread requests
+   */
+  async getRequests(filters?: AllocationFilters): Promise<Allocation[]> {
+    return this.getAll({ ...filters, is_request: true })
+  },
+
+  /**
+   * Duyệt yêu cầu chỉ
+   * Chuyển trạng thái từ PENDING -> APPROVED
+   * @param id - Request ID
+   * @param approvedBy - Person approving
+   * @returns Updated allocation
+   */
+  async approve(id: number, approvedBy: string): Promise<Allocation> {
+    const response = await fetchApi<ApiResponse<Allocation>>(
+      `/api/allocations/${id}/approve`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ approved_by: approvedBy }),
+      }
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    if (!response.data) {
+      throw new Error('Không thể duyệt yêu cầu')
+    }
+
+    return response.data
+  },
+
+  /**
+   * Từ chối yêu cầu chỉ
+   * Chuyển trạng thái từ PENDING -> REJECTED
+   * @param id - Request ID
+   * @param rejectedBy - Person rejecting
+   * @param reason - Rejection reason
+   * @returns Updated allocation
+   */
+  async reject(id: number, rejectedBy: string, reason: string): Promise<Allocation> {
+    const response = await fetchApi<ApiResponse<Allocation>>(
+      `/api/allocations/${id}/reject`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ rejected_by: rejectedBy, reason }),
+      }
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    if (!response.data) {
+      throw new Error('Không thể từ chối yêu cầu')
+    }
+
+    return response.data
+  },
+
+  /**
+   * Đánh dấu sẵn sàng nhận
+   * Chuyển trạng thái từ APPROVED -> READY_FOR_PICKUP
+   * Thực hiện phân bổ mềm để đặt chỗ cone
+   * @param id - Request ID
+   * @returns Updated allocation with allocated cones
+   */
+  async markReady(id: number): Promise<Allocation> {
+    const response = await fetchApi<ApiResponse<Allocation>>(
+      `/api/allocations/${id}/ready`,
+      { method: 'POST' }
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    if (!response.data) {
+      throw new Error('Không thể đánh dấu sẵn sàng')
+    }
+
+    return response.data
+  },
+
+  /**
+   * Xác nhận đã nhận chỉ
+   * Chuyển trạng thái từ READY_FOR_PICKUP -> RECEIVED
+   * Xuất cone cho xưởng
+   * @param id - Request ID
+   * @param receivedBy - Person receiving
+   * @returns Updated allocation
+   */
+  async confirmReceived(id: number, receivedBy: string): Promise<Allocation> {
+    const response = await fetchApi<ApiResponse<Allocation>>(
+      `/api/allocations/${id}/receive`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ received_by: receivedBy }),
+      }
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    if (!response.data) {
+      throw new Error('Không thể xác nhận nhận hàng')
     }
 
     return response.data
