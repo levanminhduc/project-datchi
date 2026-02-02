@@ -352,18 +352,7 @@
                   transition-show="scale"
                   transition-hide="scale"
                 >
-                  <DatePicker v-model="createData.due_date">
-                    <template #default>
-                      <div class="row items-center justify-end q-pa-sm">
-                        <q-btn
-                          v-close-popup
-                          label="Đóng"
-                          color="primary"
-                          flat
-                        />
-                      </div>
-                    </template>
-                  </DatePicker>
+                  <DatePicker v-model="createData.due_date" />
                 </q-popup-proxy>
               </q-icon>
             </template>

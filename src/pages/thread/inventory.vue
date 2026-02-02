@@ -295,18 +295,7 @@
                   transition-show="scale"
                   transition-hide="scale"
                 >
-                  <DatePicker v-model="receiptData.expiry_date">
-                    <template #default>
-                      <div class="row items-center justify-end q-pa-sm">
-                        <q-btn
-                          v-close-popup
-                          label="Đóng"
-                          color="primary"
-                          flat
-                        />
-                      </div>
-                    </template>
-                  </DatePicker>
+                  <DatePicker v-model="receiptData.expiry_date" />
                 </q-popup-proxy>
               </q-icon>
             </template>

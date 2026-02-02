@@ -857,8 +857,8 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .recovery-page {
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
 }
 
 .workflow-card {
@@ -870,6 +870,8 @@ onMounted(() => {
 
 .recovery-table {
   border-radius: 8px;
+  width: 100%;
+  max-width: 100%;
 }
 
 :deep(.q-table th) {
@@ -877,6 +879,11 @@ onMounted(() => {
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
+}
+
+/* Ensure table scrolls horizontally on smaller widths */
+:deep(.q-table__middle) {
+  overflow-x: auto;
 }
 
 // Dark mode compatible surface background

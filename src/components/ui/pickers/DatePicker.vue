@@ -2,6 +2,10 @@
 /**
  * DatePicker - Date picker wrapper
  * Wraps QDate with Vietnamese locale defaults
+ * 
+ * When autoClose is true (default), selecting a date will:
+ * - Emit 'update:modelValue' with the selected date
+ * - Emit 'date-selected' event for parent to handle (e.g., close popup)
  */
 import { computed } from 'vue'
 import { useQuasar } from 'quasar'
@@ -29,6 +33,8 @@ interface Props {
   emitImmediately?: boolean
   defaultYearMonth?: string
   defaultView?: 'Calendar' | 'Months' | 'Years'
+  /** When true, emits 'date-selected' event after date selection for auto-close behavior */
+  autoClose?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -46,11 +52,14 @@ const props = withDefaults(defineProps<Props>(), {
   multiple: false,
   range: false,
   emitImmediately: true,
-  defaultView: 'Calendar'
+  defaultView: 'Calendar',
+  autoClose: true
 })
 
 const emit = defineEmits<{
   'update:modelValue': [value: string | null]
+  /** Emitted when a date is selected and autoClose is true - use to close popup */
+  'date-selected': [value: string | null]
 }>()
 
 const $q = useQuasar()
@@ -58,7 +67,14 @@ const isDark = computed(() => props.dark ?? $q.dark.isActive)
 
 const dateValue = computed({
   get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val ?? null)
+  set: (val) => {
+    const value = val ?? null
+    emit('update:modelValue', value)
+    // Emit date-selected for auto-close behavior when not in multiple/range mode
+    if (props.autoClose && !props.multiple && !props.range) {
+      emit('date-selected', value)
+    }
+  }
 })
 
 // Vietnamese locale
@@ -73,6 +89,7 @@ const viLocale = {
 <template>
   <q-date
     v-model="dateValue"
+    v-close-popup="autoClose && !multiple && !range"
     :mask="mask"
     :locale="viLocale"
     :landscape="landscape"
@@ -96,5 +113,16 @@ const viLocale = {
     :default-view="defaultView"
     class="bg-surface"
     :class="{ 'dark': isDark }"
-  />
+  >
+    <!-- Forward slots to q-date -->
+    <template
+      v-for="(_, name) in $slots"
+      #[name]="slotData"
+    >
+      <slot
+        :name="name"
+        v-bind="slotData ?? {}"
+      />
+    </template>
+  </q-date>
 </template>

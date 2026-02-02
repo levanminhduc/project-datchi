@@ -46,6 +46,7 @@
               label="Loại thao tác"
               clearable
               dense
+              hide-bottom-space
             />
           </div>
 
@@ -56,6 +57,7 @@
               label="Kho"
               clearable
               dense
+              hide-bottom-space
             />
           </div>
 
@@ -67,6 +69,7 @@
               placeholder="DD/MM/YYYY"
               dense
               clearable
+              hide-bottom-space
             >
               <template #append>
                 <q-icon
@@ -91,6 +94,7 @@
               placeholder="DD/MM/YYYY"
               dense
               clearable
+              hide-bottom-space
             >
               <template #append>
                 <q-icon

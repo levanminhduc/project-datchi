@@ -724,7 +724,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .batch-stepper {
-  max-width: 1200px;
+  width: 100%;
+  max-width: 100%;
 }
 
 .scanner-container {
@@ -764,5 +765,10 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Ensure proper stepper content overflow on resize */
+:deep(.q-stepper__content) {
+  overflow-x: auto;
 }
 </style>
