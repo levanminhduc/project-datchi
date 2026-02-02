@@ -13,16 +13,29 @@
         <h1 class="text-h5 q-my-none text-weight-bold">
           {{ lot?.lot_number || 'Chi tiết lô' }}
         </h1>
-        <div v-if="lot" class="text-grey-6">
+        <div
+          v-if="lot"
+          class="text-grey-6"
+        >
           {{ lot.thread_type?.name }} - {{ lot.warehouse?.name }}
         </div>
       </div>
       <q-space />
-      <LotStatusBadge v-if="lot" :status="lot.status" size="lg" />
+      <LotStatusBadge
+        v-if="lot"
+        :status="lot.status"
+        size="lg"
+      />
     </div>
 
-    <div v-if="loading" class="row justify-center q-py-xl">
-      <q-spinner size="lg" color="primary" />
+    <div
+      v-if="loading"
+      class="row justify-center q-py-xl"
+    >
+      <q-spinner
+        size="lg"
+        color="primary"
+      />
     </div>
 
     <template v-else-if="lot">
@@ -30,16 +43,27 @@
       <div class="row q-col-gutter-md q-mb-lg">
         <!-- Basic Info -->
         <div class="col-12 col-md-6">
-          <q-card flat bordered>
+          <q-card
+            flat
+            bordered
+          >
             <q-card-section>
-              <div class="text-subtitle1 text-weight-medium q-mb-md">Thông tin lô</div>
+              <div class="text-subtitle1 text-weight-medium q-mb-md">
+                Thông tin lô
+              </div>
               <div class="row q-col-gutter-sm">
                 <div class="col-6">
-                  <div class="text-caption text-grey-6">Mã lô</div>
-                  <div class="text-body1">{{ lot.lot_number }}</div>
+                  <div class="text-caption text-grey-6">
+                    Mã lô
+                  </div>
+                  <div class="text-body1">
+                    {{ lot.lot_number }}
+                  </div>
                 </div>
                 <div class="col-6">
-                  <div class="text-caption text-grey-6">Loại chỉ</div>
+                  <div class="text-caption text-grey-6">
+                    Loại chỉ
+                  </div>
                   <div class="text-body1 row items-center no-wrap q-gutter-xs">
                     <div
                       v-if="lot.thread_type?.color_code"
@@ -50,20 +74,37 @@
                   </div>
                 </div>
                 <div class="col-6">
-                  <div class="text-caption text-grey-6">Kho</div>
-                  <div class="text-body1">{{ lot.warehouse?.name || '-' }}</div>
+                  <div class="text-caption text-grey-6">
+                    Kho
+                  </div>
+                  <div class="text-body1">
+                    {{ lot.warehouse?.name || '-' }}
+                  </div>
                 </div>
                 <div class="col-6">
-                  <div class="text-caption text-grey-6">Nhà cung cấp</div>
-                  <div class="text-body1">{{ lot.supplier || '-' }}</div>
+                  <div class="text-caption text-grey-6">
+                    Nhà cung cấp
+                  </div>
+                  <div class="text-body1">
+                    {{ lot.supplier || '-' }}
+                  </div>
                 </div>
                 <div class="col-6">
-                  <div class="text-caption text-grey-6">Ngày sản xuất</div>
-                  <div class="text-body1">{{ formatDate(lot.production_date) }}</div>
+                  <div class="text-caption text-grey-6">
+                    Ngày sản xuất
+                  </div>
+                  <div class="text-body1">
+                    {{ formatDate(lot.production_date) }}
+                  </div>
                 </div>
                 <div class="col-6">
-                  <div class="text-caption text-grey-6">Hết hạn</div>
-                  <div class="text-body1" :class="isExpired ? 'text-negative' : ''">
+                  <div class="text-caption text-grey-6">
+                    Hết hạn
+                  </div>
+                  <div
+                    class="text-body1"
+                    :class="isExpired ? 'text-negative' : ''"
+                  >
                     {{ formatDate(lot.expiry_date) }}
                   </div>
                 </div>
@@ -74,17 +115,30 @@
 
         <!-- Quantity Summary -->
         <div class="col-12 col-md-6">
-          <q-card flat bordered>
+          <q-card
+            flat
+            bordered
+          >
             <q-card-section>
-              <div class="text-subtitle1 text-weight-medium q-mb-md">Số lượng</div>
+              <div class="text-subtitle1 text-weight-medium q-mb-md">
+                Số lượng
+              </div>
               <div class="row q-col-gutter-md">
                 <div class="col-6">
-                  <div class="text-h4 text-primary">{{ lot.available_cones }}</div>
-                  <div class="text-caption text-grey-6">Cuộn còn sẵn</div>
+                  <div class="text-h4 text-primary">
+                    {{ lot.available_cones }}
+                  </div>
+                  <div class="text-caption text-grey-6">
+                    Cuộn còn sẵn
+                  </div>
                 </div>
                 <div class="col-6">
-                  <div class="text-h4">{{ lot.total_cones }}</div>
-                  <div class="text-caption text-grey-6">Tổng cuộn</div>
+                  <div class="text-h4">
+                    {{ lot.total_cones }}
+                  </div>
+                  <div class="text-caption text-grey-6">
+                    Tổng cuộn
+                  </div>
                 </div>
               </div>
               <q-linear-progress
@@ -100,7 +154,10 @@
       </div>
 
       <!-- Tabs -->
-      <q-card flat bordered>
+      <q-card
+        flat
+        bordered
+      >
         <q-tabs
           v-model="activeTab"
           class="text-grey"
@@ -108,13 +165,24 @@
           indicator-color="primary"
           align="left"
         >
-          <q-tab name="cones" label="Danh sách cuộn" icon="inventory_2" />
-          <q-tab name="history" label="Lịch sử thao tác" icon="history" />
+          <q-tab
+            name="cones"
+            label="Danh sách cuộn"
+            icon="inventory_2"
+          />
+          <q-tab
+            name="history"
+            label="Lịch sử thao tác"
+            icon="history"
+          />
         </q-tabs>
 
         <q-separator />
 
-        <q-tab-panels v-model="activeTab" animated>
+        <q-tab-panels
+          v-model="activeTab"
+          animated
+        >
           <!-- Cones Tab -->
           <q-tab-panel name="cones">
             <q-table

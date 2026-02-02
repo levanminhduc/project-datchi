@@ -29,7 +29,10 @@
   >
     <!-- Custom option template -->
     <template #option="{ opt, itemProps }">
-      <q-item v-bind="itemProps" class="lot-option">
+      <q-item
+        v-bind="itemProps"
+        class="lot-option"
+      >
         <q-item-section>
           <q-item-label>
             <span class="text-weight-medium">{{ opt.lot_number }}</span>

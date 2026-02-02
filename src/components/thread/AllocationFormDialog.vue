@@ -276,7 +276,10 @@ const onCancel = () => {
           hint="Thời hạn sản xuất cần chỉ"
         >
           <template #append>
-            <q-icon name="event" class="cursor-pointer">
+            <q-icon
+              name="event"
+              class="cursor-pointer"
+            >
               <q-popup-proxy
                 cover
                 transition-show="scale"
