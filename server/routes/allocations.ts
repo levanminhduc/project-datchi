@@ -1063,10 +1063,12 @@ allocations.post('/:id/cancel', async (c) => {
       }, 404)
     }
 
-    if (allocation.status === 'ISSUED') {
+    // Cannot cancel after pickup preparation or receipt
+    const nonCancellableStatuses = ['ISSUED', 'READY_FOR_PICKUP', 'RECEIVED']
+    if (nonCancellableStatuses.includes(allocation.status)) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
-        error: 'Không thể hủy đơn phân bổ đã xuất kho',
+        error: 'Không thể hủy đơn phân bổ đã chuẩn bị hoặc đã xuất kho',
       }, 400)
     }
 

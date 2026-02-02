@@ -97,6 +97,18 @@
   - Added new status values to AllocationStatusBadge
   - Added new status values to allocations.vue
 
+### Phase 7: Bug Fixes (from verification)
+
+- [x] **T7.1** Fix cancellation logic - không cho hủy READY_FOR_PICKUP/RECEIVED
+  - Update `server/routes/allocations.ts` cancel endpoint
+  - Add READY_FOR_PICKUP and RECEIVED to blocked statuses
+  - Return appropriate Vietnamese error message
+
+- [x] **T7.2** Add thread type dropdown in create dialog
+  - Add useThreadTypes composable to requests.vue
+  - Replace text input with q-select for thread_type_id
+  - Show thread type code and name in dropdown
+
 ## Dependencies
 
 ```

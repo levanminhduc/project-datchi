@@ -7,6 +7,7 @@
 
 import type { ConeStatus } from './enums'
 import type { ThreadType } from './thread-type'
+import type { Lot } from './lot'
 
 /**
  * Cone entity matching database schema
@@ -25,6 +26,8 @@ export interface Cone {
   is_partial: boolean
   status: ConeStatus
   lot_number: string | null
+  lot_id: number | null        // FK to lots table
+  lot?: Lot                    // Joined lot data
   expiry_date: string | null
   received_date: string
   location: string | null

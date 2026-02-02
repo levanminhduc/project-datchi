@@ -31,8 +31,14 @@ declare module 'vue-router/auto-routes' {
     '/reports/allocations': RouteRecordInfo<'/reports/allocations', '/reports/allocations', Record<never, never>, Record<never, never>>,
     '/thread/': RouteRecordInfo<'/thread/', '/thread', Record<never, never>, Record<never, never>>,
     '/thread/allocations': RouteRecordInfo<'/thread/allocations', '/thread/allocations', Record<never, never>, Record<never, never>>,
+    '/thread/batch/history': RouteRecordInfo<'/thread/batch/history', '/thread/batch/history', Record<never, never>, Record<never, never>>,
+    '/thread/batch/issue': RouteRecordInfo<'/thread/batch/issue', '/thread/batch/issue', Record<never, never>, Record<never, never>>,
+    '/thread/batch/receive': RouteRecordInfo<'/thread/batch/receive', '/thread/batch/receive', Record<never, never>, Record<never, never>>,
+    '/thread/batch/transfer': RouteRecordInfo<'/thread/batch/transfer', '/thread/batch/transfer', Record<never, never>, Record<never, never>>,
     '/thread/dashboard': RouteRecordInfo<'/thread/dashboard', '/thread/dashboard', Record<never, never>, Record<never, never>>,
     '/thread/inventory': RouteRecordInfo<'/thread/inventory', '/thread/inventory', Record<never, never>, Record<never, never>>,
+    '/thread/lots/': RouteRecordInfo<'/thread/lots/', '/thread/lots', Record<never, never>, Record<never, never>>,
+    '/thread/lots/[id]': RouteRecordInfo<'/thread/lots/[id]', '/thread/lots/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     '/thread/mobile/issue': RouteRecordInfo<'/thread/mobile/issue', '/thread/mobile/issue', Record<never, never>, Record<never, never>>,
     '/thread/mobile/receive': RouteRecordInfo<'/thread/mobile/receive', '/thread/mobile/receive', Record<never, never>, Record<never, never>>,
     '/thread/mobile/recovery': RouteRecordInfo<'/thread/mobile/recovery', '/thread/mobile/recovery', Record<never, never>, Record<never, never>>,
@@ -104,12 +110,36 @@ declare module 'vue-router/auto-routes' {
       routes: '/thread/allocations'
       views: never
     }
+    'src/pages/thread/batch/history.vue': {
+      routes: '/thread/batch/history'
+      views: never
+    }
+    'src/pages/thread/batch/issue.vue': {
+      routes: '/thread/batch/issue'
+      views: never
+    }
+    'src/pages/thread/batch/receive.vue': {
+      routes: '/thread/batch/receive'
+      views: never
+    }
+    'src/pages/thread/batch/transfer.vue': {
+      routes: '/thread/batch/transfer'
+      views: never
+    }
     'src/pages/thread/dashboard.vue': {
       routes: '/thread/dashboard'
       views: never
     }
     'src/pages/thread/inventory.vue': {
       routes: '/thread/inventory'
+      views: never
+    }
+    'src/pages/thread/lots/index.vue': {
+      routes: '/thread/lots/'
+      views: never
+    }
+    'src/pages/thread/lots/[id].vue': {
+      routes: '/thread/lots/[id]'
       views: never
     }
     'src/pages/thread/mobile/issue.vue': {

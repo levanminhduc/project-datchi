@@ -14,6 +14,8 @@ import recoveryRouter from './routes/recovery'
 import dashboardRouter from './routes/dashboard'
 import warehousesRouter from './routes/warehouses'
 import reportsRouter from './routes/reports'
+import lotsRouter from './routes/lots'
+import batchRouter from './routes/batch'
 
 const app = new Hono()
 
@@ -47,6 +49,8 @@ app.route('/api/recovery', recoveryRouter)
 app.route('/api/dashboard', dashboardRouter)
 app.route('/api/warehouses', warehousesRouter)
 app.route('/api/reports', reportsRouter)
+app.route('/api/lots', lotsRouter)
+app.route('/api/batch', batchRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
@@ -88,3 +92,5 @@ console.log(`Recovery API: http://localhost:${PORT}/api/recovery`)
 console.log(`Dashboard API: http://localhost:${PORT}/api/dashboard`)
 console.log(`Warehouses API: http://localhost:${PORT}/api/warehouses`)
 console.log(`Reports API: http://localhost:${PORT}/api/reports`)
+console.log(`Lots API: http://localhost:${PORT}/api/lots`)
+console.log(`Batch API: http://localhost:${PORT}/api/batch`)

@@ -8,6 +8,7 @@ import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
+import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import WeightMeterDisplay from './WeightMeterDisplay.vue'
 
 interface Props {
@@ -270,10 +271,22 @@ const onCancel = () => {
       <div class="col-12 col-sm-6">
         <AppInput
           v-model="form.due_date"
-          type="date"
           label="Ngày cần hàng"
+          placeholder="DD/MM/YYYY"
           hint="Thời hạn sản xuất cần chỉ"
-        />
+        >
+          <template #append>
+            <q-icon name="event" class="cursor-pointer">
+              <q-popup-proxy
+                cover
+                transition-show="scale"
+                transition-hide="scale"
+              >
+                <DatePicker v-model="form.due_date" />
+              </q-popup-proxy>
+            </q-icon>
+          </template>
+        </AppInput>
       </div>
 
       <!-- Notes -->

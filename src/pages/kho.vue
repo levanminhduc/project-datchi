@@ -25,6 +25,41 @@ const threadModules = [
     color: 'positive'
   },
   {
+    title: 'Lô Hàng',
+    description: 'Quản lý lô nhập kho',
+    icon: 'inventory_2',
+    to: '/thread/lots',
+    color: 'teal'
+  },
+  {
+    title: 'Nhập Kho',
+    description: 'Nhập kho hàng loạt',
+    icon: 'move_to_inbox',
+    to: '/thread/batch/receive',
+    color: 'indigo'
+  },
+  {
+    title: 'Chuyển Kho',
+    description: 'Chuyển kho hàng loạt',
+    icon: 'swap_horiz',
+    to: '/thread/batch/transfer',
+    color: 'purple'
+  },
+  {
+    title: 'Xuất Kho',
+    description: 'Xuất kho hàng loạt',
+    icon: 'output',
+    to: '/thread/batch/issue',
+    color: 'orange'
+  },
+  {
+    title: 'Lịch Sử Thao Tác',
+    description: 'Xem lịch sử nhập xuất kho',
+    icon: 'history',
+    to: '/thread/batch/history',
+    color: 'blue-grey'
+  },
+  {
     title: 'Phân Bổ',
     description: 'Phân bổ chỉ cho đơn hàng',
     icon: 'assignment',

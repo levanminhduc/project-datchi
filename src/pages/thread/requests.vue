@@ -8,9 +8,7 @@
 
 import { ref, computed, onMounted, watch } from 'vue'
 import { useQuasar, date } from 'quasar'
-import { useThreadRequests } from '@/composables/useThreadRequests'
-import { useWarehouses } from '@/composables/useWarehouses'
-import { useConfirm } from '@/composables/useConfirm'
+import { useThreadRequests, useWarehouses, useThreadTypes, useConfirm } from '@/composables'
 import AllocationStatusBadge from '@/components/thread/AllocationStatusBadge.vue'
 import type { Allocation, CreateAllocationDTO } from '@/types/thread'
 import { AllocationStatus, AllocationPriority } from '@/types/thread/enums'
@@ -34,6 +32,7 @@ const {
 } = useThreadRequests()
 
 const { storageWarehouses, fetchWarehouses } = useWarehouses()
+const { threadTypes, fetchThreadTypes } = useThreadTypes()
 
 // State
 const activeTab = ref<'all' | 'pending' | 'approved' | 'ready' | 'completed'>('all')
@@ -244,7 +243,7 @@ watch(activeTab, () => {
 
 // Lifecycle
 onMounted(async () => {
-  await Promise.all([fetchRequests(), fetchWarehouses()])
+  await Promise.all([fetchRequests(), fetchWarehouses(), fetchThreadTypes()])
 })
 </script>
 
@@ -462,15 +461,41 @@ onMounted(async () => {
             dense
           />
 
-          <!-- TODO: Add thread type select -->
-          <q-input
-            v-model.number="createForm.thread_type_id"
-            label="ID loại chỉ *"
-            type="number"
+          <q-select
+            v-model="createForm.thread_type_id"
+            :options="threadTypes"
+            option-value="id"
+            :option-label="(item: { code: string; name: string }) => `${item.code} - ${item.name}`"
+            label="Loại chỉ *"
             outlined
             dense
-            hint="Chọn loại chỉ"
-          />
+            emit-value
+            map-options
+            :rules="[(v) => !!v || 'Vui lòng chọn loại chỉ']"
+          >
+            <template #option="{ itemProps, opt }">
+              <q-item v-bind="itemProps">
+                <q-item-section avatar>
+                  <q-avatar
+                    v-if="opt.color_code"
+                    size="24px"
+                    :style="{ backgroundColor: opt.color_code }"
+                  />
+                  <q-icon
+                    v-else
+                    name="circle"
+                    size="24px"
+                  />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>{{ opt.code }} - {{ opt.name }}</q-item-label>
+                  <q-item-label caption>
+                    {{ opt.material }}
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+          </q-select>
 
           <q-input
             v-model.number="createForm.requested_meters"
