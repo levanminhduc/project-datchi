@@ -79,6 +79,7 @@
                 icon="qr_code_scanner"
                 label="Quét tra cứu"
                 outline
+                class="full-width-xs"
                 @click="showQrScanner = true"
               />
               <q-btn
@@ -86,6 +87,7 @@
                 icon="add"
                 label="Nhập Kho"
                 unelevated
+                class="full-width-xs"
                 @click="openReceiptDialog"
               />
             </div>
@@ -864,5 +866,27 @@ onMounted(async () => {
 
 .rounded-borders {
   border-radius: 4px;
+}
+
+/* Horizontal scroll wrapper for mobile */
+.inventory-table {
+  max-width: 100%;
+
+  :deep(.q-table__middle) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  :deep(.q-table) {
+    table-layout: auto;
+    min-width: 800px;
+  }
+
+  :deep(th),
+  :deep(td) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 </style>

@@ -10,8 +10,12 @@
         @click="handleBack"
       />
       <div class="q-ml-md">
-        <h1 class="text-h5 q-my-none text-weight-bold">Chuyển Kho Hàng Loạt</h1>
-        <div class="text-grey-6">Chuyển nhiều cuộn giữa các kho</div>
+        <h1 class="text-h5 q-my-none text-weight-bold">
+          Chuyển Kho Hàng Loạt
+        </h1>
+        <div class="text-grey-6">
+          Chuyển nhiều cuộn giữa các kho
+        </div>
       </div>
     </div>
 
@@ -23,6 +27,7 @@
       flat
       bordered
       class="batch-stepper"
+      :vertical="$q.screen.lt.sm"
     >
       <!-- Step 1: Select Source Warehouse & Cones -->
       <q-step
@@ -35,7 +40,9 @@
           <div class="row q-col-gutter-lg">
             <!-- Left: Source Selection -->
             <div class="col-12 col-md-6">
-              <p class="text-body1 q-mb-md text-weight-medium">Kho nguồn:</p>
+              <p class="text-body1 q-mb-md text-weight-medium">
+                Kho nguồn:
+              </p>
               <AppWarehouseSelect
                 v-model="formData.from_warehouse_id"
                 label="Chọn kho chuyển đi"
@@ -46,7 +53,9 @@
 
               <q-separator class="q-my-md" />
 
-              <p class="text-body1 q-mb-md text-weight-medium">Chọn cuộn theo:</p>
+              <p class="text-body1 q-mb-md text-weight-medium">
+                Chọn cuộn theo:
+              </p>
               <q-option-group
                 v-model="selectionMode"
                 :options="selectionModeOptions"
@@ -76,10 +85,18 @@
 
               <!-- By Scanning -->
               <div v-if="selectionMode === 'scan' && formData.from_warehouse_id">
-                <q-card flat bordered class="q-mb-md">
+                <q-card
+                  flat
+                  bordered
+                  class="q-mb-md"
+                >
                   <q-card-section>
                     <div class="row items-center q-mb-md">
-                      <q-icon name="qr_code_scanner" size="sm" class="q-mr-sm" />
+                      <q-icon
+                        name="qr_code_scanner"
+                        size="sm"
+                        class="q-mr-sm"
+                      />
                       <span class="text-subtitle2">Quét mã QR</span>
                       <q-space />
                       <q-btn
@@ -90,7 +107,10 @@
                         @click="toggleScanner"
                       />
                     </div>
-                    <div v-if="isScanning" class="scanner-container">
+                    <div
+                      v-if="isScanning"
+                      class="scanner-container"
+                    >
                       <QrScannerStream
                         :active="isScanning"
                         @detect="handleScan"
@@ -118,7 +138,11 @@
 
             <!-- Right: Selected Cones List -->
             <div class="col-12 col-md-6">
-              <q-card flat bordered class="selected-list-card">
+              <q-card
+                flat
+                bordered
+                class="selected-list-card"
+              >
                 <q-card-section class="q-pb-none">
                   <div class="row items-center">
                     <span class="text-subtitle1 text-weight-medium">
@@ -137,19 +161,29 @@
                   </div>
                 </q-card-section>
                 <q-card-section class="selected-list-container">
-                  <q-list v-if="coneBuffer.length > 0" separator dense>
+                  <q-list
+                    v-if="coneBuffer.length > 0"
+                    separator
+                    dense
+                  >
                     <q-item
                       v-for="(coneId, index) in coneBuffer"
                       :key="coneId"
                       dense
                     >
                       <q-item-section avatar>
-                        <q-avatar size="24px" color="info" text-color="white">
+                        <q-avatar
+                          size="24px"
+                          color="info"
+                          text-color="white"
+                        >
                           {{ index + 1 }}
                         </q-avatar>
                       </q-item-section>
                       <q-item-section>
-                        <q-item-label class="text-body2">{{ coneId }}</q-item-label>
+                        <q-item-label class="text-body2">
+                          {{ coneId }}
+                        </q-item-label>
                       </q-item-section>
                       <q-item-section side>
                         <q-btn
@@ -164,9 +198,17 @@
                       </q-item-section>
                     </q-item>
                   </q-list>
-                  <div v-else class="text-center text-grey-5 q-py-xl">
-                    <q-icon name="inbox" size="48px" />
-                    <div class="q-mt-sm">Chưa chọn cuộn nào</div>
+                  <div
+                    v-else
+                    class="text-center text-grey-5 q-py-xl"
+                  >
+                    <q-icon
+                      name="inbox"
+                      size="48px"
+                    />
+                    <div class="q-mt-sm">
+                      Chưa chọn cuộn nào
+                    </div>
                   </div>
                 </q-card-section>
               </q-card>
@@ -192,7 +234,9 @@
         :done="currentStep > 2"
       >
         <div class="q-pa-md">
-          <p class="text-body1 q-mb-md">Chọn kho nhận hàng:</p>
+          <p class="text-body1 q-mb-md">
+            Chọn kho nhận hàng:
+          </p>
           <AppWarehouseSelect
             v-model="formData.to_warehouse_id"
             label="Kho đích"
@@ -236,7 +280,10 @@
         icon="check_circle"
       >
         <div class="q-pa-md">
-          <q-banner class="bg-info text-white q-mb-lg" rounded>
+          <q-banner
+            class="bg-info text-white q-mb-lg"
+            rounded
+          >
             <template #avatar>
               <q-icon name="swap_horiz" />
             </template>
@@ -246,32 +293,73 @@
           <div class="row q-col-gutter-md">
             <!-- Transfer Summary -->
             <div class="col-12 col-md-4">
-              <q-card flat bordered class="text-center q-pa-md">
-                <q-icon name="output" size="32px" color="negative" />
-                <div class="text-subtitle1 q-mt-sm">Kho nguồn</div>
-                <div class="text-h6 text-weight-bold">{{ sourceWarehouseName }}</div>
+              <q-card
+                flat
+                bordered
+                class="text-center q-pa-md"
+              >
+                <q-icon
+                  name="output"
+                  size="32px"
+                  color="negative"
+                />
+                <div class="text-subtitle1 q-mt-sm">
+                  Kho nguồn
+                </div>
+                <div class="text-h6 text-weight-bold">
+                  {{ sourceWarehouseName }}
+                </div>
               </q-card>
             </div>
             <div class="col-12 col-md-4">
-              <q-card flat bordered class="text-center q-pa-md">
-                <q-icon name="inventory_2" size="32px" color="primary" />
-                <div class="text-subtitle1 q-mt-sm">Số cuộn</div>
-                <div class="text-h6 text-weight-bold">{{ coneBuffer.length }}</div>
+              <q-card
+                flat
+                bordered
+                class="text-center q-pa-md"
+              >
+                <q-icon
+                  name="inventory_2"
+                  size="32px"
+                  color="primary"
+                />
+                <div class="text-subtitle1 q-mt-sm">
+                  Số cuộn
+                </div>
+                <div class="text-h6 text-weight-bold">
+                  {{ coneBuffer.length }}
+                </div>
               </q-card>
             </div>
             <div class="col-12 col-md-4">
-              <q-card flat bordered class="text-center q-pa-md">
-                <q-icon name="input" size="32px" color="positive" />
-                <div class="text-subtitle1 q-mt-sm">Kho đích</div>
-                <div class="text-h6 text-weight-bold">{{ destWarehouseName }}</div>
+              <q-card
+                flat
+                bordered
+                class="text-center q-pa-md"
+              >
+                <q-icon
+                  name="input"
+                  size="32px"
+                  color="positive"
+                />
+                <div class="text-subtitle1 q-mt-sm">
+                  Kho đích
+                </div>
+                <div class="text-h6 text-weight-bold">
+                  {{ destWarehouseName }}
+                </div>
               </q-card>
             </div>
 
             <!-- Cone List Preview -->
             <div class="col-12">
-              <q-card flat bordered>
+              <q-card
+                flat
+                bordered
+              >
                 <q-card-section class="q-pb-none">
-                  <div class="text-subtitle1 text-weight-medium">Danh sách cuộn chuyển</div>
+                  <div class="text-subtitle1 text-weight-medium">
+                    Danh sách cuộn chuyển
+                  </div>
                 </q-card-section>
                 <q-card-section>
                   <div class="cone-preview-grid">
@@ -283,7 +371,12 @@
                     >
                       {{ coneId }}
                     </q-chip>
-                    <q-chip v-if="coneBuffer.length > 20" dense color="info" text-color="white">
+                    <q-chip
+                      v-if="coneBuffer.length > 20"
+                      dense
+                      color="info"
+                      text-color="white"
+                    >
                       +{{ coneBuffer.length - 20 }} cuộn khác
                     </q-chip>
                   </div>
@@ -314,16 +407,28 @@
     </q-stepper>
 
     <!-- Success Dialog -->
-    <q-dialog v-model="showSuccessDialog" persistent>
-      <q-card style="min-width: 350px">
+    <q-dialog
+      v-model="showSuccessDialog"
+      persistent
+    >
+      <q-card style="width: 100%; max-width: 400px">
         <q-card-section class="text-center q-pt-lg">
-          <q-icon name="check_circle" color="positive" size="64px" />
-          <div class="text-h6 q-mt-md">Chuyển kho thành công!</div>
+          <q-icon
+            name="check_circle"
+            color="positive"
+            size="64px"
+          />
+          <div class="text-h6 q-mt-md">
+            Chuyển kho thành công!
+          </div>
           <div class="text-grey-6 q-mt-sm">
             Đã chuyển {{ lastResult?.cone_count }} cuộn
           </div>
         </q-card-section>
-        <q-card-actions align="center" class="q-pb-lg">
+        <q-card-actions
+          align="center"
+          class="q-pb-lg"
+        >
           <q-btn
             color="primary"
             label="Chuyển tiếp"
@@ -344,6 +449,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { useQuasar } from 'quasar'
 import { useBatchOperations } from '@/composables/useBatchOperations'
 import { useWarehouses, useConfirm, useSnackbar } from '@/composables'
 import { useLots } from '@/composables/useLots'
@@ -354,6 +460,7 @@ import LotSelector from '@/components/thread/LotSelector.vue'
 import type { Lot } from '@/types/thread/lot'
 
 const router = useRouter()
+const $q = useQuasar()
 const { confirm } = useConfirm()
 const snackbar = useSnackbar()
 const { warehouses, fetchWarehouses } = useWarehouses()

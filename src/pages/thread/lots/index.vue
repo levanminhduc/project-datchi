@@ -50,6 +50,7 @@
               icon="add"
               label="Tạo Lô"
               unelevated
+              class="full-width-xs"
               @click="showCreateDialog = true"
             />
           </div>
@@ -67,6 +68,7 @@
       :loading="loading"
       row-key="id"
       :rows-per-page-options="[10, 25, 50]"
+      class="lots-table"
       @request="onRequest"
     >
       <!-- Lot Number Column -->
@@ -128,7 +130,10 @@
 
       <!-- Actions Column -->
       <template #body-cell-actions="props">
-        <q-td :props="props" class="q-gutter-xs">
+        <q-td
+          :props="props"
+          class="q-gutter-xs"
+        >
           <q-btn
             flat
             round
@@ -335,5 +340,33 @@ onMounted(() => {
   height: 16px;
   border-radius: 4px;
   border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Horizontal scroll wrapper for mobile */
+.lots-table {
+  max-width: 100%;
+}
+
+.lots-table :deep(.q-table__middle) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lots-table :deep(.q-table) {
+  table-layout: auto;
+  min-width: 600px;
+}
+
+.lots-table :deep(th),
+.lots-table :deep(td) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.full-width-xs {
+  @media (max-width: 599px) {
+    width: 100%;
+  }
 }
 </style>

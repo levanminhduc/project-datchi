@@ -91,7 +91,7 @@
       <div
         v-for="stat in summaryStats"
         :key="stat.label"
-        class="col-12 col-sm-6 col-md-2.4"
+        class="col-12 col-sm-4 col-md-3"
       >
         <q-card
           flat
@@ -996,6 +996,28 @@ onMounted(async () => {
 .full-width-xs {
   @media (max-width: 599px) {
     width: 100%;
+  }
+}
+
+/* Horizontal scroll wrapper for mobile */
+.allocation-table {
+  max-width: 100%;
+
+  :deep(.q-table__middle) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  :deep(.q-table) {
+    table-layout: auto;
+    min-width: 900px;
+  }
+
+  :deep(th),
+  :deep(td) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 </style>

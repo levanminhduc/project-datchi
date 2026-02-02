@@ -10,20 +10,25 @@
         @click="handleBack"
       />
       <div class="q-ml-md">
-        <h1 class="text-h5 q-my-none text-weight-bold">Nhập Kho Hàng Loạt</h1>
-        <div class="text-grey-6">Nhập nhiều cuộn vào kho cùng lúc</div>
+        <h1 class="text-h5 q-my-none text-weight-bold">
+          Nhập Kho Hàng Loạt
+        </h1>
+        <div class="text-grey-6">
+          Nhập nhiều cuộn vào kho cùng lúc
+        </div>
       </div>
     </div>
 
     <!-- Stepper -->
     <q-stepper
-      v-model="currentStep"
       ref="stepperRef"
+      v-model="currentStep"
       color="primary"
       animated
       flat
       bordered
       class="batch-stepper"
+      :vertical="$q.screen.lt.sm"
     >
       <!-- Step 1: Select Warehouse -->
       <q-step
@@ -33,7 +38,9 @@
         :done="currentStep > 1"
       >
         <div class="q-pa-md">
-          <p class="text-body1 q-mb-md">Chọn kho nhận hàng:</p>
+          <p class="text-body1 q-mb-md">
+            Chọn kho nhận hàng:
+          </p>
           <AppWarehouseSelect
             v-model="formData.warehouse_id"
             label="Kho nhập hàng"
@@ -70,7 +77,11 @@
           />
 
           <!-- Existing Lot -->
-          <div v-if="lotMode === 'existing'" class="q-mb-md" style="max-width: 500px">
+          <div
+            v-if="lotMode === 'existing'"
+            class="q-mb-md"
+            style="max-width: 500px"
+          >
             <LotSelector
               v-model="formData.lot_id"
               :warehouse-id="formData.warehouse_id"
@@ -81,7 +92,11 @@
           </div>
 
           <!-- New Lot -->
-          <div v-else class="row q-col-gutter-md" style="max-width: 700px">
+          <div
+            v-else
+            class="row q-col-gutter-md"
+            style="max-width: 700px"
+          >
             <div class="col-12 col-sm-6">
               <AppInput
                 v-model="formData.lot_number"
@@ -157,10 +172,18 @@
             <!-- Left: Scanner & Input -->
             <div class="col-12 col-md-6">
               <!-- QR Scanner -->
-              <q-card flat bordered class="q-mb-md">
+              <q-card
+                flat
+                bordered
+                class="q-mb-md"
+              >
                 <q-card-section>
                   <div class="row items-center q-mb-md">
-                    <q-icon name="qr_code_scanner" size="sm" class="q-mr-sm" />
+                    <q-icon
+                      name="qr_code_scanner"
+                      size="sm"
+                      class="q-mr-sm"
+                    />
                     <span class="text-subtitle1 text-weight-medium">Quét mã QR</span>
                     <q-space />
                     <q-btn
@@ -171,24 +194,43 @@
                       @click="toggleScanner"
                     />
                   </div>
-                  <div v-if="isScanning" class="scanner-container">
+                  <div
+                    v-if="isScanning"
+                    class="scanner-container"
+                  >
                     <QrScannerStream
                       :active="isScanning"
                       @detect="handleScan"
                     />
                   </div>
-                  <div v-else class="scanner-placeholder bg-grey-2 rounded-borders">
-                    <q-icon name="qr_code_2" size="64px" color="grey-5" />
-                    <div class="text-grey-6 q-mt-sm">Nhấn "Bắt đầu" để quét</div>
+                  <div
+                    v-else
+                    class="scanner-placeholder bg-grey-2 rounded-borders"
+                  >
+                    <q-icon
+                      name="qr_code_2"
+                      size="64px"
+                      color="grey-5"
+                    />
+                    <div class="text-grey-6 q-mt-sm">
+                      Nhấn "Bắt đầu" để quét
+                    </div>
                   </div>
                 </q-card-section>
               </q-card>
 
               <!-- Manual Entry -->
-              <q-card flat bordered>
+              <q-card
+                flat
+                bordered
+              >
                 <q-card-section>
                   <div class="row items-center q-mb-md">
-                    <q-icon name="keyboard" size="sm" class="q-mr-sm" />
+                    <q-icon
+                      name="keyboard"
+                      size="sm"
+                      class="q-mr-sm"
+                    />
                     <span class="text-subtitle1 text-weight-medium">Nhập thủ công</span>
                   </div>
                   <AppTextarea
@@ -211,7 +253,11 @@
 
             <!-- Right: Scanned List -->
             <div class="col-12 col-md-6">
-              <q-card flat bordered class="scanned-list-card">
+              <q-card
+                flat
+                bordered
+                class="scanned-list-card"
+              >
                 <q-card-section class="q-pb-none">
                   <div class="row items-center">
                     <span class="text-subtitle1 text-weight-medium">
@@ -230,14 +276,22 @@
                   </div>
                 </q-card-section>
                 <q-card-section class="scanned-list-container">
-                  <q-list v-if="hasBuffer" separator dense>
+                  <q-list
+                    v-if="hasBuffer"
+                    separator
+                    dense
+                  >
                     <q-item
                       v-for="(coneId, index) in coneBuffer"
                       :key="coneId"
                       dense
                     >
                       <q-item-section avatar>
-                        <q-avatar size="24px" color="primary" text-color="white">
+                        <q-avatar
+                          size="24px"
+                          color="primary"
+                          text-color="white"
+                        >
                           {{ index + 1 }}
                         </q-avatar>
                       </q-item-section>
@@ -259,9 +313,17 @@
                       </q-item-section>
                     </q-item>
                   </q-list>
-                  <div v-else class="text-center text-grey-5 q-py-xl">
-                    <q-icon name="inbox" size="48px" />
-                    <div class="q-mt-sm">Chưa có cuộn nào</div>
+                  <div
+                    v-else
+                    class="text-center text-grey-5 q-py-xl"
+                  >
+                    <q-icon
+                      name="inbox"
+                      size="48px"
+                    />
+                    <div class="q-mt-sm">
+                      Chưa có cuộn nào
+                    </div>
                   </div>
                 </q-card-section>
               </q-card>
@@ -293,7 +355,10 @@
         icon="check_circle"
       >
         <div class="q-pa-md">
-          <q-banner class="bg-positive text-white q-mb-lg" rounded>
+          <q-banner
+            class="bg-positive text-white q-mb-lg"
+            rounded
+          >
             <template #avatar>
               <q-icon name="info" />
             </template>
@@ -303,31 +368,44 @@
           <div class="row q-col-gutter-md">
             <!-- Summary Cards -->
             <div class="col-12 col-md-6">
-              <q-card flat bordered>
+              <q-card
+                flat
+                bordered
+              >
                 <q-card-section>
-                  <div class="text-subtitle1 text-weight-medium q-mb-md">Thông tin lô</div>
+                  <div class="text-subtitle1 text-weight-medium q-mb-md">
+                    Thông tin lô
+                  </div>
                   <q-list dense>
                     <q-item>
                       <q-item-section>
-                        <q-item-label caption>Kho</q-item-label>
+                        <q-item-label caption>
+                          Kho
+                        </q-item-label>
                         <q-item-label>{{ selectedWarehouseName }}</q-item-label>
                       </q-item-section>
                     </q-item>
                     <q-item>
                       <q-item-section>
-                        <q-item-label caption>Mã lô</q-item-label>
+                        <q-item-label caption>
+                          Mã lô
+                        </q-item-label>
                         <q-item-label>{{ lotDisplayName }}</q-item-label>
                       </q-item-section>
                     </q-item>
                     <q-item v-if="lotMode === 'new'">
                       <q-item-section>
-                        <q-item-label caption>Loại chỉ</q-item-label>
+                        <q-item-label caption>
+                          Loại chỉ
+                        </q-item-label>
                         <q-item-label>{{ selectedThreadTypeName }}</q-item-label>
                       </q-item-section>
                     </q-item>
                     <q-item v-if="formData.supplier">
                       <q-item-section>
-                        <q-item-label caption>Nhà cung cấp</q-item-label>
+                        <q-item-label caption>
+                          Nhà cung cấp
+                        </q-item-label>
                         <q-item-label>{{ formData.supplier }}</q-item-label>
                       </q-item-section>
                     </q-item>
@@ -337,12 +415,21 @@
             </div>
 
             <div class="col-12 col-md-6">
-              <q-card flat bordered>
+              <q-card
+                flat
+                bordered
+              >
                 <q-card-section>
-                  <div class="text-subtitle1 text-weight-medium q-mb-md">Số lượng</div>
+                  <div class="text-subtitle1 text-weight-medium q-mb-md">
+                    Số lượng
+                  </div>
                   <div class="text-center">
-                    <div class="text-h2 text-primary">{{ bufferCount }}</div>
-                    <div class="text-grey-6">cuộn sẽ được nhập kho</div>
+                    <div class="text-h2 text-primary">
+                      {{ bufferCount }}
+                    </div>
+                    <div class="text-grey-6">
+                      cuộn sẽ được nhập kho
+                    </div>
                   </div>
                 </q-card-section>
               </q-card>
@@ -350,9 +437,14 @@
 
             <!-- Cone List Preview -->
             <div class="col-12">
-              <q-card flat bordered>
+              <q-card
+                flat
+                bordered
+              >
                 <q-card-section class="q-pb-none">
-                  <div class="text-subtitle1 text-weight-medium">Danh sách cuộn</div>
+                  <div class="text-subtitle1 text-weight-medium">
+                    Danh sách cuộn
+                  </div>
                 </q-card-section>
                 <q-card-section>
                   <div class="cone-preview-grid">
@@ -364,7 +456,12 @@
                     >
                       {{ coneId }}
                     </q-chip>
-                    <q-chip v-if="bufferCount > 20" dense color="primary" text-color="white">
+                    <q-chip
+                      v-if="bufferCount > 20"
+                      dense
+                      color="primary"
+                      text-color="white"
+                    >
                       +{{ bufferCount - 20 }} cuộn khác
                     </q-chip>
                   </div>
@@ -395,19 +492,34 @@
     </q-stepper>
 
     <!-- Success Dialog -->
-    <q-dialog v-model="showSuccessDialog" persistent>
-      <q-card style="min-width: 350px">
+    <q-dialog
+      v-model="showSuccessDialog"
+      persistent
+    >
+      <q-card style="width: 100%; max-width: 400px">
         <q-card-section class="text-center q-pt-lg">
-          <q-icon name="check_circle" color="positive" size="64px" />
-          <div class="text-h6 q-mt-md">Nhập kho thành công!</div>
+          <q-icon
+            name="check_circle"
+            color="positive"
+            size="64px"
+          />
+          <div class="text-h6 q-mt-md">
+            Nhập kho thành công!
+          </div>
           <div class="text-grey-6 q-mt-sm">
             Đã nhập {{ lastResult?.cone_count }} cuộn vào kho
           </div>
-          <div v-if="lastResult?.transaction_id" class="text-caption q-mt-xs">
+          <div
+            v-if="lastResult?.transaction_id"
+            class="text-caption q-mt-xs"
+          >
             Mã giao dịch: #{{ lastResult.transaction_id }}
           </div>
         </q-card-section>
-        <q-card-actions align="center" class="q-pb-lg">
+        <q-card-actions
+          align="center"
+          class="q-pb-lg"
+        >
           <q-btn
             color="primary"
             label="Nhập tiếp"
@@ -428,6 +540,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { useQuasar } from 'quasar'
 import { useBatchOperations } from '@/composables/useBatchOperations'
 import { useThreadTypes, useWarehouses, useConfirm } from '@/composables'
 import { QrScannerStream } from '@/components/qr'
@@ -440,6 +553,7 @@ import LotSelector from '@/components/thread/LotSelector.vue'
 import type { Lot } from '@/types/thread/lot'
 
 const router = useRouter()
+const $q = useQuasar()
 const { confirm } = useConfirm()
 const { threadTypes, fetchThreadTypes } = useThreadTypes()
 const { warehouses, fetchWarehouses } = useWarehouses()
