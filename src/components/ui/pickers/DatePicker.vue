@@ -94,5 +94,7 @@ const viLocale = {
     :emit-immediately="emitImmediately"
     :default-year-month="defaultYearMonth"
     :default-view="defaultView"
+    class="bg-surface"
+    :class="{ 'dark': isDark }"
   />
 </template>

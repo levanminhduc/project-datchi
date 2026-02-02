@@ -282,7 +282,10 @@
                   transition-show="scale"
                   transition-hide="scale"
                 >
-                  <q-color v-model="formData.color_code" />
+                  <q-color
+                    v-model="formData.color_code"
+                    :dark="$q.dark.isActive"
+                  />
                 </q-popup-proxy>
               </q-icon>
             </template>
@@ -555,13 +558,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { type QTableColumn } from 'quasar'
+import { type QTableColumn, useQuasar } from 'quasar'
 import { useThreadTypes, useSnackbar } from '@/composables'
 import { ThreadMaterial } from '@/types/thread/enums'
 import type { ThreadType, ThreadTypeFormData } from '@/types/thread/thread-type'
 
 // Composables
 const snackbar = useSnackbar()
+const $q = useQuasar()
 const {
   threadTypes,
   loading,

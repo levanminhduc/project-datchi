@@ -10,4 +10,11 @@
   z-index: 7000 !important;
 }
 
+// Ensure pickers in popups follow dark mode
+.body--dark {
+  .q-date, .q-time, .q-color {
+    background: var(--q-dark) !important;
+  }
+}
+
 @import './sidebar.scss';

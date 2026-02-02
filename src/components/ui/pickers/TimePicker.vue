@@ -67,5 +67,7 @@ const timeValue = computed({
     :format24h="format24h"
     :with-seconds="withSeconds"
     :now-btn="nowBtn"
+    class="bg-surface"
+    :class="{ 'dark': isDark }"
   />
 </template>

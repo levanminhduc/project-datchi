@@ -65,5 +65,7 @@ const colorValue = computed({
     :disable="disable"
     :readonly="readonly"
     :dark="isDark"
+    class="bg-surface"
+    :class="{ 'dark': isDark }"
   />
 </template>
