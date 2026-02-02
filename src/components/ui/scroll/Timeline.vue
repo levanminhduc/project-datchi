@@ -3,6 +3,8 @@
  * Timeline - Timeline wrapper
  * Wraps QTimeline with entries array support
  */
+import { computed } from 'vue'
+import { useQuasar } from 'quasar'
 import type { Color } from '@/types/ui'
 
 interface TimelineEntryConfig {
@@ -27,9 +29,11 @@ const props = withDefaults(defineProps<Props>(), {
   entries: () => [],
   color: 'primary',
   side: 'right',
-  layout: 'comfortable',
-  dark: false
+  layout: 'comfortable'
 })
+
+const $q = useQuasar()
+const isDark = computed(() => props.dark ?? $q.dark.isActive)
 </script>
 
 <template>
@@ -37,7 +41,7 @@ const props = withDefaults(defineProps<Props>(), {
     :color="color"
     :side="side"
     :layout="layout"
-    :dark="dark"
+    :dark="isDark"
   >
     <q-timeline-entry
       v-for="(entry, index) in entries"

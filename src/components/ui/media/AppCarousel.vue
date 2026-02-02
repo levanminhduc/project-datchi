@@ -4,6 +4,7 @@
  * Wraps QCarousel with slides array support
  */
 import { computed } from 'vue'
+import { useQuasar } from 'quasar'
 
 interface CarouselSlide {
   src: string
@@ -48,7 +49,6 @@ const props = withDefaults(defineProps<Props>(), {
   transitionPrev: 'slide-right',
   transitionNext: 'slide-left',
   transitionDuration: 300,
-  dark: false,
   height: '300px',
   controlColor: 'white'
 })
@@ -56,6 +56,9 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   'update:modelValue': [value: string | number]
 }>()
+
+const $q = useQuasar()
+const isDark = computed(() => props.dark ?? $q.dark.isActive)
 
 const slideValue = computed({
   get: () => props.modelValue ?? 0,
@@ -79,7 +82,7 @@ const slideValue = computed({
     :transition-prev="transitionPrev"
     :transition-next="transitionNext"
     :transition-duration="transitionDuration"
-    :dark="dark"
+    :dark="isDark"
     :height="height"
     :control-color="controlColor"
   >

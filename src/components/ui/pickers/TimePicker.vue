@@ -4,6 +4,7 @@
  * Wraps QTime with 24h format default
  */
 import { computed } from 'vue'
+import { useQuasar } from 'quasar'
 import type { Color } from '@/types/ui'
 
 interface Props {
@@ -27,7 +28,6 @@ const props = withDefaults(defineProps<Props>(), {
   mask: 'HH:mm',
   landscape: false,
   color: 'primary',
-  dark: false,
   square: false,
   flat: false,
   bordered: true,
@@ -42,6 +42,9 @@ const emit = defineEmits<{
   'update:modelValue': [value: string | null]
 }>()
 
+const $q = useQuasar()
+const isDark = computed(() => props.dark ?? $q.dark.isActive)
+
 const timeValue = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val ?? null)
@@ -55,7 +58,7 @@ const timeValue = computed({
     :landscape="landscape"
     :color="color"
     :text-color="textColor"
-    :dark="dark"
+    :dark="isDark"
     :square="square"
     :flat="flat"
     :bordered="bordered"

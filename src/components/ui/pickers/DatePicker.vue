@@ -4,6 +4,7 @@
  * Wraps QDate with Vietnamese locale defaults
  */
 import { computed } from 'vue'
+import { useQuasar } from 'quasar'
 import type { Color } from '@/types/ui'
 
 interface Props {
@@ -34,7 +35,6 @@ const props = withDefaults(defineProps<Props>(), {
   mask: 'DD/MM/YYYY',
   landscape: false,
   color: 'primary',
-  dark: false,
   square: false,
   flat: false,
   bordered: true,
@@ -52,6 +52,9 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   'update:modelValue': [value: string | null]
 }>()
+
+const $q = useQuasar()
+const isDark = computed(() => props.dark ?? $q.dark.isActive)
 
 const dateValue = computed({
   get: () => props.modelValue,
@@ -75,7 +78,7 @@ const viLocale = {
     :landscape="landscape"
     :color="color"
     :text-color="textColor"
-    :dark="dark"
+    :dark="isDark"
     :square="square"
     :flat="flat"
     :bordered="bordered"

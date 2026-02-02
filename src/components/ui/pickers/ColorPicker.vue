@@ -4,6 +4,7 @@
  * Wraps QColor with standardized props
  */
 import { computed } from 'vue'
+import { useQuasar } from 'quasar'
 
 interface Props {
   modelValue?: string | null
@@ -32,13 +33,15 @@ const props = withDefaults(defineProps<Props>(), {
   flat: false,
   bordered: true,
   disable: false,
-  readonly: false,
-  dark: false
+  readonly: false
 })
 
 const emit = defineEmits<{
   'update:modelValue': [value: string | null]
 }>()
+
+const $q = useQuasar()
+const isDark = computed(() => props.dark ?? $q.dark.isActive)
 
 const colorValue = computed({
   get: () => props.modelValue ?? null,
@@ -61,6 +64,6 @@ const colorValue = computed({
     :bordered="bordered"
     :disable="disable"
     :readonly="readonly"
-    :dark="dark"
+    :dark="isDark"
   />
 </template>

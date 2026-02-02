@@ -3,7 +3,8 @@
  * ScrollArea - Custom scrollbar wrapper
  * Wraps QScrollArea with standardized props
  */
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useQuasar } from 'quasar'
 
 interface Props {
   dark?: boolean
@@ -17,10 +18,12 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  dark: false,
   visible: false,
   delay: 1000
 })
+
+const $q = useQuasar()
+const isDark = computed(() => props.dark ?? $q.dark.isActive)
 
 const scrollAreaRef = ref<any>(null)
 
@@ -38,7 +41,7 @@ defineExpose({
 <template>
   <q-scroll-area
     ref="scrollAreaRef"
-    :dark="dark"
+    :dark="isDark"
     :thumb-style="thumbStyle"
     :bar-style="barStyle"
     :content-style="contentStyle"
