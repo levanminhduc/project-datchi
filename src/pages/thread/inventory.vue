@@ -611,6 +611,8 @@ const {
   breakdownLoading,
   fetchSummary: fetchConeSummary,
   selectThreadType,
+  enableRealtime: enableSummaryRealtime,
+  disableRealtime: disableSummaryRealtime,
 } = useConeSummary()
 
 // Local State
@@ -942,10 +944,12 @@ onMounted(async () => {
   ])
   // Enable real-time updates after initial fetch
   enableRealtime()
+  enableSummaryRealtime()
 })
 
 onUnmounted(() => {
   disableRealtime()
+  disableSummaryRealtime()
 })
 </script>
 

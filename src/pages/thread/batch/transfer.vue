@@ -159,6 +159,18 @@
                       @click="handleClearBuffer"
                     />
                   </div>
+                  <!-- Summary for invalid cones -->
+                  <div
+                    v-if="invalidCones.length > 0"
+                    class="text-warning q-mt-sm text-body2"
+                  >
+                    <q-icon
+                      name="warning"
+                      size="xs"
+                      class="q-mr-xs"
+                    />
+                    {{ validCones.length }}/{{ coneBuffer.length }} cuộn hợp lệ sẽ được chuyển
+                  </div>
                 </q-card-section>
                 <q-card-section class="selected-list-container">
                   <q-list
@@ -167,22 +179,36 @@
                     dense
                   >
                     <q-item
-                      v-for="(coneId, index) in coneBuffer"
-                      :key="coneId"
+                      v-for="(item, index) in coneBuffer"
+                      :key="item.id"
                       dense
+                      :class="{ 'bg-red-1': !isTransferable(item.status) }"
                     >
                       <q-item-section avatar>
                         <q-avatar
                           size="24px"
-                          color="info"
+                          :color="isTransferable(item.status) ? 'info' : 'negative'"
                           text-color="white"
                         >
-                          {{ index + 1 }}
+                          <template v-if="isTransferable(item.status)">
+                            {{ index + 1 }}
+                          </template>
+                          <q-icon
+                            v-else
+                            name="warning"
+                            size="14px"
+                          />
                         </q-avatar>
                       </q-item-section>
                       <q-item-section>
                         <q-item-label class="text-body2">
-                          {{ coneId }}
+                          {{ item.cone_id }}
+                        </q-item-label>
+                        <q-item-label
+                          caption
+                          :class="isTransferable(item.status) ? 'text-positive' : 'text-negative'"
+                        >
+                          {{ statusLabels[item.status] || item.status }}
                         </q-item-label>
                       </q-item-section>
                       <q-item-section side>
@@ -193,7 +219,7 @@
                           icon="close"
                           color="negative"
                           size="sm"
-                          @click="removeFromBuffer(coneId)"
+                          @click="removeFromBuffer(item)"
                         />
                       </q-item-section>
                     </q-item>
@@ -220,9 +246,15 @@
           <q-btn
             color="primary"
             label="Tiếp theo"
-            :disable="coneBuffer.length === 0"
+            :disable="validCones.length === 0"
             @click="goToStep(2)"
           />
+          <div
+            v-if="coneBuffer.length > 0 && validCones.length === 0"
+            class="text-negative text-body2 q-mt-sm"
+          >
+            Không có cuộn hợp lệ để chuyển
+          </div>
         </q-stepper-navigation>
       </q-step>
 
@@ -326,7 +358,13 @@
                   Số cuộn
                 </div>
                 <div class="text-h6 text-weight-bold">
-                  {{ coneBuffer.length }}
+                  {{ validCones.length }}
+                  <span
+                    v-if="invalidCones.length > 0"
+                    class="text-body2 text-negative"
+                  >
+                    ({{ invalidCones.length }} không hợp lệ)
+                  </span>
                 </div>
               </q-card>
             </div>
@@ -360,16 +398,37 @@
                   <div class="text-subtitle1 text-weight-medium">
                     Danh sách cuộn chuyển
                   </div>
+                  <div
+                    v-if="invalidCones.length > 0"
+                    class="text-warning text-body2 q-mt-xs"
+                  >
+                    <q-icon
+                      name="warning"
+                      size="xs"
+                      class="q-mr-xs"
+                    />
+                    Các cuộn không hợp lệ sẽ bị bỏ qua khi chuyển kho
+                  </div>
                 </q-card-section>
                 <q-card-section>
                   <div class="cone-preview-grid">
                     <q-chip
-                      v-for="coneId in coneBuffer.slice(0, 20)"
-                      :key="coneId"
+                      v-for="item in coneBuffer.slice(0, 20)"
+                      :key="item.id"
                       dense
-                      color="grey-3"
+                      :color="isTransferable(item.status) ? 'grey-3' : 'red-2'"
+                      :text-color="isTransferable(item.status) ? 'dark' : 'negative'"
                     >
-                      {{ coneId }}
+                      <q-icon
+                        v-if="!isTransferable(item.status)"
+                        name="warning"
+                        size="12px"
+                        class="q-mr-xs"
+                      />
+                      {{ item.cone_id }}
+                      <q-tooltip>
+                        {{ statusLabels[item.status] || item.status }}
+                      </q-tooltip>
                     </q-chip>
                     <q-chip
                       v-if="coneBuffer.length > 20"
@@ -456,6 +515,7 @@ import { useLots } from '@/composables/useLots'
 import { QrScannerStream } from '@/components/qr'
 import AppWarehouseSelect from '@/components/ui/inputs/AppWarehouseSelect.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
+import { inventoryService } from '@/services/inventoryService'
 import LotSelector from '@/components/thread/LotSelector.vue'
 import type { Lot } from '@/types/thread/lot'
 
@@ -472,8 +532,35 @@ const {
   batchTransfer
 } = useBatchOperations()
 
-// Local buffer (not using composable buffer for transfer)
-const coneBuffer = ref<string[]>([])
+// Local buffer stores id (for API), cone_id (for display), and status (for validation)
+interface ConeBufferItem {
+  id: number       // Database primary key - sent to API
+  cone_id: string  // Barcode ID - shown in UI
+  status: string   // Cone status - for transfer validation
+}
+const coneBuffer = ref<ConeBufferItem[]>([])
+
+// Status constants and labels
+const TRANSFERABLE_STATUSES = ['AVAILABLE', 'RECEIVED', 'INSPECTED']
+
+const statusLabels: Record<string, string> = {
+  'AVAILABLE': 'Sẵn sàng',
+  'RECEIVED': 'Đã nhận',
+  'INSPECTED': 'Đã kiểm tra',
+  'SOFT_ALLOCATED': 'Đã đặt trước',
+  'HARD_ALLOCATED': 'Đã cấp phát',
+  'IN_PRODUCTION': 'Đang sản xuất',
+  'PARTIAL_RETURN': 'Hoàn trả một phần',
+  'PENDING_WEIGH': 'Chờ cân',
+  'CONSUMED': 'Đã tiêu thụ',
+  'WRITTEN_OFF': 'Đã thanh lý',
+  'QUARANTINE': 'Cách ly'
+}
+
+const isTransferable = (status: string) => TRANSFERABLE_STATUSES.includes(status)
+
+const validCones = computed(() => coneBuffer.value.filter(c => isTransferable(c.status)))
+const invalidCones = computed(() => coneBuffer.value.filter(c => !isTransferable(c.status)))
 
 // State
 const currentStep = ref(1)
@@ -531,12 +618,12 @@ async function addLotCones() {
   if (!formData.value.lot_id) return
   
   await fetchLotCones(formData.value.lot_id)
-  const coneIds = currentCones.value.map(c => c.cone_id)
   
   let added = 0
-  for (const id of coneIds) {
-    if (!coneBuffer.value.includes(id)) {
-      coneBuffer.value.push(id)
+  for (const cone of currentCones.value) {
+    // Check if cone is already in buffer by database id
+    if (!coneBuffer.value.some(item => item.id === cone.id)) {
+      coneBuffer.value.push({ id: cone.id, cone_id: cone.cone_id, status: cone.status })
       added++
     }
   }
@@ -550,31 +637,63 @@ function toggleScanner() {
   isScanning.value = !isScanning.value
 }
 
-function handleScan(codes: { rawValue: string }[]) {
+async function handleScan(codes: { rawValue: string }[]) {
   const firstCode = codes[0]
   if (!firstCode) return
   
-  const coneId = firstCode.rawValue.trim()
-  if (coneBuffer.value.includes(coneId)) {
+  const scannedConeId = firstCode.rawValue.trim()
+  
+  // Check if already in buffer by cone_id
+  if (coneBuffer.value.some(item => item.cone_id === scannedConeId)) {
     snackbar.warning('Đã quét rồi')
     return
   }
   
-  coneBuffer.value.push(coneId)
-  snackbar.success(`✓ ${coneId}`)
+  // Look up the cone by barcode to get database id
+  try {
+    const cone = await inventoryService.getByBarcode(scannedConeId)
+    
+    // Verify cone is in the selected source warehouse
+    if (cone.warehouse_id !== formData.value.from_warehouse_id) {
+      snackbar.error(`Cuộn ${scannedConeId} không thuộc kho nguồn đã chọn`)
+      return
+    }
+    
+    coneBuffer.value.push({ id: cone.id, cone_id: cone.cone_id, status: cone.status })
+    snackbar.success(`✓ ${scannedConeId}`)
+  } catch {
+    snackbar.error(`Không tìm thấy cuộn: ${scannedConeId}`)
+  }
 }
 
-function handleManualAdd() {
+async function handleManualAdd() {
   const ids = manualInput.value
     .split(/[,\n\r]+/)
     .map(s => s.trim())
     .filter(s => s.length > 0)
   
   let added = 0
-  for (const id of ids) {
-    if (!coneBuffer.value.includes(id)) {
-      coneBuffer.value.push(id)
+  let errors: string[] = []
+  
+  for (const scannedConeId of ids) {
+    // Skip if already in buffer
+    if (coneBuffer.value.some(item => item.cone_id === scannedConeId)) {
+      continue
+    }
+    
+    try {
+      const cone = await inventoryService.getByBarcode(scannedConeId)
+      
+      // Verify cone is in the selected source warehouse
+      if (cone.warehouse_id !== formData.value.from_warehouse_id) {
+        errors.push(`${scannedConeId} không thuộc kho nguồn`)
+        continue
+      }
+      
+      coneBuffer.value.push({ id: cone.id, cone_id: cone.cone_id, status: cone.status })
       added++
+    } catch {
+      errors.push(scannedConeId)
     }
   }
   
@@ -582,10 +701,14 @@ function handleManualAdd() {
     manualInput.value = ''
     snackbar.success(`Đã thêm ${added} cuộn`)
   }
+  
+  if (errors.length > 0) {
+    snackbar.error(`Không tìm thấy: ${errors.join(', ')}`)
+  }
 }
 
-function removeFromBuffer(coneId: string) {
-  const index = coneBuffer.value.indexOf(coneId)
+function removeFromBuffer(item: ConeBufferItem) {
+  const index = coneBuffer.value.findIndex(i => i.id === item.id)
   if (index !== -1) {
     coneBuffer.value.splice(index, 1)
   }
@@ -603,10 +726,16 @@ async function handleClearBuffer() {
 }
 
 async function handleConfirm() {
-  // Note: API expects cone_ids as number[], but we have string[]
-  // The backend should handle string cone_id lookup
+  // Only send valid (transferable) cones to API
+  const coneIds = validCones.value.map(item => item.id)
+  
+  if (coneIds.length === 0) {
+    snackbar.error('Không có cuộn hợp lệ để chuyển')
+    return
+  }
+  
   const result = await batchTransfer({
-    cone_ids: coneBuffer.value.map(id => parseInt(id, 10) || 0),
+    cone_ids: coneIds,
     from_warehouse_id: formData.value.from_warehouse_id!,
     to_warehouse_id: formData.value.to_warehouse_id!
   })

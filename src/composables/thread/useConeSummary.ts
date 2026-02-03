@@ -9,6 +9,7 @@ import { ref, computed, type Ref } from 'vue'
 import { inventoryService } from '@/services/inventoryService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
+import { useRealtime } from '../useRealtime'
 import type { ConeSummaryRow, ConeWarehouseBreakdown, ConeSummaryFilters } from '@/types/thread'
 
 /**
@@ -49,10 +50,15 @@ export function useConeSummary() {
   const filters = ref<ConeSummaryFilters>({})
   const error = ref<string | null>(null)
   const breakdownLoading = ref(false)
+  // Realtime state
+  const realtimeEnabled = ref(false)
+  const realtimeChannelName = ref<string | null>(null)
+  const debounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
   // Composables
   const snackbar = useSnackbar()
   const loading = useLoading()
+  const realtime = useRealtime()
 
   // Computed
   const isLoading = computed(() => loading.isLoading.value)
@@ -131,6 +137,12 @@ export function useConeSummary() {
   const selectThreadType = async (row: ConeSummaryRow | null): Promise<void> => {
     selectedThreadType.value = row
 
+    // Clear any pending debounced refresh to avoid race condition
+    if (debounceTimer.value) {
+      clearTimeout(debounceTimer.value)
+      debounceTimer.value = null
+    }
+
     if (row) {
       await fetchWarehouseBreakdown(row.thread_type_id)
     } else {
@@ -164,6 +176,91 @@ export function useConeSummary() {
   }
 
   /**
+   * Debounced refresh to batch rapid changes
+   * @param delay - Debounce delay in milliseconds (default: 100ms)
+   */
+  const debouncedRefresh = (delay: number = 100): void => {
+    if (debounceTimer.value) {
+      clearTimeout(debounceTimer.value)
+    }
+    debounceTimer.value = setTimeout(async () => {
+      await fetchSummary()
+      // Also refresh breakdown if a thread type is selected
+      if (selectedThreadType.value) {
+        await fetchWarehouseBreakdown(selectedThreadType.value.thread_type_id)
+      }
+      debounceTimer.value = null
+    }, delay)
+  }
+
+  /**
+   * Enable real-time updates for cone summary
+   * Subscribes to thread_inventory table changes
+   */
+  const enableRealtime = (): void => {
+    if (realtimeEnabled.value) return
+
+    realtimeChannelName.value = realtime.subscribe(
+      {
+        table: 'thread_inventory',
+        event: '*',
+        schema: 'public',
+      },
+      (payload) => {
+        // Smart filter check: Only refresh if the changed record affects current view
+        const shouldRefresh = (): boolean => {
+          // If no warehouse filter applied, always refresh
+          if (!filters.value.warehouse_id) {
+            return true
+          }
+
+          // Check if the change affects currently filtered warehouse
+          const newRecord = payload.new as { warehouse_id?: number } | null
+          const oldRecord = payload.old as { warehouse_id?: number } | null
+
+          // For UPDATE events (like batch transfer), check both old and new warehouse
+          if (payload.eventType === 'UPDATE') {
+            const matchesOld = oldRecord?.warehouse_id === filters.value.warehouse_id
+            const matchesNew = newRecord?.warehouse_id === filters.value.warehouse_id
+            return matchesOld || matchesNew
+          }
+
+          // For INSERT/DELETE, check if matches current filter
+          const record = newRecord || oldRecord
+          if (!record) {
+            return true
+          }
+
+          return record.warehouse_id === filters.value.warehouse_id
+        }
+
+        if (shouldRefresh()) {
+          debouncedRefresh(100)
+        }
+      }
+    )
+
+    realtimeEnabled.value = true
+  }
+
+  /**
+   * Disable real-time updates
+   */
+  const disableRealtime = (): void => {
+    if (!realtimeEnabled.value || !realtimeChannelName.value) return
+
+    realtime.unsubscribe(realtimeChannelName.value)
+    realtimeChannelName.value = null
+    realtimeEnabled.value = false
+
+    // Clear any pending debounce timer
+    if (debounceTimer.value) {
+      clearTimeout(debounceTimer.value)
+      debounceTimer.value = null
+    }
+  }
+
+  /**
    * Reset all state to initial values
    */
   const reset = (): void => {
@@ -173,6 +270,7 @@ export function useConeSummary() {
     filters.value = {}
     error.value = null
     breakdownLoading.value = false
+    disableRealtime()
     loading.reset()
   }
 
@@ -204,5 +302,7 @@ export function useConeSummary() {
     closeBreakdown,
     clearError,
     reset,
+    enableRealtime,
+    disableRealtime,
   }
 }
