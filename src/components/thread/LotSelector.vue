@@ -1,10 +1,10 @@
 <template>
   <q-select
     v-bind="$attrs"
-    :model-value="modelValue"
+    :model-value="internalValue"
     :options="filteredOptions"
-    :option-value="optionValue"
-    :option-label="optionLabel"
+    :option-value="getOptionValue"
+    :option-label="getOptionLabel"
     :label="label"
     :hint="hint"
     :outlined="outlined"
@@ -14,8 +14,8 @@
     :readonly="readonly"
     :clearable="clearable"
     :loading="loading || isLoading"
-    :emit-value="emitValue"
-    :map-options="mapOptions"
+    :emit-value="false"
+    :map-options="false"
     :use-input="useInput"
     :input-debounce="inputDebounce"
     :behavior="behavior"
@@ -33,20 +33,55 @@
         v-bind="itemProps"
         class="lot-option"
       >
+        <q-item-section avatar>
+          <q-avatar
+            v-if="isUnassignedGroup(opt)"
+            size="32px"
+            color="orange-2"
+            text-color="orange-9"
+            icon="inventory_2"
+          />
+          <q-avatar
+            v-else
+            size="32px"
+            :color="opt.thread_type?.color_code ? undefined : 'grey-3'"
+            :style="opt.thread_type?.color_code ? { backgroundColor: opt.thread_type.color_code } : undefined"
+          >
+            <span class="text-caption text-weight-bold text-white">
+              {{ (opt.thread_type?.code || 'L').substring(0, 2).toUpperCase() }}
+            </span>
+          </q-avatar>
+        </q-item-section>
         <q-item-section>
           <q-item-label>
-            <span class="text-weight-medium">{{ opt.lot_number }}</span>
+            <span class="text-weight-medium">
+              {{ isUnassignedGroup(opt) ? opt.thread_type_name : opt.lot_number }}
+            </span>
+            <q-badge
+              v-if="isUnassignedGroup(opt)"
+              class="q-ml-sm"
+              color="orange"
+              label="Chưa phân lô"
+            />
           </q-item-label>
           <q-item-label caption>
-            <span>{{ opt.thread_type?.name || '-' }}</span>
-            <span class="q-mx-xs">•</span>
-            <span>{{ opt.warehouse?.name || '-' }}</span>
-            <span class="q-mx-xs">•</span>
-            <span>{{ opt.available_cones }}/{{ opt.total_cones }} cuộn</span>
+            <template v-if="isUnassignedGroup(opt)">
+              <span>{{ opt.thread_type_code }}</span>
+              <span class="q-mx-xs">•</span>
+              <span>{{ opt.cone_count }} cuộn</span>
+            </template>
+            <template v-else>
+              <span>{{ opt.thread_type?.name || '-' }}</span>
+              <span class="q-mx-xs">•</span>
+              <span>{{ opt.warehouse?.name || '-' }}</span>
+              <span class="q-mx-xs">•</span>
+              <span>{{ opt.available_cones }}/{{ opt.total_cones }} cuộn</span>
+            </template>
           </q-item-label>
         </q-item-section>
         <q-item-section side>
           <q-badge
+            v-if="!isUnassignedGroup(opt)"
             :color="getStatusColor(opt.status)"
             :label="getStatusLabel(opt.status)"
           />
@@ -57,8 +92,19 @@
     <!-- Selected value display -->
     <template #selected-item="{ opt }">
       <span v-if="opt">
-        {{ opt.lot_number }}
-        <span class="text-grey-6 q-ml-xs">({{ opt.available_cones }} cuộn)</span>
+        <template v-if="isUnassignedGroup(opt)">
+          {{ opt.thread_type_name }}
+          <q-badge
+            class="q-ml-xs"
+            color="orange"
+            label="Chưa phân lô"
+          />
+          <span class="text-grey-6 q-ml-xs">({{ opt.cone_count }} cuộn)</span>
+        </template>
+        <template v-else>
+          {{ opt.lot_number }}
+          <span class="text-grey-6 q-ml-xs">({{ opt.available_cones }} cuộn)</span>
+        </template>
       </span>
     </template>
 
@@ -79,65 +125,47 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useLots } from '@/composables/useLots'
-import type { Lot, LotStatus, LotFilters } from '@/types/thread/lot'
+import { inventoryService } from '@/services/inventoryService'
+import type { Lot, LotStatus, LotFilters, UnassignedThreadGroup } from '@/types/thread/lot'
 
 defineOptions({
   name: 'LotSelector',
   inheritAttrs: false
 })
 
+type SelectionOption = Lot | UnassignedThreadGroup
+
 interface Props {
-  /** v-model value (lot id) */
-  modelValue?: number | null
-  /** Label for the select */
+  modelValue?: number | string | null
   label?: string
-  /** Hint text */
   hint?: string
-  /** Filter by warehouse ID */
   warehouseId?: number | null
-  /** Filter by thread type ID */
   threadTypeId?: number | null
-  /** Only show active lots (default true) */
   activeOnly?: boolean
-  /** Outlined style */
+  includeUnassigned?: boolean
   outlined?: boolean
-  /** Filled style */
   filled?: boolean
-  /** Dense padding */
   dense?: boolean
-  /** Disable select */
   disable?: boolean
-  /** Readonly mode */
   readonly?: boolean
-  /** Clearable */
   clearable?: boolean
-  /** Loading state (external) */
   loading?: boolean
-  /** Emit value only */
   emitValue?: boolean
-  /** Map options */
   mapOptions?: boolean
-  /** Enable search/filter */
   useInput?: boolean
-  /** Input debounce */
   inputDebounce?: number
-  /** Popup behavior */
   behavior?: 'menu' | 'dialog'
-  /** Popup content class */
   popupContentClass?: string
-  /** Validation rules */
   rules?: Array<(val: any) => boolean | string>
-  /** Required field */
   required?: boolean
-  /** Error message */
   errorMessage?: string
-  /** Auto-fetch lots on mount */
   autoFetch?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   label: 'Chọn lô',
   activeOnly: true,
+  includeUnassigned: true,
   outlined: true,
   filled: false,
   dense: false,
@@ -156,76 +184,99 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  'update:modelValue': [value: number | null]
+  'update:modelValue': [value: number | string | null]
   'lot-selected': [lot: Lot | null]
+  'unassigned-selected': [group: UnassignedThreadGroup | null]
 }>()
 
-// Composables
 const { lots, loading: isLoading, fetchLots } = useLots()
 
-// Local state
 const filterText = ref('')
+const unassignedGroups = ref<UnassignedThreadGroup[]>([])
+const loadingUnassigned = ref(false)
 
-// Option accessors
-const optionValue = 'id'
-const optionLabel = (opt: Lot) => opt.lot_number
+const UNASSIGNED_PREFIX = 'unassigned:'
 
-/**
- * Build options list based on props
- */
-const allOptions = computed(() => {
-  let filtered = lots.value
+function isUnassignedGroup(opt: SelectionOption): opt is UnassignedThreadGroup {
+  return 'thread_type_id' in opt && 'cone_ids' in opt
+}
 
-  // Filter by status
-  if (props.activeOnly) {
-    filtered = filtered.filter(l => l.status === 'ACTIVE')
+function getOptionValue(opt: SelectionOption): number | string {
+  if (isUnassignedGroup(opt)) {
+    return `${UNASSIGNED_PREFIX}${opt.thread_type_id}`
   }
+  return opt.id
+}
 
-  // Filter by warehouse
-  if (props.warehouseId) {
-    filtered = filtered.filter(l => l.warehouse_id === props.warehouseId)
+function getOptionLabel(opt: SelectionOption): string {
+  if (isUnassignedGroup(opt)) {
+    return `${opt.thread_type_name} (Chưa phân lô)`
   }
+  return opt.lot_number
+}
 
-  // Filter by thread type
-  if (props.threadTypeId) {
-    filtered = filtered.filter(l => l.thread_type_id === props.threadTypeId)
+const internalValue = computed(() => {
+  if (!props.modelValue) return null
+  
+  if (typeof props.modelValue === 'string' && props.modelValue.startsWith(UNASSIGNED_PREFIX)) {
+    const threadTypeId = parseInt(props.modelValue.replace(UNASSIGNED_PREFIX, ''))
+    return unassignedGroups.value.find(g => g.thread_type_id === threadTypeId) || null
   }
-
-  return filtered
+  
+  if (typeof props.modelValue === 'number') {
+    return lots.value.find(l => l.id === props.modelValue) || null
+  }
+  
+  return null
 })
 
-/**
- * Filter options based on search text
- */
+const allOptions = computed<SelectionOption[]>(() => {
+  let lotOptions: Lot[] = lots.value
+
+  if (props.activeOnly) {
+    lotOptions = lotOptions.filter(l => l.status === 'ACTIVE')
+  }
+
+  if (props.threadTypeId) {
+    lotOptions = lotOptions.filter(l => l.thread_type_id === props.threadTypeId)
+  }
+
+  const combined: SelectionOption[] = [...lotOptions]
+
+  if (props.includeUnassigned && unassignedGroups.value.length > 0) {
+    combined.push(...unassignedGroups.value)
+  }
+
+  return combined
+})
+
 const filteredOptions = computed(() => {
   if (!filterText.value) {
     return allOptions.value
   }
 
   const search = filterText.value.toLowerCase()
-  return allOptions.value.filter(l =>
-    l.lot_number.toLowerCase().includes(search) ||
-    l.thread_type?.name?.toLowerCase().includes(search) ||
-    l.warehouse?.name?.toLowerCase().includes(search)
-  )
+  return allOptions.value.filter(opt => {
+    if (isUnassignedGroup(opt)) {
+      return opt.thread_type_name.toLowerCase().includes(search) ||
+             opt.thread_type_code.toLowerCase().includes(search)
+    }
+    return opt.lot_number.toLowerCase().includes(search) ||
+           opt.thread_type?.name?.toLowerCase().includes(search) ||
+           opt.warehouse?.name?.toLowerCase().includes(search)
+  })
 })
 
-/**
- * Validation rules
- */
 const computedRules = computed(() => {
   const rules = [...(props.rules || [])]
   if (props.required) {
     rules.unshift((val: any) =>
-      (val !== null && val !== undefined) || 'Vui lòng chọn lô'
+      (val !== null && val !== undefined) || 'Vui lòng chọn lô hoặc loại chỉ'
     )
   }
   return rules
 })
 
-/**
- * Get status color
- */
 function getStatusColor(status: LotStatus): string {
   const colors: Record<LotStatus, string> = {
     ACTIVE: 'positive',
@@ -236,9 +287,6 @@ function getStatusColor(status: LotStatus): string {
   return colors[status]
 }
 
-/**
- * Get status label
- */
 function getStatusLabel(status: LotStatus): string {
   const labels: Record<LotStatus, string> = {
     ACTIVE: 'Hoạt động',
@@ -249,29 +297,31 @@ function getStatusLabel(status: LotStatus): string {
   return labels[status]
 }
 
-/**
- * Handle model value update
- */
-const handleUpdateModelValue = (val: number | null) => {
-  emit('update:modelValue', val)
-  
-  // Emit selected lot object
-  const selectedLot = val ? lots.value.find(l => l.id === val) || null : null
-  emit('lot-selected', selectedLot)
+const handleUpdateModelValue = (opt: SelectionOption | null) => {
+  if (!opt) {
+    emit('update:modelValue', null)
+    emit('lot-selected', null)
+    emit('unassigned-selected', null)
+    return
+  }
+
+  if (isUnassignedGroup(opt)) {
+    emit('update:modelValue', `${UNASSIGNED_PREFIX}${opt.thread_type_id}`)
+    emit('lot-selected', null)
+    emit('unassigned-selected', opt)
+  } else {
+    emit('update:modelValue', opt.id)
+    emit('lot-selected', opt)
+    emit('unassigned-selected', null)
+  }
 }
 
-/**
- * Handle filter input
- */
 const handleFilter = (val: string, update: (fn: () => void) => void) => {
   update(() => {
     filterText.value = val
   })
 }
 
-/**
- * Fetch lots with current filters
- */
 async function loadLots() {
   const filters: LotFilters = {}
   if (props.activeOnly) {
@@ -286,25 +336,46 @@ async function loadLots() {
   await fetchLots(filters)
 }
 
-/**
- * Fetch data on mount
- */
+async function loadUnassignedGroups() {
+  if (!props.warehouseId || !props.includeUnassigned) {
+    unassignedGroups.value = []
+    return
+  }
+
+  loadingUnassigned.value = true
+  try {
+    unassignedGroups.value = await inventoryService.getUnassignedByThreadType(props.warehouseId)
+  } catch {
+    unassignedGroups.value = []
+  } finally {
+    loadingUnassigned.value = false
+  }
+}
+
+async function loadAll() {
+  await Promise.all([loadLots(), loadUnassignedGroups()])
+}
+
 onMounted(async () => {
   if (props.autoFetch) {
-    await loadLots()
+    await loadAll()
   }
 })
 
-/**
- * Re-fetch when filter props change
- */
 watch([() => props.warehouseId, () => props.threadTypeId], async () => {
-  await loadLots()
+  await loadAll()
 })
 
-// Expose for parent access
 defineExpose({
-  refresh: loadLots
+  refresh: loadAll,
+  getUnassignedConeIds: (value: string | number | null): number[] | null => {
+    if (typeof value === 'string' && value.startsWith(UNASSIGNED_PREFIX)) {
+      const threadTypeId = parseInt(value.replace(UNASSIGNED_PREFIX, ''))
+      const group = unassignedGroups.value.find(g => g.thread_type_id === threadTypeId)
+      return group?.cone_ids || null
+    }
+    return null
+  }
 })
 </script>
 

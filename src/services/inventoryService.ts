@@ -7,6 +7,7 @@
 
 import { fetchApi } from './api'
 import type { Cone, InventoryFilters, ReceiveStockDTO, ConeSummaryRow, ConeWarehouseBreakdown, ConeSummaryFilters } from '@/types/thread'
+import type { UnassignedThreadGroup } from '@/types/thread/lot'
 
 interface ApiResponse<T> {
   data: T | null
@@ -207,6 +208,18 @@ export const inventoryService = {
   async getWarehouseBreakdown(threadTypeId: number): Promise<ConeWarehouseBreakdown[]> {
     const response = await fetchApi<ApiResponse<ConeWarehouseBreakdown[]>>(
       `/api/inventory/summary/by-cone/${threadTypeId}/warehouses`
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
+  },
+
+  async getUnassignedByThreadType(warehouseId: number): Promise<UnassignedThreadGroup[]> {
+    const response = await fetchApi<ApiResponse<UnassignedThreadGroup[]>>(
+      `/api/inventory/unassigned-by-thread-type?warehouse_id=${warehouseId}`
     )
 
     if (response.error) {

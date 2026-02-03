@@ -466,6 +466,102 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
   }
 })
 
+// GET /api/inventory/unassigned-by-thread-type - Get unassigned cones grouped by thread type
+inventory.get('/unassigned-by-thread-type', async (c) => {
+  try {
+    const warehouseId = c.req.query('warehouse_id')
+
+    if (!warehouseId) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Vui lòng cung cấp warehouse_id'
+      }, 400)
+    }
+
+    const parsedWarehouseId = parseInt(warehouseId)
+    if (isNaN(parsedWarehouseId)) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID kho không hợp lệ'
+      }, 400)
+    }
+
+    const transferableStatuses: ConeStatus[] = ['AVAILABLE', 'RECEIVED', 'INSPECTED']
+
+    const { data: cones, error } = await supabase
+      .from('thread_inventory')
+      .select(`
+        id,
+        thread_type_id,
+        thread_types(id, code, name, color_code)
+      `)
+      .eq('warehouse_id', parsedWarehouseId)
+      .is('lot_id', null)
+      .in('status', transferableStatuses)
+
+    if (error) {
+      console.error('Supabase error:', error)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi tải danh sách cuộn chưa phân lô'
+      }, 500)
+    }
+
+    interface UnassignedGroup {
+      thread_type_id: number
+      thread_type_name: string
+      thread_type_code: string
+      color_code: string | null
+      cone_count: number
+      cone_ids: number[]
+    }
+
+    const groupMap: Map<number, UnassignedGroup> = new Map()
+
+    for (const cone of cones || []) {
+      const ttRaw = cone.thread_types
+      const tt = (Array.isArray(ttRaw) ? ttRaw[0] : ttRaw) as {
+        id: number
+        code: string
+        name: string
+        color_code: string | null
+      } | null
+
+      if (!tt) continue
+
+      if (!groupMap.has(cone.thread_type_id)) {
+        groupMap.set(cone.thread_type_id, {
+          thread_type_id: cone.thread_type_id,
+          thread_type_name: tt.name,
+          thread_type_code: tt.code,
+          color_code: tt.color_code,
+          cone_count: 0,
+          cone_ids: []
+        })
+      }
+
+      const group = groupMap.get(cone.thread_type_id)!
+      group.cone_count++
+      group.cone_ids.push(cone.id)
+    }
+
+    const groups = Array.from(groupMap.values())
+      .sort((a, b) => a.thread_type_name.localeCompare(b.thread_type_name))
+
+    return c.json<ThreadApiResponse<UnassignedGroup[]>>({
+      data: groups,
+      error: null,
+      message: `Tìm thấy ${groups.length} loại chỉ chưa phân lô`
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi hệ thống'
+    }, 500)
+  }
+})
+
 // GET /api/inventory/:id - Get single cone
 inventory.get('/:id', async (c) => {
   try {
@@ -473,7 +569,7 @@ inventory.get('/:id', async (c) => {
 
     // Guard: skip if id matches a known static route name
     // This prevents parameterized route from capturing static routes
-    if (id === 'available' || id === 'by-barcode' || id === 'by-warehouse' || id === 'summary') {
+    if (id === 'available' || id === 'by-barcode' || id === 'by-warehouse' || id === 'summary' || id === 'unassigned-by-thread-type') {
       return c.notFound()
     }
 

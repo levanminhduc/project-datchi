@@ -1,9 +1,6 @@
 <template>
   <q-dialog
     :model-value="modelValue"
-    persistent
-    transition-show="slide-up"
-    transition-hide="slide-down"
     @update:model-value="$emit('update:modelValue', $event)"
   >
     <q-card class="breakdown-dialog-card column">

@@ -91,3 +91,16 @@ export interface LotWithSummary extends Lot {
   available_meters?: number
   total_weight_grams?: number
 }
+
+/**
+ * Unassigned thread group - virtual "lot" for cones without lot assignment
+ * Used in LotSelector to allow selecting and transferring unassigned cones
+ */
+export interface UnassignedThreadGroup {
+  thread_type_id: number
+  thread_type_name: string
+  thread_type_code: string
+  color_code: string | null
+  cone_count: number
+  cone_ids: number[]
+}

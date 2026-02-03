@@ -102,7 +102,41 @@ lots.get('/', async (c) => {
       query = query.eq('status', status)
     }
     if (warehouseId) {
-      query = query.eq('warehouse_id', parseInt(warehouseId))
+      const { data: conesInWarehouse } = await supabase
+        .from('thread_inventory')
+        .select('lot_id, lot_number')
+        .eq('warehouse_id', parseInt(warehouseId))
+        .in('status', ['AVAILABLE', 'RECEIVED'])
+
+      const lotIds: number[] = []
+      const lotNumbers: string[] = []
+
+      for (const cone of conesInWarehouse || []) {
+        if (cone.lot_id !== null) {
+          lotIds.push(cone.lot_id)
+        } else if (cone.lot_number) {
+          lotNumbers.push(cone.lot_number)
+        }
+      }
+
+      const uniqueLotIds = [...new Set(lotIds)]
+      const uniqueLotNumbers = [...new Set(lotNumbers)]
+
+      if (uniqueLotIds.length === 0 && uniqueLotNumbers.length === 0) {
+        return c.json<BatchApiResponse<LotRow[]>>({
+          data: [],
+          error: null,
+          message: 'Không có lô nào có chỉ trong kho này'
+        })
+      }
+
+      if (uniqueLotIds.length > 0 && uniqueLotNumbers.length > 0) {
+        query = query.or(`id.in.(${uniqueLotIds.join(',')}),lot_number.in.(${uniqueLotNumbers.join(',')})`)
+      } else if (uniqueLotIds.length > 0) {
+        query = query.in('id', uniqueLotIds)
+      } else {
+        query = query.in('lot_number', uniqueLotNumbers)
+      }
     }
     if (threadTypeId) {
       query = query.eq('thread_type_id', parseInt(threadTypeId))

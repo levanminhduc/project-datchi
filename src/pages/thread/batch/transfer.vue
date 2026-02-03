@@ -68,15 +68,18 @@
               <!-- By Lot -->
               <div v-if="selectionMode === 'lot' && formData.from_warehouse_id">
                 <LotSelector
+                  ref="lotSelectorRef"
                   v-model="formData.lot_id"
                   :warehouse-id="formData.from_warehouse_id"
-                  label="Chọn lô hàng"
+                  label="Chọn lô hoặc loại chỉ"
+                  :include-unassigned="true"
                   @lot-selected="onLotSelected"
+                  @unassigned-selected="onUnassignedSelected"
                 />
                 <q-btn
-                  v-if="formData.lot_id && selectedLot"
+                  v-if="hasSelection"
                   color="secondary"
-                  label="Thêm tất cả cuộn trong lô"
+                  :label="selectedUnassigned ? 'Thêm tất cả cuộn chưa phân lô' : 'Thêm tất cả cuộn trong lô'"
                   icon="add"
                   class="q-mt-md"
                   @click="addLotCones"
@@ -517,7 +520,7 @@ import AppWarehouseSelect from '@/components/ui/inputs/AppWarehouseSelect.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
 import { inventoryService } from '@/services/inventoryService'
 import LotSelector from '@/components/thread/LotSelector.vue'
-import type { Lot } from '@/types/thread/lot'
+import type { Lot, UnassignedThreadGroup } from '@/types/thread/lot'
 
 const router = useRouter()
 const $q = useQuasar()
@@ -569,16 +572,18 @@ const isScanning = ref(false)
 const manualInput = ref('')
 const showSuccessDialog = ref(false)
 const selectedLot = ref<Lot | null>(null)
+const selectedUnassigned = ref<UnassignedThreadGroup | null>(null)
+const lotSelectorRef = ref<InstanceType<typeof LotSelector> | null>(null)
 
 const formData = ref({
   from_warehouse_id: null as number | null,
   to_warehouse_id: null as number | null,
-  lot_id: null as number | null
+  lot_id: null as number | string | null
 })
 
 // Options
 const selectionModeOptions = [
-  { label: 'Theo lô', value: 'lot' },
+  { label: 'Theo lô/loại chỉ', value: 'lot' },
   { label: 'Quét/nhập', value: 'scan' }
 ]
 
@@ -604,32 +609,81 @@ function goToStep(step: number) {
 }
 
 function onSourceWarehouseChange() {
-  // Clear selections when source changes
   formData.value.lot_id = null
   selectedLot.value = null
+  selectedUnassigned.value = null
   coneBuffer.value = []
 }
 
 function onLotSelected(lot: Lot | null) {
   selectedLot.value = lot
+  selectedUnassigned.value = null
 }
+
+function onUnassignedSelected(group: UnassignedThreadGroup | null) {
+  selectedUnassigned.value = group
+  selectedLot.value = null
+}
+
+const hasSelection = computed(() => {
+  return selectedLot.value !== null || selectedUnassigned.value !== null
+})
 
 async function addLotCones() {
   if (!formData.value.lot_id) return
   
+  if (selectedUnassigned.value) {
+    const coneIds = selectedUnassigned.value.cone_ids
+    
+    const fetchPromises = coneIds
+      .filter(id => !coneBuffer.value.some(item => item.id === id))
+      .map(id => inventoryService.getById(id).catch(() => null))
+    
+    const cones = await Promise.all(fetchPromises)
+    
+    let added = 0
+    for (const cone of cones) {
+      if (cone && isTransferable(cone.status)) {
+        coneBuffer.value.push({ id: cone.id, cone_id: cone.cone_id, status: cone.status })
+        added++
+      }
+    }
+    
+    if (added > 0) {
+      snackbar.success(`Đã thêm ${added} cuộn chưa phân lô`)
+    } else {
+      snackbar.info('Không có cuộn nào để thêm')
+    }
+    return
+  }
+  
+  if (typeof formData.value.lot_id !== 'number') return
+  
   await fetchLotCones(formData.value.lot_id)
   
   let added = 0
+  let skipped = 0
   for (const cone of currentCones.value) {
     // Check if cone is already in buffer by database id
     if (!coneBuffer.value.some(item => item.id === cone.id)) {
-      coneBuffer.value.push({ id: cone.id, cone_id: cone.cone_id, status: cone.status })
-      added++
+      if (isTransferable(cone.status)) {
+        coneBuffer.value.push({ id: cone.id, cone_id: cone.cone_id, status: cone.status })
+        added++
+      } else {
+        skipped++
+      }
     }
   }
   
   if (added > 0) {
-    snackbar.success(`Đã thêm ${added} cuộn từ lô`)
+    snackbar.success(`Đã thêm ${added} cuộn hợp lệ từ lô`)
+    if (skipped > 0) {
+      snackbar.warning(`Bỏ qua ${skipped} cuộn không thể chuyển (đang sản xuất, đã cấp phát, v.v.)`)
+    }
+  } else if (skipped > 0) {
+    snackbar.warning(`Không có cuộn nào hợp lệ để chuyển trong lô này`)
+  } else {
+    snackbar.info('Không có cuộn nào trong lô')
   }
 }
 
@@ -751,6 +805,7 @@ function handleNewBatch() {
   currentStep.value = 1
   formData.value.lot_id = null
   selectedLot.value = null
+  selectedUnassigned.value = null
 }
 
 async function handleBack() {

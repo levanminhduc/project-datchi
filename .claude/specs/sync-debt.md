@@ -1,6 +1,5 @@
-
 ---
-[2026-02-02 23:04] [small-feature]
-DatePicker: Added autoClose prop to auto-confirm and close popup on date selection
-Files: src/components/ui/pickers/DatePicker.vue, src/pages/thread/allocations.vue, src/pages/thread/inventory.vue
+[2026-02-03 14:30] small-feature
+Allow batch transfer of cones without lot assignment - grouped by thread_type with "Chưa phân lô" label
+Files: server/routes/inventory.ts, src/types/thread/lot.ts, src/services/inventoryService.ts, src/components/thread/LotSelector.vue, src/pages/thread/batch/transfer.vue
 ---
