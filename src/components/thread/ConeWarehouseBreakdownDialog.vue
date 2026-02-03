@@ -2,12 +2,11 @@
   <q-dialog
     :model-value="modelValue"
     persistent
-    maximized
     transition-show="slide-up"
     transition-hide="slide-down"
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <q-card class="column">
+    <q-card class="breakdown-dialog-card column">
       <!-- Header -->
       <q-card-section class="row items-center q-pb-none">
         <div class="column">
@@ -295,7 +294,9 @@ const formatNumber = (num: number): string => {
 </script>
 
 <style scoped>
-.q-card {
-  max-height: 100vh;
+.breakdown-dialog-card {
+  width: 90vw;
+  max-width: 800px;
+  max-height: 90vh;
 }
 </style>

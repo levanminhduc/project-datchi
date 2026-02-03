@@ -590,6 +590,7 @@ const {
   isLoading,
   fetchInventory,
   receiveStock,
+  // TODO: realtime-inventory-9 Destructure enableRealtime, disableRealtime from useInventory()
 } = useInventory()
 
 const {
@@ -938,7 +939,10 @@ onMounted(async () => {
     fetchThreadTypes(),
     fetchWarehouses()
   ])
+  // TODO: realtime-inventory-10 Call enableRealtime() after initial data fetch completes
 })
+
+// TODO: realtime-inventory-11 Add onUnmounted hook to call disableRealtime() for cleanup
 </script>
 
 <style scoped lang="scss">

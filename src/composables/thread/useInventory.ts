@@ -6,6 +6,7 @@
  */
 
 import { ref, computed } from 'vue'
+// TODO: realtime-inventory-1 Import useRealtime composable from '../useRealtime'
 import { inventoryService } from '@/services/inventoryService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
@@ -61,10 +62,12 @@ export function useInventory() {
   const availableSummary = ref<
     Record<number, { total_meters: number; full_cones: number; partial_cones: number }>
   >({})
+  // TODO: realtime-inventory-2 Add realtime state: realtimeEnabled, realtimeChannelName, debounceTimer refs
 
   // Composables
   const snackbar = useSnackbar()
   const loading = useLoading()
+  // TODO: realtime-inventory-3 Initialize useRealtime composable: const realtime = useRealtime()
 
   // Computed
   const isLoading = computed(() => loading.isLoading.value)
@@ -191,6 +194,12 @@ export function useInventory() {
     await fetchInventory()
   }
 
+  // TODO: realtime-inventory-4 Implement debouncedRefresh(delay=100ms) to batch rapid changes
+
+  // TODO: realtime-inventory-5 Implement enableRealtime() - subscribe to thread_inventory with smart filter check
+
+  // TODO: realtime-inventory-6 Implement disableRealtime() - unsubscribe and clear debounce timer
+
   /**
    * Reset all state to initial values
    */
@@ -200,6 +209,7 @@ export function useInventory() {
     selectedCone.value = null
     filters.value = {}
     availableSummary.value = {}
+    // TODO: realtime-inventory-7 Call disableRealtime() in reset() for proper cleanup
     loading.reset()
   }
 
@@ -229,5 +239,6 @@ export function useInventory() {
     clearFilters,
     clearError,
     reset,
+    // TODO: realtime-inventory-8 Export enableRealtime and disableRealtime in return statement
   }
 }
