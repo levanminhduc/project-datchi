@@ -6,7 +6,7 @@
  */
 
 import { fetchApi } from './api'
-import type { Cone, InventoryFilters, ReceiveStockDTO } from '@/types/thread'
+import type { Cone, InventoryFilters, ReceiveStockDTO, ConeSummaryRow, ConeWarehouseBreakdown, ConeSummaryFilters } from '@/types/thread'
 
 interface ApiResponse<T> {
   data: T | null
@@ -172,6 +172,48 @@ export const inventoryService = {
       }),
     })
     return response
+  },
+
+  /**
+   * Lấy tổng hợp tồn kho theo cuộn (cone-based summary)
+   * Groups by thread_type, counts full and partial cones
+   * @param filters - Optional filters: warehouse_id, material, search
+   * @returns Array of ConeSummaryRow
+   */
+  async getConeSummary(filters?: ConeSummaryFilters): Promise<ConeSummaryRow[]> {
+    const params = new URLSearchParams()
+    if (filters?.warehouse_id !== undefined) params.append('warehouse_id', String(filters.warehouse_id))
+    if (filters?.material) params.append('material', filters.material)
+    if (filters?.search) params.append('search', filters.search)
+
+    const queryString = params.toString()
+    const url = `/api/inventory/summary/by-cone${queryString ? `?${queryString}` : ''}`
+
+    const response = await fetchApi<ApiResponse<ConeSummaryRow[]>>(url)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
+  },
+
+  /**
+   * Lấy chi tiết phân bố kho cho một loại chỉ cụ thể
+   * Shows breakdown by warehouse for drill-down view
+   * @param threadTypeId - Thread type ID
+   * @returns Array of ConeWarehouseBreakdown
+   */
+  async getWarehouseBreakdown(threadTypeId: number): Promise<ConeWarehouseBreakdown[]> {
+    const response = await fetchApi<ApiResponse<ConeWarehouseBreakdown[]>>(
+      `/api/inventory/summary/by-cone/${threadTypeId}/warehouses`
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
   },
 }
 

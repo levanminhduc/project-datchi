@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
-import type { ThreadApiResponse, ConeRow, ReceiveStockDTO, StocktakeDTO, StocktakeResult } from '../types/thread'
+import type { ThreadApiResponse, ConeRow, ReceiveStockDTO, StocktakeDTO, StocktakeResult, ConeSummaryRow, ConeWarehouseBreakdown } from '../types/thread'
 
 const inventory = new Hono()
 
@@ -259,6 +259,194 @@ inventory.get('/by-warehouse/:warehouseId', async (c) => {
   }
 })
 
+// GET /api/inventory/summary/by-cone - Cone-based inventory summary
+// Groups inventory by thread_type, counting full and partial cones
+inventory.get('/summary/by-cone', async (c) => {
+  try {
+    const warehouseId = c.req.query('warehouse_id')
+    const material = c.req.query('material')
+    const search = c.req.query('search')
+
+    // Fetch all AVAILABLE cones with thread type details
+    let query = supabase
+      .from('thread_inventory')
+      .select(`
+        thread_type_id,
+        quantity_meters,
+        weight_grams,
+        is_partial,
+        thread_types(
+          code, name, color, color_code, material, tex_number, meters_per_cone
+        )
+      `)
+      .eq('status', 'AVAILABLE')
+
+    if (warehouseId) {
+      query = query.eq('warehouse_id', parseInt(warehouseId))
+    }
+
+    const { data: cones, error } = await query
+
+    if (error) {
+      console.error('Supabase error:', error)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi tải tổng hợp tồn kho'
+      }, 500)
+    }
+
+    // Aggregate by thread_type_id
+    const summaryMap: Map<number, ConeSummaryRow> = new Map()
+
+    for (const cone of cones || []) {
+      const ttRaw = cone.thread_types
+      const tt = (Array.isArray(ttRaw) ? ttRaw[0] : ttRaw) as {
+        code: string
+        name: string
+        color: string | null
+        color_code: string | null
+        material: string
+        tex_number: number | null
+        meters_per_cone: number | null
+      } | null
+
+      if (!tt) continue
+
+      // Apply material filter
+      if (material && tt.material !== material) continue
+
+      // Apply search filter
+      if (search) {
+        const searchLower = search.toLowerCase()
+        const matchesSearch = 
+          tt.code.toLowerCase().includes(searchLower) ||
+          tt.name.toLowerCase().includes(searchLower) ||
+          (tt.color && tt.color.toLowerCase().includes(searchLower))
+        if (!matchesSearch) continue
+      }
+
+      if (!summaryMap.has(cone.thread_type_id)) {
+        summaryMap.set(cone.thread_type_id, {
+          thread_type_id: cone.thread_type_id,
+          thread_code: tt.code,
+          thread_name: tt.name,
+          color: tt.color,
+          color_code: tt.color_code,
+          material: tt.material as ConeSummaryRow['material'],
+          tex_number: tt.tex_number,
+          meters_per_cone: tt.meters_per_cone,
+          full_cones: 0,
+          partial_cones: 0,
+          partial_meters: 0,
+          partial_weight_grams: 0
+        })
+      }
+
+      const row = summaryMap.get(cone.thread_type_id)!
+      if (cone.is_partial) {
+        row.partial_cones++
+        row.partial_meters += cone.quantity_meters || 0
+        row.partial_weight_grams += cone.weight_grams || 0
+      } else {
+        row.full_cones++
+      }
+    }
+
+    const summaryList = Array.from(summaryMap.values())
+      .sort((a, b) => a.thread_code.localeCompare(b.thread_code))
+
+    return c.json<ThreadApiResponse<ConeSummaryRow[]>>({
+      data: summaryList,
+      error: null,
+      message: `Tổng hợp ${summaryList.length} loại chỉ`
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi hệ thống'
+    }, 500)
+  }
+})
+
+// GET /api/inventory/summary/by-cone/:threadTypeId/warehouses - Warehouse breakdown for a thread type
+inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
+  try {
+    const threadTypeId = parseInt(c.req.param('threadTypeId'))
+
+    if (isNaN(threadTypeId)) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID loại chỉ không hợp lệ'
+      }, 400)
+    }
+
+    // Fetch all AVAILABLE cones for this thread type with warehouse info
+    const { data: cones, error } = await supabase
+      .from('thread_inventory')
+      .select(`
+        warehouse_id,
+        quantity_meters,
+        is_partial,
+        location,
+        warehouses(code, name)
+      `)
+      .eq('thread_type_id', threadTypeId)
+      .eq('status', 'AVAILABLE')
+
+    if (error) {
+      console.error('Supabase error:', error)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi tải chi tiết kho'
+      }, 500)
+    }
+
+    // Aggregate by warehouse
+    const breakdownMap: Map<number, ConeWarehouseBreakdown> = new Map()
+
+    for (const cone of cones || []) {
+      const whRaw = cone.warehouses
+      const wh = (Array.isArray(whRaw) ? whRaw[0] : whRaw) as { code: string; name: string } | null
+
+      if (!breakdownMap.has(cone.warehouse_id)) {
+        breakdownMap.set(cone.warehouse_id, {
+          warehouse_id: cone.warehouse_id,
+          warehouse_code: wh?.code || '',
+          warehouse_name: wh?.name || '',
+          location: cone.location,
+          full_cones: 0,
+          partial_cones: 0,
+          partial_meters: 0
+        })
+      }
+
+      const row = breakdownMap.get(cone.warehouse_id)!
+      if (cone.is_partial) {
+        row.partial_cones++
+        row.partial_meters += cone.quantity_meters || 0
+      } else {
+        row.full_cones++
+      }
+    }
+
+    const breakdownList = Array.from(breakdownMap.values())
+      .sort((a, b) => a.warehouse_code.localeCompare(b.warehouse_code))
+
+    return c.json<ThreadApiResponse<ConeWarehouseBreakdown[]>>({
+      data: breakdownList,
+      error: null,
+      message: `Tìm thấy ${breakdownList.length} kho chứa loại chỉ này`
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ThreadApiResponse<null>>({
+      data: null,
+      error: 'Lỗi hệ thống'
+    }, 500)
+  }
+})
+
 // GET /api/inventory/:id - Get single cone
 inventory.get('/:id', async (c) => {
   try {
@@ -266,7 +454,7 @@ inventory.get('/:id', async (c) => {
 
     // Guard: skip if id matches a known static route name
     // This prevents parameterized route from capturing static routes
-    if (id === 'available' || id === 'by-barcode' || id === 'by-warehouse') {
+    if (id === 'available' || id === 'by-barcode' || id === 'by-warehouse' || id === 'summary') {
       return c.notFound()
     }
 

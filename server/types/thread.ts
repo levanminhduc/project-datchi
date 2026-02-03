@@ -296,3 +296,37 @@ export type WorkflowStatusFilter =
   | 'pending_preparation' 
   | 'pending_pickup'
   | 'completed'
+
+// ============ CONE SUMMARY TYPES ============
+/**
+ * Summary of cones grouped by thread type
+ * Used for cone-based inventory overview
+ */
+export interface ConeSummaryRow {
+  thread_type_id: number
+  thread_code: string
+  thread_name: string
+  color: string | null
+  color_code: string | null
+  material: ThreadMaterial
+  tex_number: number | null
+  meters_per_cone: number | null
+  full_cones: number
+  partial_cones: number
+  partial_meters: number
+  partial_weight_grams: number
+}
+
+/**
+ * Warehouse breakdown for a specific thread type
+ * Used for drill-down view
+ */
+export interface ConeWarehouseBreakdown {
+  warehouse_id: number
+  warehouse_code: string
+  warehouse_name: string
+  location: string | null
+  full_cones: number
+  partial_cones: number
+  partial_meters: number
+}

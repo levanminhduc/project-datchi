@@ -72,3 +72,43 @@ export interface InventorySummary {
   partial_cones: number
   critical_low_count: number
 }
+
+/**
+ * Cone-based summary row grouped by thread type
+ */
+export interface ConeSummaryRow {
+  thread_type_id: number
+  thread_code: string
+  thread_name: string
+  color: string | null
+  color_code: string | null
+  material: string
+  tex_number: number | null
+  meters_per_cone: number | null
+  full_cones: number
+  partial_cones: number
+  partial_meters: number
+  partial_weight_grams: number
+}
+
+/**
+ * Warehouse breakdown for a specific thread type
+ */
+export interface ConeWarehouseBreakdown {
+  warehouse_id: number
+  warehouse_code: string
+  warehouse_name: string
+  location: string | null
+  full_cones: number
+  partial_cones: number
+  partial_meters: number
+}
+
+/**
+ * Filters for cone summary view
+ */
+export interface ConeSummaryFilters {
+  warehouse_id?: number
+  material?: string
+  search?: string
+}

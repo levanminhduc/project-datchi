@@ -56,6 +56,8 @@ declare module 'vue' {
     ColorPicker: typeof import('./components/ui/pickers/ColorPicker.vue')['default']
     ComponentCard: typeof import('./components/showcase/ComponentCard.vue')['default']
     ConeQrCode: typeof import('./components/qr/ConeQrCode.vue')['default']
+    ConeSummaryTable: typeof import('./components/thread/ConeSummaryTable.vue')['default']
+    ConeWarehouseBreakdownDialog: typeof import('./components/thread/ConeWarehouseBreakdownDialog.vue')['default']
     ConfirmDialog: typeof import('./components/ui/dialogs/ConfirmDialog.vue')['default']
     ConflictDialog: typeof import('./components/offline/ConflictDialog.vue')['default']
     ConflictResolutionPanel: typeof import('./components/thread/ConflictResolutionPanel.vue')['default']

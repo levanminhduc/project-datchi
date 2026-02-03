@@ -10,8 +10,11 @@
       
       <div class="col-12 col-md-9">
         <div class="row q-col-gutter-sm justify-end">
-          <!-- Search Input -->
-          <div class="col-12 col-sm-4 col-md-3">
+          <!-- Search Input (only for detail view) -->
+          <div
+            v-if="activeTab === 'detail'"
+            class="col-12 col-sm-4 col-md-3"
+          >
             <q-input
               v-model="searchQuery"
               placeholder="Tìm mã cuộn, số lô..."
@@ -26,8 +29,11 @@
             </q-input>
           </div>
 
-          <!-- Filter: Thread Type -->
-          <div class="col-12 col-sm-4 col-md-2">
+          <!-- Filter: Thread Type (only for detail view) -->
+          <div
+            v-if="activeTab === 'detail'"
+            class="col-12 col-sm-4 col-md-2"
+          >
             <AppSelect
               v-model="filters.thread_type_id"
               :options="threadTypeOptions"
@@ -41,8 +47,11 @@
             />
           </div>
 
-          <!-- Filter: Status -->
-          <div class="col-12 col-sm-4 col-md-2">
+          <!-- Filter: Status (only for detail view) -->
+          <div
+            v-if="activeTab === 'detail'"
+            class="col-12 col-sm-4 col-md-2"
+          >
             <AppSelect
               v-model="filters.status"
               :options="statusOptions"
@@ -96,128 +105,173 @@
       </div>
     </div>
 
-    <!-- Data Table -->
-    <q-table
-      v-model:pagination="pagination"
-      flat
-      bordered
-      :rows="inventory"
-      :columns="columns"
-      row-key="id"
-      :loading="isLoading"
-      :rows-per-page-options="[10, 25, 50, 100]"
-      class="inventory-table shadow-1"
+    <!-- Tab Navigation -->
+    <q-tabs
+      v-model="activeTab"
+      class="text-primary q-mb-md"
+      active-color="primary"
+      indicator-color="primary"
+      narrow-indicator
+      align="left"
     >
-      <!-- Loading Skeleton -->
-      <template #loading>
-        <q-inner-loading showing>
-          <q-spinner-dots
-            size="50px"
-            color="primary"
-          />
-        </q-inner-loading>
-      </template>
+      <q-tab
+        name="detail"
+        label="Chi tiết cuộn"
+        icon="view_list"
+      />
+      <q-tab
+        name="summary"
+        label="Tổng hợp theo cuộn"
+        icon="summarize"
+      />
+    </q-tabs>
 
-      <!-- Thread Type Column -->
-      <template #body-cell-thread_type="props">
-        <q-td :props="props">
-          <div class="row items-center q-gutter-x-xs">
-            <div
-              v-if="props.row.thread_type?.color_code"
-              class="color-dot shadow-1"
-              :style="{ backgroundColor: props.row.thread_type.color_code }"
-            />
-            <span class="text-weight-medium text-primary">{{ props.row.thread_type?.name || '---' }}</span>
-          </div>
-        </q-td>
-      </template>
-
-      <!-- Quantity Meters Column -->
-      <template #body-cell-quantity_meters="props">
-        <q-td
-          :props="props"
-          align="right"
+    <q-tab-panels
+      v-model="activeTab"
+      animated
+      keep-alive
+    >
+      <!-- Detail View Panel -->
+      <q-tab-panel
+        name="detail"
+        class="q-pa-none"
+      >
+        <q-table
+          v-model:pagination="pagination"
+          flat
+          bordered
+          :rows="inventory"
+          :columns="columns"
+          row-key="id"
+          :loading="isLoading"
+          :rows-per-page-options="[10, 25, 50, 100]"
+          class="inventory-table shadow-1"
         >
-          <span class="font-mono text-weight-bold">{{ props.value }} m</span>
-        </q-td>
-      </template>
+          <!-- Loading Skeleton -->
+          <template #loading>
+            <q-inner-loading showing>
+              <q-spinner-dots
+                size="50px"
+                color="primary"
+              />
+            </q-inner-loading>
+          </template>
 
-      <!-- Weight Grams Column -->
-      <template #body-cell-weight_grams="props">
-        <q-td
-          :props="props"
-          align="right"
-        >
-          <span
-            v-if="props.value"
-            class="font-mono"
-          >{{ props.value }} g</span>
-          <span
-            v-else
-            class="text-grey-5"
-          >---</span>
-        </q-td>
-      </template>
+          <!-- Thread Type Column -->
+          <template #body-cell-thread_type="props">
+            <q-td :props="props">
+              <div class="row items-center q-gutter-x-xs">
+                <div
+                  v-if="props.row.thread_type?.color_code"
+                  class="color-dot shadow-1"
+                  :style="{ backgroundColor: props.row.thread_type.color_code }"
+                />
+                <span class="text-weight-medium text-primary">{{ props.row.thread_type?.name || '---' }}</span>
+              </div>
+            </q-td>
+          </template>
 
-      <!-- Status Column -->
-      <template #body-cell-status="props">
-        <q-td
-          :props="props"
-          align="center"
-        >
-          <q-badge
-            :color="getStatusColor(props.row.status)"
-            class="q-py-xs q-px-sm"
-          >
-            {{ statusLabels[props.row.status as ConeStatus] }}
-          </q-badge>
-        </q-td>
-      </template>
+          <!-- Quantity Meters Column -->
+          <template #body-cell-quantity_meters="props">
+            <q-td
+              :props="props"
+              align="right"
+            >
+              <span class="font-mono text-weight-bold">{{ props.value }} m</span>
+            </q-td>
+          </template>
 
-      <!-- Is Partial Column -->
-      <template #body-cell-is_partial="props">
-        <q-td
-          :props="props"
-          align="center"
-        >
-          <q-badge
-            :color="props.row.is_partial ? 'orange' : 'positive'"
-            outline
-          >
-            {{ props.row.is_partial ? 'Cuộn dư' : 'Cuộn đầy' }}
-          </q-badge>
-        </q-td>
-      </template>
+          <!-- Weight Grams Column -->
+          <template #body-cell-weight_grams="props">
+            <q-td
+              :props="props"
+              align="right"
+            >
+              <span
+                v-if="props.value"
+                class="font-mono"
+              >{{ props.value }} g</span>
+              <span
+                v-else
+                class="text-grey-5"
+              >---</span>
+            </q-td>
+          </template>
 
-      <!-- Actions Column -->
-      <template #body-cell-actions="props">
-        <q-td
-          :props="props"
-          align="center"
-        >
-          <q-btn
-            flat
-            round
-            color="primary"
-            icon="visibility"
-            size="sm"
-            @click="openDetailDialog(props.row)"
-          >
-            <q-tooltip>Xem chi tiết</q-tooltip>
-          </q-btn>
-          <q-btn
-            flat
-            round
-            color="secondary"
-            icon="qr_code"
-            size="sm"
-            @click="openPrintSingle(props.row)"
-          >
-            <q-tooltip>In nhãn QR</q-tooltip>
-          </q-btn>
-        </q-td>
-      </template>
-    </q-table>
+          <!-- Status Column -->
+          <template #body-cell-status="props">
+            <q-td
+              :props="props"
+              align="center"
+            >
+              <q-badge
+                :color="getStatusColor(props.row.status)"
+                class="q-py-xs q-px-sm"
+              >
+                {{ statusLabels[props.row.status as ConeStatus] }}
+              </q-badge>
+            </q-td>
+          </template>
+
+          <!-- Is Partial Column -->
+          <template #body-cell-is_partial="props">
+            <q-td
+              :props="props"
+              align="center"
+            >
+              <q-badge
+                :color="props.row.is_partial ? 'orange' : 'positive'"
+                outline
+              >
+                {{ props.row.is_partial ? 'Cuộn dư' : 'Cuộn đầy' }}
+              </q-badge>
+            </q-td>
+          </template>
+
+          <!-- Actions Column -->
+          <template #body-cell-actions="props">
+            <q-td
+              :props="props"
+              align="center"
+            >
+              <q-btn
+                flat
+                round
+                color="primary"
+                icon="visibility"
+                size="sm"
+                @click="openDetailDialog(props.row)"
+              >
+                <q-tooltip>Xem chi tiết</q-tooltip>
+              </q-btn>
+              <q-btn
+                flat
+                round
+                color="secondary"
+                icon="qr_code"
+                size="sm"
+                @click="openPrintSingle(props.row)"
+              >
+                <q-tooltip>In nhãn QR</q-tooltip>
+              </q-btn>
+            </q-td>
+          </template>
+        </q-table>
+      </q-tab-panel>
+
+      <!-- Summary View Panel -->
+      <q-tab-panel
+        name="summary"
+        class="q-pa-none"
+      >
+        <ConeSummaryTable
+          :rows="coneSummaryList"
+          :loading="coneSummaryLoading"
+          @refresh="handleSummaryRefresh"
+          @show-breakdown="handleShowBreakdown"
+        />
+      </q-tab-panel>
+    </q-tab-panels>
 
     <!-- Stock Receipt Dialog -->
     <FormDialog
@@ -506,16 +560,26 @@
       :cones="printCones"
       title="In nhãn QR"
     />
+
+    <!-- Warehouse Breakdown Dialog -->
+    <ConeWarehouseBreakdownDialog
+      v-model="showBreakdownDialog"
+      :thread-type="selectedConeSummary"
+      :breakdown="warehouseBreakdown"
+      :loading="breakdownLoading"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useQuasar, type QTableColumn } from 'quasar'
-import { useInventory, useThreadTypes, useSnackbar, useWarehouses } from '@/composables'
+import { useInventory, useThreadTypes, useSnackbar, useWarehouses, useConeSummary } from '@/composables'
 import { ConeStatus } from '@/types/thread/enums'
-import type { Cone, ReceiveStockDTO } from '@/types/thread/inventory'
+import type { Cone, ReceiveStockDTO, ConeSummaryRow } from '@/types/thread/inventory'
 import { QrScannerDialog, QrPrintDialog } from '@/components/qr'
+import ConeSummaryTable from '@/components/thread/ConeSummaryTable.vue'
+import ConeWarehouseBreakdownDialog from '@/components/thread/ConeWarehouseBreakdownDialog.vue'
 import type { ConeLabelData } from '@/types/qr-label'
 
 // Composables
@@ -536,7 +600,20 @@ const {
 
 const { warehouseOptions, fetchWarehouses, loading: warehousesLoading } = useWarehouses()
 
+// Cone Summary Composable
+const {
+  summaryList: coneSummaryList,
+  warehouseBreakdown,
+  selectedThreadType: selectedConeSummary,
+  isLoading: coneSummaryLoading,
+  breakdownLoading,
+  fetchSummary: fetchConeSummary,
+  selectThreadType,
+} = useConeSummary()
+
 // Local State
+const activeTab = ref<'detail' | 'summary'>('detail')
+const showBreakdownDialog = ref(false)
 const searchQuery = ref('')
 const filters = reactive({
   thread_type_id: undefined as number | undefined,
@@ -818,6 +895,36 @@ const formatDate = (dateString: string): string => {
     day: '2-digit',
   }).format(date)
 }
+
+// Cone Summary handlers
+const handleSummaryRefresh = async () => {
+  await fetchConeSummary({
+    warehouse_id: filters.warehouse_id,
+  })
+}
+
+const handleShowBreakdown = async (row: ConeSummaryRow) => {
+  await selectThreadType(row)
+  showBreakdownDialog.value = true
+}
+
+// Watch for tab changes to fetch appropriate data
+watch(activeTab, async (newTab) => {
+  if (newTab === 'summary' && coneSummaryList.value.length === 0) {
+    await fetchConeSummary({
+      warehouse_id: filters.warehouse_id,
+    })
+  }
+})
+
+// Watch for warehouse filter changes to update summary if in summary tab
+watch(() => filters.warehouse_id, async (newWarehouseId) => {
+  if (activeTab.value === 'summary') {
+    await fetchConeSummary({
+      warehouse_id: newWarehouseId,
+    })
+  }
+})
 
 // Lifecycle
 onMounted(async () => {
