@@ -19,3 +19,19 @@ Patterns discovered during implementation that should be followed consistently.
 **Reason**: When sidebar opens, the available width decreases. Without proper overflow handling, content may get cut off or cause horizontal scroll on the entire page.
 
 ---
+
+## 2026-02-03 Tab View Data Consistency
+
+**Context**: Fixing data discrepancy between "Tổng Hợp" (Summary) and "Chi Tiết" (Detail) tab views
+**Pattern**: When a page has multiple tab views showing the same underlying data (e.g., summary vs detail view), always refresh data when switching tabs. Don't use `if (data.length === 0)` checks which cause stale cache issues.
+**Reason**: Using `data.length === 0` to prevent unnecessary fetches causes the summary view to show stale data when the user adds new records, then switches tabs. The condition passes only on first load, so subsequent tab switches show outdated cached data.
+
+---
+
+## 2026-02-03 Refresh Related Views on Data Mutation
+
+**Context**: After receiving new stock, summary view showed outdated data
+**Pattern**: When a mutation affects multiple views (e.g., receiving stock updates both detail and summary views), refresh ALL affected views in parallel using `Promise.all()`. Don't refresh just the current view.
+**Reason**: If user receives stock while on detail view, then switches to summary, the summary cache is stale. By refreshing both views on mutation, data stays consistent regardless of which view the user switches to.
+
+---

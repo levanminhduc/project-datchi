@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
-import type { ThreadApiResponse, ConeRow, ReceiveStockDTO, StocktakeDTO, StocktakeResult, ConeSummaryRow, ConeWarehouseBreakdown } from '../types/thread'
+import type { ThreadApiResponse, ConeRow, ReceiveStockDTO, StocktakeDTO, StocktakeResult, ConeSummaryRow, ConeWarehouseBreakdown, ConeStatus } from '../types/thread'
 
 const inventory = new Hono()
 
@@ -267,7 +267,17 @@ inventory.get('/summary/by-cone', async (c) => {
     const material = c.req.query('material')
     const search = c.req.query('search')
 
-    // Fetch all AVAILABLE cones with thread type details
+    // Statuses representing usable stock in warehouse
+    // Excludes: IN_PRODUCTION, PARTIAL_RETURN, PENDING_WEIGH, CONSUMED, WRITTEN_OFF, QUARANTINE
+    const usableStatuses: ConeStatus[] = [
+      'RECEIVED',
+      'INSPECTED', 
+      'AVAILABLE',
+      'SOFT_ALLOCATED',
+      'HARD_ALLOCATED'
+    ]
+
+    // Fetch all usable cones with thread type details
     let query = supabase
       .from('thread_inventory')
       .select(`
@@ -279,7 +289,7 @@ inventory.get('/summary/by-cone', async (c) => {
           code, name, color, color_code, material, tex_number, meters_per_cone
         )
       `)
-      .eq('status', 'AVAILABLE')
+      .in('status', usableStatuses)
 
     if (warehouseId) {
       query = query.eq('warehouse_id', parseInt(warehouseId))
@@ -381,7 +391,16 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
       }, 400)
     }
 
-    // Fetch all AVAILABLE cones for this thread type with warehouse info
+    // Statuses representing usable stock in warehouse
+    const usableStatuses: ConeStatus[] = [
+      'RECEIVED',
+      'INSPECTED', 
+      'AVAILABLE',
+      'SOFT_ALLOCATED',
+      'HARD_ALLOCATED'
+    ]
+
+    // Fetch all usable cones for this thread type with warehouse info
     const { data: cones, error } = await supabase
       .from('thread_inventory')
       .select(`
@@ -392,7 +411,7 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
         warehouses(code, name)
       `)
       .eq('thread_type_id', threadTypeId)
-      .eq('status', 'AVAILABLE')
+      .in('status', usableStatuses)
 
     if (error) {
       console.error('Supabase error:', error)

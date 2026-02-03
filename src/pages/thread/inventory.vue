@@ -826,7 +826,11 @@ const handleReceiptSubmit = async () => {
   const newCones = await receiveStock({ ...receiptData })
   if (newCones && newCones.length > 0) {
     closeReceiptDialog()
-    await fetchInventory({ search: searchQuery.value || undefined, ...filters })
+    // Refresh both detail and summary views to ensure data consistency
+    await Promise.all([
+      fetchInventory({ search: searchQuery.value || undefined, ...filters }),
+      fetchConeSummary({ warehouse_id: filters.warehouse_id })
+    ])
     
     // Offer to print labels for newly created cones
     $q.dialog({
@@ -909,8 +913,9 @@ const handleShowBreakdown = async (row: ConeSummaryRow) => {
 }
 
 // Watch for tab changes to fetch appropriate data
+// Always refresh when switching to summary tab to ensure data consistency with detail view
 watch(activeTab, async (newTab) => {
-  if (newTab === 'summary' && coneSummaryList.value.length === 0) {
+  if (newTab === 'summary') {
     await fetchConeSummary({
       warehouse_id: filters.warehouse_id,
     })
