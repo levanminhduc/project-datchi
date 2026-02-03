@@ -572,7 +572,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useQuasar, type QTableColumn } from 'quasar'
 import { useInventory, useThreadTypes, useSnackbar, useWarehouses, useConeSummary } from '@/composables'
 import { ConeStatus } from '@/types/thread/enums'
@@ -590,7 +590,8 @@ const {
   isLoading,
   fetchInventory,
   receiveStock,
-  // TODO: realtime-inventory-9 Destructure enableRealtime, disableRealtime from useInventory()
+  enableRealtime,
+  disableRealtime,
 } = useInventory()
 
 const {
@@ -939,10 +940,13 @@ onMounted(async () => {
     fetchThreadTypes(),
     fetchWarehouses()
   ])
-  // TODO: realtime-inventory-10 Call enableRealtime() after initial data fetch completes
+  // Enable real-time updates after initial fetch
+  enableRealtime()
 })
 
-// TODO: realtime-inventory-11 Add onUnmounted hook to call disableRealtime() for cleanup
+onUnmounted(() => {
+  disableRealtime()
+})
 </script>
 
 <style scoped lang="scss">

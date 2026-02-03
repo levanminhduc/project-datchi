@@ -6,7 +6,7 @@
  */
 
 import { ref, computed } from 'vue'
-// TODO: realtime-inventory-1 Import useRealtime composable from '../useRealtime'
+import { useRealtime } from '../useRealtime'
 import { inventoryService } from '@/services/inventoryService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
@@ -62,12 +62,15 @@ export function useInventory() {
   const availableSummary = ref<
     Record<number, { total_meters: number; full_cones: number; partial_cones: number }>
   >({})
-  // TODO: realtime-inventory-2 Add realtime state: realtimeEnabled, realtimeChannelName, debounceTimer refs
+  // Realtime state
+  const realtimeEnabled = ref(false)
+  const realtimeChannelName = ref<string | null>(null)
+  const debounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
   // Composables
   const snackbar = useSnackbar()
   const loading = useLoading()
-  // TODO: realtime-inventory-3 Initialize useRealtime composable: const realtime = useRealtime()
+  const realtime = useRealtime()
 
   // Computed
   const isLoading = computed(() => loading.isLoading.value)
@@ -194,11 +197,97 @@ export function useInventory() {
     await fetchInventory()
   }
 
-  // TODO: realtime-inventory-4 Implement debouncedRefresh(delay=100ms) to batch rapid changes
+  /**
+   * Debounced refresh to batch rapid changes
+   * @param delay - Debounce delay in milliseconds (default: 100ms)
+   */
+  const debouncedRefresh = (delay: number = 100): void => {
+    if (debounceTimer.value) {
+      clearTimeout(debounceTimer.value)
+    }
+    debounceTimer.value = setTimeout(() => {
+      fetchInventory()
+      debounceTimer.value = null
+    }, delay)
+  }
 
-  // TODO: realtime-inventory-5 Implement enableRealtime() - subscribe to thread_inventory with smart filter check
+  /**
+   * Enable real-time updates for inventory changes
+   * Subscribes to thread_inventory table changes
+   */
+  const enableRealtime = (): void => {
+    if (realtimeEnabled.value) return
 
-  // TODO: realtime-inventory-6 Implement disableRealtime() - unsubscribe and clear debounce timer
+    realtimeChannelName.value = realtime.subscribe(
+      {
+        table: 'thread_inventory',
+        event: '*',
+        schema: 'public',
+      },
+      (payload) => {
+        console.log('[useInventory] Real-time event:', payload.eventType)
+
+        // Smart filter check: Only refresh if the changed record affects current view
+        const shouldRefresh = (): boolean => {
+          // If no filters applied, always refresh
+          if (!filters.value.warehouse_id && !filters.value.thread_type_id && !filters.value.status) {
+            return true
+          }
+
+          // Check if the change affects currently filtered data
+          const newRecord = payload.new as Cone | null
+          const oldRecord = payload.old as Cone | null
+
+          // For UPDATE events (like batch transfer), check both old and new warehouse
+          if (payload.eventType === 'UPDATE') {
+            const matchesOld = !filters.value.warehouse_id || oldRecord?.warehouse_id === filters.value.warehouse_id
+            const matchesNew = !filters.value.warehouse_id || newRecord?.warehouse_id === filters.value.warehouse_id
+            return matchesOld || matchesNew
+          }
+
+          // For INSERT/DELETE, check if matches current filter
+          const record = newRecord || oldRecord
+          if (!record) return true
+
+          if (filters.value.warehouse_id && record.warehouse_id !== filters.value.warehouse_id) {
+            return false
+          }
+          if (filters.value.thread_type_id && record.thread_type_id !== filters.value.thread_type_id) {
+            return false
+          }
+          if (filters.value.status && record.status !== filters.value.status) {
+            return false
+          }
+
+          return true
+        }
+
+        if (shouldRefresh()) {
+          debouncedRefresh(100)
+        }
+      }
+    )
+
+    realtimeEnabled.value = true
+    snackbar.info('Đang theo dõi tồn kho theo thời gian thực')
+  }
+
+  /**
+   * Disable real-time updates
+   */
+  const disableRealtime = (): void => {
+    if (!realtimeEnabled.value || !realtimeChannelName.value) return
+
+    realtime.unsubscribe(realtimeChannelName.value)
+    realtimeChannelName.value = null
+    realtimeEnabled.value = false
+
+    // Clear any pending debounce timer
+    if (debounceTimer.value) {
+      clearTimeout(debounceTimer.value)
+      debounceTimer.value = null
+    }
+  }
 
   /**
    * Reset all state to initial values
@@ -209,7 +298,7 @@ export function useInventory() {
     selectedCone.value = null
     filters.value = {}
     availableSummary.value = {}
-    // TODO: realtime-inventory-7 Call disableRealtime() in reset() for proper cleanup
+    disableRealtime()
     loading.reset()
   }
 
@@ -239,6 +328,7 @@ export function useInventory() {
     clearFilters,
     clearError,
     reset,
-    // TODO: realtime-inventory-8 Export enableRealtime and disableRealtime in return statement
+    enableRealtime,
+    disableRealtime,
   }
 }
