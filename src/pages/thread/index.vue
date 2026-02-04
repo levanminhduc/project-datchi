@@ -17,6 +17,7 @@
               label="Lọc theo màu"
               dense
               clearable
+              hide-bottom-space
               :active-only="true"
             />
           </div>
@@ -28,6 +29,7 @@
               label="Lọc theo NCC"
               dense
               clearable
+              hide-bottom-space
               :active-only="true"
             />
           </div>
@@ -40,6 +42,7 @@
               outlined
               dense
               clearable
+              hide-bottom-space
             >
               <template #prepend>
                 <q-icon name="search" />

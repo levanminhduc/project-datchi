@@ -87,45 +87,103 @@ const threadModules = [
       <div
         v-for="module in threadModules"
         :key="module.to"
-        class="col-12 col-sm-6 col-md-4"
+        class="col-12 col-sm-6 col-md-4 col-lg-3"
       >
-        <AppCard class="cursor-pointer module-card">
-          <router-link
-            :to="module.to"
-            class="text-decoration-none"
+        <router-link
+          :to="module.to"
+          class="text-decoration-none"
+        >
+          <AppCard 
+            class="module-card full-height"
+            bordered
           >
-            <q-card-section class="row items-center q-gutter-md">
+            <q-card-section class="row items-center no-wrap q-pa-md">
               <q-avatar
                 :color="module.color"
                 text-color="white"
-                size="56px"
+                size="52px"
                 :icon="module.icon"
+                class="module-avatar"
               />
-              <div>
-                <div class="text-h6 text-grey-9">
+              <div class="q-ml-md col">
+                <div class="text-subtitle1 text-weight-medium module-title">
                   {{ module.title }}
                 </div>
-                <div class="text-caption text-grey-7">
+                <div class="text-caption module-description">
                   {{ module.description }}
                 </div>
               </div>
+              <q-icon 
+                name="chevron_right" 
+                size="20px" 
+                class="module-arrow"
+              />
             </q-card-section>
-          </router-link>
-        </AppCard>
+          </AppCard>
+        </router-link>
       </div>
     </div>
   </q-page>
 </template>
 
-<style scoped>
-.module-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
-  transition: all 0.2s ease;
+<style scoped lang="scss">
+.module-card {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  
+  &:hover {
+    transform: translateY(-3px);
+    
+    :deep(.module-avatar) {
+      transform: scale(1.05);
+    }
+    
+    .module-arrow {
+      transform: translateX(3px);
+      opacity: 1;
+    }
+  }
+}
+
+.module-avatar {
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+
+.module-title {
+  line-height: 1.3;
+}
+
+.module-description {
+  line-height: 1.4;
+  opacity: 0.7;
+}
+
+.module-arrow {
+  opacity: 0.4;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+  color: var(--q-secondary);
 }
 
 .text-decoration-none {
   text-decoration: none;
   color: inherit;
+  display: block;
+}
+
+.full-height {
+  height: 100%;
+}
+</style>
+
+<!-- Unscoped styles for body class selectors -->
+<style lang="scss">
+.body--light .module-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.body--dark .module-card:hover {
+  box-shadow: 0 8px 24px rgba(255, 255, 255, 0.08);
 }
 </style>

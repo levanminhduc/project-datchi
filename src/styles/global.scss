@@ -2,18 +2,56 @@
 
 // z-index fix for popup dropdowns inside dialogs
 .z-max {
-  z-index: 9999 !important;
+  z-index: 9999;
 }
 
 // QSelect popup menu needs high z-index when inside dialogs
 .q-menu {
-  z-index: 7000 !important;
+  z-index: 7000;
 }
 
-// Ensure pickers in popups follow dark mode
+// Dark mode fixes - using high specificity selectors (no !important)
 .body--dark {
-  .q-date, .q-time, .q-color {
-    background: var(--q-dark) !important;
+  // Pickers in popups
+  .q-date, 
+  .q-time, 
+  .q-color {
+    background: var(--q-dark);
+  }
+  
+  // Fix q-card dark mode - triple specificity to override Quasar defaults
+  .q-card.q-card.q-card {
+    background: #1e1e2e;
+    color: rgba(255, 255, 255, 0.87);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    
+    // Subtle gradient for depth
+    background: linear-gradient(
+      145deg,
+      rgba(40, 40, 55, 0.95) 0%,
+      rgba(30, 30, 46, 0.98) 100%
+    );
+  }
+  
+  // Module cards specific styling (kho page)
+  .module-card.module-card.module-card {
+    background: linear-gradient(
+      145deg,
+      rgba(45, 45, 65, 0.9) 0%,
+      rgba(30, 30, 50, 0.95) 100%
+    );
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    
+    &:hover {
+      background: linear-gradient(
+        145deg,
+        rgba(55, 55, 80, 0.95) 0%,
+        rgba(40, 40, 60, 0.98) 100%
+      );
+      border-color: rgba(255, 255, 255, 0.15);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
   }
 }
 

@@ -1,103 +1,166 @@
-# Quasar Project
+# Hệ thống Quản lý Kho Chỉ (Thread Inventory Management System)
 
-A Vue 3 application built with Quasar Framework, providing a modern and responsive UI development experience.
+Ứng dụng quản lý kho chỉ cho ngành may mặc, xây dựng với Vue 3 + Quasar + Hono + Supabase.
 
-## ❗️ Important Links
+## 🎯 Tổng quan
 
-- 📄 [Quasar Docs](https://quasar.dev/)
-- 🚨 [Issues](https://github.com/quasarframework/quasar/issues)
-- 💬 [Discord](https://discord.gg/5TDhbDg)
-- 🎮 [Playground](https://quasar.dev/start/playground)
+Hệ thống quản lý toàn diện cho:
+- **Quản lý kho chỉ**: Nhập kho, xuất kho, chuyển kho theo FEFO
+- **Phân bổ chỉ**: Theo dõi phân bổ chỉ cho sản xuất
+- **Thu hồi cuộn lẻ**: Cân và thu hồi cuộn chỉ còn dư
+- **Kiểm kê**: Đối chiếu tồn kho thực tế với hệ thống
+- **Quản lý nhân sự**: Phân quyền theo vai trò
 
-## 💿 Install
+## 🛠️ Tech Stack
 
-Set up your project using your preferred package manager:
+| Layer | Technology |
+|-------|------------|
+| Frontend | Vue 3 + Quasar 2 + TypeScript + Vite |
+| Backend | Hono (Node.js) |
+| Database | Supabase (PostgreSQL) |
+| Routing | unplugin-vue-router (file-based) |
+| State | Pinia + Composables |
 
-| Package Manager                                                | Command        |
-|---------------------------------------------------------------|----------------|
-| [yarn](https://yarnpkg.com/getting-started)                   | `yarn install` |
-| [npm](https://docs.npmjs.com/cli/v7/commands/npm-install)     | `npm install`  |
-| [pnpm](https://pnpm.io/installation)                          | `pnpm install` |
-| [bun](https://bun.sh/#getting-started)                        | `bun install`  |
+## 📁 Cấu trúc dự án
 
-After completing the installation, your environment is ready for Quasar development.
+```
+project-datchi/
+├── server/                    # Hono API backend (port 3000)
+│   ├── routes/               # 14 API route handlers
+│   ├── db/                   # Supabase clients (anon + admin)
+│   ├── middleware/           # Auth JWT verification
+│   └── types/                # Backend-specific types
+├── src/
+│   ├── components/
+│   │   ├── ui/               # 66 Quasar wrapper components (12 categories)
+│   │   ├── thread/           # 30 domain-specific components
+│   │   ├── qr/               # QR scanning components
+│   │   └── hardware/         # Scanner/scale integration
+│   ├── composables/          # 32 composables
+│   │   ├── thread/           # Domain: inventory, allocations, recovery
+│   │   └── hardware/         # Scanner, scale, audio feedback
+│   ├── services/             # 14 API clients (fetchApi pattern)
+│   ├── pages/                # 31 pages (file-based routing)
+│   │   ├── thread/           # Thread management module
+│   │   │   ├── batch/        # Batch operations
+│   │   │   └── mobile/       # Mobile-optimized pages
+│   │   ├── nhan-su/          # HR module
+│   │   └── reports/          # Reporting module
+│   ├── types/                # TypeScript definitions
+│   │   ├── ui/               # UI component interfaces
+│   │   ├── thread/           # Thread domain types
+│   │   └── auth/             # Authentication types
+│   ├── stores/               # Pinia stores
+│   └── utils/                # Shared utilities
+└── supabase/                 # 28 migrations + seed data
+```
 
-## ✨ Features
-
-- 🖼️ **Optimized Front-End Stack**: Leverage Vue 3 and Quasar 2 for a modern, reactive UI development experience. [Vue 3](https://vuejs.org/) | [Quasar](https://quasar.dev/)
-- 🚦 **Routing**: Utilizes Vue Router for SPA navigation. [Vue Router](https://router.vuejs.org/)
-- 💻 **Enhanced Development Experience**: Benefit from TypeScript's static type checking and ESLint for code quality. [TypeScript](https://www.typescriptlang.org/) | [ESLint](https://eslint.org/)
-- ⚡ **Next-Gen Tooling**: Powered by Vite, experience fast cold starts and instant HMR (Hot Module Replacement). [Vite](https://vitejs.dev/)
-- 🧩 **Automated Component Importing**: Streamline your workflow with unplugin-vue-components, automatically importing components as you use them. [unplugin-vue-components](https://github.com/antfu/unplugin-vue-components)
-- 🛠️ **Strongly-Typed Vue**: Use vue-tsc for type-checking your Vue components. [vue-tsc](https://github.com/vuejs/language-tools)
-
-## 📱 QR Code Features
-
-Tính năng quét và in mã QR cho quản lý kho chỉ:
-
-### Quét mã QR
-
-- **Tra cứu nhanh**: Quét mã QR/barcode để tìm kiếm cuộn chỉ trong kho
-- **Xuất chỉ**: Quét liên tục nhiều cuộn khi xuất chỉ cho sản xuất
-- **Kiểm kê**: Trang kiểm kê chuyên dụng (`/thread/stocktake`) để đối chiếu tồn kho thực tế với database
-
-### In nhãn QR
-
-- **In đơn**: In nhãn QR cho từng cuộn chỉ (50x30mm)
-- **In hàng loạt**: In nhiều nhãn trên giấy A4 (5 cột x 10 hàng)
-- **Sau nhập kho**: Tự động đề xuất in nhãn sau khi nhập kho thành công
-
-### Sử dụng
-
-1. **Quét tra cứu**: Nhấn nút "Quét tra cứu" trên trang Tồn kho
-2. **In nhãn đơn**: Nhấn nút "In QR" trong menu actions của từng cuộn
-3. **Kiểm kê kho**: Truy cập `/thread/stocktake`, chọn kho và bắt đầu quét
-
-### Yêu cầu
-
-- Camera hoặc máy quét barcode USB
-- HTTPS hoặc localhost (yêu cầu của trình duyệt cho camera)
-- Máy in hỗ trợ khổ 50x30mm hoặc A4
-
-## 💡 Usage
-
-### Starting the Development Server
-
-To start the development server with hot-reload, run the following command. The server will be accessible at [http://localhost:3000](http://localhost:3000):
+## 💻 Cài đặt
 
 ```bash
-bun run dev
-# or
-npm run dev
-# or
-yarn dev
+# Cài đặt dependencies
+npm install
+
+# Chạy development
+npm run dev        # Frontend (port 5173)
+npm run server     # Backend (port 3000)
+npm run dev:all    # Cả hai cùng lúc
+
+# Build production
+npm run build      # Includes type-check
+npm run type-check # vue-tsc only
+npm run lint       # ESLint fix
 ```
 
-### Building for Production
+## ✨ Tính năng chính
 
-To build your project for production, use:
+### 📦 Quản lý Kho Chỉ
+- Nhập kho theo lô (batch receive)
+- Xuất kho cho sản xuất (batch issue)
+- Chuyển kho giữa các kho (batch transfer)
+- Theo dõi tồn kho theo FEFO (First Expired First Out)
+- Quản lý cuộn lẻ (partial cones)
 
-```bash
-bun run build
-# or
-npm run build
-# or
-yarn build
+### 📋 Phân bổ & Thu hồi
+- Tạo và quản lý phiếu yêu cầu chỉ
+- Phân bổ tự động theo FEFO
+- Thu hồi cuộn chỉ còn dư
+- Cân và ghi nhận trọng lượng
+
+### 📱 QR Code Features
+- **Tra cứu nhanh**: Quét mã QR/barcode để tìm cuộn chỉ
+- **Xuất chỉ**: Quét liên tục nhiều cuộn khi xuất chỉ
+- **Kiểm kê**: Trang kiểm kê chuyên dụng (`/thread/stocktake`)
+- **In nhãn QR**: In đơn (50x30mm) hoặc hàng loạt (A4)
+
+### 📊 Báo cáo & Dashboard
+- Tổng quan tồn kho theo loại chỉ
+- Cảnh báo hết hàng, sắp hết hàng
+- Thống kê phân bổ và thu hồi
+- Export Excel
+
+### 👥 Quản lý Nhân sự
+- Quản lý nhân viên và chức vụ
+- Phân quyền theo vai trò (RBAC)
+- JWT authentication với refresh token
+
+## 🔧 Development Guidelines
+
+### UI Components
+Sử dụng thư viện UI wrappers trong `src/components/ui/`:
+- **Buttons**: AppButton, IconButton, ButtonGroup, ButtonToggle, ButtonDropdown
+- **Inputs**: AppInput, AppSelect, AppTextarea, AppCheckbox, AppToggle, SearchInput
+- **Dialogs**: AppDialog, FormDialog, ConfirmDialog, DeleteDialog
+- **Feedback**: AppSpinner, AppProgress, AppSkeleton, EmptyState
+- **Navigation**: AppTabs, AppStepper, AppPagination, AppBreadcrumbs
+- **Tables**: DataTable
+
+```vue
+<!-- ✅ ĐÚNG: Sử dụng wrappers -->
+<AppButton label="Lưu" @click="save" />
+<AppInput v-model="name" label="Tên" />
+
+<!-- ❌ SAI: Dùng Quasar trực tiếp -->
+<q-btn label="Lưu" @click="save" />
+<q-input v-model="name" label="Tên" />
 ```
 
-## 📁 Project Structure
+### Composables
+Sử dụng composables thay vì truy cập Quasar trực tiếp:
 
+```typescript
+// ✅ ĐÚNG
+const snackbar = useSnackbar()
+snackbar.success('Lưu thành công')
+
+// ❌ SAI
+$q.notify({ message: 'Lưu thành công' })
 ```
-src/
-├── assets/           # Static assets (images, etc.)
-├── components/       # Reusable Vue components
-├── composables/      # Vue composables
-├── pages/            # Page components (auto-routing)
-├── plugins/          # Vue plugins (Quasar, etc.)
-├── router/           # Vue Router configuration
-├── styles/           # Global styles and Quasar variables
-└── types/            # TypeScript type definitions
+
+### API Response Format
+```typescript
+{ data: T | null, error: string | null, message?: string }
 ```
+
+### Responsive Design (Mobile First)
+```vue
+<div class="row q-col-gutter-md">
+  <div class="col-12 col-sm-6 col-md-4">Card 1</div>
+  <div class="col-12 col-sm-6 col-md-4">Card 2</div>
+</div>
+```
+
+## 📌 Lưu ý quan trọng
+
+### Database Safety
+- ⚠️ **KHÔNG** chạy `supabase db reset` mà không có backup
+- Kiểm tra nội dung migration trước khi chạy
+- Backup dữ liệu trước các migration có DROP/TRUNCATE
+
+### Coding Standards
+- Tất cả messages hiển thị cho user bằng tiếng Việt
+- Không dùng `as any`, `@ts-ignore`
+- Không commit trực tiếp vào main
 
 ## 📑 License
 [MIT](http://opensource.org/licenses/MIT)
