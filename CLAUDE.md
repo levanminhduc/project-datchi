@@ -22,7 +22,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Vue 3 + Quasar Framework application with Hono backend and Supabase database. Features employee management with CRUD operations and a custom UI component library wrapping Quasar components.
+**Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)** - A Vue 3 + Quasar Framework application with Hono backend and Supabase database.
+
+### Business Domains
+
+| Domain | Description | Key Pages |
+|--------|-------------|-----------|
+| **Thread Management** | Thread types, colors, suppliers master data | `/thread`, `/thread/colors`, `/thread/suppliers` |
+| **Inventory** | Cone tracking, lots, warehouse locations | `/thread/inventory`, `/thread/lots` |
+| **Allocations** | Soft/hard allocation workflow (FEFO) | `/thread/allocations` |
+| **Recovery** | Partial cone recovery with weighing | `/thread/recovery` |
+| **Batch Operations** | Receive, issue, transfer operations | `/thread/batch/*` |
+| **Mobile Operations** | Mobile-optimized receive/issue with scanning | `/thread/mobile/*` |
+| **Reports & Dashboard** | Analytics and reporting | `/thread/dashboard`, `/reports/*` |
+| **Employee Management** | HR and personnel data | `/employees`, `/nhan-su/*` |
+
+### Core Features
+
+- QR/Barcode scanning for inventory operations
+- Real-time updates via Supabase subscriptions
+- Offline operation support with background sync
+- Hardware integration (barcode scanners, electronic scales)
+- Custom UI component library wrapping Quasar
 
 ## Development Commands
 
@@ -55,6 +76,8 @@ npm run preview
 
 ```
 Supabase → Hono API → Vue Service → Composable → Component
+                                         ↓
+                              Real-time subscription updates
 ```
 
 **Stack:**
@@ -68,13 +91,99 @@ Supabase → Hono API → Vue Service → Composable → Component
 | Directory | Purpose |
 |-----------|---------|
 | `src/pages/` | Page components with auto-routing (file name = route) |
+| `src/pages/thread/` | Thread management module pages |
+| `src/pages/thread/mobile/` | Mobile-optimized pages with scanning |
 | `src/components/ui/` | Quasar wrapper components with standardized props |
 | `src/composables/` | Vue composables for state and logic |
+| `src/composables/thread/` | Thread domain composables |
+| `src/composables/hardware/` | Scanner and scale integration |
 | `src/services/` | API client and service layers |
 | `src/types/ui/` | TypeScript interfaces for UI components |
+| `src/types/thread/` | Thread domain type definitions |
+| `src/utils/` | Shared utilities (error handling, etc.) |
 | `server/` | Hono backend API |
 | `server/routes/` | API route handlers |
 | `server/db/` | Supabase client configuration |
+
+## Key Patterns
+
+### Error Handling Pattern
+
+Use the shared utility from `src/utils/errorMessages.ts`:
+
+```typescript
+import { getErrorMessage, createErrorHandler } from '@/utils/errorMessages'
+
+// Option A: Direct usage with fallback
+catch (err) {
+  snackbar.error(getErrorMessage(err, 'Không thể tải dữ liệu'))
+}
+
+// Option B: Domain-specific handler with custom messages
+const getErrorMsg = createErrorHandler({
+  duplicate: 'Mã chỉ đã tồn tại trong hệ thống',
+  notFound: 'Không tìm thấy cuộn chỉ',
+  validation: 'Dữ liệu không hợp lệ'
+})
+// Then: snackbar.error(getErrorMsg(err))
+```
+
+**Error message priority:**
+1. `err.message` if it's a Vietnamese string (not generic English)
+2. Custom domain messages matching error type
+3. Fallback message provided
+
+### Real-time Updates Pattern
+
+Use `useRealtime` composable for Supabase subscriptions:
+
+```typescript
+const realtime = useRealtime()
+
+onMounted(() => {
+  realtime.subscribe(
+    { table: 'thread_inventory', event: '*', schema: 'public' },
+    (payload) => {
+      if (payload.eventType === 'INSERT') items.value.push(payload.new)
+      if (payload.eventType === 'UPDATE') updateItem(payload.new)
+      if (payload.eventType === 'DELETE') removeItem(payload.old.id)
+    }
+  )
+})
+// Auto-cleanup on unmount via composable
+```
+
+### Hardware Integration
+
+```typescript
+// Barcode Scanner (keyboard wedge mode)
+const { startScanning, stopScanning, lastScannedCode } = useScanner()
+watch(lastScannedCode, (code) => handleScan(code))
+
+// Electronic Scale (Web Serial API)
+const { connect, disconnect, currentWeight, isConnected } = useScale()
+await connect()  // Prompts user to select serial port
+
+// Audio Feedback
+const { playSuccess, playError, playWarning } = useAudioFeedback()
+```
+
+### Offline Operation Pattern
+
+```typescript
+const { queueOperation, pendingCount } = useOfflineOperation()
+const { syncPending, isSyncing } = useOfflineSync()
+
+// Queue operation when offline
+if (!navigator.onLine) {
+  await queueOperation('issue', { coneId, quantity })
+} else {
+  await issueThread(coneId, quantity)
+}
+
+// Sync when back online (usually auto-triggered)
+await syncPending()
+```
 
 ### UI Component Library Pattern
 
@@ -84,7 +193,7 @@ Components in `src/components/ui/` wrap Quasar components with:
 - v-model:modelValue for two-way binding
 - Slot forwarding via `v-for="(_, name) in $slots"`
 
-Example naming conventions:
+Naming conventions:
 - Wrapper: `App[Name]` (AppButton, AppInput)
 - Composite: `[Context][Name]` (DataTable, FormDialog)
 - Item: `[Parent]Item` (ListItem, StepperStep)
@@ -105,6 +214,39 @@ const data = await loading.withLoading(async () => fetchData())
 ```
 
 **Important:** Composables already show notifications on CRUD success/error. Pages should NOT add duplicate notifications.
+
+## Thread Management Module
+
+### Data Model
+
+```
+ThreadType (Loại chỉ)
+  ├── ThreadColor (Màu chỉ)
+  ├── Supplier (Nhà cung cấp)
+  └── ThreadInventory (Tồn kho)
+        ├── Lot (Lô hàng)
+        ├── Warehouse (Kho)
+        └── Allocation (Phân bổ)
+              └── Recovery (Thu hồi)
+```
+
+### Key Workflows
+
+| Workflow | Description | Composable |
+|----------|-------------|------------|
+| **Receive** | Nhập kho cuộn chỉ mới | `useBatchOperations` |
+| **Issue** | Xuất chỉ cho sản xuất (FEFO) | `useBatchOperations` |
+| **Transfer** | Chuyển kho nội bộ | `useBatchOperations` |
+| **Allocate** | Phân bổ mềm → cứng | `useAllocations` |
+| **Recover** | Thu hồi cuộn dư, cân trọng lượng | `useRecovery` |
+| **Stocktake** | Kiểm kê với quét liên tục | Page-level |
+
+### QR/Barcode Features
+
+- **Lookup**: Scan to find cone in inventory
+- **Issue**: Continuous scanning for batch issue
+- **Stocktake**: Dedicated page at `/thread/stocktake`
+- **Label Printing**: 50x30mm single or A4 batch (5x10 grid)
 
 ## Critical Patterns and Gotchas
 
@@ -198,6 +340,55 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 ## Type Definitions
 
-- Employee types: `src/types/employee.ts` and `server/types/employee.ts`
-- UI component types: `src/types/ui/` (base.ts, buttons.ts, inputs.ts, etc.)
-- Auto-generated: `src/typed-router.d.ts`, `src/components.d.ts`
+| Category | Location |
+|----------|----------|
+| Employee types | `src/types/employee.ts`, `server/types/employee.ts` |
+| Thread domain | `src/types/thread/*.ts` (thread-type, inventory, allocation, recovery, lot, color, supplier, batch, enums) |
+| UI components | `src/types/ui/*.ts` (base, buttons, inputs, dialogs, etc.) |
+| Utilities | `src/utils/errorMessages.ts` (error handling) |
+| Auto-generated | `src/typed-router.d.ts`, `src/components.d.ts` |
+
+## Composables Reference
+
+### Core Composables
+
+| Composable | Purpose |
+|------------|---------|
+| `useSnackbar` | Toast notifications (wraps $q.notify) |
+| `useConfirm` | Confirmation dialogs (wraps $q.dialog) |
+| `useLoading` | Loading state management |
+| `useDialog` | Generic dialog management |
+| `useDarkMode` | Theme switching |
+| `useSidebar` | Navigation sidebar state |
+
+### Thread Domain Composables
+
+| Composable | Purpose |
+|------------|---------|
+| `useThreadTypes` | Thread type CRUD |
+| `useInventory` | Inventory queries and mutations |
+| `useAllocations` | Allocation workflow |
+| `useRecovery` | Recovery workflow with weighing |
+| `useDashboard` | Dashboard analytics |
+| `useColors` | Thread colors master data |
+| `useSuppliers` | Suppliers master data |
+| `useBatchOperations` | Receive/Issue/Transfer |
+| `useConeSummary` | Cone weight and status summary |
+| `useConflicts` | Allocation conflict resolution |
+
+### Hardware Composables
+
+| Composable | Purpose |
+|------------|---------|
+| `useScanner` | Keyboard wedge barcode scanner |
+| `useScale` | Web Serial API for scales |
+| `useAudioFeedback` | Audio cues for operations |
+| `useQrScanner` | Camera-based QR scanning |
+
+### Infrastructure Composables
+
+| Composable | Purpose |
+|------------|---------|
+| `useRealtime` | Supabase real-time subscriptions |
+| `useOfflineOperation` | Queue ops when offline |
+| `useOfflineSync` | Sync queued operations |
