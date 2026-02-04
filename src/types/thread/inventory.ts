@@ -122,6 +122,7 @@ export interface SupplierBreakdown {
  */
 export interface ConeSummaryFilters {
   warehouse_id?: number
+  supplier_id?: number
   material?: string
   search?: string
 }

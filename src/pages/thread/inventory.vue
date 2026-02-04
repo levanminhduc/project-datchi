@@ -79,6 +79,25 @@
               @update:model-value="handleFilterChange"
             />
           </div>
+
+          <!-- Filter: Supplier (only for summary view) -->
+          <div
+            v-if="activeTab === 'summary'"
+            class="col-12 col-sm-4 col-md-2"
+          >
+            <AppSelect
+              v-model="filters.supplier_id"
+              :options="supplierOptions"
+              :loading="suppliersLoading"
+              label="Nhà cung cấp"
+              dense
+              outlined
+              clearable
+              emit-value
+              map-options
+              @update:model-value="handleSupplierFilterChange"
+            />
+          </div>
           
           <!-- Add Button -->
           <div class="col-12 col-sm-auto">
@@ -573,9 +592,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useQuasar, type QTableColumn } from 'quasar'
-import { useInventory, useThreadTypes, useSnackbar, useWarehouses, useConeSummary } from '@/composables'
+import { useInventory, useThreadTypes, useSnackbar, useWarehouses, useConeSummary, useSuppliers } from '@/composables'
 import { ConeStatus } from '@/types/thread/enums'
 import type { Cone, ReceiveStockDTO, ConeSummaryRow } from '@/types/thread/inventory'
 import { QrScannerDialog, QrPrintDialog } from '@/components/qr'
@@ -603,6 +622,8 @@ const {
 
 const { warehouseOptions, fetchWarehouses, loading: warehousesLoading } = useWarehouses()
 
+const { suppliers, fetchSuppliers, loading: suppliersLoading } = useSuppliers()
+
 // Cone Summary Composable
 const {
   summaryList: coneSummaryList,
@@ -625,6 +646,7 @@ const filters = reactive({
   thread_type_id: undefined as number | undefined,
   status: undefined as ConeStatus | undefined,
   warehouse_id: undefined as number | undefined,
+  supplier_id: undefined as number | undefined,
 })
 
 const pagination = ref({
@@ -677,6 +699,13 @@ const threadTypeOptions = computed(() =>
   threadTypes.value.map(t => ({
     label: `${t.code} - ${t.name}`,
     value: t.id
+  }))
+)
+
+const supplierOptions = computed(() =>
+  suppliers.value.filter(s => s.is_active).map(s => ({
+    label: `${s.code} - ${s.name}`,
+    value: s.id
   }))
 )
 
@@ -759,10 +788,25 @@ const columns: QTableColumn[] = [
 ]
 
 // Handlers
-const handleFilterChange = () => {
+const handleFilterChange = async () => {
+  await nextTick()
   fetchInventory({
     search: searchQuery.value || undefined,
     ...filters
+  })
+  if (activeTab.value === 'summary') {
+    fetchConeSummary({
+      warehouse_id: filters.warehouse_id,
+      supplier_id: filters.supplier_id,
+    })
+  }
+}
+
+const handleSupplierFilterChange = async () => {
+  await nextTick()
+  fetchConeSummary({
+    warehouse_id: filters.warehouse_id,
+    supplier_id: filters.supplier_id,
   })
 }
 
@@ -832,10 +876,9 @@ const handleReceiptSubmit = async () => {
   const newCones = await receiveStock({ ...receiptData })
   if (newCones && newCones.length > 0) {
     closeReceiptDialog()
-    // Refresh both detail and summary views to ensure data consistency
     await Promise.all([
       fetchInventory({ search: searchQuery.value || undefined, ...filters }),
-      fetchConeSummary({ warehouse_id: filters.warehouse_id })
+      fetchConeSummary({ warehouse_id: filters.warehouse_id, supplier_id: filters.supplier_id })
     ])
     
     // Offer to print labels for newly created cones
@@ -910,6 +953,7 @@ const formatDate = (dateString: string): string => {
 const handleSummaryRefresh = async () => {
   await fetchConeSummary({
     warehouse_id: filters.warehouse_id,
+    supplier_id: filters.supplier_id,
   })
 }
 
@@ -924,6 +968,7 @@ watch(activeTab, async (newTab) => {
   if (newTab === 'summary') {
     await fetchConeSummary({
       warehouse_id: filters.warehouse_id,
+      supplier_id: filters.supplier_id,
     })
   }
 })
@@ -933,6 +978,7 @@ watch(() => filters.warehouse_id, async (newWarehouseId) => {
   if (activeTab.value === 'summary') {
     await fetchConeSummary({
       warehouse_id: newWarehouseId,
+      supplier_id: filters.supplier_id,
     })
   }
 })
@@ -942,9 +988,9 @@ onMounted(async () => {
   await Promise.all([
     fetchInventory(),
     fetchThreadTypes(),
-    fetchWarehouses()
+    fetchWarehouses(),
+    fetchSuppliers()
   ])
-  // Enable real-time updates after initial fetch
   enableRealtime()
   enableSummaryRealtime()
 })

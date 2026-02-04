@@ -33,8 +33,8 @@ function buildQueryString(filters?: InventoryFilters): string {
   const params = new URLSearchParams()
 
   if (filters.search) params.append('search', filters.search)
-  if (filters.thread_type_id !== undefined) params.append('thread_type_id', String(filters.thread_type_id))
-  if (filters.warehouse_id !== undefined) params.append('warehouse_id', String(filters.warehouse_id))
+  if (filters.thread_type_id != null) params.append('thread_type_id', String(filters.thread_type_id))
+  if (filters.warehouse_id != null) params.append('warehouse_id', String(filters.warehouse_id))
   if (filters.status) params.append('status', filters.status)
   if (filters.is_partial !== undefined) params.append('is_partial', String(filters.is_partial))
   if (filters.expiry_before) params.append('expiry_before', filters.expiry_before)
@@ -178,12 +178,13 @@ export const inventoryService = {
   /**
    * Lấy tổng hợp tồn kho theo cuộn (cone-based summary)
    * Groups by thread_type, counts full and partial cones
-   * @param filters - Optional filters: warehouse_id, material, search
+   * @param filters - Optional filters: warehouse_id, supplier_id, material, search
    * @returns Array of ConeSummaryRow
    */
   async getConeSummary(filters?: ConeSummaryFilters): Promise<ConeSummaryRow[]> {
     const params = new URLSearchParams()
-    if (filters?.warehouse_id !== undefined) params.append('warehouse_id', String(filters.warehouse_id))
+    if (filters?.warehouse_id != null) params.append('warehouse_id', String(filters.warehouse_id))
+    if (filters?.supplier_id != null) params.append('supplier_id', String(filters.supplier_id))
     if (filters?.material) params.append('material', filters.material)
     if (filters?.search) params.append('search', filters.search)
 

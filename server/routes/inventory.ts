@@ -33,10 +33,16 @@ inventory.get('/', async (c) => {
           query = query.or(`cone_id.ilike.%${search}%,lot_number.ilike.%${search}%`)
         }
         if (threadTypeId) {
-          query = query.eq('thread_type_id', parseInt(threadTypeId))
+          const parsedThreadTypeId = parseInt(threadTypeId)
+          if (!isNaN(parsedThreadTypeId)) {
+            query = query.eq('thread_type_id', parsedThreadTypeId)
+          }
         }
         if (warehouseId) {
-          query = query.eq('warehouse_id', parseInt(warehouseId))
+          const parsedWarehouseId = parseInt(warehouseId)
+          if (!isNaN(parsedWarehouseId)) {
+            query = query.eq('warehouse_id', parsedWarehouseId)
+          }
         }
         if (status) {
           query = query.eq('status', status)
@@ -82,10 +88,16 @@ inventory.get('/', async (c) => {
       query = query.or(`cone_id.ilike.%${search}%,lot_number.ilike.%${search}%`)
     }
     if (threadTypeId) {
-      query = query.eq('thread_type_id', parseInt(threadTypeId))
+      const parsedThreadTypeId = parseInt(threadTypeId)
+      if (!isNaN(parsedThreadTypeId)) {
+        query = query.eq('thread_type_id', parsedThreadTypeId)
+      }
     }
     if (warehouseId) {
-      query = query.eq('warehouse_id', parseInt(warehouseId))
+      const parsedWarehouseId = parseInt(warehouseId)
+      if (!isNaN(parsedWarehouseId)) {
+        query = query.eq('warehouse_id', parsedWarehouseId)
+      }
     }
     if (status) {
       query = query.eq('status', status)
@@ -128,7 +140,10 @@ inventory.get('/available/summary', async (c) => {
       .eq('status', 'AVAILABLE')
 
     if (threadTypeId) {
-      query = query.eq('thread_type_id', parseInt(threadTypeId))
+      const parsedId = parseInt(threadTypeId)
+      if (!isNaN(parsedId)) {
+        query = query.eq('thread_type_id', parsedId)
+      }
     }
 
     const { data, error } = await query
@@ -264,6 +279,7 @@ inventory.get('/by-warehouse/:warehouseId', async (c) => {
 inventory.get('/summary/by-cone', async (c) => {
   try {
     const warehouseId = c.req.query('warehouse_id')
+    const supplierId = c.req.query('supplier_id')
     const material = c.req.query('material')
     const search = c.req.query('search')
 
@@ -277,7 +293,7 @@ inventory.get('/summary/by-cone', async (c) => {
       'HARD_ALLOCATED'
     ]
 
-    // Fetch all usable cones with thread type details
+    // Fetch all usable cones with thread type and lot details for supplier filtering
     let query = supabase
       .from('thread_inventory')
       .select(`
@@ -285,14 +301,19 @@ inventory.get('/summary/by-cone', async (c) => {
         quantity_meters,
         weight_grams,
         is_partial,
+        lot_id,
         thread_types(
-          code, name, color, color_code, material, tex_number, meters_per_cone
-        )
+          code, name, color, color_code, material, tex_number, meters_per_cone, supplier_id
+        ),
+        lots(supplier_id)
       `)
       .in('status', usableStatuses)
 
     if (warehouseId) {
-      query = query.eq('warehouse_id', parseInt(warehouseId))
+      const parsedId = parseInt(warehouseId)
+      if (!isNaN(parsedId)) {
+        query = query.eq('warehouse_id', parsedId)
+      }
     }
 
     const { data: cones, error } = await query
@@ -318,12 +339,26 @@ inventory.get('/summary/by-cone', async (c) => {
         material: string
         tex_number: number | null
         meters_per_cone: number | null
+        supplier_id: number | null
       } | null
 
       if (!tt) continue
 
       // Apply material filter
       if (material && tt.material !== material) continue
+
+      // Apply supplier filter
+      if (supplierId) {
+        const parsedSupplierId = parseInt(supplierId)
+        if (!isNaN(parsedSupplierId)) {
+          const lotRaw = cone.lots as unknown
+          const lot = (Array.isArray(lotRaw) ? lotRaw[0] : lotRaw) as { supplier_id: number | null } | null
+          const lotSupplierId = lot?.supplier_id
+          const typeSupplierId = tt.supplier_id
+          const effectiveSupplierId = lotSupplierId || typeSupplierId
+          if (effectiveSupplierId !== parsedSupplierId) continue
+        }
+      }
 
       // Apply search filter
       if (search) {

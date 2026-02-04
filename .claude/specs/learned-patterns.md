@@ -35,3 +35,11 @@ Patterns discovered during implementation that should be followed consistently.
 **Reason**: If user receives stock while on detail view, then switches to summary, the summary cache is stale. By refreshing both views on mutation, data stays consistent regardless of which view the user switches to.
 
 ---
+
+## 2026-02-04 Vue Event Handler Timing with v-model
+
+**Context**: Clearing AppSelect filter didn't refresh data with cleared value
+**Pattern**: When using `@update:model-value` on v-model bound components to trigger side effects (API calls), always use `await nextTick()` before reading the reactive state. The event handler fires BEFORE v-model updates the reactive object.
+**Reason**: Vue's v-model update and event emission happen in a specific order. The `@update:model-value` event fires first, then v-model binding updates the ref/reactive object. If handler reads the reactive state immediately, it gets the OLD value.
+
+---
