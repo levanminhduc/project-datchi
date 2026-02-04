@@ -35,6 +35,7 @@ declare module 'vue-router/auto-routes' {
     '/thread/batch/issue': RouteRecordInfo<'/thread/batch/issue', '/thread/batch/issue', Record<never, never>, Record<never, never>>,
     '/thread/batch/receive': RouteRecordInfo<'/thread/batch/receive', '/thread/batch/receive', Record<never, never>, Record<never, never>>,
     '/thread/batch/transfer': RouteRecordInfo<'/thread/batch/transfer', '/thread/batch/transfer', Record<never, never>, Record<never, never>>,
+    '/thread/colors': RouteRecordInfo<'/thread/colors', '/thread/colors', Record<never, never>, Record<never, never>>,
     '/thread/dashboard': RouteRecordInfo<'/thread/dashboard', '/thread/dashboard', Record<never, never>, Record<never, never>>,
     '/thread/inventory': RouteRecordInfo<'/thread/inventory', '/thread/inventory', Record<never, never>, Record<never, never>>,
     '/thread/lots/': RouteRecordInfo<'/thread/lots/', '/thread/lots', Record<never, never>, Record<never, never>>,
@@ -45,6 +46,7 @@ declare module 'vue-router/auto-routes' {
     '/thread/recovery': RouteRecordInfo<'/thread/recovery', '/thread/recovery', Record<never, never>, Record<never, never>>,
     '/thread/requests': RouteRecordInfo<'/thread/requests', '/thread/requests', Record<never, never>, Record<never, never>>,
     '/thread/stocktake': RouteRecordInfo<'/thread/stocktake', '/thread/stocktake', Record<never, never>, Record<never, never>>,
+    '/thread/suppliers': RouteRecordInfo<'/thread/suppliers', '/thread/suppliers', Record<never, never>, Record<never, never>>,
   }
 
   /**
@@ -126,6 +128,10 @@ declare module 'vue-router/auto-routes' {
       routes: '/thread/batch/transfer'
       views: never
     }
+    'src/pages/thread/colors.vue': {
+      routes: '/thread/colors'
+      views: never
+    }
     'src/pages/thread/dashboard.vue': {
       routes: '/thread/dashboard'
       views: never
@@ -164,6 +170,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/thread/stocktake.vue': {
       routes: '/thread/stocktake'
+      views: never
+    }
+    'src/pages/thread/suppliers.vue': {
+      routes: '/thread/suppliers'
       views: never
     }
   }

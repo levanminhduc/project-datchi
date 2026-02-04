@@ -16,6 +16,8 @@ import warehousesRouter from './routes/warehouses'
 import reportsRouter from './routes/reports'
 import lotsRouter from './routes/lots'
 import batchRouter from './routes/batch'
+import colorsRouter from './routes/colors'
+import suppliersRouter from './routes/suppliers'
 
 const app = new Hono()
 
@@ -26,7 +28,7 @@ app.use(
   '/api/*',
   cors({
     origin: [FRONTEND_URL, 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:5174', 'http://localhost:5174'],
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   })
@@ -51,6 +53,8 @@ app.route('/api/warehouses', warehousesRouter)
 app.route('/api/reports', reportsRouter)
 app.route('/api/lots', lotsRouter)
 app.route('/api/batch', batchRouter)
+app.route('/api/colors', colorsRouter)
+app.route('/api/suppliers', suppliersRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
@@ -94,3 +98,5 @@ console.log(`Warehouses API: http://localhost:${PORT}/api/warehouses`)
 console.log(`Reports API: http://localhost:${PORT}/api/reports`)
 console.log(`Lots API: http://localhost:${PORT}/api/lots`)
 console.log(`Batch API: http://localhost:${PORT}/api/batch`)
+console.log(`Colors API: http://localhost:${PORT}/api/colors`)
+console.log(`Suppliers API: http://localhost:${PORT}/api/suppliers`)

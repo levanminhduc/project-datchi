@@ -15,7 +15,10 @@ export { useRecovery } from './thread/useRecovery'
 export { useDashboard } from './thread/useDashboard'
 export { useConflicts } from './thread/useConflicts'
 export { useConeSummary } from './thread/useConeSummary'
+export { useColors } from './thread/useColors'
+export { useSuppliers } from './thread/useSuppliers'
 export { useThreadRequests } from './useThreadRequests'
+export { useLots } from './useLots'
 export type {
   ThreadConflict,
   ConflictAllocation,

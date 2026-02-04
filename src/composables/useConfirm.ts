@@ -37,13 +37,13 @@ export function useConfirm() {
     return colorMap[type] || 'primary'
   }
 
-  // Map dialog type to icon
+  // Map dialog type to icon (using Material Icons format)
   const getIcon = (type: DialogType): string => {
     const iconMap: Record<DialogType, string> = {
-      info: 'mdi-information',
-      warning: 'mdi-alert',
-      error: 'mdi-alert-circle',
-      success: 'mdi-check-circle'
+      info: 'info',
+      warning: 'warning',
+      error: 'error',
+      success: 'check_circle'
     }
     return iconMap[type]
   }

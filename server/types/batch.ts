@@ -31,6 +31,19 @@ export interface LotRow {
   notes: string | null
   created_at: string
   updated_at: string
+  // Thread restructure FK field (nullable during migration)
+  supplier_id: number | null
+}
+
+/**
+ * Lot with joined supplier data
+ */
+export interface LotWithSupplier extends LotRow {
+  supplier_data?: {
+    id: number
+    code: string
+    name: string
+  } | null
 }
 
 /**
@@ -62,6 +75,8 @@ export interface CreateLotRequest {
   expiry_date?: string
   supplier?: string
   notes?: string
+  // Thread restructure FK field (dual-write)
+  supplier_id?: number
 }
 
 /**
@@ -73,6 +88,8 @@ export interface UpdateLotRequest {
   supplier?: string | null
   status?: LotStatus
   notes?: string | null
+  // Thread restructure FK field (dual-write)
+  supplier_id?: number | null
 }
 
 /**

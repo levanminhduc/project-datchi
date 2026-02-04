@@ -5,10 +5,12 @@ import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppWarehouseSelect from '@/components/ui/inputs/AppWarehouseSelect.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
+import SupplierSelector from '@/components/ui/inputs/SupplierSelector.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import { useThreadTypes } from '@/composables'
 import { useLots } from '@/composables/useLots'
 import type { Lot, CreateLotRequest, UpdateLotRequest } from '@/types/thread/lot'
+import type { Supplier } from '@/types/thread/supplier'
 
 interface Props {
   modelValue: boolean
@@ -30,7 +32,7 @@ const { createLot, updateLot, loading } = useLots()
 const isEdit = computed(() => !!props.lot)
 const title = computed(() => isEdit.value ? 'Chỉnh sửa lô' : 'Tạo lô mới')
 
-// Form data
+// Form data - includes both supplier text and supplier_id for dual-write
 const form = ref<{
   lot_number: string
   thread_type_id: number | null
@@ -38,6 +40,7 @@ const form = ref<{
   production_date: string | null
   expiry_date: string | null
   supplier: string
+  supplier_id: number | null
   notes: string
 }>({
   lot_number: '',
@@ -46,6 +49,7 @@ const form = ref<{
   production_date: null,
   expiry_date: null,
   supplier: '',
+  supplier_id: null,
   notes: ''
 })
 
@@ -57,6 +61,17 @@ const threadTypeOptions = computed(() =>
   }))
 )
 
+/**
+ * Handle supplier selection - update both ID and legacy text field
+ */
+function handleSupplierChange(supplierData: Supplier | null) {
+  if (supplierData) {
+    form.value.supplier = supplierData.name
+  } else {
+    form.value.supplier = ''
+  }
+}
+
 // Reset form when dialog opens
 function resetForm() {
   if (props.lot) {
@@ -67,6 +82,7 @@ function resetForm() {
       production_date: props.lot.production_date,
       expiry_date: props.lot.expiry_date,
       supplier: props.lot.supplier || '',
+      supplier_id: props.lot.supplier_id,
       notes: props.lot.notes || ''
     }
   } else {
@@ -77,6 +93,7 @@ function resetForm() {
       production_date: null,
       expiry_date: null,
       supplier: '',
+      supplier_id: null,
       notes: ''
     }
   }
@@ -99,11 +116,12 @@ watch(() => props.lot, () => {
 
 async function onSubmit() {
   if (isEdit.value && props.lot) {
-    // Update existing lot
+    // Update existing lot - include supplier_id for dual-write
     const updateData: UpdateLotRequest = {
       production_date: form.value.production_date,
       expiry_date: form.value.expiry_date,
       supplier: form.value.supplier || null,
+      supplier_id: form.value.supplier_id,
       notes: form.value.notes || null
     }
     const result = await updateLot(props.lot.id, updateData)
@@ -123,6 +141,7 @@ async function onSubmit() {
       production_date: form.value.production_date || undefined,
       expiry_date: form.value.expiry_date || undefined,
       supplier: form.value.supplier || undefined,
+      supplier_id: form.value.supplier_id || undefined,
       notes: form.value.notes || undefined
     }
     const result = await createLot(createData)
@@ -184,11 +203,13 @@ function onCancel() {
         />
       </div>
 
-      <!-- Supplier -->
+      <!-- Supplier - Using SupplierSelector -->
       <div class="col-12 col-sm-6">
-        <AppInput
-          v-model="form.supplier"
+        <SupplierSelector
+          v-model="form.supplier_id"
           label="Nhà cung cấp"
+          clearable
+          @update:supplier-data="handleSupplierChange"
         />
       </div>
 

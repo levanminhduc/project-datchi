@@ -12,6 +12,9 @@ export { inventoryService } from './inventoryService'
 export { allocationService } from './allocationService'
 export { recoveryService } from './recoveryService'
 export { dashboardService } from './dashboardService'
+export { colorService } from './colorService'
+export { supplierService } from './supplierService'
+export { lotService } from './lotService'
 export type {
   DashboardSummary,
   StockAlert,

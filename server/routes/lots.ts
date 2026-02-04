@@ -11,7 +11,20 @@ import type {
 const lots = new Hono()
 
 /**
+ * Helper: Lookup supplier name from supplier_id for dual-write
+ */
+async function lookupSupplierName(supplierId: number): Promise<string | null> {
+  const { data } = await supabase
+    .from('suppliers')
+    .select('name')
+    .eq('id', supplierId)
+    .single()
+  return data?.name || null
+}
+
+/**
  * POST /api/lots - Create new lot
+ * Implements dual-write: writes both supplier_id FK and legacy supplier text field
  */
 lots.post('/', async (c) => {
   try {
@@ -39,7 +52,16 @@ lots.post('/', async (c) => {
       }, 409)
     }
 
-    // Create lot
+    // Dual-write: If supplier_id provided, lookup supplier name for legacy field
+    let supplierName = body.supplier || null
+    if (body.supplier_id) {
+      const name = await lookupSupplierName(body.supplier_id)
+      if (name) {
+        supplierName = name
+      }
+    }
+
+    // Create lot with FK and legacy fields
     const { data, error } = await supabase
       .from('lots')
       .insert({
@@ -48,13 +70,19 @@ lots.post('/', async (c) => {
         warehouse_id: body.warehouse_id,
         production_date: body.production_date || null,
         expiry_date: body.expiry_date || null,
-        supplier: body.supplier || null,
+        supplier: supplierName,
+        supplier_id: body.supplier_id || null,
         notes: body.notes || null,
         status: 'ACTIVE',
         total_cones: 0,
         available_cones: 0
       })
-      .select()
+      .select(`
+        *,
+        thread_type:thread_types(id, code, name, color_code),
+        warehouse:warehouses(id, code, name),
+        supplier_data:suppliers(id, code, name)
+      `)
       .single()
 
     if (error) {
@@ -81,21 +109,25 @@ lots.post('/', async (c) => {
 
 /**
  * GET /api/lots - List lots with filters
- * Query params: status, warehouse_id, thread_type_id, search
+ * Query params: status, warehouse_id, thread_type_id, search, supplier_id
+ * Returns joined supplier_data from FK relationship
  */
 lots.get('/', async (c) => {
   try {
     const status = c.req.query('status') as LotStatus | undefined
     const warehouseId = c.req.query('warehouse_id')
     const threadTypeId = c.req.query('thread_type_id')
+    const supplierId = c.req.query('supplier_id')
     const search = c.req.query('search')
 
+    // LEFT JOIN suppliers table for related data
     let query = supabase
       .from('lots')
       .select(`
         *,
         thread_type:thread_types(id, code, name, color_code),
-        warehouse:warehouses(id, code, name)
+        warehouse:warehouses(id, code, name),
+        supplier_data:suppliers(id, code, name)
       `)
 
     if (status) {
@@ -140,6 +172,9 @@ lots.get('/', async (c) => {
     }
     if (threadTypeId) {
       query = query.eq('thread_type_id', parseInt(threadTypeId))
+    }
+    if (supplierId) {
+      query = query.eq('supplier_id', parseInt(supplierId))
     }
     if (search) {
       query = query.ilike('lot_number', `%${search}%`)
@@ -215,6 +250,7 @@ lots.get('/:id', async (c) => {
 
 /**
  * PATCH /api/lots/:id - Update lot metadata and status
+ * Implements dual-write: writes both supplier_id FK and legacy supplier text field
  */
 lots.patch('/:id', async (c) => {
   try {
@@ -225,9 +261,25 @@ lots.patch('/:id', async (c) => {
     const updateData: Partial<LotRow> = {}
     if (body.production_date !== undefined) updateData.production_date = body.production_date
     if (body.expiry_date !== undefined) updateData.expiry_date = body.expiry_date
-    if (body.supplier !== undefined) updateData.supplier = body.supplier
     if (body.status !== undefined) updateData.status = body.status
     if (body.notes !== undefined) updateData.notes = body.notes
+
+    // Dual-write: Handle supplier_id and supplier fields
+    if (body.supplier_id !== undefined) {
+      updateData.supplier_id = body.supplier_id
+      if (body.supplier_id) {
+        const supplierName = await lookupSupplierName(body.supplier_id)
+        if (supplierName) {
+          updateData.supplier = supplierName
+        }
+      } else {
+        // Clearing supplier_id, also clear legacy field if not explicitly set
+        if (body.supplier === undefined) updateData.supplier = null
+      }
+    } else {
+      // Legacy: update text field directly
+      if (body.supplier !== undefined) updateData.supplier = body.supplier
+    }
 
     if (Object.keys(updateData).length === 0) {
       return c.json<BatchApiResponse<null>>({
@@ -243,7 +295,8 @@ lots.patch('/:id', async (c) => {
       .select(`
         *,
         thread_type:thread_types(id, code, name, color_code),
-        warehouse:warehouses(id, code, name)
+        warehouse:warehouses(id, code, name),
+        supplier_data:suppliers(id, code, name)
       `)
       .single()
 

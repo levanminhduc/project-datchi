@@ -24,9 +24,12 @@ const navItems: NavItem[] = [
     children: [
       { label: 'Dashboard', icon: 'o_dashboard', to: '/thread/dashboard' },
       { label: 'Loại Chỉ', icon: 'o_category', to: '/thread' },
+      { label: 'Lô Hàng', icon: 'o_inventory_2', to: '/thread/lots' },
       { label: 'Tồn Kho', icon: 'o_inventory', to: '/thread/inventory' },
       { label: 'Phân Bổ', icon: 'o_assignment', to: '/thread/allocations' },
-      { label: 'Thu Hồi', icon: 'o_assignment_return', to: '/thread/recovery' }
+      { label: 'Thu Hồi', icon: 'o_assignment_return', to: '/thread/recovery' },
+      { label: 'Màu Sắc', icon: 'o_palette', to: '/thread/colors' },
+      { label: 'Nhà Cung Cấp', icon: 'o_local_shipping', to: '/thread/suppliers' }
     ]
   },
   { label: 'Phân Quyền', icon: 'o_admin_panel_settings', to: '/phan-quyen#top' }

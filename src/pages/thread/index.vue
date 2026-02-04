@@ -2,18 +2,41 @@
   <q-page padding>
     <!-- Page Header -->
     <div class="row q-col-gutter-md q-mb-lg items-center">
-      <div class="col-12 col-md-4">
+      <div class="col-12 col-md-3">
         <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Quản Lý Loại Chỉ
         </h1>
       </div>
       
-      <div class="col-12 col-md-8">
-        <div class="row q-col-gutter-sm justify-end">
-          <div class="col-12 col-sm-6 col-md-5">
+      <div class="col-12 col-md-9">
+        <div class="row q-col-gutter-sm justify-end items-center">
+          <!-- Color Filter -->
+          <div class="col-12 col-sm-4 col-md-3">
+            <ColorSelector
+              v-model="filterColorId"
+              label="Lọc theo màu"
+              dense
+              clearable
+              :active-only="true"
+            />
+          </div>
+          
+          <!-- Supplier Filter -->
+          <div class="col-12 col-sm-4 col-md-3">
+            <SupplierSelector
+              v-model="filterSupplierId"
+              label="Lọc theo NCC"
+              dense
+              clearable
+              :active-only="true"
+            />
+          </div>
+          
+          <!-- Search Input -->
+          <div class="col-12 col-sm-4 col-md-3">
             <q-input
               v-model="searchQuery"
-              placeholder="Tìm kiếm mã, tên, nhà cung cấp..."
+              placeholder="Tìm kiếm..."
               outlined
               dense
               clearable
@@ -60,17 +83,44 @@
         </q-inner-loading>
       </template>
 
-      <!-- Color Column -->
+      <!-- Color Column - Display from color_data joined object -->
       <template #body-cell-color="props">
         <q-td :props="props">
           <div class="row items-center q-gutter-x-sm">
             <div
-              v-if="props.row.color_code"
+              v-if="props.row.color_data?.hex_code"
+              class="color-indicator shadow-1"
+              :style="{ backgroundColor: props.row.color_data.hex_code }"
+            />
+            <div
+              v-else-if="props.row.color_code"
               class="color-indicator shadow-1"
               :style="{ backgroundColor: props.row.color_code }"
             />
-            <span>{{ props.row.color || '---' }}</span>
+            <span>{{ props.row.color_data?.name || props.row.color || '---' }}</span>
           </div>
+        </q-td>
+      </template>
+
+      <!-- Supplier Column - Display from supplier_data joined object -->
+      <template #body-cell-supplier="props">
+        <q-td :props="props">
+          <div
+            v-if="props.row.supplier_data"
+            class="row items-center no-wrap"
+          >
+            <q-avatar
+              size="20px"
+              color="primary"
+              text-color="white"
+              class="q-mr-xs text-caption text-weight-bold"
+            >
+              {{ getSupplierInitials(props.row.supplier_data.name) }}
+            </q-avatar>
+            <span>{{ props.row.supplier_data.name }}</span>
+            <span class="text-grey-6 q-ml-xs">({{ props.row.supplier_data.code }})</span>
+          </div>
+          <span v-else>{{ props.row.supplier || '---' }}</span>
         </q-td>
       </template>
 
@@ -562,6 +612,8 @@ import { type QTableColumn, useQuasar } from 'quasar'
 import { useThreadTypes, useSnackbar } from '@/composables'
 import { ThreadMaterial } from '@/types/thread/enums'
 import type { ThreadType, ThreadTypeFormData } from '@/types/thread/thread-type'
+import ColorSelector from '@/components/ui/inputs/ColorSelector.vue'
+import SupplierSelector from '@/components/ui/inputs/SupplierSelector.vue'
 
 // Composables
 const snackbar = useSnackbar()
@@ -577,6 +629,8 @@ const {
 
 // Local State
 const searchQuery = ref('')
+const filterColorId = ref<number | null>(null)
+const filterSupplierId = ref<number | null>(null)
 const pagination = ref({
   page: 1,
   rowsPerPage: 25,
@@ -596,6 +650,18 @@ const materialOptions = [
 
 const getMaterialLabel = (value: string) => {
   return materialOptions.find(opt => opt.value === value)?.label || value
+}
+
+/**
+ * Get initials from supplier name for avatar display
+ */
+const getSupplierInitials = (name: string): string => {
+  if (!name) return '?'
+  const words = name.trim().split(/\s+/)
+  if (words.length >= 2 && words[0] && words[1]) {
+    return ((words[0][0] || '') + (words[1][0] || '')).toUpperCase()
+  }
+  return name.substring(0, 2).toUpperCase()
 }
 
 // Table Configuration
@@ -619,7 +685,14 @@ const columns: QTableColumn[] = [
   {
     name: 'color',
     label: 'Màu Sắc',
-    field: 'color',
+    field: (row: ThreadType) => row.color_data?.name || row.color,
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'supplier',
+    label: 'Nhà Cung Cấp',
+    field: (row: ThreadType) => row.supplier_data?.name || row.supplier,
     align: 'left',
     sortable: true,
   },
@@ -663,21 +736,36 @@ const columns: QTableColumn[] = [
 
 // Computed Data
 const filteredThreadTypes = computed(() => {
-  if (!searchQuery.value.trim()) {
-    return threadTypes.value
+  let result = threadTypes.value
+
+  // Apply color_id filter
+  if (filterColorId.value !== null) {
+    result = result.filter((type) => type.color_id === filterColorId.value)
   }
 
-  const query = searchQuery.value.toLowerCase().trim()
-  return threadTypes.value.filter((type) =>
-    type.code.toLowerCase().includes(query) ||
-    type.name.toLowerCase().includes(query) ||
-    type.supplier?.toLowerCase().includes(query) ||
-    type.color?.toLowerCase().includes(query)
-  )
+  // Apply supplier_id filter
+  if (filterSupplierId.value !== null) {
+    result = result.filter((type) => type.supplier_id === filterSupplierId.value)
+  }
+
+  // Apply text search filter
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase().trim()
+    result = result.filter((type) =>
+      type.code.toLowerCase().includes(query) ||
+      type.name.toLowerCase().includes(query) ||
+      type.supplier?.toLowerCase().includes(query) ||
+      type.color?.toLowerCase().includes(query) ||
+      type.color_data?.name.toLowerCase().includes(query) ||
+      type.supplier_data?.name.toLowerCase().includes(query)
+    )
+  }
+
+  return result
 })
 
-// Watchers
-watch(searchQuery, () => {
+// Watchers - reset pagination when filters change
+watch([searchQuery, filterColorId, filterSupplierId], () => {
   pagination.value.page = 1
 })
 

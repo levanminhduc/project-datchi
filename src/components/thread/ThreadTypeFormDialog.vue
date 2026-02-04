@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { ThreadType, ThreadTypeFormData } from '@/types/thread'
+import type { ThreadType, ThreadTypeFormData, Color, Supplier } from '@/types/thread'
 import { ThreadMaterial } from '@/types/thread/enums'
 import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppToggle from '@/components/ui/inputs/AppToggle.vue'
+import ColorSelector from '@/components/ui/inputs/ColorSelector.vue'
+import SupplierSelector from '@/components/ui/inputs/SupplierSelector.vue'
 
 interface Props {
   modelValue: boolean
@@ -39,17 +41,23 @@ const defaultForm: ThreadTypeFormData = {
   name: '',
   color: '',
   color_code: '',
+  color_id: null,
+  supplier: '',
+  supplier_id: null,
   material: ThreadMaterial.POLYESTER,
   tex_number: undefined,
   density_grams_per_meter: 0.1,
   meters_per_cone: undefined,
-  supplier: '',
   reorder_level_meters: 1000,
   lead_time_days: 7,
   is_active: true
 }
 
 const form = ref<ThreadTypeFormData>({ ...defaultForm })
+
+// Store color/supplier data for dual-write
+const selectedColorData = ref<Color | null>(null)
+const selectedSupplierData = ref<Supplier | null>(null)
 
 const title = computed(() => props.mode === 'create' ? 'Thêm loại chỉ mới' : 'Chỉnh sửa loại chỉ')
 
@@ -60,17 +68,45 @@ const resetForm = () => {
       name: props.threadType.name,
       color: props.threadType.color || '',
       color_code: props.threadType.color_code || '',
+      color_id: props.threadType.color_id,
+      supplier: props.threadType.supplier || '',
+      supplier_id: props.threadType.supplier_id,
       material: props.threadType.material,
       tex_number: props.threadType.tex_number ?? undefined,
       density_grams_per_meter: props.threadType.density_grams_per_meter,
       meters_per_cone: props.threadType.meters_per_cone ?? undefined,
-      supplier: props.threadType.supplier || '',
       reorder_level_meters: props.threadType.reorder_level_meters,
       lead_time_days: props.threadType.lead_time_days,
       is_active: props.threadType.is_active
     }
+    // Reset color/supplier data from joined data
+    selectedColorData.value = props.threadType.color_data ? {
+      id: props.threadType.color_data.id,
+      name: props.threadType.color_data.name,
+      hex_code: props.threadType.color_data.hex_code,
+      pantone_code: props.threadType.color_data.pantone_code,
+      ral_code: null,
+      is_active: true,
+      created_at: '',
+      updated_at: ''
+    } : null
+    selectedSupplierData.value = props.threadType.supplier_data ? {
+      id: props.threadType.supplier_data.id,
+      code: props.threadType.supplier_data.code,
+      name: props.threadType.supplier_data.name,
+      contact_name: null,
+      phone: null,
+      email: null,
+      address: null,
+      lead_time_days: 0,
+      is_active: true,
+      created_at: '',
+      updated_at: ''
+    } : null
   } else {
     form.value = { ...defaultForm }
+    selectedColorData.value = null
+    selectedSupplierData.value = null
   }
 }
 
@@ -91,14 +127,46 @@ watch(() => props.threadType, () => {
   }
 }, { deep: true })
 
+/**
+ * Handle color selection - update both ID and legacy text fields
+ */
+const handleColorChange = (colorData: Color | null) => {
+  selectedColorData.value = colorData
+  if (colorData) {
+    form.value.color = colorData.name
+    form.value.color_code = colorData.hex_code
+  } else {
+    form.value.color = ''
+    form.value.color_code = ''
+  }
+}
+
+/**
+ * Handle supplier selection - update both ID and legacy text fields
+ */
+const handleSupplierChange = (supplierData: Supplier | null) => {
+  selectedSupplierData.value = supplierData
+  if (supplierData) {
+    form.value.supplier = supplierData.name
+    // Update lead_time_days from supplier if available
+    if (supplierData.lead_time_days) {
+      form.value.lead_time_days = supplierData.lead_time_days
+    }
+  } else {
+    form.value.supplier = ''
+  }
+}
+
 const onSubmit = () => {
   // Deep copy form to avoid reactive issues
   const submitData = { ...form.value }
   
-  // Clean up optional strings if empty
-  if (!submitData.color) delete submitData.color
-  if (!submitData.color_code) delete submitData.color_code
-  if (!submitData.supplier) delete submitData.supplier
+  // Ensure color_id and supplier_id are included
+  // Backend will auto-populate legacy text fields via dual-write
+  
+  // Clean up undefined optional values
+  if (submitData.tex_number === undefined) delete submitData.tex_number
+  if (submitData.meters_per_cone === undefined) delete submitData.meters_per_cone
   
   emit('submit', submitData)
 }
@@ -137,19 +205,21 @@ const onCancel = () => {
         />
       </div>
 
-      <!-- Row 2: Color & Color Code -->
+      <!-- Row 2: Color Selector & Color Code Preview -->
       <div class="col-12 col-sm-6">
-        <AppInput
-          v-model="form.color"
-          label="Tên màu"
-          placeholder="Ví dụ: Trắng, Xanh navy..."
+        <ColorSelector
+          v-model="form.color_id"
+          label="Màu chỉ"
+          clearable
+          @update:color-data="handleColorChange"
         />
       </div>
       <div class="col-12 col-sm-6">
         <AppInput
           v-model="form.color_code"
           label="Mã màu"
-          placeholder="#FFFFFF hoặc mã màu nội bộ"
+          readonly
+          hint="Tự động điền từ màu đã chọn"
         >
           <template #append>
             <div
@@ -205,11 +275,13 @@ const onCancel = () => {
         />
       </div>
 
-      <!-- Row 5: Supplier -->
+      <!-- Row 5: Supplier Selector -->
       <div class="col-12">
-        <AppInput
-          v-model="form.supplier"
+        <SupplierSelector
+          v-model="form.supplier_id"
           label="Nhà cung cấp"
+          clearable
+          @update:supplier-data="handleSupplierChange"
         />
       </div>
 
@@ -227,6 +299,7 @@ const onCancel = () => {
           v-model.number="form.lead_time_days"
           type="number"
           label="Thời gian giao hàng (ngày)"
+          hint="Tự động cập nhật từ nhà cung cấp"
           :min="1"
         />
       </div>

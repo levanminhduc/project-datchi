@@ -2,16 +2,16 @@
   <q-page padding>
     <!-- Page Header -->
     <div class="row q-col-gutter-md q-mb-lg items-center">
-      <div class="col-12 col-md-3">
+      <div class="col-12 col-md-2">
         <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Quản Lý Lô Hàng
         </h1>
       </div>
       
-      <div class="col-12 col-md-9">
+      <div class="col-12 col-md-10">
         <div class="row q-col-gutter-sm justify-end">
           <!-- Search Input -->
-          <div class="col-12 col-sm-4 col-md-3">
+          <div class="col-12 col-sm-4 col-md-2">
             <SearchInput
               v-model="searchQuery"
               placeholder="Tìm mã lô..."
@@ -39,6 +39,18 @@
               label="Kho"
               dense
               clearable
+              @update:model-value="handleFilterChange"
+            />
+          </div>
+
+          <!-- Filter: Supplier -->
+          <div class="col-12 col-sm-3 col-md-2">
+            <SupplierSelector
+              v-model="filters.supplier_id"
+              label="Nhà cung cấp"
+              dense
+              clearable
+              :active-only="true"
               @update:model-value="handleFilterChange"
             />
           </div>
@@ -116,6 +128,27 @@
       <template #body-cell-warehouse="props">
         <q-td :props="props">
           {{ props.row.warehouse?.name || '-' }}
+        </q-td>
+      </template>
+
+      <!-- Supplier Column - Display from supplier_data joined object -->
+      <template #body-cell-supplier="props">
+        <q-td :props="props">
+          <div
+            v-if="props.row.supplier_data"
+            class="row items-center no-wrap"
+          >
+            <q-avatar
+              size="20px"
+              color="primary"
+              text-color="white"
+              class="q-mr-xs text-caption text-weight-bold"
+            >
+              {{ getSupplierInitials(props.row.supplier_data.name) }}
+            </q-avatar>
+            <span>{{ props.row.supplier_data.name }}</span>
+          </div>
+          <span v-else>{{ props.row.supplier || '-' }}</span>
         </q-td>
       </template>
 
@@ -199,6 +232,7 @@ import LotStatusBadge from '@/components/thread/LotStatusBadge.vue'
 import LotFormDialog from '@/components/thread/LotFormDialog.vue'
 import SearchInput from '@/components/ui/inputs/SearchInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
+import SupplierSelector from '@/components/ui/inputs/SupplierSelector.vue'
 import type { Lot, LotStatus, LotFilters } from '@/types/thread/lot'
 
 const router = useRouter()
@@ -213,7 +247,8 @@ const warehouseOptions = ref<Array<{ label: string; value: number }>>([])
 
 const filters = ref<LotFilters>({
   status: undefined,
-  warehouse_id: undefined
+  warehouse_id: undefined,
+  supplier_id: undefined
 })
 
 const pagination = ref({
@@ -237,11 +272,24 @@ const columns = [
   { name: 'status', label: 'Trạng Thái', field: 'status', align: 'center' as const },
   { name: 'cones', label: 'Cuộn (Còn/Tổng)', field: 'available_cones', align: 'center' as const },
   { name: 'warehouse', label: 'Kho', field: 'warehouse', align: 'left' as const },
+  { name: 'supplier', label: 'Nhà Cung Cấp', field: (row: Lot) => row.supplier_data?.name || row.supplier, align: 'left' as const },
   { name: 'expiry_date', label: 'Hết Hạn', field: 'expiry_date', align: 'center' as const },
   { name: 'actions', label: 'Thao Tác', field: 'actions', align: 'center' as const }
 ]
 
 // Helpers
+/**
+ * Get initials from supplier name for avatar display
+ */
+function getSupplierInitials(name: string): string {
+  if (!name) return '?'
+  const words = name.trim().split(/\s+/)
+  if (words.length >= 2 && words[0] && words[1]) {
+    return ((words[0][0] || '') + (words[1][0] || '')).toUpperCase()
+  }
+  return name.substring(0, 2).toUpperCase()
+}
+
 function formatDate(date: string | null): string {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('vi-VN')

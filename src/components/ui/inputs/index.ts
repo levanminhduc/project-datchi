@@ -6,3 +6,7 @@ export { default as AppToggle } from './AppToggle.vue'
 export { default as AppSlider } from './AppSlider.vue'
 export { default as AppRange } from './AppRange.vue'
 export { default as AppTextarea } from './AppTextarea.vue'
+
+// Thread management selectors
+export { default as ColorSelector } from './ColorSelector.vue'
+export { default as SupplierSelector } from './SupplierSelector.vue'
