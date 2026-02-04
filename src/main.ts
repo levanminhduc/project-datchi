@@ -18,6 +18,9 @@ import App from './App.vue'
 // Composables
 import { createApp } from 'vue'
 
+// Directives
+import { vPermission } from '@/directives/permission'
+
 // Styles
 import 'unfonts.css'
 import './styles/global.scss'
@@ -25,5 +28,8 @@ import './styles/global.scss'
 const app = createApp(App)
 
 registerPlugins(app)
+
+// Register custom directives
+app.directive('permission', vPermission)
 
 app.mount('#app')

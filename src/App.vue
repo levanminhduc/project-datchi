@@ -1,14 +1,23 @@
 <script lang="ts" setup>
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import DarkModeToggle from './components/DarkModeToggle.vue'
 import { useDarkMode } from './composables/useDarkMode'
 import { useSidebar } from './composables/useSidebar'
 
-const { init } = useDarkMode()
+const route = useRoute()
+const { init: initDarkMode } = useDarkMode()
 const { isOpen, navItems, toggle } = useSidebar()
 
+// Hide sidebar on login page
+const showSidebar = computed(() => route.path !== '/login')
+
 onMounted(() => {
-  init()
+  // Initialize dark mode preference
+  initDarkMode()
+  
+  // Note: Auth is initialized in router guards (beforeEach)
+  // to ensure proper auth state before any navigation
 })
 </script>
 
@@ -20,6 +29,7 @@ onMounted(() => {
     >
       <q-toolbar>
         <q-btn
+          v-if="showSidebar"
           flat
           round
           dense
@@ -30,10 +40,12 @@ onMounted(() => {
           App Title
         </q-toolbar-title>
         <DarkModeToggle />
+        <UserMenu />
       </q-toolbar>
     </q-header>
 
     <q-drawer
+      v-if="showSidebar"
       v-model="isOpen"
       side="left"
       bordered

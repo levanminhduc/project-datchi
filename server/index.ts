@@ -5,6 +5,7 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
+import authRouter from './routes/auth'
 import employeesRouter from './routes/employees'
 import positionsRouter from './routes/positions'
 import inventoryRouter from './routes/inventory'
@@ -42,6 +43,7 @@ app.get('/health', (c) => {
   })
 })
 
+app.route('/api/auth', authRouter)
 app.route('/api/employees', employeesRouter)
 app.route('/api/positions', positionsRouter)
 app.route('/api/inventory', inventoryRouter)
@@ -87,6 +89,7 @@ serve({
 
 console.log(`Server is running at http://localhost:${PORT}`)
 console.log(`Health check: http://localhost:${PORT}/health`)
+console.log(`Auth API: http://localhost:${PORT}/api/auth`)
 console.log(`Employees API: http://localhost:${PORT}/api/employees`)
 console.log(`Positions API: http://localhost:${PORT}/api/positions`)
 console.log(`Inventory API: http://localhost:${PORT}/api/inventory`)

@@ -2,6 +2,37 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ CRITICAL SAFETY RULES (MUST READ FIRST)
+
+**Các lệnh sau đây YÊU CẦU sự cho phép rõ ràng từ user trước khi thực hiện:**
+
+| Lệnh nguy hiểm | Hậu quả | Yêu cầu |
+|----------------|---------|---------|
+| `supabase db reset` | **XÓA TOÀN BỘ DỮ LIỆU** | ❌ KHÔNG BAO GIỜ chạy tự động |
+| `DROP TABLE`, `TRUNCATE` | Mất dữ liệu vĩnh viễn | ❌ Phải hỏi user trước |
+| `DELETE FROM ... WHERE 1=1` | Xóa toàn bộ records | ❌ Phải hỏi user trước |
+| `supabase migration repair` | Thay đổi migration history | ⚠️ Hỏi user trước |
+| Force push (`git push -f`) | Mất commit history | ⚠️ Hỏi user trước |
+
+### Quy tắc bắt buộc:
+
+1. **KHÔNG BAO GIỜ** chạy `supabase db reset` mà không có sự đồng ý rõ ràng từ user
+2. **KHÔNG BAO GIỜ** xóa dữ liệu production/development mà không backup trước
+3. **LUÔN HỎI** user trước khi thực hiện bất kỳ thao tác nào có thể làm mất dữ liệu
+4. **NẾU CẦN RESET** database để test, đề xuất tạo database test riêng biệt
+
+### Trước khi chạy migration mới:
+
+```bash
+# 1. Backup dữ liệu quan trọng trước
+pg_dump -h 127.0.0.1 -p 54322 -U postgres -d postgres > backup.sql
+
+# 2. Kiểm tra migration có xóa dữ liệu không
+# 3. Hỏi user nếu migration có DROP/TRUNCATE/DELETE
+```
+
+---
+
 ## Code Search Rules
 
 **CRITICAL: Always use MCP Context Engine (`augment-context-engine_codebase-retrieval`) as the PRIMARY tool for codebase search.**
@@ -392,3 +423,175 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 | `useRealtime` | Supabase real-time subscriptions |
 | `useOfflineOperation` | Queue ops when offline |
 | `useOfflineSync` | Sync queued operations |
+
+### Auth Composables
+
+| Composable | Purpose |
+|------------|---------|
+| `useAuth` | Auth state, login/logout, token management |
+| `usePermission` | Permission checking helpers for templates |
+
+## Authentication & Authorization System
+
+### Overview
+
+JWT-based authentication with role-based access control (RBAC). Employees login with `employee_id` + `password`.
+
+### Architecture
+
+```
+Login Request → Hono API → Verify Password → Generate JWT → Return Tokens
+                              ↓
+Protected Request → Auth Middleware → Verify JWT → Attach User → Route Handler
+                              ↓
+Frontend → Router Guard → Check Auth State → Allow/Redirect
+```
+
+### Database Tables (Migration: `20240101000025_auth_permissions.sql`)
+
+| Table | Purpose |
+|-------|---------|
+| `roles` | Role definitions (ROOT, ADMIN, MANAGER, etc.) |
+| `permissions` | Permission definitions (employees.view, thread.edit, etc.) |
+| `role_permissions` | Many-to-many: roles ↔ permissions |
+| `employee_roles` | Many-to-many: employees ↔ roles |
+| `employee_permissions` | Direct permissions for employees |
+| `refresh_tokens` | Stored refresh tokens for rotation |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `server/routes/auth.ts` | Auth API endpoints (login, refresh, me, permissions) |
+| `server/middleware/auth.ts` | JWT verification middleware |
+| `src/services/authService.ts` | Frontend auth API client |
+| `src/composables/useAuth.ts` | Shared auth state (user, tokens, permissions) |
+| `src/composables/usePermission.ts` | Template helpers (hasPermission, hasRole, etc.) |
+| `src/router/guards.ts` | Route protection guards |
+| `src/pages/login.vue` | Login page UI |
+| `src/directives/permission.ts` | v-permission directive |
+
+### Environment Variables (Required in `.env`)
+
+```bash
+JWT_SECRET=your-secret-key-min-32-chars
+JWT_EXPIRES_IN=15m
+REFRESH_TOKEN_EXPIRES_IN=7d
+```
+
+### API Endpoints
+
+```bash
+POST /api/auth/login          # Login with employee_id + password
+POST /api/auth/refresh        # Refresh access token
+GET  /api/auth/me             # Get current user info (protected)
+GET  /api/auth/permissions    # Get user permissions (protected)
+POST /api/auth/logout         # Logout and invalidate refresh token
+POST /api/auth/change-password # Change password (protected)
+```
+
+### Test Credentials
+
+| Employee ID | Password | Role | Notes |
+|-------------|----------|------|-------|
+| ROOT001 | password123 | ROOT | Bypasses all permissions (returns `["*"]`) |
+| NV001 | password123 | EMPLOYEE | Standard employee |
+
+### Frontend Usage
+
+#### Protecting Routes (in page component)
+
+```typescript
+// src/pages/some-page.vue
+definePage({
+  meta: {
+    requiresAuth: true,                    // Require login
+    permissions: ['employees.view'],       // Optional: require specific permissions
+    roles: ['ADMIN', 'MANAGER'],          // Optional: require specific roles
+  }
+})
+```
+
+#### Using Auth Composable
+
+```typescript
+import { useAuth } from '@/composables/useAuth'
+
+const { user, isAuthenticated, login, logout, permissions } = useAuth()
+
+// Login
+await login(employeeId, password)
+
+// Check auth state
+if (isAuthenticated.value) {
+  console.log(user.value?.full_name)
+}
+
+// Logout
+await logout()
+```
+
+#### Using Permission Composable
+
+```typescript
+import { usePermission } from '@/composables/usePermission'
+
+const { hasPermission, hasRole, hasAnyPermission, isRoot } = usePermission()
+
+// In template
+<q-btn v-if="hasPermission('employees.create')">Add Employee</q-btn>
+<q-btn v-if="hasRole('ADMIN')">Admin Action</q-btn>
+<q-btn v-if="isRoot">Dangerous Action</q-btn>
+```
+
+#### Using v-permission Directive
+
+```vue
+<!-- Hide element if no permission -->
+<q-btn v-permission="'employees.delete'">Delete</q-btn>
+
+<!-- Multiple permissions (any) -->
+<q-btn v-permission="['employees.edit', 'employees.admin']">Edit</q-btn>
+```
+
+### Permission Naming Convention
+
+```
+{domain}.{action}
+
+Examples:
+- employees.view, employees.create, employees.edit, employees.delete
+- thread.view, thread.create, thread.edit, thread.delete
+- inventory.view, inventory.adjust
+- reports.view, reports.export
+```
+
+### ROOT Role Special Behavior
+
+- ROOT role returns `permissions: ["*"]`
+- `hasPermission()` always returns `true` for ROOT
+- Use `isRoot` check for dangerous operations
+
+### Setting Employee Passwords
+
+```typescript
+import bcrypt from 'bcrypt'
+
+// Generate hash
+const hash = await bcrypt.hash('password123', 10)
+
+// Update in database
+UPDATE employees 
+SET password_hash = '$2b$10$...',
+    must_change_password = true
+WHERE employee_id = 'NV001';
+```
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "Invalid token" | Check JWT_SECRET matches between restarts |
+| "Token expired" | Frontend should auto-refresh, check refresh token logic |
+| "Permission denied" | Check employee has role/permission in database |
+| Login fails | Verify password_hash exists and bcrypt compare works |

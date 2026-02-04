@@ -10,8 +10,7 @@ const navItems: NavItem[] = [
     icon: 'o_people', 
     to: '/nhan-su#top',
     children: [
-      { label: 'Danh Sách Nhân Viên', icon: 'o_list', to: '/nhan-su/danh-sach' },
-      { label: 'Thêm Mới', icon: 'o_person_add', to: '/nhan-su/them-moi' }
+      { label: 'Danh Sách Nhân Viên', icon: 'o_list', to: '/nhan-su/danh-sach' }
     ]
   },
   { label: 'Kế Hoạch', icon: 'o_event_note', to: '/ke-hoach#top' },

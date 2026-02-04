@@ -21,9 +21,11 @@ declare module 'vue-router/auto-routes' {
     '/': RouteRecordInfo<'/', '/', Record<never, never>, Record<never, never>>,
     '/components': RouteRecordInfo<'/components', '/components', Record<never, never>, Record<never, never>>,
     '/employees': RouteRecordInfo<'/employees', '/employees', Record<never, never>, Record<never, never>>,
+    '/forbidden': RouteRecordInfo<'/forbidden', '/forbidden', Record<never, never>, Record<never, never>>,
     '/ke-hoach': RouteRecordInfo<'/ke-hoach', '/ke-hoach', Record<never, never>, Record<never, never>>,
     '/kho': RouteRecordInfo<'/kho', '/kho', Record<never, never>, Record<never, never>>,
     '/ky-thuat': RouteRecordInfo<'/ky-thuat', '/ky-thuat', Record<never, never>, Record<never, never>>,
+    '/login': RouteRecordInfo<'/login', '/login', Record<never, never>, Record<never, never>>,
     '/nhan-su': RouteRecordInfo<'/nhan-su', '/nhan-su', Record<never, never>, Record<never, never>, '/nhan-su/danh-sach'>,
     '/nhan-su/danh-sach': RouteRecordInfo<'/nhan-su/danh-sach', '/nhan-su/danh-sach', Record<never, never>, Record<never, never>>,
     '/phan-quyen': RouteRecordInfo<'/phan-quyen', '/phan-quyen', Record<never, never>, Record<never, never>>,
@@ -72,6 +74,10 @@ declare module 'vue-router/auto-routes' {
       routes: '/employees'
       views: never
     }
+    'src/pages/forbidden.vue': {
+      routes: '/forbidden'
+      views: never
+    }
     'src/pages/ke-hoach.vue': {
       routes: '/ke-hoach'
       views: never
@@ -82,6 +88,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/ky-thuat.vue': {
       routes: '/ky-thuat'
+      views: never
+    }
+    'src/pages/login.vue': {
+      routes: '/login'
       views: never
     }
     'src/pages/nhan-su.vue': {
