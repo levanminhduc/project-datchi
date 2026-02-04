@@ -9,6 +9,7 @@ import { ref, computed } from 'vue'
 import { allocationService } from '@/services/allocationService'
 import { useSnackbar } from './useSnackbar'
 import { useLoading } from './useLoading'
+import { getErrorMessage } from '@/utils/errorMessages'
 import type { Allocation, AllocationFilters, CreateAllocationDTO } from '@/types/thread'
 import { AllocationStatus } from '@/types/thread/enums'
 
@@ -23,11 +24,8 @@ const MESSAGES = {
   READY_SUCCESS: 'Đã chuẩn bị xong, sẵn sàng nhận',
   RECEIVE_SUCCESS: 'Đã xác nhận nhận chỉ',
   CANCEL_SUCCESS: 'Đã hủy yêu cầu',
-  FETCH_SUCCESS: 'Tải danh sách yêu cầu thành công',
 
-  // Error messages
-  NETWORK_ERROR: 'Lỗi kết nối. Vui lòng kiểm tra mạng',
-  SERVER_ERROR: 'Lỗi hệ thống. Vui lòng thử lại sau',
+  // Error messages (kept for fallback usage)
   FETCH_ERROR: 'Không thể tải danh sách yêu cầu',
   CREATE_ERROR: 'Tạo yêu cầu thất bại',
   APPROVE_ERROR: 'Không thể duyệt yêu cầu',
@@ -35,28 +33,6 @@ const MESSAGES = {
   READY_ERROR: 'Không thể đánh dấu sẵn sàng',
   RECEIVE_ERROR: 'Không thể xác nhận nhận hàng',
   NOT_FOUND: 'Không tìm thấy yêu cầu',
-}
-
-/**
- * Parse error and return appropriate Vietnamese message
- */
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error) {
-    // Return the error message if it's already in Vietnamese
-    if (/[\u00C0-\u1EF9]/.test(error.message)) {
-      return error.message
-    }
-
-    const message = error.message.toLowerCase()
-    if (message.includes('network') || message.includes('fetch')) {
-      return MESSAGES.NETWORK_ERROR
-    }
-    if (message.includes('not found') || message.includes('không tìm thấy')) {
-      return MESSAGES.NOT_FOUND
-    }
-  }
-
-  return fallback
 }
 
 export function useThreadRequests() {

@@ -10,6 +10,7 @@ import { allocationService } from '@/services/allocationService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { useRealtime } from '../useRealtime'
+import { getErrorMessage } from '@/utils/errorMessages'
 import type { AllocationConflict, Allocation } from '@/types/thread'
 import { AllocationPriority } from '@/types/thread/enums'
 
@@ -77,42 +78,14 @@ const MESSAGES = {
   ESCALATE_SUCCESS: 'Đã leo thang xung đột lên cấp trên',
 
   // Error messages
-  FETCH_ERROR: 'Không thể tải danh sách xung đột',
-  RESOLVE_ERROR: 'Không thể giải quyết xung đột',
-  PRIORITY_UPDATE_ERROR: 'Không thể cập nhật mức ưu tiên',
-  CANCEL_ERROR: 'Không thể hủy phân bổ',
-  SPLIT_ERROR: 'Không thể chia nhỏ phân bổ',
-  ESCALATE_ERROR: 'Không thể leo thang xung đột',
-  NETWORK_ERROR: 'Lỗi kết nối. Vui lòng kiểm tra mạng',
-  SERVER_ERROR: 'Lỗi hệ thống. Vui lòng thử lại sau',
+  PRIORITY_UPDATE_ERROR: 'Cập nhật mức ưu tiên thất bại',
+  CANCEL_ERROR: 'Hủy phân bổ thất bại',
+  SPLIT_ERROR: 'Chia nhỏ phân bổ thất bại',
 
   // Real-time messages
   REALTIME_CONNECTED: 'Đang theo dõi xung đột theo thời gian thực',
   NEW_CONFLICT: 'Có xung đột phân bổ mới',
   CONFLICT_RESOLVED: 'Một xung đột đã được giải quyết',
-}
-
-/**
- * Parse error and return appropriate Vietnamese message
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase()
-
-    if (message.includes('network') || message.includes('fetch')) {
-      return MESSAGES.NETWORK_ERROR
-    }
-    if (message.includes('timeout')) {
-      return MESSAGES.NETWORK_ERROR
-    }
-
-    // Return the error message if it's already in Vietnamese
-    if (/[\u00C0-\u1EF9]/.test(error.message)) {
-      return error.message
-    }
-  }
-
-  return MESSAGES.SERVER_ERROR
 }
 
 /**

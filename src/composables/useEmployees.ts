@@ -9,59 +9,26 @@ import { ref, computed } from 'vue'
 import { employeeService } from '@/services/employeeService'
 import { useSnackbar } from './useSnackbar'
 import { useLoading } from './useLoading'
+import { createErrorHandler } from '@/utils/errorMessages'
 import type { Employee, EmployeeFormData } from '@/types'
 
 /**
- * Vietnamese error messages for user feedback
+ * Vietnamese messages for user feedback
  */
 const MESSAGES = {
   // Success messages
   CREATE_SUCCESS: 'Thêm nhân viên thành công',
   UPDATE_SUCCESS: 'Cập nhật thành công',
   DELETE_SUCCESS: 'Xóa nhân viên thành công',
-  FETCH_SUCCESS: 'Tải danh sách nhân viên thành công',
-  
-  // Error messages
-  NETWORK_ERROR: 'Lỗi kết nối. Vui lòng kiểm tra mạng',
-  SERVER_ERROR: 'Lỗi hệ thống. Vui lòng thử lại sau',
-  TIMEOUT_ERROR: 'Yêu cầu quá thời gian. Vui lòng thử lại',
-  CREATE_ERROR: 'Thêm nhân viên thất bại',
-  UPDATE_ERROR: 'Cập nhật thất bại. Vui lòng thử lại',
-  DELETE_ERROR: 'Xóa nhân viên thất bại',
-  FETCH_ERROR: 'Không thể tải danh sách nhân viên',
-  NOT_FOUND: 'Không tìm thấy nhân viên',
-  DUPLICATE_CODE: 'Mã nhân viên đã tồn tại',
 }
 
 /**
- * Parse error and return appropriate Vietnamese message
+ * Domain-specific error handler for employee operations
  */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase()
-    
-    // Check for specific error types
-    if (message.includes('network') || message.includes('fetch')) {
-      return MESSAGES.NETWORK_ERROR
-    }
-    if (message.includes('timeout')) {
-      return MESSAGES.TIMEOUT_ERROR
-    }
-    if (message.includes('đã tồn tại') || message.includes('duplicate')) {
-      return MESSAGES.DUPLICATE_CODE
-    }
-    if (message.includes('not found') || message.includes('không tìm thấy')) {
-      return MESSAGES.NOT_FOUND
-    }
-    
-    // Return the error message if it's already in Vietnamese
-    if (/[\u00C0-\u1EF9]/.test(error.message)) {
-      return error.message
-    }
-  }
-  
-  return MESSAGES.SERVER_ERROR
-}
+const getErrorMessage = createErrorHandler({
+  duplicate: 'Mã nhân viên đã tồn tại',
+  notFound: 'Không tìm thấy nhân viên',
+})
 
 export function useEmployees() {
   // State

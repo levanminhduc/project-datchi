@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Code Search Rules
+
+**CRITICAL: Always use MCP Context Engine (`augment-context-engine_codebase-retrieval`) as the PRIMARY tool for codebase search.**
+
+| Scenario | Tool to Use |
+|----------|-------------|
+| Finding code by meaning/purpose | `augment-context-engine_codebase-retrieval` (FIRST CHOICE) |
+| "Where is X?", "How does Y work?" | `augment-context-engine_codebase-retrieval` |
+| Understanding codebase structure | `augment-context-engine_codebase-retrieval` |
+| Finding exact string/identifier | `grep` or `ast_grep_search` |
+| Finding all references to a symbol | `lsp_find_references` |
+
+**Why Context Engine First:**
+- Semantic search understands intent, not just keywords
+- Real-time index reflects current codebase state
+- Cross-language retrieval support
+- Higher quality recall for complex queries
+
 ## Project Overview
 
 Vue 3 + Quasar Framework application with Hono backend and Supabase database. Features employee management with CRUD operations and a custom UI component library wrapping Quasar components.

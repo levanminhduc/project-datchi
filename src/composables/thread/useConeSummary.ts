@@ -10,36 +10,15 @@ import { inventoryService } from '@/services/inventoryService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { useRealtime } from '../useRealtime'
+import { getErrorMessage } from '@/utils/errorMessages'
 import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters } from '@/types/thread'
 
 /**
  * Vietnamese messages for user feedback
  */
 const MESSAGES = {
-  FETCH_ERROR: 'Không thể tải tổng hợp tồn kho theo cuộn',
-  BREAKDOWN_ERROR: 'Không thể tải chi tiết phân bố kho',
-  NETWORK_ERROR: 'Lỗi kết nối. Vui lòng kiểm tra mạng',
-  SERVER_ERROR: 'Lỗi hệ thống. Vui lòng thử lại sau',
-}
-
-/**
- * Parse error and return appropriate Vietnamese message
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase()
-
-    if (message.includes('network') || message.includes('fetch')) {
-      return MESSAGES.NETWORK_ERROR
-    }
-
-    // Return the error message if it's already in Vietnamese
-    if (/[\u00C0-\u1EF9]/.test(error.message)) {
-      return error.message
-    }
-  }
-
-  return MESSAGES.SERVER_ERROR
+  FETCH_ERROR: 'Không thể tải dữ liệu tổng hợp',
+  BREAKDOWN_ERROR: 'Không thể tải chi tiết theo kho',
 }
 
 export function useConeSummary() {

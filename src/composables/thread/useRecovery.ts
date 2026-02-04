@@ -9,6 +9,7 @@ import { ref, computed } from 'vue'
 import { recoveryService } from '@/services/recoveryService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
+import { getErrorMessage } from '@/utils/errorMessages'
 import { RecoveryStatus } from '@/types/thread/enums'
 import type {
   Recovery,
@@ -22,24 +23,17 @@ import type {
  * Vietnamese messages for recovery operations
  */
 const MESSAGES = {
+  // Success messages
   INITIATE_SUCCESS: 'Khởi tạo hoàn trả thành công',
   WEIGH_SUCCESS: 'Đã cân và tính toán số mét còn lại',
   CONFIRM_SUCCESS: 'Xác nhận hoàn trả thành công',
   WRITEOFF_SUCCESS: 'Đã loại bỏ cuộn chỉ',
+  // Error messages
+  FETCH_ERROR: 'Không thể tải danh sách hoàn trả',
   INITIATE_ERROR: 'Khởi tạo hoàn trả thất bại',
-  WEIGH_ERROR: 'Lỗi khi cân cuộn chỉ',
+  WEIGH_ERROR: 'Cân cuộn chỉ thất bại',
   CONFIRM_ERROR: 'Xác nhận hoàn trả thất bại',
   WRITEOFF_ERROR: 'Loại bỏ cuộn chỉ thất bại',
-  FETCH_ERROR: 'Không thể tải danh sách hoàn trả',
-}
-
-/**
- * Get error message from unknown error
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return 'Đã xảy ra lỗi không xác định'
 }
 
 export function useRecovery() {

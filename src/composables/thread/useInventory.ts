@@ -10,6 +10,7 @@ import { useRealtime } from '../useRealtime'
 import { inventoryService } from '@/services/inventoryService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
+import { getErrorMessage } from '@/utils/errorMessages'
 import type { Cone, InventoryFilters, ReceiveStockDTO } from '@/types/thread'
 import { ConeStatus } from '@/types/thread/enums'
 
@@ -19,38 +20,9 @@ import { ConeStatus } from '@/types/thread/enums'
 const MESSAGES = {
   // Success messages
   RECEIVE_SUCCESS: 'Nhập kho thành công',
-
   // Error messages
   RECEIVE_ERROR: 'Nhập kho thất bại',
-  FETCH_ERROR: 'Không thể tải danh sách tồn kho',
-  NETWORK_ERROR: 'Lỗi kết nối. Vui lòng kiểm tra mạng',
-  SERVER_ERROR: 'Lỗi hệ thống. Vui lòng thử lại sau',
-  TIMEOUT_ERROR: 'Yêu cầu quá thời gian. Vui lòng thử lại',
-  SUMMARY_ERROR: 'Không thể tải thông tin tổng hợp tồn kho',
-}
-
-/**
- * Parse error and return appropriate Vietnamese message
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase()
-
-    // Check for specific error types
-    if (message.includes('network') || message.includes('fetch')) {
-      return MESSAGES.NETWORK_ERROR
-    }
-    if (message.includes('timeout')) {
-      return MESSAGES.TIMEOUT_ERROR
-    }
-
-    // Return the error message if it's already in Vietnamese
-    if (/[\u00C0-\u1EF9]/.test(error.message)) {
-      return error.message
-    }
-  }
-
-  return MESSAGES.SERVER_ERROR
+  SUMMARY_ERROR: 'Không thể tải thống kê tồn kho',
 }
 
 export function useInventory() {

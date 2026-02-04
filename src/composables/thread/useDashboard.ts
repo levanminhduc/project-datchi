@@ -16,40 +16,14 @@ import {
 } from '@/services/dashboardService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
+import { getErrorMessage } from '@/utils/errorMessages'
 
 /**
  * Vietnamese messages for user feedback
  */
 const MESSAGES = {
-  FETCH_ERROR: 'Không thể tải dữ liệu dashboard',
   REFRESH_SUCCESS: 'Đã cập nhật dữ liệu',
-  NETWORK_ERROR: 'Lỗi kết nối. Vui lòng kiểm tra mạng',
-  SERVER_ERROR: 'Lỗi hệ thống. Vui lòng thử lại sau',
-  TIMEOUT_ERROR: 'Yêu cầu quá thời gian. Vui lòng thử lại',
-}
-
-/**
- * Parse error and return appropriate Vietnamese message
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase()
-
-    // Check for specific error types
-    if (message.includes('network') || message.includes('fetch')) {
-      return MESSAGES.NETWORK_ERROR
-    }
-    if (message.includes('timeout')) {
-      return MESSAGES.TIMEOUT_ERROR
-    }
-
-    // Return the error message if it's already in Vietnamese
-    if (/[\u00C0-\u1EF9]/.test(error.message)) {
-      return error.message
-    }
-  }
-
-  return MESSAGES.SERVER_ERROR
+  FETCH_ERROR: 'Không thể tải dữ liệu dashboard',
 }
 
 export function useDashboard() {

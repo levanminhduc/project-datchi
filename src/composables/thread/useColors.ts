@@ -9,6 +9,7 @@ import { ref, computed } from 'vue'
 import { colorService } from '@/services/colorService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
+import { createErrorHandler } from '@/utils/errorMessages'
 import type { Color, ColorFormData, ColorFilters } from '@/types/thread/color'
 
 /**
@@ -19,48 +20,15 @@ const MESSAGES = {
   CREATE_SUCCESS: 'Tạo màu thành công',
   UPDATE_SUCCESS: 'Cập nhật màu thành công',
   DELETE_SUCCESS: 'Đã ngừng sử dụng màu',
-  FETCH_SUCCESS: 'Tải danh sách màu thành công',
-
-  // Error messages
-  NETWORK_ERROR: 'Lỗi kết nối. Vui lòng kiểm tra mạng',
-  SERVER_ERROR: 'Lỗi hệ thống. Vui lòng thử lại sau',
-  TIMEOUT_ERROR: 'Yêu cầu quá thời gian. Vui lòng thử lại',
-  CREATE_ERROR: 'Tạo màu thất bại',
-  UPDATE_ERROR: 'Cập nhật màu thất bại',
-  DELETE_ERROR: 'Xóa màu thất bại',
-  FETCH_ERROR: 'Không thể tải danh sách màu',
-  NOT_FOUND: 'Không tìm thấy màu',
-  DUPLICATE_NAME: 'Tên màu đã tồn tại',
 }
 
 /**
- * Parse error and return appropriate Vietnamese message
+ * Domain-specific error handler for color operations
  */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase()
-
-    if (message.includes('network') || message.includes('fetch')) {
-      return MESSAGES.NETWORK_ERROR
-    }
-    if (message.includes('timeout')) {
-      return MESSAGES.TIMEOUT_ERROR
-    }
-    if (message.includes('đã tồn tại') || message.includes('duplicate')) {
-      return MESSAGES.DUPLICATE_NAME
-    }
-    if (message.includes('not found') || message.includes('không tìm thấy')) {
-      return MESSAGES.NOT_FOUND
-    }
-
-    // Return the error message if it's already in Vietnamese
-    if (/[\u00C0-\u1EF9]/.test(error.message)) {
-      return error.message
-    }
-  }
-
-  return MESSAGES.SERVER_ERROR
-}
+const getErrorMessage = createErrorHandler({
+  duplicate: 'Tên màu đã tồn tại',
+  notFound: 'Không tìm thấy màu',
+})
 
 export function useColors() {
   // State

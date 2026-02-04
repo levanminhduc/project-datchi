@@ -10,6 +10,7 @@ import { ref, computed } from 'vue'
 import { warehouseService, type Warehouse, type WarehouseTreeNode } from '@/services/warehouseService'
 import { useSnackbar } from './useSnackbar'
 import { useLoading } from './useLoading'
+import { getErrorMessage } from '@/utils/errorMessages'
 
 export interface WarehouseOption {
   label: string
@@ -24,35 +25,6 @@ export interface GroupedWarehouseOption {
   type: 'LOCATION' | 'STORAGE'
   disabled: boolean
   parentId: number | null
-}
-
-/**
- * Vietnamese messages for user feedback
- */
-const MESSAGES = {
-  FETCH_ERROR: 'Không thể tải danh sách kho',
-  NETWORK_ERROR: 'Lỗi kết nối. Vui lòng kiểm tra mạng',
-  SERVER_ERROR: 'Lỗi hệ thống. Vui lòng thử lại sau',
-}
-
-/**
- * Parse error and return appropriate Vietnamese message
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase()
-
-    if (message.includes('network') || message.includes('fetch')) {
-      return MESSAGES.NETWORK_ERROR
-    }
-
-    // Return the error message if it's already in Vietnamese
-    if (/[\u00C0-\u1EF9]/.test(error.message)) {
-      return error.message
-    }
-  }
-
-  return MESSAGES.SERVER_ERROR
 }
 
 export function useWarehouses() {

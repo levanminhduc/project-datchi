@@ -9,20 +9,13 @@ import { ref, computed } from 'vue'
 import { allocationService } from '@/services/allocationService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
+import { getErrorMessage } from '@/utils/errorMessages'
 import type {
   Allocation,
   AllocationFilters,
   CreateAllocationDTO,
   AllocationConflict,
 } from '@/types/thread'
-/**
- * Get error message from unknown error
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return 'Đã xảy ra lỗi không xác định'
-}
 
 export function useAllocations() {
   // State

@@ -14,43 +14,16 @@ import {
 } from '@/services/reportService'
 import { useLoading } from './useLoading'
 import { useSnackbar } from './useSnackbar'
+import { getErrorMessage } from '@/utils/errorMessages'
 
 /**
  * Vietnamese messages for user feedback
  */
 const MESSAGES = {
   FETCH_SUCCESS: 'Đã tạo báo cáo',
-  FETCH_ERROR: 'Không thể tạo báo cáo',
   EXPORT_SUCCESS: 'Đã xuất báo cáo thành công',
-  EXPORT_ERROR: 'Lỗi xuất file',
+  EXPORT_ERROR: 'Xuất báo cáo thất bại',
   NO_DATA_EXPORT: 'Không có dữ liệu để xuất',
-  NETWORK_ERROR: 'Lỗi kết nối. Vui lòng kiểm tra mạng',
-  SERVER_ERROR: 'Lỗi hệ thống. Vui lòng thử lại sau',
-  TIMEOUT_ERROR: 'Yêu cầu quá thời gian. Vui lòng thử lại',
-}
-
-/**
- * Parse error and return appropriate Vietnamese message
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase()
-
-    // Check for specific error types
-    if (message.includes('network') || message.includes('fetch')) {
-      return MESSAGES.NETWORK_ERROR
-    }
-    if (message.includes('timeout')) {
-      return MESSAGES.TIMEOUT_ERROR
-    }
-
-    // Return the error message if it's already in Vietnamese
-    if (/[\u00C0-\u1EF9]/.test(error.message)) {
-      return error.message
-    }
-  }
-
-  return MESSAGES.SERVER_ERROR
 }
 
 export function useReports() {
