@@ -72,6 +72,27 @@ export interface ThreadTypeRow {
   is_active: boolean
   created_at: string
   updated_at: string
+  // Thread restructure FK fields (nullable during migration)
+  color_id: number | null
+  supplier_id: number | null
+  color_supplier_id: number | null
+}
+
+/**
+ * ThreadType with joined color and supplier data
+ */
+export interface ThreadTypeWithRelations extends ThreadTypeRow {
+  color_data?: {
+    id: number
+    name: string
+    hex_code: string
+    pantone_code: string | null
+  } | null
+  supplier_data?: {
+    id: number
+    code: string
+    name: string
+  } | null
 }
 
 export interface ConeRow {
@@ -168,6 +189,10 @@ export interface CreateThreadTypeDTO {
   supplier?: string
   reorder_level_meters?: number
   lead_time_days?: number
+  // Thread restructure FK fields (dual-write)
+  color_id?: number
+  supplier_id?: number
+  color_supplier_id?: number
 }
 
 export interface UpdateThreadTypeDTO extends Partial<CreateThreadTypeDTO> {
@@ -326,6 +351,19 @@ export interface ConeWarehouseBreakdown {
   warehouse_code: string
   warehouse_name: string
   location: string | null
+  full_cones: number
+  partial_cones: number
+  partial_meters: number
+}
+
+/**
+ * Supplier breakdown for a specific thread type
+ * Used for drill-down view showing supplier distribution
+ */
+export interface SupplierBreakdown {
+  supplier_id: number | null
+  supplier_code: string | null
+  supplier_name: string
   full_cones: number
   partial_cones: number
   partial_meters: number

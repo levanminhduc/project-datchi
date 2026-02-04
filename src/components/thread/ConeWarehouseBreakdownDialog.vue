@@ -200,6 +200,86 @@
         </q-table>
       </q-card-section>
 
+      <!-- Supplier breakdown table -->
+      <q-card-section
+        v-if="hasSupplierData"
+        class="q-pt-none"
+      >
+        <div class="text-subtitle1 q-mb-sm">
+          <q-icon
+            name="local_shipping"
+            class="q-mr-xs"
+          />
+          Phân bố theo nhà cung cấp
+        </div>
+        <q-table
+          :rows="supplierBreakdown"
+          :columns="supplierColumns"
+          :loading="loading"
+          row-key="supplier_id"
+          flat
+          bordered
+          dense
+          :pagination="{ rowsPerPage: 0 }"
+          hide-pagination
+        >
+          <template #body-cell-supplier_name="props">
+            <q-td :props="props">
+              <div class="row items-center no-wrap q-gutter-sm">
+                <q-icon
+                  name="business"
+                  size="sm"
+                  color="grey"
+                />
+                <div class="column">
+                  <span
+                    class="text-weight-medium"
+                    :class="{ 'text-grey-6 text-italic': !props.row.supplier_id }"
+                  >
+                    {{ props.row.supplier_name }}
+                  </span>
+                  <span
+                    v-if="props.row.supplier_code"
+                    class="text-caption text-grey"
+                  >
+                    {{ props.row.supplier_code }}
+                  </span>
+                </div>
+              </div>
+            </q-td>
+          </template>
+
+          <template #body-cell-full_cones="props">
+            <q-td
+              :props="props"
+              class="text-center"
+            >
+              <q-badge
+                :color="props.value > 0 ? 'positive' : 'grey'"
+                :label="formatNumber(props.value)"
+              />
+            </q-td>
+          </template>
+
+          <template #body-cell-partial_cones="props">
+            <q-td
+              :props="props"
+              class="text-center"
+            >
+              <q-badge
+                v-if="props.value > 0"
+                color="warning"
+                :label="formatNumber(props.value)"
+              />
+              <span
+                v-else
+                class="text-grey"
+              >-</span>
+            </q-td>
+          </template>
+        </q-table>
+      </q-card-section>
+
       <!-- Actions -->
       <q-card-actions
         align="right"
@@ -219,18 +299,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { QTableColumn } from 'quasar'
-import type { ConeSummaryRow, ConeWarehouseBreakdown } from '@/types/thread'
+import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown } from '@/types/thread'
 
-// Props
 interface Props {
   modelValue: boolean
   threadType: ConeSummaryRow | null
   breakdown: ConeWarehouseBreakdown[]
+  supplierBreakdown?: SupplierBreakdown[]
   loading?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
+  supplierBreakdown: () => [],
 })
 
 // Emits
@@ -281,10 +362,35 @@ const columns: QTableColumn[] = [
   },
 ]
 
-// Computed
-const warehouseCount = computed(() => props.breakdown.length)
+const supplierColumns: QTableColumn[] = [
+  {
+    name: 'supplier_name',
+    label: 'Nhà cung cấp',
+    field: 'supplier_name',
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'full_cones',
+    label: 'Cuộn nguyên',
+    field: 'full_cones',
+    align: 'center',
+    sortable: true,
+    style: 'width: 120px',
+  },
+  {
+    name: 'partial_cones',
+    label: 'Cuộn lẻ',
+    field: 'partial_cones',
+    align: 'center',
+    sortable: true,
+    style: 'width: 100px',
+  },
+]
 
-// Methods
+const warehouseCount = computed(() => props.breakdown.length)
+const hasSupplierData = computed(() => (props.supplierBreakdown?.length || 0) > 0)
+
 const formatNumber = (num: number): string => {
   return new Intl.NumberFormat('vi-VN').format(num)
 }

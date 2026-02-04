@@ -566,6 +566,7 @@
       v-model="showBreakdownDialog"
       :thread-type="selectedConeSummary"
       :breakdown="warehouseBreakdown"
+      :supplier-breakdown="supplierBreakdown"
       :loading="breakdownLoading"
     />
   </q-page>
@@ -606,6 +607,7 @@ const { warehouseOptions, fetchWarehouses, loading: warehousesLoading } = useWar
 const {
   summaryList: coneSummaryList,
   warehouseBreakdown,
+  supplierBreakdown,
   selectedThreadType: selectedConeSummary,
   isLoading: coneSummaryLoading,
   breakdownLoading,

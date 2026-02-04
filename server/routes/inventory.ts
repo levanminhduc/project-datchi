@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
-import type { ThreadApiResponse, ConeRow, ReceiveStockDTO, StocktakeDTO, StocktakeResult, ConeSummaryRow, ConeWarehouseBreakdown, ConeStatus } from '../types/thread'
+import type { ThreadApiResponse, ConeRow, ReceiveStockDTO, StocktakeDTO, StocktakeResult, ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeStatus } from '../types/thread'
 
 const inventory = new Hono()
 
@@ -391,7 +391,6 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
       }, 400)
     }
 
-    // Statuses representing usable stock in warehouse
     const usableStatuses: ConeStatus[] = [
       'RECEIVED',
       'INSPECTED', 
@@ -400,7 +399,6 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
       'HARD_ALLOCATED'
     ]
 
-    // Fetch all usable cones for this thread type with warehouse info
     const { data: cones, error } = await supabase
       .from('thread_inventory')
       .select(`
@@ -408,7 +406,10 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
         quantity_meters,
         is_partial,
         location,
-        warehouses(code, name)
+        lot_id,
+        warehouses(code, name),
+        lots(supplier_id, suppliers(id, code, name)),
+        thread_types!inner(supplier_id, suppliers(id, code, name))
       `)
       .eq('thread_type_id', threadTypeId)
       .in('status', usableStatuses)
@@ -421,8 +422,8 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
       }, 500)
     }
 
-    // Aggregate by warehouse
     const breakdownMap: Map<number, ConeWarehouseBreakdown> = new Map()
+    const supplierMap: Map<string, SupplierBreakdown> = new Map()
 
     for (const cone of cones || []) {
       const whRaw = cone.warehouses
@@ -447,13 +448,51 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
       } else {
         row.full_cones++
       }
+
+      const lotRaw = cone.lots as unknown
+      const lot = (Array.isArray(lotRaw) ? lotRaw[0] : lotRaw) as { supplier_id: number | null; suppliers: unknown } | null
+      const lotSuppliersRaw = lot?.suppliers
+      const lotSupplier = (Array.isArray(lotSuppliersRaw) ? lotSuppliersRaw[0] : lotSuppliersRaw) as { id: number; code: string; name: string } | null
+
+      const threadTypeRaw = cone.thread_types as unknown
+      const threadType = (Array.isArray(threadTypeRaw) ? threadTypeRaw[0] : threadTypeRaw) as { supplier_id: number | null; suppliers: unknown } | null
+      const typeSuppliersRaw = threadType?.suppliers
+      const typeSupplier = (Array.isArray(typeSuppliersRaw) ? typeSuppliersRaw[0] : typeSuppliersRaw) as { id: number; code: string; name: string } | null
+
+      const supplier = lotSupplier || typeSupplier
+      
+      const supplierId = supplier?.id ?? null
+      const supplierKey = String(supplierId ?? 'null')
+
+      if (!supplierMap.has(supplierKey)) {
+        supplierMap.set(supplierKey, {
+          supplier_id: supplierId,
+          supplier_code: supplier?.code ?? null,
+          supplier_name: supplier?.name ?? 'Không xác định',
+          full_cones: 0,
+          partial_cones: 0,
+          partial_meters: 0
+        })
+      }
+
+      const supplierRow = supplierMap.get(supplierKey)!
+      if (cone.is_partial) {
+        supplierRow.partial_cones++
+        supplierRow.partial_meters += cone.quantity_meters || 0
+      } else {
+        supplierRow.full_cones++
+      }
     }
 
     const breakdownList = Array.from(breakdownMap.values())
       .sort((a, b) => a.warehouse_code.localeCompare(b.warehouse_code))
 
-    return c.json<ThreadApiResponse<ConeWarehouseBreakdown[]>>({
+    const supplierBreakdown = Array.from(supplierMap.values())
+      .sort((a, b) => a.supplier_name.localeCompare(b.supplier_name))
+
+    return c.json<ThreadApiResponse<ConeWarehouseBreakdown[]> & { supplier_breakdown: SupplierBreakdown[] }>({
       data: breakdownList,
+      supplier_breakdown: supplierBreakdown,
       error: null,
       message: `Tìm thấy ${breakdownList.length} kho chứa loại chỉ này`
     })

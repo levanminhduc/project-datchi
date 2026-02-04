@@ -10,7 +10,7 @@ import { inventoryService } from '@/services/inventoryService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { useRealtime } from '../useRealtime'
-import type { ConeSummaryRow, ConeWarehouseBreakdown, ConeSummaryFilters } from '@/types/thread'
+import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters } from '@/types/thread'
 
 /**
  * Vietnamese messages for user feedback
@@ -46,6 +46,7 @@ export function useConeSummary() {
   // State
   const summaryList = ref<ConeSummaryRow[]>([])
   const warehouseBreakdown = ref<ConeWarehouseBreakdown[]>([])
+  const supplierBreakdown = ref<SupplierBreakdown[]>([])
   const selectedThreadType = ref<ConeSummaryRow | null>(null)
   const filters = ref<ConeSummaryFilters>({})
   const error = ref<string | null>(null)
@@ -117,8 +118,9 @@ export function useConeSummary() {
     breakdownLoading.value = true
 
     try {
-      const data = await inventoryService.getWarehouseBreakdown(threadTypeId)
-      warehouseBreakdown.value = data
+      const response = await inventoryService.getWarehouseBreakdown(threadTypeId)
+      warehouseBreakdown.value = response.data
+      supplierBreakdown.value = response.supplier_breakdown
     } catch (err) {
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
@@ -147,6 +149,7 @@ export function useConeSummary() {
       await fetchWarehouseBreakdown(row.thread_type_id)
     } else {
       warehouseBreakdown.value = []
+      supplierBreakdown.value = []
     }
   }
 
@@ -173,6 +176,7 @@ export function useConeSummary() {
   const closeBreakdown = (): void => {
     selectedThreadType.value = null
     warehouseBreakdown.value = []
+    supplierBreakdown.value = []
   }
 
   /**
@@ -266,6 +270,7 @@ export function useConeSummary() {
   const reset = (): void => {
     summaryList.value = []
     warehouseBreakdown.value = []
+    supplierBreakdown.value = []
     selectedThreadType.value = null
     filters.value = {}
     error.value = null
@@ -278,6 +283,7 @@ export function useConeSummary() {
     // State
     summaryList,
     warehouseBreakdown,
+    supplierBreakdown,
     selectedThreadType,
     filters,
     error,

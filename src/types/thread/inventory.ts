@@ -105,6 +105,19 @@ export interface ConeWarehouseBreakdown {
 }
 
 /**
+ * Supplier breakdown for a specific thread type
+ * Used for drill-down view showing supplier distribution
+ */
+export interface SupplierBreakdown {
+  supplier_id: number | null
+  supplier_code: string | null
+  supplier_name: string
+  full_cones: number
+  partial_cones: number
+  partial_meters: number
+}
+
+/**
  * Filters for cone summary view
  */
 export interface ConeSummaryFilters {

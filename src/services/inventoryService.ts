@@ -6,7 +6,7 @@
  */
 
 import { fetchApi } from './api'
-import type { Cone, InventoryFilters, ReceiveStockDTO, ConeSummaryRow, ConeWarehouseBreakdown, ConeSummaryFilters } from '@/types/thread'
+import type { Cone, InventoryFilters, ReceiveStockDTO, ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters } from '@/types/thread'
 import type { UnassignedThreadGroup } from '@/types/thread/lot'
 
 interface ApiResponse<T> {
@@ -205,8 +205,8 @@ export const inventoryService = {
    * @param threadTypeId - Thread type ID
    * @returns Array of ConeWarehouseBreakdown
    */
-  async getWarehouseBreakdown(threadTypeId: number): Promise<ConeWarehouseBreakdown[]> {
-    const response = await fetchApi<ApiResponse<ConeWarehouseBreakdown[]>>(
+  async getWarehouseBreakdown(threadTypeId: number): Promise<{ data: ConeWarehouseBreakdown[]; supplier_breakdown: SupplierBreakdown[] }> {
+    const response = await fetchApi<ApiResponse<ConeWarehouseBreakdown[]> & { supplier_breakdown: SupplierBreakdown[] }>(
       `/api/inventory/summary/by-cone/${threadTypeId}/warehouses`
     )
 
@@ -214,7 +214,10 @@ export const inventoryService = {
       throw new Error(response.error)
     }
 
-    return response.data || []
+    return {
+      data: response.data || [],
+      supplier_breakdown: response.supplier_breakdown || []
+    }
   },
 
   async getUnassignedByThreadType(warehouseId: number): Promise<UnassignedThreadGroup[]> {
