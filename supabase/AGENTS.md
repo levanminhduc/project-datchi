@@ -1,40 +1,84 @@
 # Supabase Database Layer
 
-PostgreSQL database với Supabase. 28 migrations + seed data.
+PostgreSQL database với Supabase. 29 migrations + schema reference files.
 
-## STRUCTURE
+## HOW TO READ DATABASE SCHEMA
+
+### 🎯 Chiến lược đọc kết hợp
+
+| Mục đích | Đọc file | Lý do |
+|----------|----------|-------|
+| **Hiểu cấu trúc hiện tại** | `schema/*.sql` | Gọn, tổ chức theo domain |
+| **Xem chi tiết table/column** | `schema/02-04_*.sql` | Có indexes, constraints, comments |
+| **Hiểu logic RPC functions** | `schema/05_functions.sql` | Tất cả functions ở 1 file |
+| **Tìm hiểu lịch sử thay đổi** | `migrations/*.sql` | Khi cần biết "tại sao" |
+| **Debug migration issues** | `migrations/*.sql` | Theo thứ tự timestamp |
+
+### 📁 Schema Files (ĐỌC TRƯỚC - Quick Reference)
+
+```
+supabase/schema/
+├── 00_full_schema.sql              # Full dump (4848 lines) - backup
+├── 01_enums.sql                    # 9 ENUM types
+├── 02_auth_tables.sql              # Auth: employees, roles, permissions
+├── 03_master_data_tables.sql       # Master: warehouses, suppliers, colors, thread_types
+├── 04_thread_operations_tables.sql # Operations: inventory, allocations, movements
+├── 05_functions.sql                # 15 stored procedures (allocate, issue, recover...)
+├── 06_triggers.sql                 # 15 triggers (audit, updated_at...)
+├── 07_indexes.sql                  # Custom indexes
+└── README.md                       # Schema documentation
+```
+
+**Khi nào đọc schema/:**
+- ✅ Cần hiểu cấu trúc database nhanh
+- ✅ Thêm feature mới, cần biết tables/columns có sẵn
+- ✅ Viết query, cần biết relationships
+- ✅ AI agent cần context về DB
+
+### 📁 Migration Files (ĐỌC SAU - Detailed History)
+
+```
+supabase/migrations/           # 29 SQL migrations (timestamp-prefixed)
+├── 20240100000000_employees.sql           # Base employees table
+├── 20240101000001_thread_types.sql        # Thread type master data
+├── 20240101000002_warehouses.sql          # Warehouse locations
+├── 20240101000003_thread_inventory.sql    # Individual cone tracking
+├── 20240101000004_thread_allocations.sql  # Allocation records
+├── 20240101000005_thread_movements.sql    # Inventory movements
+├── 20240101000006_thread_recovery.sql     # Partial cone recovery
+├── 20240101000007_thread_conflicts.sql    # Allocation conflicts
+├── 20240101000008_thread_audit.sql        # Audit trail
+├── 20240101000009_rpc_allocate.sql        # RPC: Allocate threads
+├── 20240101000010_rpc_issue.sql           # RPC: Issue threads
+├── 20240101000011_rpc_recover.sql         # RPC: Recover partial cones
+├── 20240101000012_realtime_enable.sql     # Realtime subscriptions
+├── 20240101000013_rpc_split.sql           # RPC: Split cones
+├── 20240101000014_warehouse_hierarchy.sql # Warehouse hierarchy
+├── 20240101000015a_..._enums.sql          # Request workflow enums
+├── 20240101000015b_..._columns.sql        # Request workflow columns
+├── 20240101000016_lots.sql                # Lot tracking table
+├── 20240101000017_batch_transactions.sql  # Batch transaction logs
+├── 20240101000018_inventory_lot_id.sql    # Lot ID in inventory
+├── 20240101000019_migrate_lot_data.sql    # Lot data migration
+├── 20240101000020_colors.sql              # Color master data
+├── 20240101000021_suppliers.sql           # Supplier master data
+├── 20240101000022_color_supplier.sql      # Color-Supplier junction
+├── 20240101000023_thread_types_fks.sql    # Thread types FKs
+├── 20240101000024_populate_normalized.sql # Data normalization
+├── 20240101000025_auth_permissions.sql    # Auth & RBAC system
+└── create_positions_table.sql             # Employee positions
+```
+
+**Khi nào đọc migrations/:**
+- ✅ Debug tại sao column có constraint X
+- ✅ Hiểu evolution của một table
+- ✅ Tạo migration mới, cần follow pattern
+- ✅ Xem RPC function implementation chi tiết
+
+### 📁 Other Folders
 
 ```
 supabase/
-├── migrations/           # 28 SQL migrations (timestamp-prefixed)
-│   ├── 20240100000000_employees.sql           # Base employees table
-│   ├── 20240101000001_thread_types.sql        # Thread type master data
-│   ├── 20240101000002_warehouses.sql          # Warehouse locations
-│   ├── 20240101000003_thread_inventory.sql    # Individual cone tracking
-│   ├── 20240101000004_thread_allocations.sql  # Allocation records
-│   ├── 20240101000005_thread_movements.sql    # Inventory movements
-│   ├── 20240101000006_thread_recovery.sql     # Partial cone recovery
-│   ├── 20240101000007_thread_conflicts.sql    # Allocation conflicts
-│   ├── 20240101000008_thread_audit.sql        # Audit trail
-│   ├── 20240101000009_rpc_allocate.sql        # RPC: Allocate threads
-│   ├── 20240101000010_rpc_issue.sql           # RPC: Issue threads
-│   ├── 20240101000011_rpc_recover.sql         # RPC: Recover partial cones
-│   ├── 20240101000012_realtime_enable.sql     # Realtime subscriptions
-│   ├── 20240101000013_rpc_split.sql           # RPC: Split cones
-│   ├── 20240101000014_warehouse_hierarchy.sql # Warehouse hierarchy
-│   ├── 20240101000015a_..._enums.sql          # Request workflow enums
-│   ├── 20240101000015b_..._columns.sql        # Request workflow columns
-│   ├── 20240101000016_lots.sql                # Lot tracking table
-│   ├── 20240101000017_batch_transactions.sql  # Batch transaction logs
-│   ├── 20240101000018_inventory_lot_id.sql    # Lot ID in inventory
-│   ├── 20240101000019_migrate_lot_data.sql    # Lot data migration
-│   ├── 20240101000020_colors.sql              # Color master data
-│   ├── 20240101000021_suppliers.sql           # Supplier master data
-│   ├── 20240101000022_color_supplier.sql      # Color-Supplier junction
-│   ├── 20240101000023_thread_types_fks.sql    # Thread types FKs
-│   ├── 20240101000024_populate_normalized.sql # Data normalization
-│   ├── 20240101000025_auth_permissions.sql    # Auth & RBAC system
-│   └── create_positions_table.sql             # Employee positions
 ├── seed/                 # Seed data for development
 │   ├── thread_seed.sql           # Sample thread types & inventory
 │   └── warehouse_hierarchy_seed.sql  # Warehouse structure
@@ -196,3 +240,21 @@ realtime.subscribe({ table: 'thread_inventory', event: '*' }, callback)
 | `server/db/supabase.ts` | Supabase client initialization |
 | `server/routes/*.ts` | API routes using supabaseAdmin |
 | `src/services/*Service.ts` | Frontend API clients |
+
+## REGENERATING SCHEMA FILES
+
+Khi database thay đổi, regenerate schema files:
+
+```bash
+# Full dump
+docker exec supabase_db_project-datchi pg_dump -U postgres -d postgres \
+  --schema=public --schema-only --no-owner --no-acl > supabase/schema/00_full_schema.sql
+
+# Or use supabase CLI
+supabase db dump --schema-only > supabase/schema/00_full_schema.sql
+```
+
+**Lưu ý:**
+- Schema files chỉ để **reference** - KHÔNG chạy trực tiếp
+- Migrations là **source of truth** - dùng cho deployment
+- Sau khi thêm migration mới → regenerate schema files

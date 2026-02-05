@@ -8,6 +8,7 @@
 import type { ThreadMaterial } from './enums'
 import type { Color } from './color'
 import type { Supplier } from './supplier'
+import type { ThreadTypeSupplierWithRelations } from './thread-type-supplier'
 
 /**
  * Thread type entity matching database schema
@@ -97,4 +98,6 @@ export interface ThreadTypeFilters {
 export interface ThreadTypeWithRelations extends ThreadType {
   color_data?: Color | null
   supplier_data?: Supplier | null
+  // Multiple suppliers via junction table (new normalized structure)
+  suppliers?: ThreadTypeSupplierWithRelations[]
 }

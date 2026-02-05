@@ -17,6 +17,7 @@ export { useConflicts } from './thread/useConflicts'
 export { useConeSummary } from './thread/useConeSummary'
 export { useColors } from './thread/useColors'
 export { useSuppliers } from './thread/useSuppliers'
+export { useThreadTypeSuppliers } from './thread/useThreadTypeSuppliers'
 export { useThreadRequests } from './useThreadRequests'
 export { useLots } from './useLots'
 export type {

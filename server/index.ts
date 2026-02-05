@@ -19,6 +19,7 @@ import lotsRouter from './routes/lots'
 import batchRouter from './routes/batch'
 import colorsRouter from './routes/colors'
 import suppliersRouter from './routes/suppliers'
+import threadTypeSuppliersRouter from './routes/thread-type-supplier'
 
 const app = new Hono()
 
@@ -57,6 +58,7 @@ app.route('/api/lots', lotsRouter)
 app.route('/api/batch', batchRouter)
 app.route('/api/colors', colorsRouter)
 app.route('/api/suppliers', suppliersRouter)
+app.route('/api/thread-type-suppliers', threadTypeSuppliersRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
@@ -103,3 +105,4 @@ console.log(`Lots API: http://localhost:${PORT}/api/lots`)
 console.log(`Batch API: http://localhost:${PORT}/api/batch`)
 console.log(`Colors API: http://localhost:${PORT}/api/colors`)
 console.log(`Suppliers API: http://localhost:${PORT}/api/suppliers`)
+console.log(`Thread Type Suppliers API: http://localhost:${PORT}/api/thread-type-suppliers`)

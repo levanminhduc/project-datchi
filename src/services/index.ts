@@ -14,6 +14,7 @@ export { recoveryService } from './recoveryService'
 export { dashboardService } from './dashboardService'
 export { colorService } from './colorService'
 export { supplierService } from './supplierService'
+export { threadTypeSupplierService } from './threadTypeSupplierService'
 export { lotService } from './lotService'
 export type {
   DashboardSummary,

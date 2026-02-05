@@ -113,6 +113,7 @@ declare module 'vue' {
     SyncStatus: typeof import('./components/thread/SyncStatus.vue')['default']
     TabPanel: typeof import('./components/ui/navigation/TabPanel.vue')['default']
     ThreadTypeFormDialog: typeof import('./components/thread/ThreadTypeFormDialog.vue')['default']
+    ThreadTypeSuppliersDialog: typeof import('./components/thread/ThreadTypeSuppliersDialog.vue')['default']
     Timeline: typeof import('./components/ui/scroll/Timeline.vue')['default']
     TimelineEntry: typeof import('./components/ui/scroll/TimelineEntry.vue')['default']
     TimePicker: typeof import('./components/ui/pickers/TimePicker.vue')['default']

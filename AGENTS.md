@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-02-05
-**Commit:** 53ed868
+**Commit:** 3cabd84
 **Branch:** main
 
 ## OVERVIEW
@@ -242,6 +242,7 @@ catch (err) {
 | Duplicate notifications | Composables already notify on CRUD |
 | `createEmployee(formData)` | `createEmployee({ ...formData })` (spread reactive) |
 | `as any`, `@ts-ignore` | Fix types properly |
+| `supabase db reset` without consent | Apply single migration via `psql` (see NOTES) |
 
 ## UNIQUE STYLES
 
@@ -283,6 +284,10 @@ npm run lint       # ESLint fix
 - NEVER run `supabase db reset` without explicit user consent
 - Backup before migrations with DROP/TRUNCATE
 - Check migration content for data-destructive operations
+- To apply a single migration safely:
+  ```bash
+  docker exec -i supabase_db_project-datchi psql -U postgres -d postgres < supabase/migrations/YYYYMMDD_name.sql
+  ```
 
 ### Gotchas
 - `dotenv.config()` MUST be called before `process.env` access in server

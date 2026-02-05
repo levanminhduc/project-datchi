@@ -105,11 +105,42 @@
         </q-td>
       </template>
 
-      <!-- Supplier Column - Display from supplier_data joined object -->
+      <!-- Supplier Column - Display suppliers from junction table or legacy supplier_data -->
       <template #body-cell-supplier="props">
         <q-td :props="props">
+          <!-- New: Show suppliers from junction table if available -->
           <div
-            v-if="props.row.supplier_data"
+            v-if="props.row.suppliers && props.row.suppliers.length > 0"
+            class="row items-center no-wrap"
+          >
+            <q-badge
+              color="teal"
+              outline
+              class="cursor-pointer"
+            >
+              {{ props.row.suppliers.length }} NCC
+              <q-tooltip class="text-body2">
+                <div
+                  v-for="link in props.row.suppliers"
+                  :key="link.id"
+                  class="q-py-xs"
+                >
+                  <strong>{{ link.supplier?.name }}</strong>
+                  <span
+                    v-if="link.supplier_item_code"
+                    class="text-grey-4"
+                  > - {{ link.supplier_item_code }}</span>
+                  <span
+                    v-if="link.unit_price"
+                    class="text-grey-4"
+                  > (₫{{ link.unit_price.toLocaleString() }})</span>
+                </div>
+              </q-tooltip>
+            </q-badge>
+          </div>
+          <!-- Fallback: Legacy single supplier display -->
+          <div
+            v-else-if="props.row.supplier_data"
             class="row items-center no-wrap"
           >
             <q-avatar
@@ -123,7 +154,11 @@
             <span>{{ props.row.supplier_data.name }}</span>
             <span class="text-grey-6 q-ml-xs">({{ props.row.supplier_data.code }})</span>
           </div>
-          <span v-else>{{ props.row.supplier || '---' }}</span>
+          <!-- No supplier -->
+          <span
+            v-else
+            class="text-grey-5"
+          >Chưa có NCC</span>
         </q-td>
       </template>
 
@@ -250,6 +285,16 @@
           :props="props"
           class="q-gutter-x-sm"
         >
+          <q-btn
+            flat
+            round
+            color="teal"
+            icon="business"
+            size="sm"
+            @click="openSuppliersDialog(props.row)"
+          >
+            <q-tooltip>Quản lý nhà cung cấp</q-tooltip>
+          </q-btn>
           <q-btn
             flat
             round
@@ -606,6 +651,13 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Thread Type Suppliers Dialog -->
+    <ThreadTypeSuppliersDialog
+      v-model="suppliersDialog.isOpen"
+      :thread-type="suppliersDialog.threadType"
+      @updated="handleSuppliersUpdated"
+    />
   </q-page>
 </template>
 
@@ -617,6 +669,7 @@ import { ThreadMaterial } from '@/types/thread/enums'
 import type { ThreadType, ThreadTypeFormData } from '@/types/thread/thread-type'
 import ColorSelector from '@/components/ui/inputs/ColorSelector.vue'
 import SupplierSelector from '@/components/ui/inputs/SupplierSelector.vue'
+import ThreadTypeSuppliersDialog from '@/components/thread/ThreadTypeSuppliersDialog.vue'
 
 // Composables
 const snackbar = useSnackbar()
@@ -789,6 +842,12 @@ const detailDialog = reactive({
   threadType: null as ThreadType | null,
 })
 
+// Suppliers Dialog State
+const suppliersDialog = reactive({
+  isOpen: false,
+  threadType: null as ThreadType | null,
+})
+
 // Form Data
 const formData = reactive<ThreadTypeFormData>({
   code: '',
@@ -934,6 +993,17 @@ const editFromDetail = () => {
     detailDialog.isOpen = false
     openEditDialog(type)
   }
+}
+
+// Suppliers Dialog Methods
+const openSuppliersDialog = (type: ThreadType) => {
+  suppliersDialog.threadType = type
+  suppliersDialog.isOpen = true
+}
+
+const handleSuppliersUpdated = () => {
+  // Refresh thread types to get updated supplier data
+  fetchThreadTypes()
 }
 </script>
 
