@@ -6,7 +6,7 @@ State and logic layer. Wraps Quasar plugins, provides domain logic.
 
 ```
 composables/
-├── index.ts             # Barrel exports (21+ composables)
+├── index.ts             # Barrel exports (34 composables)
 ├── use[Name].ts         # Core composables
 ├── thread/              # Domain: inventory, allocations, recovery
 │   └── use[Domain].ts

@@ -6,7 +6,7 @@ Domain-specific Vue components for thread inventory management.
 
 ```
 thread/
-├── index.ts                    # Barrel exports (15 components)
+├── index.ts                    # Barrel exports (30 components)
 ├── [Widget]Widget.vue          # Dashboard widgets
 ├── [Feature]Dialog.vue         # Modal dialogs
 ├── [Feature]Card.vue           # Info cards

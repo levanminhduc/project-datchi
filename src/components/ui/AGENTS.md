@@ -1,24 +1,25 @@
 # src/components/ui/ - UI Component Library
 
-Quasar Framework wrappers with standardized props and TypeScript.
+Quasar Framework wrappers with standardized props and TypeScript. **66 components across 13 categories.**
 
 ## STRUCTURE
 
 ```
 ui/
 ├── index.ts        # Barrel export (re-exports all subdirs)
-├── buttons/        # AppButton, AppIconButton
-├── inputs/         # AppInput, AppSelect, AppDatePicker (12 files)
-├── dialogs/        # AppDialog, AppConfirmDialog
-├── feedback/       # AppSpinner, AppProgress, AppAlert
-├── navigation/     # AppBreadcrumbs, AppTabs
-├── tables/         # AppTable, DataTable
-├── cards/          # AppCard, StatCard
-├── layout/         # AppContainer, AppGrid
+├── buttons/        # AppButton, IconButton, ButtonGroup, ButtonToggle, ButtonDropdown
+├── inputs/         # AppInput, AppSelect, AppTextarea, AppCheckbox, etc. (12 files)
+├── dialogs/        # AppDialog, FormDialog, ConfirmDialog, DeleteDialog, AppMenu, AppTooltip, PopupEdit
+├── feedback/       # AppSpinner, AppProgress, CircularProgress, AppSkeleton, AppBanner, EmptyState, InnerLoading
+├── cards/          # AppCard, StatCard, InfoCard, AppChip, AppBadge
+├── navigation/     # AppTabs, TabPanel, AppStepper, StepperStep, AppPagination, AppBreadcrumbs, SidebarItem
+├── tables/         # DataTable
+├── layout/         # PageHeader, SectionHeader, AppToolbar, AppDrawer, AppSeparator, AppSpace
 ├── lists/          # AppList, ListItem
-├── media/          # AppAvatar, AppImage
-├── pickers/        # DatePicker, ColorPicker
-└── scroll/         # AppScrollArea
+├── media/          # AppImage, AppVideo, AppCarousel, AppParallax
+├── pickers/        # DatePicker, TimePicker, ColorPicker, FilePicker, AppEditor
+├── scroll/         # ScrollArea, InfiniteScroll, VirtualScroll, PullToRefresh, Timeline, TimelineEntry
+└── common/         # Shared utilities
 ```
 
 ## CONVENTIONS

@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-04
-**Commit:** 2d8bfc4
+**Generated:** 2026-02-05
+**Commit:** 53ed868
 **Branch:** main
 
 ## OVERVIEW
@@ -18,17 +18,17 @@ project-datchi/
 │   └── middleware/   # Auth JWT verification
 ├── src/
 │   ├── components/
-│   │   ├── thread/   # 31 domain components (widgets, dialogs)
-│   │   ├── ui/       # Quasar wrappers (12 subdirs)
+│   │   ├── thread/   # 30 domain components (widgets, dialogs)
+│   │   ├── ui/       # Quasar wrappers (13 subdirs, 66 components)
 │   │   ├── qr/       # QR scanning components
 │   │   └── hardware/ # Scanner/scale integration
-│   ├── composables/  # 21 composables (state + logic)
+│   ├── composables/  # 34 composables (state + logic)
 │   │   ├── thread/   # Domain: inventory, allocations, recovery
 │   │   └── hardware/ # Scanner, scale, audio feedback
 │   ├── services/     # 16 API clients (fetchApi pattern)
-│   ├── pages/        # File-based routing (unplugin-vue-router)
+│   ├── pages/        # 31 pages, file-based routing (unplugin-vue-router)
 │   │   └── thread/   # 9 pages + batch/ + mobile/ subdirs
-│   └── types/        # TypeScript (ui/, thread/, auth/)
+│   └── types/        # 30 TypeScript files (ui/, thread/, auth/)
 └── supabase/         # 28 migrations, seed data
 ```
 
@@ -102,7 +102,7 @@ augment-context-engine_codebase-retrieval({
 })
 ```
 
-**Thư viện UI có sẵn (67 components):**
+**Thư viện UI có sẵn (66 components):**
 | Category | Components |
 |----------|------------|
 | `buttons/` | AppButton, IconButton, ButtonGroup, ButtonToggle, ButtonDropdown |
