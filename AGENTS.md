@@ -8,6 +8,42 @@
 
 Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ). Vue 3 + Quasar + Hono + Supabase. Vietnamese-language business app.
 
+## DEFAULT SKILLS FOR THIS PROJECT
+
+Khi delegate task, **BẮT BUỘC** load các skills phù hợp:
+
+| Layer | Skills | Khi nào dùng |
+|-------|--------|--------------|
+| **Frontend** | `vue-best-practices` | Vue components, pages, composables |
+| **Backend** | `hono-routing` | API routes, middleware, server logic |
+| **Database** | `supabase-postgres-best-practices` | Migrations, queries, RLS policies |
+
+**Ví dụ delegation:**
+```typescript
+// Frontend task
+delegate_task(
+  category="visual-engineering",
+  load_skills=["vue-best-practices"],
+  prompt="..."
+)
+
+// Backend task
+delegate_task(
+  category="business-logic",
+  load_skills=["hono-routing"],
+  prompt="..."
+)
+
+// Full-stack task
+delegate_task(
+  category="unspecified-high",
+  load_skills=["vue-best-practices", "hono-routing", "supabase-postgres-best-practices"],
+  prompt="..."
+)
+```
+
+**⚠️ KHÔNG delegate với `load_skills=[]`** - luôn chỉ định skills phù hợp.
+
 ## STRUCTURE
 
 ```
