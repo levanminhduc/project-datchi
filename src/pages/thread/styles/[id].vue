@@ -114,12 +114,14 @@
               </div>
               <div class="col-auto">
                 <q-btn
+                  data-testid="spec-add-btn"
                   color="primary"
                   icon="add"
                   label="Thêm định mức"
                   unelevated
                   dense
-                  @click="openAddSpecDialog()"
+                  :loading="isAddingRow"
+                  @click="addEmptyRow()"
                 />
               </div>
             </div>
@@ -133,34 +135,147 @@
               :loading="specsLoading"
               :pagination="{ rowsPerPage: 10 }"
             >
+              <!-- Inline Edit: Process Name Column -->
+              <template #body-cell-process_name="props">
+                <q-td :props="props" data-testid="spec-cell-process" class="cursor-pointer editable-cell">
+                  <q-spinner-dots
+                    v-if="inlineEditLoading[getCellKey(props.row.id, 'process_name')]"
+                    size="sm"
+                    color="primary"
+                  />
+                  <template v-else>
+                    <span class="cell-value">{{ props.row.process_name || '-' }}</span>
+                    <q-icon name="edit" size="xs" class="edit-hint q-ml-xs text-grey-5" />
+                    <q-popup-edit
+                      v-slot="scope"
+                      v-model="props.row.process_name"
+                      buttons
+                      label-set="Lưu"
+                      label-cancel="Hủy"
+                      @save="(val: string, initialVal: string) => handleInlineEdit(props.row.id, 'process_name', val, initialVal)"
+                    >
+                      <q-input
+                        v-model="scope.value"
+                        dense
+                        autofocus
+                        label="Tên công đoạn"
+                        @keyup.enter="scope.set"
+                      />
+                    </q-popup-edit>
+                  </template>
+                </q-td>
+              </template>
+
+              <!-- Inline Edit: Supplier Column (dropdown) -->
               <template #body-cell-supplier="props">
-                <q-td :props="props">
-                  {{ props.row.suppliers?.name || '-' }}
+                <q-td :props="props" data-testid="spec-cell-supplier" class="cursor-pointer editable-cell">
+                  <q-spinner-dots
+                    v-if="inlineEditLoading[getCellKey(props.row.id, 'supplier_id')]"
+                    size="sm"
+                    color="primary"
+                  />
+                  <template v-else>
+                    <span class="cell-value">{{ props.row.suppliers?.name || '-' }}</span>
+                    <q-icon name="edit" size="xs" class="edit-hint q-ml-xs text-grey-5" />
+                    <q-popup-edit
+                      v-slot="scope"
+                      v-model="props.row.supplier_id"
+                      buttons
+                      label-set="Lưu"
+                      label-cancel="Hủy"
+                      @save="(val: number | null, initialVal: number | null) => handleInlineEdit(props.row.id, 'supplier_id', val, initialVal)"
+                    >
+                      <q-select
+                        v-model="scope.value"
+                        :options="supplierOptions"
+                        option-value="value"
+                        option-label="label"
+                        emit-value
+                        map-options
+                        dense
+                        autofocus
+                        label="Nhà cung cấp"
+                        style="min-width: 200px"
+                      />
+                    </q-popup-edit>
+                  </template>
                 </q-td>
               </template>
+
+              <!-- Inline Edit: Tex Column (dropdown, filtered by row's supplier) -->
               <template #body-cell-tex="props">
-                <q-td :props="props">
-                  {{ props.row.thread_types?.tex_number || '-' }}
+                <q-td :props="props" data-testid="spec-cell-tex" class="cursor-pointer editable-cell">
+                  <q-spinner-dots
+                    v-if="inlineEditLoading[getCellKey(props.row.id, 'tex_id')]"
+                    size="sm"
+                    color="primary"
+                  />
+                  <template v-else>
+                    <span class="cell-value">{{ props.row.thread_types?.tex_number || '-' }}</span>
+                    <q-icon name="edit" size="xs" class="edit-hint q-ml-xs text-grey-5" />
+                    <q-popup-edit
+                      v-slot="scope"
+                      v-model="props.row.tex_id"
+                      buttons
+                      label-set="Lưu"
+                      label-cancel="Hủy"
+                      @save="(val: number | null, initialVal: number | null) => handleInlineEdit(props.row.id, 'tex_id', val, initialVal)"
+                    >
+                      <q-select
+                        v-model="scope.value"
+                        :options="getTexOptionsForRow(props.row)"
+                        option-value="value"
+                        option-label="label"
+                        emit-value
+                        map-options
+                        dense
+                        autofocus
+                        label="Tex"
+                        style="min-width: 150px"
+                        :disable="!props.row.supplier_id"
+                        :hint="!props.row.supplier_id ? 'Chọn NCC trước' : ''"
+                      />
+                    </q-popup-edit>
+                  </template>
                 </q-td>
               </template>
+
+              <!-- Inline Edit: Meters Column -->
               <template #body-cell-meters="props">
-                <q-td :props="props" class="text-right">
-                  {{ props.row.meters_per_unit?.toFixed(2) || '-' }}
+                <q-td :props="props" data-testid="spec-cell-meters" class="cursor-pointer editable-cell text-right">
+                  <q-spinner-dots
+                    v-if="inlineEditLoading[getCellKey(props.row.id, 'meters_per_unit')]"
+                    size="sm"
+                    color="primary"
+                  />
+                  <template v-else>
+                    <span class="cell-value">{{ props.row.meters_per_unit?.toFixed(2) || '-' }}</span>
+                    <q-icon name="edit" size="xs" class="edit-hint q-ml-xs text-grey-5" />
+                    <q-popup-edit
+                      v-slot="scope"
+                      v-model="props.row.meters_per_unit"
+                      buttons
+                      label-set="Lưu"
+                      label-cancel="Hủy"
+                      @save="(val: number, initialVal: number) => handleInlineEdit(props.row.id, 'meters_per_unit', val, initialVal)"
+                    >
+                      <q-input
+                        v-model.number="scope.value"
+                        type="number"
+                        dense
+                        autofocus
+                        label="Mét/SP"
+                        step="0.01"
+                        @keyup.enter="scope.set"
+                      />
+                    </q-popup-edit>
+                  </template>
                 </q-td>
               </template>
+
+              <!-- Actions Column (delete only - edit is inline now) -->
               <template #body-cell-actions="props">
                 <q-td :props="props" class="q-gutter-xs">
-                  <q-btn
-                    flat
-                    round
-                    dense
-                    icon="edit"
-                    color="primary"
-                    size="sm"
-                    @click="handleEditSpec(props.row)"
-                  >
-                    <q-tooltip>Sửa</q-tooltip>
-                  </q-btn>
                   <q-btn
                     flat
                     round
@@ -290,85 +405,6 @@
       />
     </div>
 
-    <!-- Spec Dialog -->
-    <q-dialog v-model="showSpecDialog" persistent>
-      <q-card style="min-width: 450px; max-width: 90vw">
-        <q-card-section class="row items-center">
-          <div class="text-h6">{{ isEditMode ? 'Sửa định mức chỉ' : 'Thêm định mức chỉ' }}</div>
-          <q-space />
-          <q-btn icon="close" flat round dense v-close-popup />
-        </q-card-section>
-
-        <q-separator />
-
-        <q-card-section class="q-gutter-md">
-          <q-input
-            v-model="specForm.process_name"
-            label="Công đoạn *"
-            outlined
-            dense
-            :rules="[(val: string) => !!val || 'Vui lòng nhập công đoạn']"
-          />
-
-          <q-select
-            v-model="specForm.supplier_id"
-            :options="supplierOptions"
-            label="Nhà cung cấp *"
-            outlined
-            dense
-            emit-value
-            map-options
-            :rules="[(val: number | null) => !!val || 'Vui lòng chọn NCC']"
-          />
-
-          <q-select
-            v-model="specForm.tex_id"
-            :options="texOptions"
-            label="Tex (tùy chọn)"
-            outlined
-            dense
-            emit-value
-            map-options
-            clearable
-            :disable="!specForm.supplier_id"
-            hint="Chọn NCC trước để lọc Tex"
-          />
-
-          <q-input
-            v-model.number="specForm.meters_per_unit"
-            label="Định mức mét/SP *"
-            type="number"
-            outlined
-            dense
-            :rules="[(val: number) => val > 0 || 'Phải lớn hơn 0']"
-            step="0.01"
-          />
-
-          <q-input
-            v-model="specForm.notes"
-            label="Ghi chú"
-            type="textarea"
-            outlined
-            dense
-            rows="2"
-          />
-        </q-card-section>
-
-        <q-separator />
-
-        <q-card-actions align="right" class="q-pa-md">
-          <q-btn flat label="Hủy" color="grey" v-close-popup />
-          <q-btn
-            unelevated
-            :label="isEditMode ? 'Cập nhật' : 'Thêm'"
-            color="primary"
-            :loading="specFormLoading"
-            @click="handleSaveSpec"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
     <!-- Color Spec Dialog -->
     <q-dialog v-model="showColorSpecDialog" persistent>
       <q-card style="min-width: 400px; max-width: 90vw">
@@ -433,7 +469,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useThreadTypes, useColors } from '@/composables'
+import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useThreadTypes, useColors, useSnackbar } from '@/composables'
 import type { QTableColumn } from 'quasar'
 import type { StyleThreadSpec } from '@/types/thread'
 
@@ -444,33 +480,106 @@ definePage({
 const route = useRoute('/thread/styles/[id]')
 const router = useRouter()
 const confirm = useConfirm()
+const snackbar = useSnackbar()
 
 const id = computed(() => Number(route.params.id))
 const activeTab = ref('info')
-// Spec dialog state
-const showSpecDialog = ref(false)
-const editingSpec = ref<StyleThreadSpec | null>(null)
-const specFormLoading = ref(false)
-const specForm = ref({
-  process_name: '',
-  supplier_id: null as number | null,
-  tex_id: null as number | null,
-  meters_per_unit: 0,
-  notes: ''
-})
 
-const isEditMode = computed(() => !!editingSpec.value)
+// Inline edit state
+const inlineEditLoading = ref<Record<string, boolean>>({})
+const isAddingRow = ref(false)
+
+const getCellKey = (id: number, field: string): string => `${id}-${field}`
+
+/**
+ * Handle inline field edits via q-popup-edit
+ * @param specId - Spec ID
+ * @param field - Field name being edited
+ * @param newValue - New value from popup edit
+ * @param originalValue - Original value for rollback on error
+ */
+const handleInlineEdit = async (
+  specId: number,
+  field: 'process_name' | 'supplier_id' | 'tex_id' | 'meters_per_unit',
+  newValue: string | number | null,
+  originalValue: string | number | null
+): Promise<void> => {
+  // Skip if no change
+  if (newValue === originalValue) return
+
+  const cellKey = getCellKey(specId, field)
+  inlineEditLoading.value[cellKey] = true
+
+  try {
+    // Optimistic update already applied by v-model
+    const result = await updateSpec(specId, { [field]: newValue })
+
+    if (!result) {
+      // Revert on error - find spec and restore original value
+      const spec = styleThreadSpecs.value.find(s => s.id === specId)
+      if (spec) {
+        ;(spec as Record<string, unknown>)[field] = originalValue
+      }
+    }
+    // Success notification is handled by composable
+  } catch {
+    // Revert on error - composable already handles error notification
+    const spec = styleThreadSpecs.value.find(s => s.id === specId)
+    if (spec) {
+      ;(spec as Record<string, unknown>)[field] = originalValue
+    }
+  } finally {
+    inlineEditLoading.value[cellKey] = false
+  }
+}
+
+/**
+ * Add empty row to table via API
+ * Creates a new spec with default values, user edits inline
+ */
+const addEmptyRow = async (): Promise<void> => {
+  if (!suppliers.value.length) {
+    snackbar.warning('Chưa có nhà cung cấp. Vui lòng thêm NCC trước.')
+    return
+  }
+
+  isAddingRow.value = true
+  try {
+    // Create with default values - first supplier, empty process name
+    const defaultSupplier = suppliers.value[0]!
+    const result = await createSpec({
+      style_id: id.value,
+      process_name: '',
+      supplier_id: defaultSupplier.id,
+      meters_per_unit: 0,
+    })
+    
+    if (result) {
+      // New row is automatically added to styleThreadSpecs by composable
+      // Focus will happen naturally when user clicks on the new row
+      snackbar.info('Đã thêm dòng mới. Click vào ô để nhập dữ liệu.')
+    }
+  } catch {
+    // Error notification handled by composable
+  } finally {
+    isAddingRow.value = false
+  }
+}
 
 const supplierOptions = computed(() => 
   suppliers.value.map(s => ({ label: s.name, value: s.id }))
 )
 
-const texOptions = computed(() => {
-  if (!specForm.value.supplier_id) return []
+/**
+ * Get tex options for inline edit based on row's supplier_id
+ * Used by the inline q-popup-edit dropdown for tex column
+ */
+const getTexOptionsForRow = (row: StyleThreadSpec): { label: string; value: number }[] => {
+  if (!row.supplier_id) return []
   return threadTypes.value
-    .filter(t => t.supplier_id === specForm.value.supplier_id)
+    .filter(t => t.supplier_id === row.supplier_id)
     .map(t => ({ label: `${t.tex_number}`, value: t.id }))
-})
+}
 const isSaving = ref(false)
 const selectedSpecId = ref<number | null>(null)
 const colorSpecsLoading = ref(false)
@@ -580,12 +689,7 @@ const specColumns: QTableColumn[] = [
     align: 'right',
     sortable: true,
   },
-  {
-    name: 'notes',
-    label: 'Ghi chú',
-    field: 'notes',
-    align: 'left',
-  },
+  // Notes column hidden - not in Excel spec from user
   {
     name: 'actions',
     label: 'Thao tác',
@@ -637,10 +741,7 @@ watch(selectedSpecId, async (specId) => {
   }
 })
 
-// Clear tex_id when supplier changes
-watch(() => specForm.value.supplier_id, () => {
-  specForm.value.tex_id = null
-})
+
 
 // Load data on mount
 onMounted(async () => {
@@ -671,70 +772,6 @@ const handleSave = async () => {
     description: form.value.description || undefined,
   })
   isSaving.value = false
-}
-
-// Reset spec form
-const resetSpecForm = () => {
-  specForm.value = {
-    process_name: '',
-    supplier_id: null,
-    tex_id: null,
-    meters_per_unit: 0,
-    notes: ''
-  }
-  editingSpec.value = null
-}
-
-// Open add spec dialog
-const openAddSpecDialog = () => {
-  resetSpecForm()
-  showSpecDialog.value = true
-}
-
-// Edit spec
-const handleEditSpec = (spec: StyleThreadSpec) => {
-  editingSpec.value = spec
-  specForm.value = {
-    process_name: spec.process_name,
-    supplier_id: spec.supplier_id,
-    tex_id: spec.tex_id,
-    meters_per_unit: spec.meters_per_unit,
-    notes: spec.notes || ''
-  }
-  showSpecDialog.value = true
-}
-
-// Save spec (create or update)
-const handleSaveSpec = async () => {
-  if (!specForm.value.process_name || !specForm.value.supplier_id || specForm.value.meters_per_unit <= 0) {
-    return
-  }
-
-  specFormLoading.value = true
-  try {
-    if (isEditMode.value && editingSpec.value) {
-      await updateSpec(editingSpec.value.id, {
-        process_name: specForm.value.process_name,
-        supplier_id: specForm.value.supplier_id!,
-        tex_id: specForm.value.tex_id || undefined,
-        meters_per_unit: specForm.value.meters_per_unit,
-        notes: specForm.value.notes || undefined,
-      })
-    } else {
-      await createSpec({
-        style_id: id.value,
-        process_name: specForm.value.process_name,
-        supplier_id: specForm.value.supplier_id!,
-        tex_id: specForm.value.tex_id || undefined,
-        meters_per_unit: specForm.value.meters_per_unit,
-        notes: specForm.value.notes || undefined,
-      })
-    }
-    showSpecDialog.value = false
-    await fetchStyleThreadSpecs({ style_id: id.value })
-  } finally {
-    specFormLoading.value = false
-  }
 }
 
 // Delete spec
@@ -792,5 +829,14 @@ const handleAddColorSpec = async () => {
   height: 16px;
   border-radius: 4px;
   border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+/* Inline edit styles */
+.editable-cell:hover .edit-hint {
+  opacity: 1 !important;
+}
+.edit-hint {
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 </style>
