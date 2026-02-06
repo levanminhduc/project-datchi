@@ -79,6 +79,21 @@ export interface ThreadTypeRow {
 }
 
 /**
+ * Supplier link from junction table (thread_type_supplier)
+ */
+export interface ThreadTypeSupplierLink {
+  id: number
+  supplier_item_code: string
+  unit_price: number | null
+  is_active: boolean
+  supplier?: {
+    id: number
+    code: string
+    name: string
+  } | null
+}
+
+/**
  * ThreadType with joined color and supplier data
  */
 export interface ThreadTypeWithRelations extends ThreadTypeRow {
@@ -93,6 +108,8 @@ export interface ThreadTypeWithRelations extends ThreadTypeRow {
     code: string
     name: string
   } | null
+  // Suppliers from junction table (many-to-many)
+  suppliers?: ThreadTypeSupplierLink[]
 }
 
 export interface ConeRow {

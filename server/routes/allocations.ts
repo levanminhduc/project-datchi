@@ -186,7 +186,7 @@ allocations.get('/conflicts', async (c) => {
     const status = c.req.query('status') || 'PENDING'
 
     const { data, error } = await supabase
-      .from('thread_allocation_conflicts')
+      .from('thread_conflicts')
       .select(`
         *,
         thread_types(code, name)
@@ -240,6 +240,8 @@ allocations.get('/:id', async (c) => {
       .select(`
         *,
         thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name),
         thread_allocation_cones(
           id,
           cone_id,
@@ -486,6 +488,8 @@ allocations.post('/:id/execute', async (c) => {
       .select(`
         *,
         thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name),
         thread_allocation_cones(
           id,
           cone_id,
@@ -1003,6 +1007,8 @@ allocations.post('/:id/issue', async (c) => {
       .select(`
         *,
         thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name),
         thread_allocation_cones(
           id,
           cone_id,
@@ -1126,7 +1132,9 @@ allocations.post('/:id/cancel', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code)
+        thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
       .single()
 
@@ -1205,7 +1213,9 @@ allocations.post('/:id/resolve', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code)
+        thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
       .single()
 
@@ -1220,7 +1230,7 @@ allocations.post('/:id/resolve', async (c) => {
     // If there's a related conflict, update it as resolved
     if (body.resolution_notes || body.resolved_by) {
       await supabase
-        .from('thread_allocation_conflicts')
+        .from('thread_conflicts')
         .update({
           status: 'RESOLVED',
           resolution_notes: body.resolution_notes || null,
@@ -1264,7 +1274,7 @@ allocations.post('/conflicts/:id/escalate', async (c) => {
 
     // Check conflict exists
     const { data: conflict, error: checkError } = await supabase
-      .from('thread_allocation_conflicts')
+      .from('thread_conflicts')
       .select('*')
       .eq('id', id)
       .single()
@@ -1285,7 +1295,7 @@ allocations.post('/conflicts/:id/escalate', async (c) => {
 
     // Update conflict status to ESCALATED
     const { data, error } = await supabase
-      .from('thread_allocation_conflicts')
+      .from('thread_conflicts')
       .update({
         status: 'ESCALATED',
         resolution_notes: notes || 'Đã leo thang lên cấp quản lý',
@@ -1378,7 +1388,9 @@ allocations.post('/:id/split', async (c) => {
       .from('thread_allocations')
       .select(`
         *,
-        thread_types(id, code, name, color, color_code)
+        thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
       .in('id', [splitResult.original_allocation_id, splitResult.new_allocation_id])
 
@@ -1476,7 +1488,9 @@ allocations.put('/:id', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code)
+        thread_types(id, code, name, color, color_code),
+        requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
+        source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
       .single()
 

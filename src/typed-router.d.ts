@@ -37,6 +37,7 @@ declare module 'vue-router/auto-routes' {
     '/thread/batch/issue': RouteRecordInfo<'/thread/batch/issue', '/thread/batch/issue', Record<never, never>, Record<never, never>>,
     '/thread/batch/receive': RouteRecordInfo<'/thread/batch/receive', '/thread/batch/receive', Record<never, never>, Record<never, never>>,
     '/thread/batch/transfer': RouteRecordInfo<'/thread/batch/transfer', '/thread/batch/transfer', Record<never, never>, Record<never, never>>,
+    '/thread/calculation/': RouteRecordInfo<'/thread/calculation/', '/thread/calculation', Record<never, never>, Record<never, never>>,
     '/thread/colors': RouteRecordInfo<'/thread/colors', '/thread/colors', Record<never, never>, Record<never, never>>,
     '/thread/dashboard': RouteRecordInfo<'/thread/dashboard', '/thread/dashboard', Record<never, never>, Record<never, never>>,
     '/thread/inventory': RouteRecordInfo<'/thread/inventory', '/thread/inventory', Record<never, never>, Record<never, never>>,
@@ -48,6 +49,8 @@ declare module 'vue-router/auto-routes' {
     '/thread/recovery': RouteRecordInfo<'/thread/recovery', '/thread/recovery', Record<never, never>, Record<never, never>>,
     '/thread/requests': RouteRecordInfo<'/thread/requests', '/thread/requests', Record<never, never>, Record<never, never>>,
     '/thread/stocktake': RouteRecordInfo<'/thread/stocktake', '/thread/stocktake', Record<never, never>, Record<never, never>>,
+    '/thread/styles/': RouteRecordInfo<'/thread/styles/', '/thread/styles', Record<never, never>, Record<never, never>>,
+    '/thread/styles/[id]': RouteRecordInfo<'/thread/styles/[id]', '/thread/styles/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     '/thread/suppliers': RouteRecordInfo<'/thread/suppliers', '/thread/suppliers', Record<never, never>, Record<never, never>>,
   }
 
@@ -138,6 +141,10 @@ declare module 'vue-router/auto-routes' {
       routes: '/thread/batch/transfer'
       views: never
     }
+    'src/pages/thread/calculation/index.vue': {
+      routes: '/thread/calculation/'
+      views: never
+    }
     'src/pages/thread/colors.vue': {
       routes: '/thread/colors'
       views: never
@@ -180,6 +187,14 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/thread/stocktake.vue': {
       routes: '/thread/stocktake'
+      views: never
+    }
+    'src/pages/thread/styles/index.vue': {
+      routes: '/thread/styles/'
+      views: never
+    }
+    'src/pages/thread/styles/[id].vue': {
+      routes: '/thread/styles/[id]'
       views: never
     }
     'src/pages/thread/suppliers.vue': {

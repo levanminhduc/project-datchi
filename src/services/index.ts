@@ -16,13 +16,12 @@ export { colorService } from './colorService'
 export { supplierService } from './supplierService'
 export { threadTypeSupplierService } from './threadTypeSupplierService'
 export { lotService } from './lotService'
-export type {
-  DashboardSummary,
-  StockAlert,
-  PendingItems,
-  ActivityItem,
-  ConflictsSummary,
-} from './dashboardService'
+
+// Thread specification services
+export { purchaseOrderService } from './purchaseOrderService'
+export { styleService } from './styleService'
+export { styleThreadSpecService } from './styleThreadSpecService'
+export { threadCalculationService } from './threadCalculationService'
 
 // Reports
 export { reportService } from './reportService'

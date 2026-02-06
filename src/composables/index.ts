@@ -20,13 +20,12 @@ export { useSuppliers } from './thread/useSuppliers'
 export { useThreadTypeSuppliers } from './thread/useThreadTypeSuppliers'
 export { useThreadRequests } from './useThreadRequests'
 export { useLots } from './useLots'
-export type {
-  ThreadConflict,
-  ConflictAllocation,
-  ConflictResolutionType,
-  ResolveConflictDTO,
-  ConflictFilters,
-} from './thread/useConflicts'
+
+// Thread specification composables
+export { usePurchaseOrders } from './thread/usePurchaseOrders'
+export { useStyles } from './thread/useStyles'
+export { useStyleThreadSpecs } from './thread/useStyleThreadSpecs'
+export { useThreadCalculation } from './thread/useThreadCalculation'
 
 // Reports
 export { useReports } from './useReports'

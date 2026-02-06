@@ -1,0 +1,74 @@
+// Style Thread Spec Types
+
+export interface StyleThreadSpec {
+  id: number
+  style_id: number
+  supplier_id: number
+  process_name: string
+  tex_id: number | null
+  meters_per_unit: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+  // Joined fields
+  suppliers?: {
+    id: number
+    name: string
+  }
+  thread_types?: {
+    id: number
+    tex_number: string
+    name: string
+  }
+}
+
+export interface StyleColorThreadSpec {
+  id: number
+  style_thread_spec_id: number
+  color_id: number
+  thread_type_id: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+  // Joined fields
+  colors?: {
+    id: number
+    name: string
+    hex_code: string | null
+  }
+  thread_types?: {
+    id: number
+    name: string
+    tex_number: string
+  }
+}
+
+export interface CreateStyleThreadSpecDTO {
+  style_id: number
+  supplier_id: number
+  process_name: string
+  tex_id?: number
+  meters_per_unit: number
+  notes?: string
+}
+
+export interface UpdateStyleThreadSpecDTO {
+  style_id?: number
+  supplier_id?: number
+  process_name?: string
+  tex_id?: number
+  meters_per_unit?: number
+  notes?: string
+}
+
+export interface CreateStyleColorThreadSpecDTO {
+  style_thread_spec_id: number
+  color_id: number
+  thread_type_id: number
+  notes?: string
+}
+
+export interface StyleThreadSpecFilter {
+  style_id?: number
+  supplier_id?: number
+}

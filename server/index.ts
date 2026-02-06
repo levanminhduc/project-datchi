@@ -20,6 +20,10 @@ import batchRouter from './routes/batch'
 import colorsRouter from './routes/colors'
 import suppliersRouter from './routes/suppliers'
 import threadTypeSuppliersRouter from './routes/thread-type-supplier'
+import purchaseOrdersRouter from './routes/purchaseOrders'
+import stylesRouter from './routes/styles'
+import styleThreadSpecsRouter from './routes/styleThreadSpecs'
+import threadCalculationRouter from './routes/threadCalculation'
 
 const app = new Hono()
 
@@ -59,6 +63,10 @@ app.route('/api/batch', batchRouter)
 app.route('/api/colors', colorsRouter)
 app.route('/api/suppliers', suppliersRouter)
 app.route('/api/thread-type-suppliers', threadTypeSuppliersRouter)
+app.route('/api/purchase-orders', purchaseOrdersRouter)
+app.route('/api/styles', stylesRouter)
+app.route('/api/style-thread-specs', styleThreadSpecsRouter)
+app.route('/api/thread-calculation', threadCalculationRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
@@ -106,3 +114,7 @@ console.log(`Batch API: http://localhost:${PORT}/api/batch`)
 console.log(`Colors API: http://localhost:${PORT}/api/colors`)
 console.log(`Suppliers API: http://localhost:${PORT}/api/suppliers`)
 console.log(`Thread Type Suppliers API: http://localhost:${PORT}/api/thread-type-suppliers`)
+console.log(`Purchase Orders API: http://localhost:${PORT}/api/purchase-orders`)
+console.log(`Styles API: http://localhost:${PORT}/api/styles`)
+console.log(`Style Thread Specs API: http://localhost:${PORT}/api/style-thread-specs`)
+console.log(`Thread Calculation API: http://localhost:${PORT}/api/thread-calculation`)

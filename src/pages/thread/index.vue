@@ -753,27 +753,15 @@ const columns: QTableColumn[] = [
     sortable: true,
   },
   {
-    name: 'material',
-    label: 'Chất Liệu',
-    field: 'material',
-    align: 'left',
-    sortable: true,
-  },
-  {
-    name: 'density_grams_per_meter',
-    label: 'Mật độ (g/m)',
-    field: 'density_grams_per_meter',
+    name: 'reorder_level',
+    label: 'Mức tái đặt',
+    field: (row: ThreadType) => {
+      if (!row.meters_per_cone || row.meters_per_cone === 0) return null
+      return Math.ceil(row.reorder_level_meters / row.meters_per_cone)
+    },
     align: 'right',
     sortable: true,
-    format: (val: number) => val.toFixed(4),
-  },
-  {
-    name: 'reorder_level_meters',
-    label: 'Mức tái đặt (m)',
-    field: 'reorder_level_meters',
-    align: 'right',
-    sortable: true,
-    format: (val: number) => val.toLocaleString(),
+    format: (val: number | null) => val !== null ? `${val} cuộn` : '-',
   },
   {
     name: 'is_active',

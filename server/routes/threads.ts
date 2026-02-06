@@ -50,12 +50,14 @@ threads.get('/', async (c) => {
     const isActive = c.req.query('is_active')
 
     // LEFT JOIN colors and suppliers tables for related data
+    // Also fetch suppliers from junction table (many-to-many)
     let query = supabase
       .from('thread_types')
       .select(`
         *,
         color_data:colors(id, name, hex_code, pantone_code),
-        supplier_data:suppliers(id, code, name)
+        supplier_data:suppliers(id, code, name),
+        suppliers:thread_type_supplier(id, supplier_item_code, unit_price, is_active, supplier:suppliers(id, code, name))
       `)
       .order('created_at', { ascending: false })
 
@@ -115,7 +117,7 @@ threads.get('/', async (c) => {
 
 /**
  * GET /api/threads/:id - Get single thread type by ID
- * Returns joined color_data and supplier_data
+ * Returns joined color_data, supplier_data, and suppliers from junction table
  */
 threads.get('/:id', async (c) => {
   try {
@@ -133,7 +135,8 @@ threads.get('/:id', async (c) => {
       .select(`
         *,
         color_data:colors(id, name, hex_code, pantone_code),
-        supplier_data:suppliers(id, code, name)
+        supplier_data:suppliers(id, code, name),
+        suppliers:thread_type_supplier(id, supplier_item_code, unit_price, is_active, supplier:suppliers(id, code, name))
       `)
       .eq('id', id)
       .single()

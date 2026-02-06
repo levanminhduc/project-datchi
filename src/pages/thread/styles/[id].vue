@@ -1,0 +1,796 @@
+<template>
+  <q-page padding>
+    <!-- Header with back button -->
+    <div class="row items-center q-mb-lg">
+      <q-btn
+        flat
+        round
+        icon="arrow_back"
+        color="primary"
+        @click="$router.push('/thread/styles')"
+      />
+      <div class="q-ml-md">
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
+          Chi tiết Mã hàng
+        </h1>
+        <div v-if="selectedStyle" class="text-grey-6">
+          {{ selectedStyle.style_code }} - {{ selectedStyle.style_name }}
+        </div>
+      </div>
+      <q-space />
+    </div>
+
+    <!-- Loading -->
+    <div v-if="isLoading" class="row justify-center q-py-xl">
+      <q-spinner size="lg" color="primary" />
+    </div>
+
+    <!-- Content -->
+    <template v-else-if="selectedStyle">
+      <q-card flat bordered>
+        <q-tabs
+          v-model="activeTab"
+          class="text-primary"
+          align="left"
+          active-color="primary"
+          indicator-color="primary"
+        >
+          <q-tab name="info" label="Thông tin chung" />
+          <q-tab name="specs" label="Định mức chỉ" />
+          <q-tab name="colors" label="Định mức màu" />
+        </q-tabs>
+
+        <q-separator />
+
+        <q-tab-panels v-model="activeTab" animated>
+          <!-- Tab 1: Thông tin chung -->
+          <q-tab-panel name="info">
+            <div class="row q-col-gutter-md">
+              <div class="col-12 col-sm-6">
+                <q-input
+                  v-model="form.style_code"
+                  label="Mã hàng"
+                  outlined
+                  dense
+                  readonly
+                  disable
+                  hint="Mã hàng không thể thay đổi"
+                />
+              </div>
+              <div class="col-12 col-sm-6">
+                <q-input
+                  v-model="form.style_name"
+                  label="Tên mã hàng"
+                  outlined
+                  dense
+                  :rules="[(val: string) => !!val || 'Vui lòng nhập tên mã hàng']"
+                />
+              </div>
+              <div class="col-12 col-sm-6">
+                <q-select
+                  v-model="form.fabric_type"
+                  :options="fabricTypeOptions"
+                  label="Loại vải"
+                  outlined
+                  dense
+                  emit-value
+                  map-options
+                  clearable
+                />
+              </div>
+              <div class="col-12">
+                <q-input
+                  v-model="form.description"
+                  label="Mô tả"
+                  type="textarea"
+                  outlined
+                  dense
+                  rows="3"
+                />
+              </div>
+              <div class="col-12">
+                <q-btn
+                  color="primary"
+                  icon="save"
+                  label="Lưu thay đổi"
+                  unelevated
+                  :loading="isSaving"
+                  @click="handleSave"
+                />
+              </div>
+            </div>
+          </q-tab-panel>
+
+          <!-- Tab 2: Định mức chỉ -->
+          <q-tab-panel name="specs">
+            <div class="row q-mb-md items-center">
+              <div class="col">
+                <div class="text-subtitle1 text-weight-medium">
+                  Danh sách định mức chỉ
+                </div>
+                <div class="text-caption text-grey-6">
+                  Định mức mét chỉ tiêu hao cho mỗi sản phẩm theo công đoạn
+                </div>
+              </div>
+              <div class="col-auto">
+                <q-btn
+                  color="primary"
+                  icon="add"
+                  label="Thêm định mức"
+                  unelevated
+                  dense
+                  @click="openAddSpecDialog()"
+                />
+              </div>
+            </div>
+
+            <q-table
+              :rows="styleThreadSpecs"
+              :columns="specColumns"
+              row-key="id"
+              flat
+              bordered
+              :loading="specsLoading"
+              :pagination="{ rowsPerPage: 10 }"
+            >
+              <template #body-cell-supplier="props">
+                <q-td :props="props">
+                  {{ props.row.suppliers?.name || '-' }}
+                </q-td>
+              </template>
+              <template #body-cell-tex="props">
+                <q-td :props="props">
+                  {{ props.row.thread_types?.tex_number || '-' }}
+                </q-td>
+              </template>
+              <template #body-cell-meters="props">
+                <q-td :props="props" class="text-right">
+                  {{ props.row.meters_per_unit?.toFixed(2) || '-' }}
+                </q-td>
+              </template>
+              <template #body-cell-actions="props">
+                <q-td :props="props" class="q-gutter-xs">
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="edit"
+                    color="primary"
+                    size="sm"
+                    @click="handleEditSpec(props.row)"
+                  >
+                    <q-tooltip>Sửa</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="delete"
+                    color="negative"
+                    size="sm"
+                    @click="handleDeleteSpec(props.row)"
+                  >
+                    <q-tooltip>Xóa</q-tooltip>
+                  </q-btn>
+                </q-td>
+              </template>
+              <template #no-data>
+                <div class="full-width row flex-center text-grey-6 q-py-lg">
+                  <q-icon name="info" size="sm" class="q-mr-sm" />
+                  Chưa có định mức chỉ nào được thiết lập
+                </div>
+              </template>
+            </q-table>
+          </q-tab-panel>
+
+          <!-- Tab 3: Định mức màu -->
+          <q-tab-panel name="colors">
+            <div class="row q-mb-md items-center">
+              <div class="col">
+                <div class="text-subtitle1 text-weight-medium">
+                  Định mức theo màu chỉ
+                </div>
+                <div class="text-caption text-grey-6">
+                  Chọn màu chỉ cụ thể cho từng định mức
+                </div>
+              </div>
+              <div class="col-auto" v-if="selectedSpecId">
+                <q-btn
+                  color="primary"
+                  icon="add"
+                  label="Thêm màu"
+                  unelevated
+                  dense
+                  @click="openColorSpecDialog()"
+                />
+              </div>
+            </div>
+
+            <div v-if="styleThreadSpecs.length === 0" class="text-center q-py-xl">
+              <q-icon name="palette" size="xl" color="grey-5" />
+              <p class="text-grey-6 q-mt-md">
+                Vui lòng thêm định mức chỉ trước khi thiết lập màu
+              </p>
+              <q-btn
+                outline
+                color="primary"
+                label="Đi đến Định mức chỉ"
+                @click="activeTab = 'specs'"
+              />
+            </div>
+
+            <template v-else>
+              <div class="q-mb-md">
+                <q-select
+                  v-model="selectedSpecId"
+                  :options="specSelectOptions"
+                  label="Chọn định mức"
+                  outlined
+                  dense
+                  emit-value
+                  map-options
+                  style="max-width: 400px"
+                />
+              </div>
+
+              <q-table
+                v-if="selectedSpecId"
+                :rows="colorSpecs"
+                :columns="colorSpecColumns"
+                row-key="id"
+                flat
+                bordered
+                :loading="colorSpecsLoading"
+                :pagination="{ rowsPerPage: 10 }"
+              >
+                <template #body-cell-color="props">
+                  <q-td :props="props">
+                    <div class="row items-center no-wrap q-gutter-xs">
+                      <div
+                        v-if="props.row.colors?.hex_code"
+                        class="color-swatch"
+                        :style="{ backgroundColor: props.row.colors.hex_code }"
+                      />
+                      <span>{{ props.row.colors?.name || '-' }}</span>
+                    </div>
+                  </q-td>
+                </template>
+                <template #body-cell-thread="props">
+                  <q-td :props="props">
+                    {{ props.row.thread_types?.name || '-' }}
+                  </q-td>
+                </template>
+                <template #no-data>
+                  <div class="full-width row flex-center text-grey-6 q-py-lg">
+                    <q-icon name="info" size="sm" class="q-mr-sm" />
+                    Chưa có định mức màu nào được thiết lập
+                  </div>
+                </template>
+              </q-table>
+
+              <div v-else class="text-center q-py-lg text-grey-6">
+                <q-icon name="arrow_upward" size="md" />
+                <p>Vui lòng chọn một định mức từ danh sách ở trên</p>
+              </div>
+            </template>
+          </q-tab-panel>
+        </q-tab-panels>
+      </q-card>
+    </template>
+
+    <!-- Not found -->
+    <div v-else class="text-center q-py-xl">
+      <q-icon name="error" size="xl" color="negative" />
+      <p class="text-h6 text-grey-7 q-mt-md">Không tìm thấy mã hàng</p>
+      <q-btn
+        color="primary"
+        label="Quay lại danh sách"
+        unelevated
+        @click="$router.push('/thread/styles')"
+      />
+    </div>
+
+    <!-- Spec Dialog -->
+    <q-dialog v-model="showSpecDialog" persistent>
+      <q-card style="min-width: 450px; max-width: 90vw">
+        <q-card-section class="row items-center">
+          <div class="text-h6">{{ isEditMode ? 'Sửa định mức chỉ' : 'Thêm định mức chỉ' }}</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-section class="q-gutter-md">
+          <q-input
+            v-model="specForm.process_name"
+            label="Công đoạn *"
+            outlined
+            dense
+            :rules="[(val: string) => !!val || 'Vui lòng nhập công đoạn']"
+          />
+
+          <q-select
+            v-model="specForm.supplier_id"
+            :options="supplierOptions"
+            label="Nhà cung cấp *"
+            outlined
+            dense
+            emit-value
+            map-options
+            :rules="[(val: number | null) => !!val || 'Vui lòng chọn NCC']"
+          />
+
+          <q-select
+            v-model="specForm.tex_id"
+            :options="texOptions"
+            label="Tex (tùy chọn)"
+            outlined
+            dense
+            emit-value
+            map-options
+            clearable
+            :disable="!specForm.supplier_id"
+            hint="Chọn NCC trước để lọc Tex"
+          />
+
+          <q-input
+            v-model.number="specForm.meters_per_unit"
+            label="Định mức mét/SP *"
+            type="number"
+            outlined
+            dense
+            :rules="[(val: number) => val > 0 || 'Phải lớn hơn 0']"
+            step="0.01"
+          />
+
+          <q-input
+            v-model="specForm.notes"
+            label="Ghi chú"
+            type="textarea"
+            outlined
+            dense
+            rows="2"
+          />
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-actions align="right" class="q-pa-md">
+          <q-btn flat label="Hủy" color="grey" v-close-popup />
+          <q-btn
+            unelevated
+            :label="isEditMode ? 'Cập nhật' : 'Thêm'"
+            color="primary"
+            :loading="specFormLoading"
+            @click="handleSaveSpec"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Color Spec Dialog -->
+    <q-dialog v-model="showColorSpecDialog" persistent>
+      <q-card style="min-width: 400px; max-width: 90vw">
+        <q-card-section class="row items-center">
+          <div class="text-h6">Thêm định mức màu</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-section class="q-gutter-md">
+          <q-select
+            v-model="colorSpecForm.color_id"
+            :options="colorOptions"
+            label="Màu sản phẩm *"
+            outlined
+            dense
+            emit-value
+            map-options
+            :rules="[(val: number | null) => !!val || 'Vui lòng chọn màu']"
+          />
+
+          <q-select
+            v-model="colorSpecForm.thread_type_id"
+            :options="colorSpecThreadOptions"
+            label="Loại chỉ *"
+            outlined
+            dense
+            emit-value
+            map-options
+            :rules="[(val: number | null) => !!val || 'Vui lòng chọn loại chỉ']"
+          />
+
+          <q-input
+            v-model="colorSpecForm.notes"
+            label="Ghi chú"
+            type="textarea"
+            outlined
+            dense
+            rows="2"
+          />
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-actions align="right" class="q-pa-md">
+          <q-btn flat label="Hủy" color="grey" v-close-popup />
+          <q-btn
+            unelevated
+            label="Thêm"
+            color="primary"
+            :loading="colorSpecFormLoading"
+            @click="handleAddColorSpec"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+  </q-page>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useThreadTypes, useColors } from '@/composables'
+import type { QTableColumn } from 'quasar'
+import type { StyleThreadSpec } from '@/types/thread'
+
+definePage({
+  meta: { requiresAuth: true }
+})
+
+const route = useRoute('/thread/styles/[id]')
+const router = useRouter()
+const confirm = useConfirm()
+
+const id = computed(() => Number(route.params.id))
+const activeTab = ref('info')
+// Spec dialog state
+const showSpecDialog = ref(false)
+const editingSpec = ref<StyleThreadSpec | null>(null)
+const specFormLoading = ref(false)
+const specForm = ref({
+  process_name: '',
+  supplier_id: null as number | null,
+  tex_id: null as number | null,
+  meters_per_unit: 0,
+  notes: ''
+})
+
+const isEditMode = computed(() => !!editingSpec.value)
+
+const supplierOptions = computed(() => 
+  suppliers.value.map(s => ({ label: s.name, value: s.id }))
+)
+
+const texOptions = computed(() => {
+  if (!specForm.value.supplier_id) return []
+  return threadTypes.value
+    .filter(t => t.supplier_id === specForm.value.supplier_id)
+    .map(t => ({ label: `${t.tex_number}`, value: t.id }))
+})
+const isSaving = ref(false)
+const selectedSpecId = ref<number | null>(null)
+const colorSpecsLoading = ref(false)
+
+// Color spec dialog state
+const showColorSpecDialog = ref(false)
+const colorSpecFormLoading = ref(false)
+const colorSpecForm = ref({
+  color_id: null as number | null,
+  thread_type_id: null as number | null,
+  notes: ''
+})
+
+const colorOptions = computed(() =>
+  allColors.value.filter(c => c.is_active).map(c => ({
+    label: c.name,
+    value: c.id
+  }))
+)
+
+// Thread type options filtered by the selected spec's supplier
+const colorSpecThreadOptions = computed(() => {
+  if (!selectedSpecId.value) return []
+  const spec = styleThreadSpecs.value.find(s => s.id === selectedSpecId.value)
+  if (!spec) return []
+  return threadTypes.value
+    .filter(t => t.supplier_id === spec.supplier_id)
+    .map(t => ({ label: `${t.tex_number} - ${t.name || t.color || ''}`, value: t.id }))
+})
+
+// Composables
+const {
+  selectedStyle,
+  isLoading,
+  fetchStyleById,
+  updateStyle,
+} = useStyles()
+
+const {
+  styleThreadSpecs,
+  colorSpecs,
+  isLoading: specsLoading,
+  fetchStyleThreadSpecs,
+  fetchColorSpecs,
+  deleteSpec,
+  createSpec,
+  updateSpec,
+  addColorSpec,
+} = useStyleThreadSpecs()
+
+const { colors: allColors, fetchColors } = useColors()
+
+const { suppliers, fetchSuppliers } = useSuppliers()
+const { threadTypes, fetchThreadTypes } = useThreadTypes()
+
+// Form state
+const form = ref({
+  style_code: '',
+  style_name: '',
+  fabric_type: null as string | null,
+  description: '',
+})
+
+// Fabric type options
+const fabricTypeOptions = [
+  { label: 'Cotton', value: 'Cotton' },
+  { label: 'Polyester', value: 'Polyester' },
+  { label: 'Blend', value: 'Blend' },
+  { label: 'Khác', value: 'Other' },
+]
+
+// Spec select options for color tab
+const specSelectOptions = computed(() =>
+  styleThreadSpecs.value.map((spec) => ({
+    label: `${spec.process_name} - ${spec.suppliers?.name || 'N/A'} (${spec.thread_types?.tex_number || 'N/A'})`,
+    value: spec.id,
+  }))
+)
+
+// Table columns for specs
+const specColumns: QTableColumn[] = [
+  {
+    name: 'process_name',
+    label: 'Công đoạn',
+    field: 'process_name',
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'supplier',
+    label: 'NCC',
+    field: (row) => row.suppliers?.name,
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'tex',
+    label: 'Tex',
+    field: (row) => row.thread_types?.tex_number,
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'meters',
+    label: 'Mét/SP',
+    field: 'meters_per_unit',
+    align: 'right',
+    sortable: true,
+  },
+  {
+    name: 'notes',
+    label: 'Ghi chú',
+    field: 'notes',
+    align: 'left',
+  },
+  {
+    name: 'actions',
+    label: 'Thao tác',
+    field: 'actions',
+    align: 'center',
+  },
+]
+
+// Table columns for color specs
+const colorSpecColumns: QTableColumn[] = [
+  {
+    name: 'color',
+    label: 'Màu',
+    field: (row) => row.colors?.name,
+    align: 'left',
+  },
+  {
+    name: 'thread',
+    label: 'Loại chỉ',
+    field: (row) => row.thread_types?.name,
+    align: 'left',
+  },
+  {
+    name: 'notes',
+    label: 'Ghi chú',
+    field: 'notes',
+    align: 'left',
+  },
+]
+
+// Initialize form when style is loaded
+watch(selectedStyle, (style) => {
+  if (style) {
+    form.value = {
+      style_code: style.style_code,
+      style_name: style.style_name,
+      fabric_type: style.fabric_type,
+      description: style.description || '',
+    }
+  }
+}, { immediate: true })
+
+// Fetch color specs when spec is selected
+watch(selectedSpecId, async (specId) => {
+  if (specId) {
+    colorSpecsLoading.value = true
+    await fetchColorSpecs(specId)
+    colorSpecsLoading.value = false
+  }
+})
+
+// Clear tex_id when supplier changes
+watch(() => specForm.value.supplier_id, () => {
+  specForm.value.tex_id = null
+})
+
+// Load data on mount
+onMounted(async () => {
+  if (isNaN(id.value)) {
+    router.push('/thread/styles')
+    return
+  }
+
+  await Promise.all([
+    fetchStyleById(id.value),
+    fetchStyleThreadSpecs({ style_id: id.value }),
+    fetchSuppliers(),
+    fetchThreadTypes(),
+    fetchColors(),
+  ])
+})
+
+// Save style info
+const handleSave = async () => {
+  if (!form.value.style_name) {
+    return
+  }
+
+  isSaving.value = true
+  await updateStyle(id.value, {
+    style_name: form.value.style_name,
+    fabric_type: form.value.fabric_type || undefined,
+    description: form.value.description || undefined,
+  })
+  isSaving.value = false
+}
+
+// Reset spec form
+const resetSpecForm = () => {
+  specForm.value = {
+    process_name: '',
+    supplier_id: null,
+    tex_id: null,
+    meters_per_unit: 0,
+    notes: ''
+  }
+  editingSpec.value = null
+}
+
+// Open add spec dialog
+const openAddSpecDialog = () => {
+  resetSpecForm()
+  showSpecDialog.value = true
+}
+
+// Edit spec
+const handleEditSpec = (spec: StyleThreadSpec) => {
+  editingSpec.value = spec
+  specForm.value = {
+    process_name: spec.process_name,
+    supplier_id: spec.supplier_id,
+    tex_id: spec.tex_id,
+    meters_per_unit: spec.meters_per_unit,
+    notes: spec.notes || ''
+  }
+  showSpecDialog.value = true
+}
+
+// Save spec (create or update)
+const handleSaveSpec = async () => {
+  if (!specForm.value.process_name || !specForm.value.supplier_id || specForm.value.meters_per_unit <= 0) {
+    return
+  }
+
+  specFormLoading.value = true
+  try {
+    if (isEditMode.value && editingSpec.value) {
+      await updateSpec(editingSpec.value.id, {
+        process_name: specForm.value.process_name,
+        supplier_id: specForm.value.supplier_id!,
+        tex_id: specForm.value.tex_id || undefined,
+        meters_per_unit: specForm.value.meters_per_unit,
+        notes: specForm.value.notes || undefined,
+      })
+    } else {
+      await createSpec({
+        style_id: id.value,
+        process_name: specForm.value.process_name,
+        supplier_id: specForm.value.supplier_id!,
+        tex_id: specForm.value.tex_id || undefined,
+        meters_per_unit: specForm.value.meters_per_unit,
+        notes: specForm.value.notes || undefined,
+      })
+    }
+    showSpecDialog.value = false
+    await fetchStyleThreadSpecs({ style_id: id.value })
+  } finally {
+    specFormLoading.value = false
+  }
+}
+
+// Delete spec
+const handleDeleteSpec = async (spec: StyleThreadSpec) => {
+  const confirmed = await confirm.confirmDelete({
+    itemName: spec.process_name,
+  })
+
+  if (confirmed) {
+    await deleteSpec(spec.id)
+    await fetchStyleThreadSpecs({ style_id: id.value })
+  }
+}
+
+// Reset color spec form
+const resetColorSpecForm = () => {
+  colorSpecForm.value = {
+    color_id: null,
+    thread_type_id: null,
+    notes: ''
+  }
+}
+
+// Open color spec dialog
+const openColorSpecDialog = () => {
+  resetColorSpecForm()
+  showColorSpecDialog.value = true
+}
+
+// Add color spec
+const handleAddColorSpec = async () => {
+  if (!colorSpecForm.value.color_id || !colorSpecForm.value.thread_type_id || !selectedSpecId.value) {
+    return
+  }
+
+  colorSpecFormLoading.value = true
+  try {
+    await addColorSpec(selectedSpecId.value, {
+      style_thread_spec_id: selectedSpecId.value,
+      color_id: colorSpecForm.value.color_id,
+      thread_type_id: colorSpecForm.value.thread_type_id,
+      notes: colorSpecForm.value.notes || undefined,
+    })
+    showColorSpecDialog.value = false
+    await fetchColorSpecs(selectedSpecId.value)
+  } finally {
+    colorSpecFormLoading.value = false
+  }
+}
+</script>
+
+<style scoped>
+.color-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+</style>
