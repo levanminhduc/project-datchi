@@ -99,7 +99,7 @@ export function useStyleThreadSpecs() {
         return await styleThreadSpecService.create(data)
       })
 
-      snackbar.success('Tao dinh muc chi thanh cong')
+      snackbar.success('Tạo định mức chỉ thành công')
       await fetchStyleThreadSpecs()
       return result
     } catch (err) {
@@ -123,7 +123,7 @@ export function useStyleThreadSpecs() {
         return await styleThreadSpecService.update(id, data)
       })
 
-      snackbar.success('Cap nhat dinh muc chi thanh cong')
+      snackbar.success('Cập nhật định mức chỉ thành công')
       await fetchStyleThreadSpecs()
       return result
     } catch (err) {
@@ -146,7 +146,7 @@ export function useStyleThreadSpecs() {
         return await styleThreadSpecService.delete(id)
       })
 
-      snackbar.success('Xoa dinh muc chi thanh cong')
+      snackbar.success('Xóa định mức chỉ thành công')
       await fetchStyleThreadSpecs()
       return true
     } catch (err) {
@@ -191,7 +191,7 @@ export function useStyleThreadSpecs() {
         return await styleThreadSpecService.addColorSpec(specId, data)
       })
 
-      snackbar.success('Them dinh muc chi theo mau thanh cong')
+      snackbar.success('Thêm định mức chỉ theo màu thành công')
       await fetchColorSpecs(specId)
       return result
     } catch (err) {

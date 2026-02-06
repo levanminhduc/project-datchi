@@ -58,7 +58,7 @@ export function useThreadCalculation() {
       })
 
       calculationResult.value = result
-      snackbar.success('Tinh toan dinh muc chi thanh cong')
+      snackbar.success('Tính toán định mức chỉ thành công')
       return result
     } catch (err) {
       const errorMessage = getErrorMessage(err)
@@ -80,7 +80,7 @@ export function useThreadCalculation() {
       })
 
       poCalculationResults.value = results
-      snackbar.success('Tinh toan dinh muc chi theo don hang thanh cong')
+      snackbar.success('Tính toán định mức chỉ theo đơn hàng thành công')
       return results
     } catch (err) {
       const errorMessage = getErrorMessage(err)

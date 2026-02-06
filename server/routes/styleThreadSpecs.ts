@@ -53,7 +53,7 @@ styleThreadSpecs.get('/:id', async (c) => {
     const id = parseInt(c.req.param('id'))
     
     if (isNaN(id)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     const { data, error } = await supabase
@@ -69,7 +69,7 @@ styleThreadSpecs.get('/:id', async (c) => {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Khong tim thay dinh muc chi' }, 404)
+        return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
       }
       throw error
     }
@@ -90,15 +90,11 @@ styleThreadSpecs.post('/', async (c) => {
     
     // Validate required fields
     if (!body.style_id) {
-      return c.json({ data: null, error: 'Ma hang (style_id) la bat buoc' }, 400)
+      return c.json({ data: null, error: 'Mã hàng (style_id) là bắt buộc' }, 400)
     }
     if (!body.supplier_id) {
-      return c.json({ data: null, error: 'Nha cung cap (supplier_id) la bat buoc' }, 400)
+      return c.json({ data: null, error: 'Nhà cung cấp (supplier_id) là bắt buộc' }, 400)
     }
-    if (!body.process_name) {
-      return c.json({ data: null, error: 'Ten cong doan (process_name) la bat buoc' }, 400)
-    }
-
     const { data, error } = await supabase
       .from('style_thread_specs')
       .insert([{
@@ -114,7 +110,7 @@ styleThreadSpecs.post('/', async (c) => {
 
     if (error) throw error
 
-    return c.json({ data, error: null, message: 'Tao dinh muc chi thanh cong' })
+    return c.json({ data, error: null, message: 'Tạo định mức chỉ thành công' })
   } catch (err) {
     console.error('Error creating style thread spec:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -129,7 +125,7 @@ styleThreadSpecs.put('/:id', async (c) => {
     const id = parseInt(c.req.param('id'))
     
     if (isNaN(id)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     const body = await c.req.json()
@@ -151,12 +147,12 @@ styleThreadSpecs.put('/:id', async (c) => {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Khong tim thay dinh muc chi' }, 404)
+        return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
       }
       throw error
     }
 
-    return c.json({ data, error: null, message: 'Cap nhat dinh muc chi thanh cong' })
+    return c.json({ data, error: null, message: 'Cập nhật định mức chỉ thành công' })
   } catch (err) {
     console.error('Error updating style thread spec:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -171,7 +167,7 @@ styleThreadSpecs.delete('/:id', async (c) => {
     const id = parseInt(c.req.param('id'))
     
     if (isNaN(id)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     const { error } = await supabase
@@ -181,7 +177,7 @@ styleThreadSpecs.delete('/:id', async (c) => {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Khong tim thay dinh muc chi' }, 404)
+        return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
       }
       throw error
     }
@@ -201,7 +197,7 @@ styleThreadSpecs.get('/:id/color-specs', async (c) => {
     const id = parseInt(c.req.param('id'))
     
     if (isNaN(id)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     const { data, error } = await supabase
@@ -231,16 +227,16 @@ styleThreadSpecs.post('/:id/color-specs', async (c) => {
     const styleThreadSpecId = parseInt(c.req.param('id'))
     
     if (isNaN(styleThreadSpecId)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     const body = await c.req.json()
     
     if (!body.color_id) {
-      return c.json({ data: null, error: 'Ma mau (color_id) la bat buoc' }, 400)
+      return c.json({ data: null, error: 'Mã màu (color_id) là bắt buộc' }, 400)
     }
     if (!body.thread_type_id) {
-      return c.json({ data: null, error: 'Loai chi (thread_type_id) la bat buoc' }, 400)
+      return c.json({ data: null, error: 'Loại chỉ (thread_type_id) là bắt buộc' }, 400)
     }
 
     const { data, error } = await supabase
