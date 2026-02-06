@@ -24,7 +24,7 @@ styleThreadSpecs.get('/', async (c) => {
         suppliers:supplier_id (id, name),
         thread_types:tex_id (id, tex_number, name, color)
       `)
-      .order('created_at', { ascending: false })
+      .order('display_order', { ascending: true })
 
     // Apply filters
     if (query.style_id) {
@@ -95,6 +95,50 @@ styleThreadSpecs.post('/', async (c) => {
     if (!body.supplier_id) {
       return c.json({ data: null, error: 'Nhà cung cấp (supplier_id) là bắt buộc' }, 400)
     }
+
+    const addToTop = body.add_to_top === true
+    let displayOrder = 0
+
+    if (addToTop) {
+      // Shift all existing rows for this style: display_order += 1
+      await supabase
+        .from('style_thread_specs')
+        .update({ display_order: supabase.rpc('increment', { x: 1 }) })
+        .eq('style_id', body.style_id)
+        .gte('display_order', 0)
+      
+      // Actually, Supabase doesn't support increment like that directly
+      // We need to use raw SQL or a different approach
+      // Let's use a workaround: get all rows, update their display_order
+      const { data: existingRows } = await supabase
+        .from('style_thread_specs')
+        .select('id, display_order')
+        .eq('style_id', body.style_id)
+        .order('display_order', { ascending: true })
+      
+      if (existingRows && existingRows.length > 0) {
+        // Increment all display_orders by 1
+        for (const row of existingRows) {
+          await supabase
+            .from('style_thread_specs')
+            .update({ display_order: row.display_order + 1 })
+            .eq('id', row.id)
+        }
+      }
+      displayOrder = 0
+    } else {
+      // Get MAX display_order + 1 for this style
+      const { data: maxRow } = await supabase
+        .from('style_thread_specs')
+        .select('display_order')
+        .eq('style_id', body.style_id)
+        .order('display_order', { ascending: false })
+        .limit(1)
+        .single()
+      
+      displayOrder = maxRow ? maxRow.display_order + 1 : 0
+    }
+
     const { data, error } = await supabase
       .from('style_thread_specs')
       .insert([{
@@ -104,6 +148,7 @@ styleThreadSpecs.post('/', async (c) => {
         tex_id: body.tex_id,
         meters_per_unit: body.meters_per_unit || 0,
         notes: body.notes,
+        display_order: displayOrder,
       }])
       .select()
       .single()

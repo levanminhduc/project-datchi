@@ -8,6 +8,7 @@ export interface StyleThreadSpec {
   tex_id: number | null
   meters_per_unit: number
   notes: string | null
+  display_order: number
   created_at: string
   updated_at: string
   // Joined fields
@@ -50,6 +51,8 @@ export interface CreateStyleThreadSpecDTO {
   tex_id?: number
   meters_per_unit: number
   notes?: string
+  /** Whether to add new row at top (true) or bottom (false) of the list */
+  add_to_top?: boolean
 }
 
 export interface UpdateStyleThreadSpecDTO {

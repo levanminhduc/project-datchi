@@ -112,7 +112,14 @@
                   Định mức mét chỉ tiêu hao cho mỗi sản phẩm theo công đoạn
                 </div>
               </div>
-              <div class="col-auto">
+              <div class="col-auto row items-center q-gutter-sm">
+                <q-toggle
+                  v-model="addToTop"
+                  label="Thêm đầu bảng"
+                  dense
+                  size="sm"
+                  class="text-caption"
+                />
                 <q-btn
                   data-testid="spec-add-btn"
                   color="primary"
@@ -489,6 +496,10 @@ const activeTab = ref('info')
 const inlineEditLoading = ref<Record<string, boolean>>({})
 const isAddingRow = ref(false)
 
+// Add row position preference (localStorage)
+const STORAGE_KEY = 'datchi_addRowPosition'
+const addToTop = ref(false)
+
 const getCellKey = (id: number, field: string): string => `${id}-${field}`
 
 /**
@@ -536,6 +547,7 @@ const handleInlineEdit = async (
 /**
  * Add empty row to table via API
  * Creates a new spec with default values, user edits inline
+ * Position (top/bottom) is controlled by addToTop preference
  */
 const addEmptyRow = async (): Promise<void> => {
   if (!suppliers.value.length) {
@@ -546,17 +558,17 @@ const addEmptyRow = async (): Promise<void> => {
   isAddingRow.value = true
   try {
     // Create with default values - first supplier, empty process name
+    // Backend handles display_order based on add_to_top preference
     const defaultSupplier = suppliers.value[0]!
     const result = await createSpec({
       style_id: id.value,
       process_name: '',
       supplier_id: defaultSupplier.id,
       meters_per_unit: 0,
+      add_to_top: addToTop.value,
     })
-    
+
     if (result) {
-      // New row is automatically added to styleThreadSpecs by composable
-      // Focus will happen naturally when user clicks on the new row
       snackbar.info('Đã thêm dòng mới. Click vào ô để nhập dữ liệu.')
     }
   } catch {
@@ -745,6 +757,10 @@ watch(selectedSpecId, async (specId) => {
 
 // Load data on mount
 onMounted(async () => {
+  // Load add row position preference from localStorage
+  const savedPosition = localStorage.getItem(STORAGE_KEY)
+  addToTop.value = savedPosition === 'top'
+
   if (isNaN(id.value)) {
     router.push('/thread/styles')
     return
@@ -757,6 +773,11 @@ onMounted(async () => {
     fetchThreadTypes(),
     fetchColors(),
   ])
+})
+
+// Watch addToTop and persist to localStorage
+watch(addToTop, (value) => {
+  localStorage.setItem(STORAGE_KEY, value ? 'top' : 'bottom')
 })
 
 // Save style info
