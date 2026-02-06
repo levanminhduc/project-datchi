@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-05
-**Commit:** 3cabd84
+**Generated:** 2026-02-06
+**Commit:** 9e70538
 **Branch:** main
 
 ## OVERVIEW
@@ -49,23 +49,23 @@ delegate_task(
 ```
 project-datchi/
 ├── server/           # Hono API backend (port 3000)
-│   ├── routes/       # 14 API route files
+│   ├── routes/       # 19 API route files
 │   ├── db/           # Supabase clients (anon + admin)
 │   └── middleware/   # Auth JWT verification
 ├── src/
 │   ├── components/
-│   │   ├── thread/   # 30 domain components (widgets, dialogs)
+│   │   ├── thread/   # 31 domain components (widgets, dialogs)
 │   │   ├── ui/       # Quasar wrappers (13 subdirs, 66 components)
 │   │   ├── qr/       # QR scanning components
 │   │   └── hardware/ # Scanner/scale integration
-│   ├── composables/  # 34 composables (state + logic)
+│   ├── composables/  # 39 composables (state + logic)
 │   │   ├── thread/   # Domain: inventory, allocations, recovery
 │   │   └── hardware/ # Scanner, scale, audio feedback
-│   ├── services/     # 16 API clients (fetchApi pattern)
-│   ├── pages/        # 31 pages, file-based routing (unplugin-vue-router)
+│   ├── services/     # 21 API clients (fetchApi pattern)
+│   ├── pages/        # 34 pages, file-based routing (unplugin-vue-router)
 │   │   └── thread/   # 9 pages + batch/ + mobile/ subdirs
-│   └── types/        # 30 TypeScript files (ui/, thread/, auth/)
-└── supabase/         # 28 migrations, seed data
+│   └── types/        # 35 TypeScript files (ui/, thread/, auth/)
+└── supabase/         # 36 migrations, seed data
 ```
 
 ## CODEBASE SEARCH (MCP Context Engine)

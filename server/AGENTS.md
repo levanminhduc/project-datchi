@@ -7,7 +7,7 @@ Backend API layer using Hono framework with Supabase.
 ```
 server/
 ├── index.ts          # Entry point, route mounting, CORS config
-├── routes/           # 14 API route handlers
+├── routes/           # 19 API route handlers
 ├── db/               # supabase.ts (anon + admin clients)
 ├── middleware/       # auth.ts (JWT verification)
 ├── types/            # Backend-specific type definitions

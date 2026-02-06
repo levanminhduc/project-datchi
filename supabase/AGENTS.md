@@ -1,6 +1,6 @@
 # Supabase Database Layer
 
-PostgreSQL database với Supabase. 29 migrations + schema reference files.
+PostgreSQL database với Supabase. 36 migrations + schema reference files.
 
 ## HOW TO READ DATABASE SCHEMA
 
@@ -38,7 +38,7 @@ supabase/schema/
 ### 📁 Migration Files (ĐỌC SAU - Detailed History)
 
 ```
-supabase/migrations/           # 29 SQL migrations (timestamp-prefixed)
+supabase/migrations/           # 36 SQL migrations (timestamp-prefixed)
 ├── 20240100000000_employees.sql           # Base employees table
 ├── 20240101000001_thread_types.sql        # Thread type master data
 ├── 20240101000002_warehouses.sql          # Warehouse locations
