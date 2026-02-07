@@ -13,8 +13,22 @@ const navItems: NavItem[] = [
       { label: 'Danh Sách Nhân Viên', icon: 'o_list', to: '/nhan-su/danh-sach' }
     ]
   },
-  { label: 'Kế Hoạch', icon: 'o_event_note', to: '/ke-hoach#top' },
-  { label: 'Kỹ Thuật', icon: 'o_engineering', to: '/ky-thuat#top' },
+  { 
+    label: 'Kế Hoạch', 
+    icon: 'o_event_note', 
+    to: '/ke-hoach#top',
+    children: [
+      { label: 'Tính Toán Chỉ', icon: 'o_calculate', to: '/thread/calculation' }
+    ]
+  },
+  { 
+    label: 'Kỹ Thuật', 
+    icon: 'o_engineering', 
+    to: '/ky-thuat#top',
+    children: [
+      { label: 'Mã Hàng', icon: 'o_checkroom', to: '/thread/styles' }
+    ]
+  },
   { label: 'Kho', icon: 'o_inventory_2', to: '/kho#top' },
   { 
     label: 'Quản Lý Chỉ', 
