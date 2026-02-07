@@ -1,13 +1,9 @@
 {
-  "active_plan": null,
-  "started_at": null,
-  "session_ids": [],
-  "plan_name": null,
-  "completed_plans": [
-    {
-      "plan": "excel-like-dinh-muc",
-      "completed_at": "2026-02-06T14:30:00.000Z",
-      "tasks_completed": 4
-    }
-  ]
+  "active_plan": "D:\\HoaThoDienBan\\VueJS\\project-datchi\\.sisyphus\\plans\\thread-specification.md",
+  "started_at": "2026-02-07T16:48:08.714Z",
+  "session_ids": [
+    "ses_3c71d68d5ffe0In2NACNE25XfJ"
+  ],
+  "plan_name": "thread-specification",
+  "agent": "atlas"
 }

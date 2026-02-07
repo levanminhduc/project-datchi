@@ -32,7 +32,7 @@
         outline
         color="primary"
         label="Đi đến Định mức chỉ"
-        @click="$emit('go-to-specs')"
+        @click="emit('go-to-specs')"
       />
     </div>
 
@@ -159,29 +159,80 @@
         <q-separator />
 
         <q-card-section>
-          <q-select
-            v-model="selectedNewColorId"
-            :options="availableColorOptions"
-            label="Chọn màu hàng"
-            outlined
-            dense
-            emit-value
-            map-options
-          >
-            <template #option="{ itemProps, opt }">
-              <q-item v-bind="itemProps">
-                <q-item-section side>
-                  <div
-                    class="color-swatch"
-                    :style="{ backgroundColor: getColorHex(opt.value) }"
-                  />
-                </q-item-section>
-                <q-item-section>
-                  <q-item-label>{{ opt.label }}</q-item-label>
-                </q-item-section>
-              </q-item>
-            </template>
-          </q-select>
+          <div class="row items-center q-mb-md">
+            <q-btn-toggle
+              v-model="showNewColorForm"
+              spread
+              no-caps
+              unelevated
+              toggle-color="primary"
+              :options="[
+                { label: 'Chọn màu có sẵn', value: false },
+                { label: 'Tạo màu mới', value: true },
+              ]"
+              class="full-width"
+              dense
+            />
+          </div>
+
+          <!-- Mode 1: Select existing color -->
+          <div v-if="!showNewColorForm">
+            <q-select
+              v-model="selectedNewColorId"
+              :options="availableColorOptions"
+              label="Chọn màu hàng"
+              outlined
+              dense
+              emit-value
+              map-options
+            >
+              <template #option="{ itemProps, opt }">
+                <q-item v-bind="itemProps">
+                  <q-item-section side>
+                    <div
+                      class="color-swatch"
+                      :style="{ backgroundColor: getColorHex(opt.value) }"
+                    />
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label>{{ opt.label }}</q-item-label>
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
+          </div>
+
+          <!-- Mode 2: Create new color manually -->
+          <div v-else class="q-gutter-sm">
+            <q-input
+              v-model="newColorName"
+              label="Tên màu *"
+              outlined
+              dense
+              placeholder="VD: Đỏ đậm, Xanh navy..."
+            />
+            <q-input
+              v-model="newColorHex"
+              label="Mã màu (HEX)"
+              outlined
+              dense
+              placeholder="#FFFFFF"
+            >
+              <template #prepend>
+                <div
+                  class="color-swatch"
+                  :style="{ backgroundColor: newColorHex || '#ccc' }"
+                />
+              </template>
+              <template #append>
+                <q-icon name="colorize" class="cursor-pointer">
+                  <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                    <q-color v-model="newColorHex" />
+                  </q-popup-proxy>
+                </q-icon>
+              </template>
+            </q-input>
+          </div>
         </q-card-section>
 
         <q-separator />
@@ -189,11 +240,21 @@
         <q-card-actions align="right" class="q-pa-md">
           <q-btn flat label="Hủy" color="grey" v-close-popup />
           <q-btn
+            v-if="!showNewColorForm"
             unelevated
             label="Thêm"
             color="primary"
             :disable="!selectedNewColorId"
             @click="handleAddColor"
+          />
+          <q-btn
+            v-else
+            unelevated
+            label="Tạo &amp; Thêm"
+            color="primary"
+            :disable="!newColorName.trim() || !newColorHex"
+            :loading="creatingColor"
+            @click="handleCreateColor"
           />
         </q-card-actions>
       </q-card>
@@ -208,6 +269,7 @@ import type { QTableColumn } from 'quasar'
 import type { StyleThreadSpec } from '@/types/thread'
 import type { ThreadType } from '@/types/thread'
 import type { Color } from '@/types/thread'
+import { colorService } from '@/services/colorService'
 
 interface Props {
   styleId: number
@@ -242,8 +304,9 @@ interface ColorGroup {
 }
 
 const props = defineProps<Props>()
-defineEmits<{
+const emit = defineEmits<{
   'go-to-specs': []
+  'color-created': []
 }>()
 
 const confirm = useConfirm()
@@ -263,6 +326,10 @@ const inlineEditLoading = ref<Record<string, boolean>>({})
 const showAddColorDialog = ref(false)
 const selectedNewColorId = ref<number | null>(null)
 const addedColors = ref<number[]>([]) // Manually added colors not yet in DB
+const showNewColorForm = ref(false)
+const newColorName = ref('')
+const newColorHex = ref('#cccccc')
+const creatingColor = ref(false)
 
 // Helpers
 const getColorCellKey = (specId: number, colorId: number): string =>
@@ -420,6 +487,29 @@ const handleAddColor = () => {
   addedColors.value.push(selectedNewColorId.value)
   showAddColorDialog.value = false
   selectedNewColorId.value = null
+}
+
+const handleCreateColor = async () => {
+  if (!newColorName.value.trim() || !newColorHex.value) return
+  creatingColor.value = true
+  try {
+    const newColor = await colorService.create({
+      name: newColorName.value.trim(),
+      hex_code: newColorHex.value,
+    })
+    addedColors.value.push(newColor.id)
+    showNewColorForm.value = false
+    newColorName.value = ''
+    newColorHex.value = '#cccccc'
+    showAddColorDialog.value = false
+    emit('color-created')
+    snackbar.success('Tạo màu mới thành công')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Không thể tạo màu mới'
+    snackbar.error(message)
+  } finally {
+    creatingColor.value = false
+  }
 }
 
 const handleDeleteColorGroup = async (color: ColorGroupColor) => {

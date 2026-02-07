@@ -108,18 +108,18 @@ Implement Thread Specification management system for calculating thread allocati
 
 ## Integration Tasks
 
-- [ ] **INT-1**: Integrate with allocation system
+- [x] **INT-1**: Integrate with allocation system
   - Link calculation results to allocation creation
   - Pass thread_type_id and calculated meters
   - Use existing allocation workflow
 
 ## Testing & Verification
 
-- [ ] **TEST-1**: Database migrations run successfully
-- [ ] **TEST-2**: API endpoints return correct format
-- [ ] **TEST-3**: Frontend pages load without errors
+- [x] **TEST-1**: Database migrations run successfully
+- [x] **TEST-2**: API endpoints return correct format
+- [x] **TEST-3**: Frontend pages load without errors
 - [x] **TEST-4**: Type checking passes
-- [ ] **TEST-5**: Build succeeds
+- [x] **TEST-5**: Build succeeds
 
 ## Constraints
 - All user-facing messages in Vietnamese

@@ -132,9 +132,10 @@
           color="primary"
           icon="add_circle"
           label="Tạo phiếu phân bổ"
-          disable
+          :disable="!hasColorBreakdown"
+          @click="handleCreateAllocations"
         >
-          <q-tooltip>Tính năng đang phát triển</q-tooltip>
+          <q-tooltip v-if="!hasColorBreakdown">Cần có dữ liệu định mức màu chỉ</q-tooltip>
         </q-btn>
       </q-card-actions>
     </q-card>
@@ -175,9 +176,10 @@
             color="primary"
             icon="add_circle"
             label="Tạo phiếu phân bổ"
-            disable
+            :disable="!hasColorBreakdown"
+            @click="handleCreateAllocations"
           >
-            <q-tooltip>Tính năng đang phát triển</q-tooltip>
+            <q-tooltip v-if="!hasColorBreakdown">Cần có dữ liệu định mức màu chỉ</q-tooltip>
           </q-btn>
         </q-card-actions>
       </q-card>
@@ -193,6 +195,50 @@
         </div>
       </q-card-section>
     </q-card>
+
+    <!-- Allocation Summary Dialog -->
+    <q-dialog v-model="showAllocationSummary" persistent maximized>
+      <q-card>
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Xác nhận tạo phiếu phân bổ</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup :disable="creatingAllocations" />
+        </q-card-section>
+
+        <q-card-section>
+          <div class="text-body2 text-grey-7 q-mb-md">
+            Sẽ tạo {{ allocationCandidates.length }} phiếu phân bổ từ kết quả tính toán:
+          </div>
+
+          <q-table
+            flat
+            bordered
+            :rows="allocationCandidates"
+            :columns="summaryColumns"
+            row-key="thread_type_id"
+            hide-bottom
+            :rows-per-page-options="[0]"
+          />
+        </q-card-section>
+
+        <q-card-actions align="right" class="q-px-md q-pb-md">
+          <q-btn
+            flat
+            label="Hủy"
+            v-close-popup
+            :disable="creatingAllocations"
+          />
+          <q-btn
+            unelevated
+            color="primary"
+            icon="check"
+            label="Xác nhận tạo"
+            :loading="creatingAllocations"
+            @click="confirmCreateAllocations"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -200,6 +246,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useStyles, usePurchaseOrders, useThreadCalculation } from '@/composables'
 import type { QTableColumn } from 'quasar'
+import { useRouter } from 'vue-router'
+import { useSnackbar } from '@/composables'
+import { allocationService } from '@/services/allocationService'
+import { AllocationPriority } from '@/types/thread/enums'
+import type { CreateAllocationDTO } from '@/types/thread'
 
 definePage({
   meta: {
@@ -225,6 +276,21 @@ const calculationMode = ref<'style' | 'po'>('style')
 const selectedStyleId = ref<number | null>(null)
 const quantity = ref<number>(100)
 const selectedPOId = ref<number | null>(null)
+const router = useRouter()
+const snackbar = useSnackbar()
+const showAllocationSummary = ref(false)
+const creatingAllocations = ref(false)
+
+interface AllocationCandidate {
+  order_id: string
+  order_reference: string
+  thread_type_id: number
+  thread_type_name: string
+  requested_meters: number
+  process_name: string
+  color_name: string
+}
+const allocationCandidates = ref<AllocationCandidate[]>([])
 
 // Computed options
 const styleOptions = computed(() =>
@@ -242,6 +308,16 @@ const canCalculate = computed(() => {
   return selectedPOId.value !== null
 })
 
+const hasColorBreakdown = computed(() => {
+  if (calculationMode.value === 'style' && calculationResult.value) {
+    return calculationResult.value.calculations.some(c => c.color_breakdown && c.color_breakdown.length > 0)
+  }
+  if (calculationMode.value === 'po') {
+    return poCalculationResults.value.some(r => r.calculations.some(c => c.color_breakdown && c.color_breakdown.length > 0))
+  }
+  return false
+})
+
 // Table columns
 const resultColumns: QTableColumn[] = [
   { name: 'process_name', label: 'Công đoạn', field: 'process_name', align: 'left' },
@@ -249,6 +325,14 @@ const resultColumns: QTableColumn[] = [
   { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'left' },
   { name: 'meters_per_unit', label: 'Mét/SP', field: 'meters_per_unit', align: 'right', format: (val: number) => val.toFixed(2) },
   { name: 'total_meters', label: 'Tổng mét', field: 'total_meters', align: 'right', format: (val: number) => val.toFixed(2) },
+]
+
+const summaryColumns: QTableColumn[] = [
+  { name: 'order_id', label: 'Mã đơn', field: 'order_id', align: 'left' },
+  { name: 'process_name', label: 'Công đoạn', field: 'process_name', align: 'left' },
+  { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left' },
+  { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left' },
+  { name: 'requested_meters', label: 'Số mét', field: 'requested_meters', align: 'right', format: (val: number) => val.toFixed(2) },
 ]
 
 // Handlers
@@ -260,6 +344,91 @@ const handleCalculate = async () => {
   } else {
     if (!selectedPOId.value) return
     await calculateByPO({ po_id: selectedPOId.value })
+  }
+}
+
+const handleCreateAllocations = () => {
+  const candidates: AllocationCandidate[] = []
+
+  if (calculationMode.value === 'style' && calculationResult.value) {
+    const result = calculationResult.value
+    for (const calc of result.calculations) {
+      if (calc.color_breakdown) {
+        for (const cb of calc.color_breakdown) {
+          candidates.push({
+            order_id: result.style_code,
+            order_reference: result.style_name,
+            thread_type_id: cb.thread_type_id,
+            thread_type_name: cb.thread_type_name,
+            requested_meters: cb.total_meters,
+            process_name: calc.process_name,
+            color_name: cb.color_name,
+          })
+        }
+      }
+    }
+  } else if (calculationMode.value === 'po') {
+    const selectedPO = purchaseOrders.value.find(po => po.id === selectedPOId.value)
+    for (const poResult of poCalculationResults.value) {
+      for (const calc of poResult.calculations) {
+        if (calc.color_breakdown) {
+          for (const cb of calc.color_breakdown) {
+            candidates.push({
+              order_id: poResult.style_code,
+              order_reference: `${selectedPO?.po_number || ''} - ${poResult.style_name}`,
+              thread_type_id: cb.thread_type_id,
+              thread_type_name: cb.thread_type_name,
+              requested_meters: cb.total_meters,
+              process_name: calc.process_name,
+              color_name: cb.color_name,
+            })
+          }
+        }
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    snackbar.warning('Không có dữ liệu màu chỉ để tạo phiếu phân bổ')
+    return
+  }
+
+  allocationCandidates.value = candidates
+  showAllocationSummary.value = true
+}
+
+const confirmCreateAllocations = async () => {
+  creatingAllocations.value = true
+  let successCount = 0
+  let errorCount = 0
+
+  try {
+    for (const candidate of allocationCandidates.value) {
+      try {
+        const dto: CreateAllocationDTO = {
+          order_id: candidate.order_id,
+          order_reference: candidate.order_reference,
+          thread_type_id: candidate.thread_type_id,
+          requested_meters: candidate.requested_meters,
+          priority: AllocationPriority.NORMAL,
+          notes: `Tạo từ tính toán định mức - ${candidate.process_name} - ${candidate.color_name}`,
+        }
+        await allocationService.create(dto)
+        successCount++
+      } catch {
+        errorCount++
+      }
+    }
+
+    if (successCount > 0) {
+      snackbar.success(`Đã tạo ${successCount} phiếu phân bổ thành công${errorCount > 0 ? `, ${errorCount} lỗi` : ''}`)
+      showAllocationSummary.value = false
+      router.push('/thread/allocations')
+    } else {
+      snackbar.error('Không thể tạo phiếu phân bổ. Vui lòng thử lại.')
+    }
+  } finally {
+    creatingAllocations.value = false
   }
 }
 

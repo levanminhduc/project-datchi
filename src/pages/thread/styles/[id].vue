@@ -313,6 +313,7 @@
               :thread-types="threadTypes"
               :colors="allColors"
               @go-to-specs="activeTab = 'specs'"
+              @color-created="fetchColors"
             />
           </q-tab-panel>
         </q-tab-panels>
