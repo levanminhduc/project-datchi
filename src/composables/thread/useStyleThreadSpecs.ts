@@ -15,6 +15,7 @@ import type {
   CreateStyleThreadSpecDTO,
   UpdateStyleThreadSpecDTO,
   CreateStyleColorThreadSpecDTO,
+  UpdateStyleColorThreadSpecDTO,
   StyleThreadSpecFilter,
 } from '@/types/thread'
 
@@ -203,6 +204,76 @@ export function useStyleThreadSpecs() {
     }
   }
 
+  /**
+   * Fetch ALL color specs for a style (batch - all specs at once)
+   * @param styleId - Style ID
+   */
+  const fetchAllColorSpecsByStyle = async (styleId: number): Promise<void> => {
+    clearError()
+
+    try {
+      const data = await loading.withLoading(async () => {
+        return await styleThreadSpecService.getAllColorSpecsByStyle(styleId)
+      })
+
+      colorSpecs.value = data
+    } catch (err) {
+      const errorMessage = getErrorMessage(err)
+      error.value = errorMessage
+      snackbar.error(errorMessage)
+      console.error('[useStyleThreadSpecs] fetchAllColorSpecsByStyle error:', err)
+    }
+  }
+
+  /**
+   * Update a color spec (inline edit)
+   * @param colorSpecId - Color spec ID
+   * @param data - Update data
+   */
+  const updateColorSpec = async (colorSpecId: number, data: UpdateStyleColorThreadSpecDTO): Promise<StyleColorThreadSpec | null> => {
+    clearError()
+    try {
+      const result = await styleThreadSpecService.updateColorSpec(colorSpecId, data)
+
+      // Update local state
+      const index = colorSpecs.value.findIndex(cs => cs.id === colorSpecId)
+      if (index !== -1) {
+        colorSpecs.value[index] = result
+      }
+
+      return result
+    } catch (err) {
+      const errorMessage = getErrorMessage(err)
+      error.value = errorMessage
+      snackbar.error(errorMessage)
+      console.error('[useStyleThreadSpecs] updateColorSpec error:', err)
+      return null
+    }
+  }
+
+  /**
+   * Delete a color spec
+   * @param colorSpecId - Color spec ID
+   */
+  const deleteColorSpec = async (colorSpecId: number): Promise<boolean> => {
+    clearError()
+    try {
+      await styleThreadSpecService.deleteColorSpec(colorSpecId)
+
+      // Remove from local state
+      colorSpecs.value = colorSpecs.value.filter(cs => cs.id !== colorSpecId)
+
+      snackbar.success('Xóa định mức màu thành công')
+      return true
+    } catch (err) {
+      const errorMessage = getErrorMessage(err)
+      error.value = errorMessage
+      snackbar.error(errorMessage)
+      console.error('[useStyleThreadSpecs] deleteColorSpec error:', err)
+      return false
+    }
+  }
+
   return {
     // State
     styleThreadSpecs,
@@ -223,5 +294,8 @@ export function useStyleThreadSpecs() {
     deleteSpec,
     fetchColorSpecs,
     addColorSpec,
+    fetchAllColorSpecsByStyle,
+    updateColorSpec,
+    deleteColorSpec,
   }
 }

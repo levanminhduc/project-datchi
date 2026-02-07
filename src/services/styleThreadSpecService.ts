@@ -11,6 +11,7 @@ import type {
   CreateStyleThreadSpecDTO,
   UpdateStyleThreadSpecDTO,
   CreateStyleColorThreadSpecDTO,
+  UpdateStyleColorThreadSpecDTO,
   StyleThreadSpecFilter,
 } from '@/types/thread'
 
@@ -165,5 +166,59 @@ export const styleThreadSpecService = {
     }
 
     return response.data
+  },
+
+  /**
+   * Lấy tất cả định mức chỉ theo màu cho một mã hàng (batch)
+   * @param styleId - Style ID
+   * @returns Array of all color specs for this style
+   */
+  async getAllColorSpecsByStyle(styleId: number): Promise<StyleColorThreadSpec[]> {
+    const response = await fetchApi<ApiResponse<StyleColorThreadSpec[]>>(
+      `${BASE}/by-style/${styleId}/all-color-specs`
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
+  },
+
+  /**
+   * Cập nhật định mức chỉ theo màu
+   * @param colorSpecId - Color spec ID
+   * @param data - Update data
+   * @returns Updated color spec
+   */
+  async updateColorSpec(colorSpecId: number, data: UpdateStyleColorThreadSpecDTO): Promise<StyleColorThreadSpec> {
+    const response = await fetchApi<ApiResponse<StyleColorThreadSpec>>(`${BASE}/color-specs/${colorSpecId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    if (!response.data) {
+      throw new Error('Không thể cập nhật định mức màu')
+    }
+
+    return response.data
+  },
+
+  /**
+   * Xóa định mức chỉ theo màu
+   * @param colorSpecId - Color spec ID
+   */
+  async deleteColorSpec(colorSpecId: number): Promise<void> {
+    const response = await fetchApi<ApiResponse<void>>(`${BASE}/color-specs/${colorSpecId}`, {
+      method: 'DELETE',
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
   },
 }

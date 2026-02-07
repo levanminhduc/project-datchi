@@ -41,6 +41,9 @@ export interface StyleColorThreadSpec {
     id: number
     name: string
     tex_number: string
+    color?: string | null
+    supplier_id?: number | null
+    meters_per_cone?: number | null
   }
 }
 
@@ -74,4 +77,9 @@ export interface CreateStyleColorThreadSpecDTO {
 export interface StyleThreadSpecFilter {
   style_id?: number
   supplier_id?: number
+}
+
+export interface UpdateStyleColorThreadSpecDTO {
+  thread_type_id?: number
+  notes?: string
 }

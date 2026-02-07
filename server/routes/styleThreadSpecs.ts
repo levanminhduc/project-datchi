@@ -304,4 +304,121 @@ styleThreadSpecs.post('/:id/color-specs', async (c) => {
   }
 })
 
+/**
+ * GET /api/style-thread-specs/by-style/:styleId/all-color-specs
+ * Batch fetch ALL color specs for ALL specs belonging to a style.
+ * Returns flat array of color specs with joined color + thread_type data.
+ */
+styleThreadSpecs.get('/by-style/:styleId/all-color-specs', async (c) => {
+  try {
+    const styleId = parseInt(c.req.param('styleId'))
+
+    if (isNaN(styleId)) {
+      return c.json({ data: null, error: 'Style ID không hợp lệ' }, 400)
+    }
+
+    // First get all spec IDs for this style
+    const { data: specs, error: specsError } = await supabase
+      .from('style_thread_specs')
+      .select('id')
+      .eq('style_id', styleId)
+
+    if (specsError) throw specsError
+
+    if (!specs || specs.length === 0) {
+      return c.json({ data: [], error: null })
+    }
+
+    const specIds = specs.map(s => s.id)
+
+    // Fetch all color specs for these spec IDs
+    const { data, error } = await supabase
+      .from('style_color_thread_specs')
+      .select(`
+        *,
+        colors:color_id (id, name, hex_code),
+        thread_types:thread_type_id (id, tex_number, name, color, supplier_id, meters_per_cone)
+      `)
+      .in('style_thread_spec_id', specIds)
+      .order('created_at', { ascending: true })
+
+    if (error) throw error
+
+    return c.json({ data, error: null })
+  } catch (err) {
+    console.error('Error fetching all color specs for style:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * PUT /api/style-thread-specs/color-specs/:id - Update a color spec (inline edit)
+ */
+styleThreadSpecs.put('/color-specs/:id', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json()
+
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    }
+
+    if (body.thread_type_id !== undefined) updateData.thread_type_id = body.thread_type_id
+    if (body.notes !== undefined) updateData.notes = body.notes
+
+    const { data, error } = await supabase
+      .from('style_color_thread_specs')
+      .update(updateData)
+      .eq('id', id)
+      .select(`
+        *,
+        colors:color_id (id, name, hex_code),
+        thread_types:thread_type_id (id, tex_number, name, color, supplier_id, meters_per_cone)
+      `)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy định mức màu' }, 404)
+      }
+      throw error
+    }
+
+    return c.json({ data, error: null, message: 'Cập nhật định mức màu thành công' })
+  } catch (err) {
+    console.error('Error updating color spec:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * DELETE /api/style-thread-specs/color-specs/:id - Delete a color spec
+ */
+styleThreadSpecs.delete('/color-specs/:id', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { error } = await supabase
+      .from('style_color_thread_specs')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
+
+    return c.json({ data: null, error: null, message: 'Xóa định mức màu thành công' })
+  } catch (err) {
+    console.error('Error deleting color spec:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 export default styleThreadSpecs

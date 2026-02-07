@@ -108,6 +108,7 @@ declare module 'vue' {
     StepperStep: typeof import('./components/ui/navigation/StepperStep.vue')['default']
     StockLevelIndicator: typeof import('./components/thread/StockLevelIndicator.vue')['default']
     StockReceiptDialog: typeof import('./components/thread/StockReceiptDialog.vue')['default']
+    StyleColorSpecsTab: typeof import('./components/thread/StyleColorSpecsTab.vue')['default']
     SupplierSelector: typeof import('./components/thread/SupplierSelector.vue')['default']
     SyncConflictDialog: typeof import('./components/thread/SyncConflictDialog.vue')['default']
     SyncStatus: typeof import('./components/thread/SyncStatus.vue')['default']
