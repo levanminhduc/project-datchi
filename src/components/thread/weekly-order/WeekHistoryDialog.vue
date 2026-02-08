@@ -89,6 +89,12 @@ function statusColor(status: string): string {
   return map[status] || 'grey'
 }
 
+function formatDate(val: string | null): string {
+  if (!val) return '—'
+  const [y, m, d] = val.split('-')
+  return `${d}/${m}/${y}`
+}
+
 const columns: QTableColumn[] = [
   { name: 'week_name', label: 'Tên tuần', field: 'week_name', align: 'left', sortable: true },
   {
@@ -96,14 +102,14 @@ const columns: QTableColumn[] = [
     label: 'Từ ngày',
     field: 'start_date',
     align: 'left',
-    format: (val: string | null) => val || '—',
+    format: (val: string | null) => formatDate(val),
   },
   {
     name: 'end_date',
     label: 'Đến ngày',
     field: 'end_date',
     align: 'left',
-    format: (val: string | null) => val || '—',
+    format: (val: string | null) => formatDate(val),
   },
   { name: 'status', label: 'Trạng thái', field: 'status', align: 'center' },
   {

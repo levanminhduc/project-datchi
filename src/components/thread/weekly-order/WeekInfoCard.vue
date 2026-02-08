@@ -15,23 +15,47 @@
         </div>
         <div class="col-12 col-sm-3">
           <AppInput
-            :model-value="startDate"
-            type="date"
+            :model-value="displayStartDate"
             label="Từ ngày"
+            placeholder="DD/MM/YYYY"
             dense
             hide-bottom-space
-            @update:model-value="$emit('update:startDate', $event)"
-          />
+            clearable
+            @clear="$emit('update:startDate', '')"
+          >
+            <template #append>
+              <q-icon name="event" class="cursor-pointer">
+                <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                  <DatePicker
+                    :model-value="displayStartDate"
+                    @update:model-value="onStartDateChange"
+                  />
+                </q-popup-proxy>
+              </q-icon>
+            </template>
+          </AppInput>
         </div>
         <div class="col-12 col-sm-3">
           <AppInput
-            :model-value="endDate"
-            type="date"
+            :model-value="displayEndDate"
             label="Đến ngày"
+            placeholder="DD/MM/YYYY"
             dense
             hide-bottom-space
-            @update:model-value="$emit('update:endDate', $event)"
-          />
+            clearable
+            @clear="$emit('update:endDate', '')"
+          >
+            <template #append>
+              <q-icon name="event" class="cursor-pointer">
+                <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                  <DatePicker
+                    :model-value="displayEndDate"
+                    @update:model-value="onEndDateChange"
+                  />
+                </q-popup-proxy>
+              </q-icon>
+            </template>
+          </AppInput>
         </div>
         <div class="col-12 col-sm-2">
           <slot name="actions" />
@@ -53,17 +77,44 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+
+const props = defineProps<{
   modelValue: string
   startDate: string
   endDate: string
   notes: string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'update:modelValue': [value: string]
   'update:startDate': [value: string]
   'update:endDate': [value: string]
   'update:notes': [value: string]
 }>()
+
+// Convert YYYY-MM-DD (DB) ↔ DD/MM/YYYY (DatePicker)
+function toDisplay(isoDate: string): string {
+  if (!isoDate) return ''
+  const [y, m, d] = isoDate.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function toIso(displayDate: string): string {
+  if (!displayDate) return ''
+  const [d, m, y] = displayDate.split('/')
+  return `${y}-${m}-${d}`
+}
+
+const displayStartDate = computed(() => toDisplay(props.startDate))
+const displayEndDate = computed(() => toDisplay(props.endDate))
+
+function onStartDateChange(val: string | null) {
+  emit('update:startDate', val ? toIso(val) : '')
+}
+
+function onEndDateChange(val: string | null) {
+  emit('update:endDate', val ? toIso(val) : '')
+}
 </script>

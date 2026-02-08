@@ -64,7 +64,7 @@ weeklyOrder.get('/:id', async (c) => {
     const id = parseInt(c.req.param('id'))
 
     if (isNaN(id)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     const { data, error } = await supabase
@@ -87,7 +87,7 @@ weeklyOrder.get('/:id', async (c) => {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Khong tim thay tuan dat hang' }, 404)
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
       }
       throw error
     }
@@ -107,11 +107,11 @@ weeklyOrder.post('/', async (c) => {
     const body: CreateWeeklyOrderDTO = await c.req.json()
 
     if (!body.week_name || !body.week_name.trim()) {
-      return c.json({ data: null, error: 'Ten tuan (week_name) la bat buoc' }, 400)
+      return c.json({ data: null, error: 'Tên tuần (week_name) là bắt buộc' }, 400)
     }
 
     if (!body.items || body.items.length === 0) {
-      return c.json({ data: null, error: 'Can it nhat mot san pham' }, 400)
+      return c.json({ data: null, error: 'Cần ít nhất một sản phẩm' }, 400)
     }
 
     // Insert the week
@@ -129,7 +129,7 @@ weeklyOrder.post('/', async (c) => {
 
     if (weekError) {
       if (weekError.code === '23505') {
-        return c.json({ data: null, error: 'Ten tuan da ton tai' }, 409)
+        return c.json({ data: null, error: 'Tên tuần đã tồn tại' }, 409)
       }
       throw weekError
     }
@@ -159,7 +159,7 @@ weeklyOrder.post('/', async (c) => {
     if (itemsError) throw itemsError
 
     return c.json(
-      { data: { ...week, items }, error: null, message: 'Tao tuan dat hang thanh cong' },
+      { data: { ...week, items }, error: null, message: 'Tạo tuần đặt hàng thành công' },
       201
     )
   } catch (err) {
@@ -176,7 +176,7 @@ weeklyOrder.put('/:id', async (c) => {
     const id = parseInt(c.req.param('id'))
 
     if (isNaN(id)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     // Check current status
@@ -188,14 +188,14 @@ weeklyOrder.put('/:id', async (c) => {
 
     if (fetchError) {
       if (fetchError.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Khong tim thay tuan dat hang' }, 404)
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
       }
       throw fetchError
     }
 
     if (existing.status !== 'draft') {
       return c.json(
-        { data: null, error: 'Chi co the cap nhat tuan o trang thai nhap (draft)' },
+        { data: null, error: 'Chỉ có thể cập nhật tuần ở trạng thái nháp (draft)' },
         400
       )
     }
@@ -220,7 +220,7 @@ weeklyOrder.put('/:id', async (c) => {
 
     if (updateError) {
       if (updateError.code === '23505') {
-        return c.json({ data: null, error: 'Ten tuan da ton tai' }, 409)
+        return c.json({ data: null, error: 'Tên tuần đã tồn tại' }, 409)
       }
       throw updateError
     }
@@ -268,7 +268,7 @@ weeklyOrder.put('/:id', async (c) => {
 
     const result = items !== null ? { ...week, items } : week
 
-    return c.json({ data: result, error: null, message: 'Cap nhat tuan dat hang thanh cong' })
+    return c.json({ data: result, error: null, message: 'Cập nhật tuần đặt hàng thành công' })
   } catch (err) {
     console.error('Error updating weekly order:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -283,7 +283,7 @@ weeklyOrder.delete('/:id', async (c) => {
     const id = parseInt(c.req.param('id'))
 
     if (isNaN(id)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     // Check current status
@@ -295,14 +295,14 @@ weeklyOrder.delete('/:id', async (c) => {
 
     if (fetchError) {
       if (fetchError.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Khong tim thay tuan dat hang' }, 404)
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
       }
       throw fetchError
     }
 
     if (existing.status !== 'draft') {
       return c.json(
-        { data: null, error: 'Chi co the xoa tuan o trang thai nhap (draft)' },
+        { data: null, error: 'Chỉ có thể xóa tuần ở trạng thái nháp (draft)' },
         400
       )
     }
@@ -318,7 +318,7 @@ weeklyOrder.delete('/:id', async (c) => {
 
     if (results && results.length > 0) {
       return c.json(
-        { data: null, error: 'Khong the xoa vi da co ket qua tinh toan. Hay xoa ket qua truoc.' },
+        { data: null, error: 'Không thể xóa vì đã có kết quả tính toán. Hãy xóa kết quả trước.' },
         409
       )
     }
@@ -339,7 +339,7 @@ weeklyOrder.delete('/:id', async (c) => {
 
     if (deleteError) throw deleteError
 
-    return c.json({ data: null, error: null, message: 'Xoa tuan dat hang thanh cong' })
+    return c.json({ data: null, error: null, message: 'Xóa tuần đặt hàng thành công' })
   } catch (err) {
     console.error('Error deleting weekly order:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -354,14 +354,14 @@ weeklyOrder.patch('/:id/status', async (c) => {
     const id = parseInt(c.req.param('id'))
 
     if (isNaN(id)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     const body = await c.req.json()
     const newStatus = body.status as WeeklyOrderStatus
 
     if (!newStatus) {
-      return c.json({ data: null, error: 'Trang thai (status) la bat buoc' }, 400)
+      return c.json({ data: null, error: 'Trạng thái (status) là bắt buộc' }, 400)
     }
 
     // Get current status
@@ -373,7 +373,7 @@ weeklyOrder.patch('/:id/status', async (c) => {
 
     if (fetchError) {
       if (fetchError.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Khong tim thay tuan dat hang' }, 404)
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
       }
       throw fetchError
     }
@@ -385,7 +385,7 @@ weeklyOrder.patch('/:id/status', async (c) => {
       return c.json(
         {
           data: null,
-          error: `Khong the chuyen tu '${currentStatus}' sang '${newStatus}'. Cac trang thai hop le: ${allowedTransitions.join(', ') || 'khong co'}`,
+          error: `Không thể chuyển từ '${currentStatus}' sang '${newStatus}'. Các trạng thái hợp lệ: ${allowedTransitions.join(', ') || 'không có'}`,
         },
         400
       )
@@ -400,7 +400,7 @@ weeklyOrder.patch('/:id/status', async (c) => {
 
     if (error) throw error
 
-    return c.json({ data, error: null, message: 'Cap nhat trang thai thanh cong' })
+    return c.json({ data, error: null, message: 'Cập nhật trạng thái thành công' })
   } catch (err) {
     console.error('Error updating weekly order status:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -415,7 +415,7 @@ weeklyOrder.post('/:id/results', async (c) => {
     const id = parseInt(c.req.param('id'))
 
     if (isNaN(id)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     // Verify week exists
@@ -427,7 +427,7 @@ weeklyOrder.post('/:id/results', async (c) => {
 
     if (fetchError) {
       if (fetchError.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Khong tim thay tuan dat hang' }, 404)
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
       }
       throw fetchError
     }
@@ -435,7 +435,7 @@ weeklyOrder.post('/:id/results', async (c) => {
     const body: SaveResultsDTO = await c.req.json()
 
     if (!body.calculation_data) {
-      return c.json({ data: null, error: 'Du lieu tinh toan (calculation_data) la bat buoc' }, 400)
+      return c.json({ data: null, error: 'Dữ liệu tính toán (calculation_data) là bắt buộc' }, 400)
     }
 
     const { data, error } = await supabase
@@ -445,7 +445,7 @@ weeklyOrder.post('/:id/results', async (c) => {
           week_id: id,
           calculation_data: body.calculation_data,
           summary_data: body.summary_data || null,
-          updated_at: new Date().toISOString(),
+          calculated_at: new Date().toISOString(),
         },
         { onConflict: 'week_id' }
       )
@@ -454,7 +454,7 @@ weeklyOrder.post('/:id/results', async (c) => {
 
     if (error) throw error
 
-    return c.json({ data, error: null, message: 'Luu ket qua tinh toan thanh cong' })
+    return c.json({ data, error: null, message: 'Lưu kết quả tính toán thành công' })
   } catch (err) {
     console.error('Error saving weekly order results:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -469,7 +469,7 @@ weeklyOrder.get('/:id/results', async (c) => {
     const id = parseInt(c.req.param('id'))
 
     if (isNaN(id)) {
-      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
     const { data, error } = await supabase
@@ -480,7 +480,7 @@ weeklyOrder.get('/:id/results', async (c) => {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Chua co ket qua tinh toan cho tuan nay' }, 404)
+        return c.json({ data: null, error: 'Chưa có kết quả tính toán cho tuần này' }, 404)
       }
       throw error
     }
