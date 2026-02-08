@@ -123,7 +123,27 @@
           row-key="spec_id"
           hide-bottom
           :rows-per-page-options="[0]"
-        />
+        >
+          <template #body-cell-total_cones="props">
+            <q-td :props="props">
+              <span>{{ props.value }}</span>
+              <q-tooltip v-if="props.row.meters_per_cone">
+                {{ props.row.total_meters.toFixed(2) }} mét ÷ {{ props.row.meters_per_cone }} m/cuộn
+              </q-tooltip>
+            </q-td>
+          </template>
+          <template #body-cell-thread_color="props">
+            <q-td :props="props">
+              <q-badge
+                v-if="props.row.thread_color"
+                :style="{ backgroundColor: props.row.thread_color_code || '#999' }"
+                :class="props.row.thread_color_code && isLightColor(props.row.thread_color_code) ? 'text-dark' : 'text-white'"
+                :label="props.row.thread_color"
+              />
+              <span v-else class="text-grey-5">—</span>
+            </q-td>
+          </template>
+        </q-table>
       </q-card-section>
 
       <q-card-actions align="right" class="q-px-md q-pb-md">
@@ -165,7 +185,27 @@
             row-key="spec_id"
             hide-bottom
             :rows-per-page-options="[0]"
-          />
+          >
+            <template #body-cell-total_cones="props">
+              <q-td :props="props">
+                <span>{{ props.value }}</span>
+                <q-tooltip v-if="props.row.meters_per_cone">
+                  {{ props.row.total_meters.toFixed(2) }} mét ÷ {{ props.row.meters_per_cone }} m/cuộn
+                </q-tooltip>
+              </q-td>
+            </template>
+            <template #body-cell-thread_color="props">
+              <q-td :props="props">
+                <q-badge
+                  v-if="props.row.thread_color"
+                  :style="{ backgroundColor: props.row.thread_color_code || '#999' }"
+                  :class="props.row.thread_color_code && isLightColor(props.row.thread_color_code) ? 'text-dark' : 'text-white'"
+                  :label="props.row.thread_color"
+                />
+                <span v-else class="text-grey-5">—</span>
+              </q-td>
+            </template>
+          </q-table>
         </q-card-section>
       </q-card>
 
@@ -250,7 +290,7 @@ import { useRouter } from 'vue-router'
 import { useSnackbar } from '@/composables'
 import { allocationService } from '@/services/allocationService'
 import { AllocationPriority } from '@/types/thread/enums'
-import type { CreateAllocationDTO } from '@/types/thread'
+import type { CreateAllocationDTO, CalculationItem } from '@/types/thread'
 
 definePage({
   meta: {
@@ -292,6 +332,15 @@ interface AllocationCandidate {
 }
 const allocationCandidates = ref<AllocationCandidate[]>([])
 
+// Helper: determine if a hex color is light (for text contrast)
+function isLightColor(hex: string): boolean {
+  const color = hex.replace('#', '')
+  const r = parseInt(color.substring(0, 2), 16)
+  const g = parseInt(color.substring(2, 4), 16)
+  const b = parseInt(color.substring(4, 6), 16)
+  return (r * 299 + g * 587 + b * 114) / 1000 > 155
+}
+
 // Computed options
 const styleOptions = computed(() =>
   styles.value.map(s => ({ label: `${s.style_code} - ${s.style_name}`, value: s.id }))
@@ -324,7 +373,18 @@ const resultColumns: QTableColumn[] = [
   { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
   { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'left' },
   { name: 'meters_per_unit', label: 'Mét/SP', field: 'meters_per_unit', align: 'right', format: (val: number) => val.toFixed(2) },
-  { name: 'total_meters', label: 'Tổng mét', field: 'total_meters', align: 'right', format: (val: number) => val.toFixed(2) },
+  {
+    name: 'total_cones',
+    label: 'Tổng cuộn',
+    field: (row) => {
+      const r = row as CalculationItem
+      if (!r.meters_per_cone || r.meters_per_cone <= 0) return null
+      return Math.ceil(r.total_meters / r.meters_per_cone)
+    },
+    align: 'right',
+    format: (val) => (val !== null && val !== undefined) ? Number(val).toLocaleString('vi-VN') : '—',
+  },
+  { name: 'thread_color', label: 'Màu chỉ', field: 'thread_color', align: 'center' },
 ]
 
 const summaryColumns: QTableColumn[] = [
