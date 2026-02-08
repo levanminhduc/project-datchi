@@ -1,9 +1,7 @@
 {
-  "active_plan": "D:\\HoaThoDienBan\\VueJS\\project-datchi\\.sisyphus\\plans\\thread-specification.md",
-  "started_at": "2026-02-07T16:48:08.714Z",
-  "session_ids": [
-    "ses_3c71d68d5ffe0In2NACNE25XfJ"
-  ],
-  "plan_name": "thread-specification",
+  "active_plan": "D:\HoaThoDienBan\VueJS\project-datchi\.sisyphus\plans\calculation-table-enhancement.md",
+  "started_at": "2026-02-08T04:27:40.781Z",
+  "session_ids": ["ses_3c47e9ebcffeBTr90WvttTa4Q6"],
+  "plan_name": "calculation-table-enhancement",
   "agent": "atlas"
 }
