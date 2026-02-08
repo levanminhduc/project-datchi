@@ -20,10 +20,10 @@
       <q-space />
       <q-btn
         color="primary"
-        label="Xuất CSV"
+        label="Xuất Excel"
         icon="download"
         :disable="transactions.length === 0"
-        @click="handleExportCSV"
+        @click="handleExportXlsx"
       />
     </div>
 
@@ -568,56 +568,62 @@ function viewTransaction(transaction: BatchTransaction) {
   showDetailDialog.value = true
 }
 
-function handleExportCSV() {
+async function handleExportXlsx() {
   if (transactions.value.length === 0) return
-  
-  // CSV header
-  const headers = [
-    'ID',
-    'Loại thao tác',
-    'Số cuộn',
-    'Kho xuất',
-    'Kho nhận',
-    'Người nhận',
-    'Số tham chiếu',
-    'Ghi chú',
-    'Thực hiện bởi',
-    'Thời gian'
-  ]
-  
-  // CSV rows
-  const rows = transactions.value.map(t => [
-    t.id,
-    getOperationLabel(t.operation_type),
-    t.cone_count,
-    t.from_warehouse?.name || '',
-    t.to_warehouse?.name || '',
-    t.recipient || '',
-    t.reference_number || '',
-    t.notes || '',
-    t.performed_by || '',
-    formatDateTime(t.performed_at)
-  ])
-  
-  // Build CSV content
-  const csvContent = [
-    headers.join(','),
-    ...rows.map(row => 
-      row.map(cell => 
-        typeof cell === 'string' && (cell.includes(',') || cell.includes('"') || cell.includes('\n'))
-          ? `"${cell.replace(/"/g, '""')}"`
-          : cell
-      ).join(',')
-    )
-  ].join('\n')
-  
-  // Download
-  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = `lich-su-thao-tac-${new Date().toISOString().slice(0, 10)}.csv`
-  link.click()
-  URL.revokeObjectURL(link.href)
+
+  try {
+    const ExcelJS = await import('exceljs')
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Lịch Sử Thao Tác')
+
+    worksheet.columns = [
+      { header: 'ID', key: 'id', width: 10 },
+      { header: 'Loại thao tác', key: 'operation_type', width: 18 },
+      { header: 'Số cuộn', key: 'cone_count', width: 10 },
+      { header: 'Kho xuất', key: 'from_warehouse', width: 18 },
+      { header: 'Kho nhận', key: 'to_warehouse', width: 18 },
+      { header: 'Người nhận', key: 'recipient', width: 18 },
+      { header: 'Số tham chiếu', key: 'reference_number', width: 18 },
+      { header: 'Ghi chú', key: 'notes', width: 25 },
+      { header: 'Thực hiện bởi', key: 'performed_by', width: 18 },
+      { header: 'Thời gian', key: 'performed_at', width: 20 },
+    ]
+
+    // Style header row
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1976D2' },
+    }
+    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+
+    transactions.value.forEach(t => {
+      worksheet.addRow({
+        id: t.id,
+        operation_type: getOperationLabel(t.operation_type),
+        cone_count: t.cone_count,
+        from_warehouse: t.from_warehouse?.name || '',
+        to_warehouse: t.to_warehouse?.name || '',
+        recipient: t.recipient || '',
+        reference_number: t.reference_number || '',
+        notes: t.notes || '',
+        performed_by: t.performed_by || '',
+        performed_at: formatDateTime(t.performed_at),
+      })
+    })
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `lich-su-thao-tac-${new Date().toISOString().slice(0, 10)}.xlsx`
+    link.click()
+    URL.revokeObjectURL(link.href)
+  } catch (err) {
+    console.error('[batch-history] export error:', err)
+  }
 }
 
 // Lifecycle

@@ -140,28 +140,68 @@ const startComparison = () => {
   showComparison.value = true
 }
 
-const exportCsv = () => {
-  const headers = ['Cone ID', 'Trạng thái', 'Loại chỉ', 'Số lô']
-  const rows = [
-    ...comparisonResult.value.matched.map(id => {
+const exportXlsx = async () => {
+  try {
+    const ExcelJS = await import('exceljs')
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Kiểm Kê')
+
+    worksheet.columns = [
+      { header: 'Cone ID', key: 'cone_id', width: 18 },
+      { header: 'Trạng thái', key: 'status', width: 20 },
+      { header: 'Loại chỉ', key: 'thread_type', width: 18 },
+      { header: 'Số lô', key: 'lot_number', width: 15 },
+    ]
+
+    // Style header row
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1976D2' },
+    }
+    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+
+    comparisonResult.value.matched.forEach(id => {
       const cone = warehouseCones.value.get(id)
-      return [id, 'Khớp', cone?.thread_type?.code || '', cone?.lot_number || '']
-    }),
-    ...comparisonResult.value.missing.map(id => {
+      worksheet.addRow({
+        cone_id: id,
+        status: 'Khớp',
+        thread_type: cone?.thread_type?.code || '',
+        lot_number: cone?.lot_number || '',
+      })
+    })
+    comparisonResult.value.missing.forEach(id => {
       const cone = warehouseCones.value.get(id)
-      return [id, 'Thiếu (trong DB)', cone?.thread_type?.code || '', cone?.lot_number || '']
-    }),
-    ...comparisonResult.value.extra.map(id => [id, 'Thừa (không trong DB)', '', '']),
-  ]
-  
-  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `stocktake_${selectedWarehouseId.value}_${new Date().toISOString().split('T')[0]}.csv`
-  link.click()
-  URL.revokeObjectURL(url)
+      worksheet.addRow({
+        cone_id: id,
+        status: 'Thiếu (trong DB)',
+        thread_type: cone?.thread_type?.code || '',
+        lot_number: cone?.lot_number || '',
+      })
+    })
+    comparisonResult.value.extra.forEach(id => {
+      worksheet.addRow({
+        cone_id: id,
+        status: 'Thừa (không trong DB)',
+        thread_type: '',
+        lot_number: '',
+      })
+    })
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `stocktake_${selectedWarehouseId.value}_${new Date().toISOString().split('T')[0]}.xlsx`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    snackbar.error('Không thể xuất file Excel')
+    console.error('[stocktake] export error:', err)
+  }
 }
 
 // Session management
@@ -505,9 +545,9 @@ onMounted(async () => {
         <q-btn
           color="primary"
           icon="download"
-          label="Xuất CSV"
+          label="Xuất Excel"
           outline
-          @click="exportCsv"
+          @click="exportXlsx"
         />
         <q-btn
           color="positive"

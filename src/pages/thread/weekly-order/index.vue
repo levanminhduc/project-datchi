@@ -493,34 +493,63 @@ const confirmCreateAllocations = async () => {
   }
 }
 
-const handleExport = () => {
+const handleExport = async () => {
   if (aggregatedResults.value.length === 0) {
     snackbar.warning('Chưa có dữ liệu để xuất')
     return
   }
 
-  const headers = ['Loại chỉ', 'NCC', 'Tex', 'Màu chỉ', 'Tổng mét', 'Tổng cuộn', 'Mét/cuộn']
-  const rows = aggregatedResults.value.map((r) => [
-    r.thread_type_name,
-    r.supplier_name,
-    r.tex_number,
-    r.thread_color || '',
-    r.total_meters.toFixed(2),
-    r.total_cones.toString(),
-    r.meters_per_cone?.toString() || '',
-  ])
+  try {
+    const ExcelJS = await import('exceljs')
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Đặt Hàng Chỉ')
 
-  const csvContent = [headers, ...rows].map((row) => row.join(',')).join('\n')
-  const BOM = '\uFEFF'
-  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `dat-hang-chi-${weekName.value || 'tuan'}.csv`
-  link.click()
-  URL.revokeObjectURL(url)
+    worksheet.columns = [
+      { header: 'Loại chỉ', key: 'thread_type_name', width: 25 },
+      { header: 'NCC', key: 'supplier_name', width: 20 },
+      { header: 'Tex', key: 'tex_number', width: 10 },
+      { header: 'Màu chỉ', key: 'thread_color', width: 15 },
+      { header: 'Tổng mét', key: 'total_meters', width: 15 },
+      { header: 'Tổng cuộn', key: 'total_cones', width: 12 },
+      { header: 'Mét/cuộn', key: 'meters_per_cone', width: 12 },
+    ]
 
-  snackbar.success('Đã xuất file CSV')
+    // Style header row
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1976D2' },
+    }
+    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+
+    aggregatedResults.value.forEach((r) => {
+      worksheet.addRow({
+        thread_type_name: r.thread_type_name,
+        supplier_name: r.supplier_name,
+        tex_number: r.tex_number,
+        thread_color: r.thread_color || '',
+        total_meters: Number(r.total_meters.toFixed(2)),
+        total_cones: r.total_cones,
+        meters_per_cone: r.meters_per_cone || '',
+      })
+    })
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `dat-hang-chi-${weekName.value || 'tuan'}.xlsx`
+    link.click()
+    URL.revokeObjectURL(url)
+
+    snackbar.success('Đã xuất file Excel')
+  } catch (err) {
+    snackbar.error('Không thể xuất file Excel')
+    console.error('[weekly-order] export error:', err)
+  }
 }
 
 // Lifecycle
