@@ -27,6 +27,9 @@ interface CalculationResult {
     tex_number: string
     meters_per_unit: number
     total_meters: number
+    meters_per_cone?: number | null
+    thread_color?: string | null
+    thread_color_code?: string | null
     color_breakdown?: {
       color_id: number
       color_name: string
@@ -80,7 +83,7 @@ threadCalculation.post('/calculate', async (c) => {
         meters_per_unit,
         tex_id,
         suppliers:supplier_id (id, name),
-        thread_types:tex_id (id, tex_number, name)
+        thread_types:tex_id (id, tex_number, name, meters_per_cone, color, color_code)
       `)
       .eq('style_id', body.style_id)
 
@@ -121,6 +124,9 @@ threadCalculation.post('/calculate', async (c) => {
         tex_number: spec.thread_types?.tex_number || '',
         meters_per_unit: spec.meters_per_unit,
         total_meters: spec.meters_per_unit * body.quantity,
+        meters_per_cone: spec.thread_types?.meters_per_cone || null,
+        thread_color: spec.thread_types?.color || null,
+        thread_color_code: spec.thread_types?.color_code || null,
       }
 
       // Add color breakdown if available
@@ -210,7 +216,7 @@ threadCalculation.post('/calculate-by-po', async (c) => {
           meters_per_unit,
           tex_id,
           suppliers:supplier_id (id, name),
-          thread_types:tex_id (id, tex_number, name)
+          thread_types:tex_id (id, tex_number, name, meters_per_cone, color, color_code)
         `)
         .eq('style_id', style.id)
 
@@ -269,6 +275,9 @@ threadCalculation.post('/calculate-by-po', async (c) => {
           tex_number: spec.thread_types?.tex_number || '',
           meters_per_unit: spec.meters_per_unit,
           total_meters: spec.meters_per_unit * item.quantity,
+          meters_per_cone: spec.thread_types?.meters_per_cone || null,
+          thread_color: spec.thread_types?.color || null,
+          thread_color_code: spec.thread_types?.color_code || null,
           color_breakdown: colorBreakdown,
         }
       })

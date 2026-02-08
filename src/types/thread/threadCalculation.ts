@@ -26,6 +26,9 @@ export interface CalculationItem {
   tex_number: string
   meters_per_unit: number
   total_meters: number
+  meters_per_cone?: number | null
+  thread_color?: string | null
+  thread_color_code?: string | null
   color_breakdown?: ColorCalculationResult[]
 }
 
