@@ -22,6 +22,7 @@ export { purchaseOrderService } from './purchaseOrderService'
 export { styleService } from './styleService'
 export { styleThreadSpecService } from './styleThreadSpecService'
 export { threadCalculationService } from './threadCalculationService'
+export { weeklyOrderService } from './weeklyOrderService'
 
 // Reports
 export { reportService } from './reportService'

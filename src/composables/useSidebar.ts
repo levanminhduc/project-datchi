@@ -18,7 +18,8 @@ const navItems: NavItem[] = [
     icon: 'o_event_note', 
     to: '/ke-hoach#top',
     children: [
-      { label: 'Tính Toán Chỉ', icon: 'o_calculate', to: '/thread/calculation' }
+      { label: 'Tính Toán Chỉ', icon: 'o_calculate', to: '/thread/calculation' },
+      { label: 'Đặt Hàng Chỉ Tuần', icon: 'o_shopping_cart', to: '/thread/weekly-order' }
     ]
   },
   { 
