@@ -1,29 +1,22 @@
 <template>
   <q-page padding>
     <!-- Page Header -->
-    <div class="row q-col-gutter-md q-mb-lg items-center">
-      <div class="col-12 col-md-6">
-        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
-          Tính Toán Định Mức Chỉ
-        </h1>
-        <p class="text-caption text-grey-7 q-mb-none">
-          Tính toán nhu cầu chỉ theo mã hàng hoặc đơn hàng
-        </p>
-      </div>
-    </div>
+    <PageHeader
+      title="Tính Toán Định Mức Chỉ"
+      subtitle="Tính toán nhu cầu chỉ theo mã hàng hoặc đơn hàng"
+    />
 
     <!-- Calculation Form Card -->
-    <q-card flat bordered class="q-mb-lg">
+    <AppCard flat bordered class="q-mb-lg">
       <q-card-section>
         <div class="row q-col-gutter-md items-end">
           <!-- Mode Toggle -->
           <div class="col-12 col-sm-6 col-md-3">
             <div class="text-caption text-grey-7 q-mb-xs">Phương thức tính</div>
-            <q-btn-toggle
+            <ButtonToggle
               v-model="calculationMode"
               spread
-              no-caps
-              unelevated
+              color="grey-4"
               toggle-color="primary"
               :options="[
                 { label: 'Theo mã hàng', value: 'style' },
@@ -36,14 +29,12 @@
           <!-- Style Mode Inputs -->
           <template v-if="calculationMode === 'style'">
             <div class="col-12 col-sm-6 col-md-4">
-              <q-select
+              <AppSelect
                 v-model="selectedStyleId"
                 :options="styleOptions"
                 label="Mã hàng"
-                outlined
                 dense
-                emit-value
-                map-options
+                hide-bottom-space
                 :loading="stylesLoading"
                 clearable
               >
@@ -52,15 +43,15 @@
                     <q-item-section class="text-grey">Không có dữ liệu</q-item-section>
                   </q-item>
                 </template>
-              </q-select>
+              </AppSelect>
             </div>
             <div class="col-12 col-sm-6 col-md-2">
-              <q-input
+              <AppInput
                 v-model.number="quantity"
                 type="number"
                 label="Số lượng"
-                outlined
                 dense
+                hide-bottom-space
                 :min="1"
               />
             </div>
@@ -69,14 +60,12 @@
           <!-- PO Mode Input -->
           <template v-else>
             <div class="col-12 col-sm-6 col-md-4">
-              <q-select
+              <AppSelect
                 v-model="selectedPOId"
                 :options="poOptions"
                 label="Đơn hàng (PO)"
-                outlined
                 dense
-                emit-value
-                map-options
+                hide-bottom-space
                 :loading="poLoading"
                 clearable
               >
@@ -85,14 +74,13 @@
                     <q-item-section class="text-grey">Không có dữ liệu</q-item-section>
                   </q-item>
                 </template>
-              </q-select>
+              </AppSelect>
             </div>
           </template>
 
           <!-- Calculate Button -->
           <div class="col-12 col-sm-auto">
-            <q-btn
-              unelevated
+            <AppButton
               color="primary"
               icon="calculate"
               label="Tính toán"
@@ -103,10 +91,10 @@
           </div>
         </div>
       </q-card-section>
-    </q-card>
+    </AppCard>
 
     <!-- Results Section for Style Mode -->
-    <q-card v-if="calculationMode === 'style' && calculationResult" flat bordered class="q-mb-md">
+    <AppCard v-if="calculationMode === 'style' && calculationResult" flat bordered class="q-mb-md">
       <q-card-section>
         <div class="row items-center q-mb-md">
           <div class="col">
@@ -115,9 +103,7 @@
           </div>
         </div>
 
-        <q-table
-          flat
-          bordered
+        <DataTable
           :rows="calculationResult.calculations"
           :columns="resultColumns"
           row-key="spec_id"
@@ -127,14 +113,14 @@
           <template #body-cell-total_cones="props">
             <q-td :props="props">
               <span>{{ props.value }}</span>
-              <q-tooltip v-if="props.row.meters_per_cone">
+              <AppTooltip v-if="props.row.meters_per_cone">
                 {{ props.row.total_meters.toFixed(2) }} mét ÷ {{ props.row.meters_per_cone }} m/cuộn
-              </q-tooltip>
+              </AppTooltip>
             </q-td>
           </template>
           <template #body-cell-thread_color="props">
             <q-td :props="props">
-              <q-badge
+              <AppBadge
                 v-if="props.row.thread_color"
                 :style="{ backgroundColor: props.row.thread_color_code || '#999' }"
                 :class="props.row.thread_color_code && isLightColor(props.row.thread_color_code) ? 'text-dark' : 'text-white'"
@@ -143,26 +129,25 @@
               <span v-else class="text-grey-5">—</span>
             </q-td>
           </template>
-        </q-table>
+        </DataTable>
       </q-card-section>
 
       <q-card-actions align="right" class="q-px-md q-pb-md">
-        <q-btn
-          unelevated
+        <AppButton
           color="primary"
           icon="add_circle"
           label="Tạo phiếu phân bổ"
           :disable="!hasColorBreakdown"
           @click="handleCreateAllocations"
         >
-          <q-tooltip v-if="!hasColorBreakdown">Cần có dữ liệu định mức màu chỉ</q-tooltip>
-        </q-btn>
+          <AppTooltip v-if="!hasColorBreakdown">Cần có dữ liệu định mức màu chỉ</AppTooltip>
+        </AppButton>
       </q-card-actions>
-    </q-card>
+    </AppCard>
 
     <!-- Results Section for PO Mode -->
     <template v-if="calculationMode === 'po' && poCalculationResults.length > 0">
-      <q-card
+      <AppCard
         v-for="poResult in poCalculationResults"
         :key="poResult.po_item_id"
         flat
@@ -177,9 +162,7 @@
             </div>
           </div>
 
-          <q-table
-            flat
-            bordered
+          <DataTable
             :rows="poResult.calculations"
             :columns="resultColumns"
             row-key="spec_id"
@@ -189,14 +172,14 @@
             <template #body-cell-total_cones="props">
               <q-td :props="props">
                 <span>{{ props.value }}</span>
-                <q-tooltip v-if="props.row.meters_per_cone">
+                <AppTooltip v-if="props.row.meters_per_cone">
                   {{ props.row.total_meters.toFixed(2) }} mét ÷ {{ props.row.meters_per_cone }} m/cuộn
-                </q-tooltip>
+                </AppTooltip>
               </q-td>
             </template>
             <template #body-cell-thread_color="props">
               <q-td :props="props">
-                <q-badge
+                <AppBadge
                   v-if="props.row.thread_color"
                   :style="{ backgroundColor: props.row.thread_color_code || '#999' }"
                   :class="props.row.thread_color_code && isLightColor(props.row.thread_color_code) ? 'text-dark' : 'text-white'"
@@ -205,80 +188,69 @@
                 <span v-else class="text-grey-5">—</span>
               </q-td>
             </template>
-          </q-table>
+          </DataTable>
         </q-card-section>
-      </q-card>
+      </AppCard>
 
-      <q-card flat bordered>
+      <AppCard flat bordered>
         <q-card-actions align="right" class="q-px-md q-py-md">
-          <q-btn
-            unelevated
+          <AppButton
             color="primary"
             icon="add_circle"
             label="Tạo phiếu phân bổ"
             :disable="!hasColorBreakdown"
             @click="handleCreateAllocations"
           >
-            <q-tooltip v-if="!hasColorBreakdown">Cần có dữ liệu định mức màu chỉ</q-tooltip>
-          </q-btn>
+            <AppTooltip v-if="!hasColorBreakdown">Cần có dữ liệu định mức màu chỉ</AppTooltip>
+          </AppButton>
         </q-card-actions>
-      </q-card>
+      </AppCard>
     </template>
 
     <!-- Empty State -->
-    <q-card v-if="!hasResults && !isLoading" flat bordered>
-      <q-card-section class="text-center q-py-xl">
-        <q-icon name="calculate" size="64px" color="grey-4" />
-        <div class="text-h6 text-grey-6 q-mt-md">Chưa có kết quả</div>
-        <div class="text-caption text-grey-5">
-          Chọn mã hàng hoặc đơn hàng và nhấn "Tính toán"
-        </div>
-      </q-card-section>
-    </q-card>
+    <AppCard v-if="!hasResults && !isLoading" flat bordered>
+      <EmptyState
+        icon="calculate"
+        title="Chưa có kết quả"
+        subtitle="Chọn mã hàng hoặc đơn hàng và nhấn &quot;Tính toán&quot;"
+        icon-color="grey-4"
+      />
+    </AppCard>
 
     <!-- Allocation Summary Dialog -->
-    <q-dialog v-model="showAllocationSummary" persistent maximized>
-      <q-card>
-        <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">Xác nhận tạo phiếu phân bổ</div>
-          <q-space />
-          <q-btn icon="close" flat round dense v-close-popup :disable="creatingAllocations" />
-        </q-card-section>
+    <AppDialog v-model="showAllocationSummary" persistent maximized>
+      <template #header>
+        Xác nhận tạo phiếu phân bổ
+      </template>
 
-        <q-card-section>
-          <div class="text-body2 text-grey-7 q-mb-md">
-            Sẽ tạo {{ allocationCandidates.length }} phiếu phân bổ từ kết quả tính toán:
-          </div>
+      <div class="text-body2 text-grey-7 q-mb-md">
+        Sẽ tạo {{ allocationCandidates.length }} phiếu phân bổ từ kết quả tính toán:
+      </div>
 
-          <q-table
-            flat
-            bordered
-            :rows="allocationCandidates"
-            :columns="summaryColumns"
-            row-key="thread_type_id"
-            hide-bottom
-            :rows-per-page-options="[0]"
-          />
-        </q-card-section>
+      <DataTable
+        :rows="allocationCandidates"
+        :columns="summaryColumns"
+        row-key="thread_type_id"
+        hide-bottom
+        :rows-per-page-options="[0]"
+      />
 
-        <q-card-actions align="right" class="q-px-md q-pb-md">
-          <q-btn
-            flat
-            label="Hủy"
-            v-close-popup
-            :disable="creatingAllocations"
-          />
-          <q-btn
-            unelevated
-            color="primary"
-            icon="check"
-            label="Xác nhận tạo"
-            :loading="creatingAllocations"
-            @click="confirmCreateAllocations"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+      <template #actions>
+        <AppButton
+          variant="flat"
+          label="Hủy"
+          v-close-popup
+          :disable="creatingAllocations"
+        />
+        <AppButton
+          color="primary"
+          icon="check"
+          label="Xác nhận tạo"
+          :loading="creatingAllocations"
+          @click="confirmCreateAllocations"
+        />
+      </template>
+    </AppDialog>
   </q-page>
 </template>
 

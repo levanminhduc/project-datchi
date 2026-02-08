@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__augment-context-engine__codebase-retrieval",
+      "Bash(npx openspec:*)",
+      "Bash(npx vue-tsc:*)"
+    ]
+  }
+}
