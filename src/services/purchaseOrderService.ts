@@ -72,7 +72,7 @@ export const purchaseOrderService = {
   },
 
   /**
-   * Lấy thông tin đơn hàng kèm po_items, styles, skus, colors
+   * Lấy thông tin đơn hàng kèm po_items, styles
    * @param id - Purchase order ID
    * @returns Purchase order with items
    */

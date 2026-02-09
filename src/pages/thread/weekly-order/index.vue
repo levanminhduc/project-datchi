@@ -83,7 +83,7 @@
               icon="add"
               label="Thêm PO"
               :disable="!selectedPOId"
-              :loading="loadingPOId === selectedPOId"
+              :loading="loadingPOId !== null && loadingPOId === selectedPOId"
               @click="handleAddPO"
             />
           </div>
@@ -182,6 +182,7 @@
       <ResultsDetailView
         v-if="resultView === 'detail'"
         :results="perStyleResults"
+        :order-entries="orderEntries"
       />
 
       <!-- Summary View -->

@@ -46,14 +46,6 @@ export interface POItem {
   style_id: number
   quantity: number
   style?: { id: number; style_code: string; style_name: string }
-  skus?: POItemSku[]
-}
-
-export interface POItemSku {
-  id: number
-  color_id: number
-  quantity: number
-  color?: { id: number; name: string; hex_code: string }
 }
 
 export interface PurchaseOrderWithItems extends PurchaseOrder {

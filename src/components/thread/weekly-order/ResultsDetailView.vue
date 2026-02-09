@@ -8,10 +8,32 @@
       class="q-mb-sm"
     >
       <q-card-section>
+        <!-- Header: PO - Mã Hàng - Màu Hàng -->
         <div class="row items-center q-mb-sm">
           <div class="col">
+            <span
+              v-if="getPoNumbers(result.style_id)"
+              class="text-caption text-primary q-mr-sm"
+            >{{ getPoNumbers(result.style_id) }} —</span>
             <span class="text-weight-medium">{{ result.style_code }}</span>
             <span class="text-grey-7 q-ml-sm">{{ result.style_name }}</span>
+            <template v-if="getColorNames(result.style_id).length > 0">
+              <span class="text-grey-5 q-mx-xs">|</span>
+              <template
+                v-for="(color, idx) in getColorNames(result.style_id)"
+                :key="color.color_id"
+              >
+                <span
+                  v-if="idx > 0"
+                  class="text-grey-5 q-mx-xs"
+                >-</span>
+                <AppBadge
+                  :style="{ backgroundColor: color.hex_code || '#999' }"
+                  :class="color.hex_code && isLightColor(color.hex_code) ? 'text-dark' : 'text-white'"
+                  :label="color.color_name"
+                />
+              </template>
+            </template>
           </div>
           <AppChip
             color="primary"
@@ -70,9 +92,11 @@
 <script setup lang="ts">
 import type { QTableColumn } from 'quasar'
 import type { CalculationResult, CalculationItem } from '@/types/thread'
+import type { StyleOrderEntry } from '@/types/thread/weeklyOrder'
 
-defineProps<{
+const props = defineProps<{
   results: CalculationResult[]
+  orderEntries?: StyleOrderEntry[]
 }>()
 
 function isLightColor(hex: string): boolean {
@@ -81,6 +105,27 @@ function isLightColor(hex: string): boolean {
   const g = parseInt(color.substring(2, 4), 16)
   const b = parseInt(color.substring(4, 6), 16)
   return (r * 299 + g * 587 + b * 114) / 1000 > 155
+}
+
+function getPoNumbers(styleId: number): string {
+  if (!props.orderEntries) return ''
+  const entries = props.orderEntries.filter((e) => e.style_id === styleId && e.po_number)
+  const uniquePos = [...new Set(entries.map((e) => e.po_number))].filter(Boolean)
+  return uniquePos.join(', ')
+}
+
+function getColorNames(styleId: number): Array<{ color_id: number; color_name: string; hex_code: string }> {
+  if (!props.orderEntries) return []
+  const entries = props.orderEntries.filter((e) => e.style_id === styleId)
+  const colorMap = new Map<number, { color_id: number; color_name: string; hex_code: string }>()
+  for (const entry of entries) {
+    for (const c of entry.colors) {
+      if (!colorMap.has(c.color_id)) {
+        colorMap.set(c.color_id, { color_id: c.color_id, color_name: c.color_name, hex_code: c.hex_code })
+      }
+    }
+  }
+  return Array.from(colorMap.values())
 }
 
 const columns: QTableColumn[] = [

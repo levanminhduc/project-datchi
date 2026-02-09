@@ -6,7 +6,7 @@ const purchaseOrders = new Hono()
 
 /**
  * GET /api/purchase-orders - List all purchase orders with optional filtering
- * Query param: include=items to join po_items + styles + skus + colors
+ * Query param: include=items to join po_items + styles
  */
 purchaseOrders.get('/', async (c) => {
   try {
@@ -14,7 +14,7 @@ purchaseOrders.get('/', async (c) => {
     const includeItems = query.include === 'items'
 
     const selectQuery = includeItems
-      ? `*, items:po_items(id, po_id, style_id, quantity, style:styles(id, style_code, style_name), skus(id, color_id, quantity, color:colors(id, name, hex_code)))`
+      ? `*, items:po_items(id, po_id, style_id, quantity, style:styles(id, style_code, style_name))`
       : '*'
 
     let dbQuery = supabase
@@ -49,7 +49,7 @@ purchaseOrders.get('/', async (c) => {
 
 /**
  * GET /api/purchase-orders/:id - Get a single purchase order by ID
- * Query param: include=items to join po_items + styles + skus + colors
+ * Query param: include=items to join po_items + styles
  */
 purchaseOrders.get('/:id', async (c) => {
   try {
@@ -63,7 +63,7 @@ purchaseOrders.get('/:id', async (c) => {
     const includeItems = query.include === 'items'
 
     const selectQuery = includeItems
-      ? `*, items:po_items(id, po_id, style_id, quantity, style:styles(id, style_code, style_name), skus(id, color_id, quantity, color:colors(id, name, hex_code)))`
+      ? `*, items:po_items(id, po_id, style_id, quantity, style:styles(id, style_code, style_name))`
       : '*'
 
     const { data, error } = await supabase
