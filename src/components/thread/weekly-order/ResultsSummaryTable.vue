@@ -39,6 +39,35 @@
             >—</span>
           </q-td>
         </template>
+        <template #body-cell-additional_order="props">
+          <q-td :props="props">
+            <span class="cursor-pointer text-primary">
+              {{ (props.row.additional_order && props.row.additional_order > 0) ? props.row.additional_order.toLocaleString('vi-VN') : '—' }}
+              <q-icon
+                name="edit"
+                size="xs"
+                class="q-ml-xs"
+              />
+            </span>
+            <q-popup-edit
+              v-slot="scope"
+              :model-value="props.row.additional_order || 0"
+              buttons
+              label-set="Lưu"
+              label-cancel="Hủy"
+              @save="(val: number) => emit('update:additional-order', props.row.thread_type_id, val)"
+            >
+              <q-input
+                v-model.number="scope.value"
+                type="number"
+                :min="0"
+                dense
+                autofocus
+                label="Số lượng đặt thêm"
+              />
+            </q-popup-edit>
+          </q-td>
+        </template>
         <template #no-data>
           <div class="text-center text-grey q-pa-md">
             Chưa có dữ liệu tổng hợp
@@ -55,6 +84,10 @@ import type { AggregatedRow } from '@/types/thread'
 
 defineProps<{
   rows: AggregatedRow[]
+}>()
+
+const emit = defineEmits<{
+  'update:additional-order': [threadTypeId: number, value: number]
 }>()
 
 const columns: QTableColumn[] = [
@@ -84,6 +117,37 @@ const columns: QTableColumn[] = [
     align: 'right',
     sortable: true,
     format: (val: number) => val > 0 ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
+    name: 'inventory_cones',
+    label: 'Tồn kho KD',
+    field: 'inventory_cones',
+    align: 'right',
+    sortable: true,
+    format: (val: number | undefined) => (val && val > 0) ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
+    name: 'sl_can_dat',
+    label: 'SL cần đặt',
+    field: 'sl_can_dat',
+    align: 'right',
+    sortable: true,
+    format: (val: number | undefined) => (val && val > 0) ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
+    name: 'additional_order',
+    label: 'Đặt thêm',
+    field: 'additional_order',
+    align: 'right',
+    format: (val: number | undefined) => (val && val > 0) ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
+    name: 'total_final',
+    label: 'Tổng chốt',
+    field: 'total_final',
+    align: 'right',
+    sortable: true,
+    format: (val: number | undefined) => (val && val > 0) ? val.toLocaleString('vi-VN') : '—',
   },
 ]
 </script>

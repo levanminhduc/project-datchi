@@ -38,3 +38,16 @@ export const SaveResultsSchema = z.object({
     ),
   summary_data: z.any().optional(),
 })
+
+export const EnrichInventorySchema = z.object({
+  summary_rows: z
+    .array(
+      z
+        .object({
+          thread_type_id: z.number({ required_error: 'thread_type_id là bắt buộc' }),
+          total_cones: z.number({ required_error: 'total_cones là bắt buộc' }),
+        })
+        .passthrough(),
+    )
+    .min(1, 'Cần ít nhất một dòng tổng hợp'),
+})

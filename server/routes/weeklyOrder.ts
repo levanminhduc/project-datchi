@@ -7,6 +7,7 @@ import {
   UpdateWeeklyOrderSchema,
   UpdateStatusSchema,
   SaveResultsSchema,
+  EnrichInventorySchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
 
@@ -86,6 +87,67 @@ weeklyOrder.get('/', async (c) => {
     return c.json({ data: result, error: null })
   } catch (err) {
     console.error('Error fetching weekly orders:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * POST /api/weekly-orders/enrich-inventory - Enrich summary rows with inventory data
+ */
+weeklyOrder.post('/enrich-inventory', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = EnrichInventorySchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    const { summary_rows } = validated
+
+    // Extract unique thread_type_ids
+    const threadTypeIds = [...new Set(summary_rows.map((r) => r.thread_type_id))]
+
+    // Query available inventory
+    const { data: inventory, error: invError } = await supabase
+      .from('thread_inventory')
+      .select('thread_type_id, is_partial')
+      .eq('status', 'AVAILABLE')
+      .in('thread_type_id', threadTypeIds)
+
+    if (invError) throw invError
+
+    // Aggregate counts per thread_type_id
+    const inventoryMap = new Map<number, number>()
+    for (const row of inventory || []) {
+      const current = inventoryMap.get(row.thread_type_id) || 0
+      inventoryMap.set(row.thread_type_id, current + 1)
+    }
+
+    // Enrich each summary row
+    const enrichedRows = summary_rows.map((row) => {
+      const inventory_cones = inventoryMap.get(row.thread_type_id) || 0
+      const sl_can_dat = Math.max(0, row.total_cones - inventory_cones)
+      const additional_order = 0
+      const total_final = sl_can_dat
+
+      return {
+        ...row,
+        inventory_cones,
+        sl_can_dat,
+        additional_order,
+        total_final,
+      }
+    })
+
+    return c.json({ data: enrichedRows, error: null })
+  } catch (err) {
+    console.error('Error enriching inventory data:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

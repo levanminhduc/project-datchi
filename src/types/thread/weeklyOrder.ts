@@ -69,6 +69,10 @@ export interface AggregatedRow {
   meters_per_cone: number | null
   thread_color: string | null
   thread_color_code: string | null
+  inventory_cones?: number
+  sl_can_dat?: number
+  additional_order?: number
+  total_final?: number
 }
 
 export interface StyleOrderEntry {

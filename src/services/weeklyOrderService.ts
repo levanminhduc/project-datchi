@@ -11,6 +11,7 @@ import type {
   CreateWeeklyOrderDTO,
   UpdateWeeklyOrderDTO,
   WeeklyOrderResults,
+  AggregatedRow,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -187,5 +188,18 @@ export const weeklyOrderService = {
     }
 
     return response.data
+  },
+
+  async enrichInventory(rows: AggregatedRow[]): Promise<AggregatedRow[]> {
+    const response = await fetchApi<ApiResponse<AggregatedRow[]>>(`${BASE}/enrich-inventory`, {
+      method: 'POST',
+      body: JSON.stringify({ summary_rows: rows }),
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || rows
   },
 }

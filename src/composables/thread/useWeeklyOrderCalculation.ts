@@ -7,6 +7,7 @@
 
 import { ref, computed } from 'vue'
 import { threadCalculationService } from '@/services/threadCalculationService'
+import { weeklyOrderService } from '@/services/weeklyOrderService'
 import type {
   StyleOrderEntry,
   AggregatedRow,
@@ -357,6 +358,15 @@ export function useWeeklyOrderCalculation() {
 
     perStyleResults.value = successResults
     aggregateResults(successResults)
+
+    // Enrich with inventory data
+    try {
+      const enriched = await weeklyOrderService.enrichInventory(aggregatedResults.value)
+      aggregatedResults.value = enriched
+    } catch (err) {
+      console.warn('[weekly-order] enrich inventory failed, using unenriched data:', err)
+    }
+
     lastCalculatedAt.value = Date.now()
     isCalculating.value = false
   }
@@ -414,6 +424,13 @@ export function useWeeklyOrderCalculation() {
     lastCalculatedAt.value = null
   }
 
+  const updateAdditionalOrder = (threadTypeId: number, value: number) => {
+    const row = aggregatedResults.value.find((r) => r.thread_type_id === threadTypeId)
+    if (!row) return
+    row.additional_order = value
+    row.total_final = (row.sl_can_dat || 0) + value
+  }
+
   return {
     // State
     orderEntries,
@@ -439,6 +456,7 @@ export function useWeeklyOrderCalculation() {
     updateColorQuantity,
     calculateAll,
     aggregateResults,
+    updateAdditionalOrder,
     clearAll,
     setFromWeekItems,
   }

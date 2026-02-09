@@ -189,6 +189,7 @@
       <ResultsSummaryTable
         v-if="resultView === 'summary'"
         :rows="aggregatedResults"
+        @update:additional-order="handleUpdateAdditionalOrder"
       />
 
       <!-- Result Actions -->
@@ -320,6 +321,7 @@ const {
   calculateAll,
   clearAll,
   setFromWeekItems,
+  updateAdditionalOrder,
 } = useWeeklyOrderCalculation()
 
 const {
@@ -421,6 +423,10 @@ const handleAddStyleFromPO = (
   })
 }
 
+const handleUpdateAdditionalOrder = (threadTypeId: number, value: number) => {
+  updateAdditionalOrder(threadTypeId, value)
+}
+
 const handleSave = async () => {
   if (!weekName.value) return
 
@@ -495,6 +501,12 @@ const handleLoadWeek = async (weekId: number) => {
 
   const savedResults = await loadResults(weekId)
   if (savedResults) {
+    if (savedResults.calculation_data) {
+      perStyleResults.value = savedResults.calculation_data
+    }
+    if (savedResults.summary_data) {
+      aggregatedResults.value = savedResults.summary_data
+    }
     snackbar.info('Đã tải kết quả tính toán đã lưu')
   }
 }
@@ -585,6 +597,10 @@ const handleExport = async () => {
       { header: 'Tổng mét', key: 'total_meters', width: 15 },
       { header: 'Tổng cuộn', key: 'total_cones', width: 12 },
       { header: 'Mét/cuộn', key: 'meters_per_cone', width: 12 },
+      { header: 'Tồn kho KD', key: 'inventory_cones', width: 12 },
+      { header: 'SL cần đặt', key: 'sl_can_dat', width: 12 },
+      { header: 'Đặt thêm', key: 'additional_order', width: 12 },
+      { header: 'Tổng chốt', key: 'total_final', width: 12 },
     ]
 
     // Style header row
@@ -604,6 +620,10 @@ const handleExport = async () => {
         total_meters: Number(r.total_meters.toFixed(2)),
         total_cones: r.total_cones,
         meters_per_cone: r.meters_per_cone || '',
+        inventory_cones: r.inventory_cones || '',
+        sl_can_dat: r.sl_can_dat || '',
+        additional_order: r.additional_order || '',
+        total_final: r.total_final || '',
       })
     })
 
