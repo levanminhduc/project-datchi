@@ -48,9 +48,9 @@
 
     <template #actions>
       <AppButton
+        v-close-popup
         flat
         label="Đóng"
-        v-close-popup
       />
     </template>
   </AppDialog>

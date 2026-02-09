@@ -9,34 +9,48 @@
     <q-tooltip>{{ employee?.fullName || 'Tài khoản' }}</q-tooltip>
     <q-menu>
       <q-list style="min-width: 200px">
-        <q-item-label header class="text-weight-bold">
+        <q-item-label
+          header
+          class="text-weight-bold"
+        >
           Thông tin tài khoản
         </q-item-label>
         
         <q-item>
           <q-item-section avatar>
-            <q-avatar color="primary" text-color="white" size="40px">
+            <q-avatar
+              color="primary"
+              text-color="white"
+              size="40px"
+            >
               {{ avatarInitials }}
             </q-avatar>
           </q-item-section>
           <q-item-section>
             <q-item-label>{{ employee?.fullName || 'N/A' }}</q-item-label>
-            <q-item-label caption>{{ employee?.employeeId || '' }}</q-item-label>
+            <q-item-label caption>
+              {{ employee?.employeeId || '' }}
+            </q-item-label>
           </q-item-section>
         </q-item>
 
         <q-separator />
 
         <q-item
-          clickable
           v-close-popup
+          clickable
           @click="handleLogout"
         >
           <q-item-section avatar>
-            <q-icon name="logout" color="negative" />
+            <q-icon
+              name="logout"
+              color="negative"
+            />
           </q-item-section>
           <q-item-section>
-            <q-item-label class="text-negative">Đăng xuất</q-item-label>
+            <q-item-label class="text-negative">
+              Đăng xuất
+            </q-item-label>
           </q-item-section>
         </q-item>
       </q-list>

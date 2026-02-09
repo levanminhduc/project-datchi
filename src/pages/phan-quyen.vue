@@ -348,7 +348,10 @@ onMounted(async () => {
 
 <template>
   <q-page padding>
-    <PageHeader title="Phân Quyền" subtitle="Quản lý vai trò và quyền truy cập hệ thống" />
+    <PageHeader
+      title="Phân Quyền"
+      subtitle="Quản lý vai trò và quyền truy cập hệ thống"
+    />
 
     <q-tabs
       v-model="activeTab"
@@ -359,22 +362,48 @@ onMounted(async () => {
       align="left"
       narrow-indicator
     >
-      <q-tab name="roles" label="Vai trò" icon="admin_panel_settings" />
-      <q-tab name="permissions" label="Danh sách quyền" icon="security" />
-      <q-tab name="employees" label="Phân quyền nhân viên" icon="people" />
+      <q-tab
+        name="roles"
+        label="Vai trò"
+        icon="admin_panel_settings"
+      />
+      <q-tab
+        name="permissions"
+        label="Danh sách quyền"
+        icon="security"
+      />
+      <q-tab
+        name="employees"
+        label="Phân quyền nhân viên"
+        icon="people"
+      />
     </q-tabs>
 
     <q-separator />
 
-    <q-tab-panels v-model="activeTab" animated class="q-mt-md">
+    <q-tab-panels
+      v-model="activeTab"
+      animated
+      class="q-mt-md"
+    >
       <!-- ============================================ -->
       <!-- Tab 1: Roles Management -->
       <!-- ============================================ -->
-      <q-tab-panel name="roles" class="q-pa-none">
+      <q-tab-panel
+        name="roles"
+        class="q-pa-none"
+      >
         <AppCard>
           <q-card-section class="row items-center justify-between">
-            <div class="text-h6">Quản lý vai trò</div>
-            <q-btn color="primary" icon="add" label="Thêm vai trò" @click="openCreateRoleDialog" />
+            <div class="text-h6">
+              Quản lý vai trò
+            </div>
+            <q-btn
+              color="primary"
+              icon="add"
+              label="Thêm vai trò"
+              @click="openCreateRoleDialog"
+            />
           </q-card-section>
 
           <q-table
@@ -426,20 +455,33 @@ onMounted(async () => {
             </template>
 
             <template #no-data>
-              <EmptyState icon="admin_panel_settings" title="Chưa có vai trò" description="Nhấn nút Thêm vai trò để tạo mới" />
+              <EmptyState
+                icon="admin_panel_settings"
+                title="Chưa có vai trò"
+                description="Nhấn nút Thêm vai trò để tạo mới"
+              />
             </template>
           </q-table>
         </AppCard>
 
         <!-- Role Create/Edit Dialog -->
-        <q-dialog v-model="roleDialogOpen" persistent>
+        <q-dialog
+          v-model="roleDialogOpen"
+          persistent
+        >
           <q-card style="min-width: 700px; max-width: 90vw">
             <q-card-section class="row items-center q-pb-none">
               <div class="text-h6">
                 {{ roleDialogMode === 'create' ? 'Tạo vai trò mới' : 'Sửa vai trò' }}
               </div>
               <q-space />
-              <q-btn icon="close" flat round dense v-close-popup />
+              <q-btn
+                v-close-popup
+                icon="close"
+                flat
+                round
+                dense
+              />
             </q-card-section>
 
             <q-card-section>
@@ -485,9 +527,14 @@ onMounted(async () => {
 
               <q-separator class="q-my-md" />
 
-              <div class="text-subtitle1 q-mb-sm">Quyền của vai trò</div>
+              <div class="text-subtitle1 q-mb-sm">
+                Quyền của vai trò
+              </div>
               <div style="max-height: 400px; overflow-y: auto">
-                <q-list bordered separator>
+                <q-list
+                  bordered
+                  separator
+                >
                   <q-expansion-item
                     v-for="module in permMgmt.moduleList.value"
                     :key="module"
@@ -523,10 +570,12 @@ onMounted(async () => {
                             <q-checkbox
                               :model-value="isPermissionSelected(perm.id)"
                               :label="perm.name"
-                              @update:model-value="toggleRolePermission(perm.id)"
                               dense
+                              @update:model-value="toggleRolePermission(perm.id)"
                             >
-                              <q-tooltip v-if="perm.description">{{ perm.description }}</q-tooltip>
+                              <q-tooltip v-if="perm.description">
+                                {{ perm.description }}
+                              </q-tooltip>
                             </q-checkbox>
                           </div>
                         </div>
@@ -537,8 +586,15 @@ onMounted(async () => {
               </div>
             </q-card-section>
 
-            <q-card-actions align="right" class="q-pa-md">
-              <q-btn flat label="Hủy" v-close-popup />
+            <q-card-actions
+              align="right"
+              class="q-pa-md"
+            >
+              <q-btn
+                v-close-popup
+                flat
+                label="Hủy"
+              />
               <q-btn
                 color="primary"
                 :label="roleDialogMode === 'create' ? 'Tạo' : 'Lưu'"
@@ -553,11 +609,16 @@ onMounted(async () => {
       <!-- ============================================ -->
       <!-- Tab 2: Permissions List -->
       <!-- ============================================ -->
-      <q-tab-panel name="permissions" class="q-pa-none">
+      <q-tab-panel
+        name="permissions"
+        class="q-pa-none"
+      >
         <AppCard>
           <q-card-section class="row items-center q-col-gutter-md">
             <div class="col-12 col-sm-6">
-              <div class="text-h6">Danh sách quyền hệ thống</div>
+              <div class="text-h6">
+                Danh sách quyền hệ thống
+              </div>
             </div>
             <div class="col-12 col-sm-6">
               <q-input
@@ -574,7 +635,10 @@ onMounted(async () => {
             </div>
           </q-card-section>
 
-          <q-list bordered separator>
+          <q-list
+            bordered
+            separator
+          >
             <q-expansion-item
               v-for="module in filteredModuleList"
               :key="module"
@@ -585,7 +649,10 @@ onMounted(async () => {
             >
               <template #header>
                 <q-item-section avatar>
-                  <q-icon name="folder" color="primary" />
+                  <q-icon
+                    name="folder"
+                    color="primary"
+                  />
                 </q-item-section>
                 <q-item-section>
                   <q-item-label>{{ module }}</q-item-label>
@@ -651,11 +718,16 @@ onMounted(async () => {
       <!-- ============================================ -->
       <!-- Tab 3: Employee Permissions -->
       <!-- ============================================ -->
-      <q-tab-panel name="employees" class="q-pa-none">
+      <q-tab-panel
+        name="employees"
+        class="q-pa-none"
+      >
         <AppCard>
           <q-card-section class="row items-center q-col-gutter-md">
             <div class="col-12 col-sm-6">
-              <div class="text-h6">Phân quyền nhân viên</div>
+              <div class="text-h6">
+                Phân quyền nhân viên
+              </div>
             </div>
             <div class="col-12 col-sm-6">
               <q-select
@@ -681,7 +753,11 @@ onMounted(async () => {
                 <template #option="scope">
                   <q-item v-bind="scope.itemProps">
                     <q-item-section avatar>
-                      <q-avatar color="primary" text-color="white" size="sm">
+                      <q-avatar
+                        color="primary"
+                        text-color="white"
+                        size="sm"
+                      >
                         {{ scope.opt.fullName?.charAt(0) || '?' }}
                       </q-avatar>
                     </q-item-section>
@@ -712,20 +788,33 @@ onMounted(async () => {
               <!-- Employee Info -->
               <div class="row items-center q-mb-md q-col-gutter-md">
                 <div class="col-auto">
-                  <q-avatar color="primary" text-color="white" size="56px">
+                  <q-avatar
+                    color="primary"
+                    text-color="white"
+                    size="56px"
+                  >
                     {{ employeeData.employee.fullName?.charAt(0) || '?' }}
                   </q-avatar>
                 </div>
                 <div class="col">
-                  <div class="text-h6">{{ employeeData.employee.fullName }}</div>
+                  <div class="text-h6">
+                    {{ employeeData.employee.fullName }}
+                  </div>
                   <div class="text-caption text-grey">
                     {{ employeeData.employee.employeeId }} |
                     {{ employeeData.employee.department }} |
                     {{ employeeData.employee.chucVu }}
                   </div>
                 </div>
-                <div class="col-auto" v-if="employeeData.isRoot">
-                  <q-chip color="deep-purple" text-color="white" icon="verified_user">
+                <div
+                  v-if="employeeData.isRoot"
+                  class="col-auto"
+                >
+                  <q-chip
+                    color="deep-purple"
+                    text-color="white"
+                    icon="verified_user"
+                  >
                     ROOT
                   </q-chip>
                 </div>
@@ -735,7 +824,10 @@ onMounted(async () => {
 
               <!-- Roles Assignment -->
               <div class="text-subtitle1 q-mb-sm">
-                <q-icon name="admin_panel_settings" class="q-mr-xs" />
+                <q-icon
+                  name="admin_panel_settings"
+                  class="q-mr-xs"
+                />
                 Vai trò
               </div>
               <div class="row q-col-gutter-sm q-mb-md">
@@ -747,10 +839,12 @@ onMounted(async () => {
                   <q-checkbox
                     :model-value="employeeRoleIds.includes(role.id)"
                     :label="role.name"
-                    @update:model-value="toggleEmployeeRole(role.id)"
                     :disable="role.code === 'ROOT'"
+                    @update:model-value="toggleEmployeeRole(role.id)"
                   >
-                    <q-tooltip v-if="role.description">{{ role.description }}</q-tooltip>
+                    <q-tooltip v-if="role.description">
+                      {{ role.description }}
+                    </q-tooltip>
                   </q-checkbox>
                 </div>
               </div>
@@ -759,15 +853,18 @@ onMounted(async () => {
                 label="Lưu vai trò"
                 icon="save"
                 :loading="permMgmt.loading.value"
-                @click="saveEmployeeRoles"
                 class="q-mb-lg"
+                @click="saveEmployeeRoles"
               />
 
               <q-separator class="q-mb-md" />
 
               <!-- Direct Permissions -->
               <div class="text-subtitle1 q-mb-sm">
-                <q-icon name="security" class="q-mr-xs" />
+                <q-icon
+                  name="security"
+                  class="q-mr-xs"
+                />
                 Quyền trực tiếp (override)
               </div>
               <div class="text-caption text-grey q-mb-md">
@@ -775,7 +872,10 @@ onMounted(async () => {
               </div>
 
               <div style="max-height: 400px; overflow-y: auto">
-                <q-list bordered separator>
+                <q-list
+                  bordered
+                  separator
+                >
                   <q-expansion-item
                     v-for="module in permMgmt.moduleList.value"
                     :key="module"
@@ -790,10 +890,15 @@ onMounted(async () => {
                             :key="perm.id"
                             class="col-12 col-sm-6 col-md-4"
                           >
-                            <div class="row items-center q-gutter-x-sm q-pa-xs rounded-borders" :class="isDirectPermGranted(perm.id) ? 'bg-green-1' : isDirectPermDenied(perm.id) ? 'bg-red-1' : ''">
+                            <div
+                              class="row items-center q-gutter-x-sm q-pa-xs rounded-borders"
+                              :class="isDirectPermGranted(perm.id) ? 'bg-green-1' : isDirectPermDenied(perm.id) ? 'bg-red-1' : ''"
+                            >
                               <div class="col-grow text-body2 ellipsis">
                                 {{ perm.name }}
-                                <q-tooltip v-if="perm.description">{{ perm.description }}</q-tooltip>
+                                <q-tooltip v-if="perm.description">
+                                  {{ perm.description }}
+                                </q-tooltip>
                               </div>
                               <q-checkbox
                                 :model-value="isDirectPermGranted(perm.id)"
@@ -827,15 +932,18 @@ onMounted(async () => {
                 label="Lưu quyền trực tiếp"
                 icon="save"
                 :loading="permMgmt.loading.value"
-                @click="saveEmployeePermissions"
                 class="q-mt-md"
+                @click="saveEmployeePermissions"
               />
 
               <q-separator class="q-my-md" />
 
               <!-- Effective Permissions Summary -->
               <div class="text-subtitle1 q-mb-sm">
-                <q-icon name="verified" class="q-mr-xs" />
+                <q-icon
+                  name="verified"
+                  class="q-mr-xs"
+                />
                 Quyền hiệu lực (tổng hợp)
               </div>
               <div class="text-caption text-grey q-mb-md">
@@ -847,12 +955,20 @@ onMounted(async () => {
                   :key="permCode"
                   class="col-auto"
                 >
-                  <q-chip size="sm" color="primary" text-color="white" dense>
+                  <q-chip
+                    size="sm"
+                    color="primary"
+                    text-color="white"
+                    dense
+                  >
                     {{ permCode }}
                   </q-chip>
                 </div>
               </div>
-              <div v-if="employeeData.effectivePermissions.length === 0" class="text-grey">
+              <div
+                v-if="employeeData.effectivePermissions.length === 0"
+                class="text-grey"
+              >
                 Không có quyền nào
               </div>
             </div>

@@ -7,12 +7,18 @@
     />
 
     <!-- Calculation Form Card -->
-    <AppCard flat bordered class="q-mb-lg">
+    <AppCard
+      flat
+      bordered
+      class="q-mb-lg"
+    >
       <q-card-section>
         <div class="row q-col-gutter-md items-end">
           <!-- Mode Toggle -->
           <div class="col-12 col-sm-6 col-md-3">
-            <div class="text-caption text-grey-7 q-mb-xs">Phương thức tính</div>
+            <div class="text-caption text-grey-7 q-mb-xs">
+              Phương thức tính
+            </div>
             <ButtonToggle
               v-model="calculationMode"
               spread
@@ -40,7 +46,9 @@
               >
                 <template #no-option>
                   <q-item>
-                    <q-item-section class="text-grey">Không có dữ liệu</q-item-section>
+                    <q-item-section class="text-grey">
+                      Không có dữ liệu
+                    </q-item-section>
                   </q-item>
                 </template>
               </AppSelect>
@@ -71,7 +79,9 @@
               >
                 <template #no-option>
                   <q-item>
-                    <q-item-section class="text-grey">Không có dữ liệu</q-item-section>
+                    <q-item-section class="text-grey">
+                      Không có dữ liệu
+                    </q-item-section>
                   </q-item>
                 </template>
               </AppSelect>
@@ -94,12 +104,21 @@
     </AppCard>
 
     <!-- Results Section for Style Mode -->
-    <AppCard v-if="calculationMode === 'style' && calculationResult" flat bordered class="q-mb-md">
+    <AppCard
+      v-if="calculationMode === 'style' && calculationResult"
+      flat
+      bordered
+      class="q-mb-md"
+    >
       <q-card-section>
         <div class="row items-center q-mb-md">
           <div class="col">
-            <div class="text-h6">{{ calculationResult.style_code }} - {{ calculationResult.style_name }}</div>
-            <div class="text-caption text-grey-7">Số lượng: {{ calculationResult.total_quantity }} SP</div>
+            <div class="text-h6">
+              {{ calculationResult.style_code }} - {{ calculationResult.style_name }}
+            </div>
+            <div class="text-caption text-grey-7">
+              Số lượng: {{ calculationResult.total_quantity }} SP
+            </div>
           </div>
         </div>
 
@@ -126,13 +145,19 @@
                 :class="props.row.thread_color_code && isLightColor(props.row.thread_color_code) ? 'text-dark' : 'text-white'"
                 :label="props.row.thread_color"
               />
-              <span v-else class="text-grey-5">—</span>
+              <span
+                v-else
+                class="text-grey-5"
+              >—</span>
             </q-td>
           </template>
         </DataTable>
       </q-card-section>
 
-      <q-card-actions align="right" class="q-px-md q-pb-md">
+      <q-card-actions
+        align="right"
+        class="q-px-md q-pb-md"
+      >
         <AppButton
           color="primary"
           icon="add_circle"
@@ -140,7 +165,9 @@
           :disable="!hasColorBreakdown"
           @click="handleCreateAllocations"
         >
-          <AppTooltip v-if="!hasColorBreakdown">Cần có dữ liệu định mức màu chỉ</AppTooltip>
+          <AppTooltip v-if="!hasColorBreakdown">
+            Cần có dữ liệu định mức màu chỉ
+          </AppTooltip>
         </AppButton>
       </q-card-actions>
     </AppCard>
@@ -157,8 +184,12 @@
         <q-card-section>
           <div class="row items-center q-mb-md">
             <div class="col">
-              <div class="text-h6">{{ poResult.style_code }} - {{ poResult.style_name }}</div>
-              <div class="text-caption text-grey-7">Số lượng: {{ poResult.quantity }} SP</div>
+              <div class="text-h6">
+                {{ poResult.style_code }} - {{ poResult.style_name }}
+              </div>
+              <div class="text-caption text-grey-7">
+                Số lượng: {{ poResult.quantity }} SP
+              </div>
             </div>
           </div>
 
@@ -185,15 +216,24 @@
                   :class="props.row.thread_color_code && isLightColor(props.row.thread_color_code) ? 'text-dark' : 'text-white'"
                   :label="props.row.thread_color"
                 />
-                <span v-else class="text-grey-5">—</span>
+                <span
+                  v-else
+                  class="text-grey-5"
+                >—</span>
               </q-td>
             </template>
           </DataTable>
         </q-card-section>
       </AppCard>
 
-      <AppCard flat bordered>
-        <q-card-actions align="right" class="q-px-md q-py-md">
+      <AppCard
+        flat
+        bordered
+      >
+        <q-card-actions
+          align="right"
+          class="q-px-md q-py-md"
+        >
           <AppButton
             color="primary"
             icon="add_circle"
@@ -201,14 +241,20 @@
             :disable="!hasColorBreakdown"
             @click="handleCreateAllocations"
           >
-            <AppTooltip v-if="!hasColorBreakdown">Cần có dữ liệu định mức màu chỉ</AppTooltip>
+            <AppTooltip v-if="!hasColorBreakdown">
+              Cần có dữ liệu định mức màu chỉ
+            </AppTooltip>
           </AppButton>
         </q-card-actions>
       </AppCard>
     </template>
 
     <!-- Empty State -->
-    <AppCard v-if="!hasResults && !isLoading" flat bordered>
+    <AppCard
+      v-if="!hasResults && !isLoading"
+      flat
+      bordered
+    >
       <EmptyState
         icon="calculate"
         title="Chưa có kết quả"
@@ -218,7 +264,11 @@
     </AppCard>
 
     <!-- Allocation Summary Dialog -->
-    <AppDialog v-model="showAllocationSummary" persistent maximized>
+    <AppDialog
+      v-model="showAllocationSummary"
+      persistent
+      maximized
+    >
       <template #header>
         Xác nhận tạo phiếu phân bổ
       </template>
@@ -237,9 +287,9 @@
 
       <template #actions>
         <AppButton
+          v-close-popup
           variant="flat"
           label="Hủy"
-          v-close-popup
           :disable="creatingAllocations"
         />
         <AppButton

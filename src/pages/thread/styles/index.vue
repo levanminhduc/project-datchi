@@ -104,7 +104,10 @@
 
       <!-- Fabric Type Column -->
       <template #body-cell-fabric_type="props">
-        <q-td :props="props" align="center">
+        <q-td
+          :props="props"
+          align="center"
+        >
           <q-badge
             v-if="props.row.fabric_type"
             color="blue-grey"
@@ -112,20 +115,30 @@
           >
             {{ props.row.fabric_type }}
           </q-badge>
-          <span v-else class="text-grey-5">-</span>
+          <span
+            v-else
+            class="text-grey-5"
+          >-</span>
         </q-td>
       </template>
 
       <!-- Description Column -->
       <template #body-cell-description="props">
         <q-td :props="props">
-          <div v-if="props.row.description" class="ellipsis" style="max-width: 200px">
+          <div
+            v-if="props.row.description"
+            class="ellipsis"
+            style="max-width: 200px"
+          >
             {{ props.row.description }}
             <q-tooltip v-if="props.row.description.length > 30">
               {{ props.row.description }}
             </q-tooltip>
           </div>
-          <span v-else class="text-grey-5">-</span>
+          <span
+            v-else
+            class="text-grey-5"
+          >-</span>
         </q-td>
       </template>
 

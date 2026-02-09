@@ -23,7 +23,10 @@ onMounted(() => {
 
 <template>
   <q-layout view="hHh Lpr fFf">
-    <q-header elevated class="bg-primary text-white">
+    <q-header
+      elevated
+      class="bg-primary text-white"
+    >
       <q-toolbar>
         <q-btn
           v-if="showSidebar"

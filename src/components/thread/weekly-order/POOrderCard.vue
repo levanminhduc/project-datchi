@@ -1,5 +1,9 @@
 <template>
-  <AppCard flat bordered class="q-mb-md">
+  <AppCard
+    flat
+    bordered
+    class="q-mb-md"
+  >
     <q-card-section>
       <!-- PO Header -->
       <div class="row items-center q-mb-md">
@@ -7,7 +11,10 @@
           <div class="text-subtitle2 text-weight-bold text-primary">
             PO: {{ po.po_number }}
           </div>
-          <div v-if="po.customer_name" class="text-caption text-grey-7">
+          <div
+            v-if="po.customer_name"
+            class="text-caption text-grey-7"
+          >
             {{ po.customer_name }}
           </div>
         </div>
@@ -103,7 +110,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'remove-po': [poId: number]
-  'add-style': [style: { id: number; style_code: string; style_name: string; po_id: number; po_number: string }, skuColors: Array<{ id: number; name: string; hex_code: string }>]
+  'add-style': [style: { id: number; style_code: string; style_name: string; po_id: number; po_number: string }]
   'remove-style': [styleId: number, poId: number | null]
   'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string }, poId: number | null]
   'remove-color': [styleId: number, colorId: number, poId: number | null]
@@ -138,17 +145,17 @@ const getColorOptionsForStyle = (styleId: number): Array<{ id: number; name: str
   const poItem = props.po.items.find((item) => item.style_id === styleId)
   if (!poItem?.skus) return []
 
-  return poItem.skus
-    .filter((sku) => sku.color)
-    .map((sku) => ({
-      id: sku.color!.id,
-      name: sku.color!.name,
-      hex_code: sku.color!.hex_code,
-    }))
-}
-
-const getSkuColors = (styleId: number) => {
-  return getColorOptionsForStyle(styleId)
+  const colorMap = new Map<number, { id: number; name: string; hex_code: string }>()
+  for (const sku of poItem.skus) {
+    if (sku.color && !colorMap.has(sku.color.id)) {
+      colorMap.set(sku.color.id, {
+        id: sku.color.id,
+        name: sku.color.name,
+        hex_code: sku.color.hex_code,
+      })
+    }
+  }
+  return Array.from(colorMap.values())
 }
 
 const handleAddStyle = () => {
@@ -162,7 +169,7 @@ const handleAddStyle = () => {
     style_name: poItem.style.style_name,
     po_id: props.po.id,
     po_number: props.po.po_number,
-  }, getSkuColors(poItem.style_id))
+  })
 
   selectedStyleId.value = null
 }
@@ -180,7 +187,7 @@ const handleAddAllStyles = () => {
       style_name: item.style.style_name,
       po_id: props.po.id,
       po_number: props.po.po_number,
-    }, getSkuColors(item.style_id))
+    })
   }
 }
 </script>

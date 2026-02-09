@@ -1,5 +1,9 @@
 <template>
-  <AppCard flat bordered class="q-mb-sm">
+  <AppCard
+    flat
+    bordered
+    class="q-mb-sm"
+  >
     <q-card-section>
       <div class="row items-center q-mb-sm">
         <div class="col">
@@ -20,7 +24,10 @@
       </div>
 
       <!-- Color entries -->
-      <div v-if="entry.colors.length > 0" class="q-mb-sm">
+      <div
+        v-if="entry.colors.length > 0"
+        class="q-mb-sm"
+      >
         <div
           v-for="color in entry.colors"
           :key="color.color_id"

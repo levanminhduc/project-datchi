@@ -78,6 +78,8 @@ Real-time subscriptions (useRealtime) for live updates
 | `server/routes/`             | 20 Hono API route files                      |
 | `server/middleware/auth.ts`  | JWT verification, permission middleware      |
 | `server/db/supabase.ts`      | Dual Supabase clients (anon + admin)         |
+| `server/validation/`         | Zod schemas for request validation           |
+| `server/utils/`              | Shared helpers (errorHelper)                 |
 | `src/pages/`                 | File-based routing via unplugin-vue-router   |
 | `src/components/ui/`         | 66 Quasar wrapper components (15 categories) |
 | `src/components/thread/`     | 31+ domain-specific components               |
@@ -186,6 +188,29 @@ definePage({
 
 All endpoints return: `{ data: T | null, error: string | null, message?: string }` with Vietnamese error messages.
 
+### Backend Validation (Zod)
+
+New routes use Zod schemas in `server/validation/` for request validation:
+
+```typescript
+// server/validation/myDomain.ts
+import { z } from 'zod'
+export const CreateItemSchema = z.object({
+  name: z.string().min(1, 'Tên là bắt buộc').trim(),
+  quantity: z.number().positive('Số lượng phải lớn hơn 0'),
+})
+
+// server/routes/myDomain.ts
+import { CreateItemSchema } from '../validation/myDomain'
+router.post('/', async (c) => {
+  const parsed = CreateItemSchema.safeParse(await c.req.json())
+  if (!parsed.success) return c.json({ data: null, error: parsed.error.errors[0].message }, 400)
+  // ... use parsed.data
+})
+```
+
+Use `server/utils/errorHelper.ts` for `getErrorMessage()` instead of defining it per route file.
+
 ### Supabase Dual Client
 
 ```typescript
@@ -291,12 +316,16 @@ const { syncPending } = useOfflineSync();
 - Sửa file `.vue` → gọi `/vue-best-practices` trước
 - Sửa route handlers, middleware, validation trong `server/` → gọi `/hono-routing`
 - Thiết kế feature mới, auth changes, security review → gọi `/backend-development`
-- Tạo API endpoint MỚI hoàn toàn → gọi cả `/hono-routing` + `/backend-development` (cần cả design + implementation)
+- Tạo API endpoint MỚI hoàn toàn → gọi cả `/hono-routing` + `/backend-development`
 - Viết SQL/migration → gọi `/supabase-postgres-best-practices` trước
 - Fix bug → gọi skill tương ứng với layer bị lỗi (frontend/backend/DB)
 - Feature mới (full-stack) → gọi cả 3-4 skill theo thứ tự: DB → Backend → Frontend
 
-### Subagents
+## Agents & Teams
+
+Use the **Augment Context Engine** (`codebase-retrieval` tool) as the primary tool for codebase searches before falling back to Glob/Grep.
+
+### Subagents (Single-Agent Tasks)
 
 | Task Type                         | Subagent                       |
 | --------------------------------- | ------------------------------ |
@@ -309,6 +338,42 @@ const { syncPending } = useOfflineSync();
 | Plan implementation               | **Plan**                       |
 
 Run independent subagents **in parallel** when possible.
+
+### Agents Team (Multi-Agent Tasks - Auto-Spawn)
+
+**Khi nào TỰ ĐỘNG tạo Team:** Khi task yêu cầu **3+ agents đồng thời** hoặc **full-stack feature** (DB + Backend + Frontend).
+
+**Quy tắc tạo Team:**
+1. Đánh giá task complexity: nếu cần thay đổi ≥3 layers (migration, server route, service, composable, page) → **tạo Team**
+2. Dùng `TeamCreate` → `TaskCreate` cho từng subtask → spawn teammates via `Task` tool với `team_name`
+3. Phân chia rõ ràng: mỗi teammate nhận 1 layer/domain riêng, tránh xung đột file
+4. Team lead (bạn) phối hợp qua `SendMessage` và theo dõi `TaskList`
+
+**Team template cho full-stack feature:**
+
+| Teammate | subagent_type | Nhiệm vụ |
+|---|---|---|
+| `db-agent` | senior-programmer | Migration SQL, RPC functions |
+| `backend-agent` | senior-programmer | Hono routes, validation, middleware |
+| `frontend-agent` | senior-programmer | Vue pages, components, composables, services |
+| `reviewer` | review-uncommitted-changes | Review tất cả changes trước commit |
+
+**Ví dụ tạo Team:**
+```
+1. TeamCreate({ team_name: "feature-xxx" })
+2. TaskCreate cho mỗi subtask (DB, Backend, Frontend, Review)
+3. Spawn teammates:
+   Task({ subagent_type: "senior-programmer", team_name: "feature-xxx", name: "backend-agent", prompt: "..." })
+4. Assign tasks via TaskUpdate({ owner: "backend-agent" })
+5. Monitor progress via TaskList, SendMessage
+6. Sau khi hoàn thành: shutdown teammates → TeamDelete
+```
+
+**Khi KHÔNG cần Team:**
+- Fix bug đơn giản (1-2 files)
+- Thêm component UI nhỏ
+- Sửa style/CSS
+- Task chỉ ảnh hưởng 1 layer → dùng single subagent
 
 ## Excel Export Pattern
 

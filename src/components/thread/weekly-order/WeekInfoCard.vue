@@ -1,5 +1,8 @@
 <template>
-  <AppCard flat bordered>
+  <AppCard
+    flat
+    bordered
+  >
     <q-card-section>
       <div class="text-subtitle1 text-weight-medium q-mb-md">
         Thông tin đặt hàng
@@ -26,7 +29,10 @@
             @clear="$emit('update:startDate', '')"
           >
             <template #append>
-              <q-icon name="event" class="cursor-pointer">
+              <q-icon
+                name="event"
+                class="cursor-pointer"
+              >
                 <q-popup-proxy
                   cover
                   transition-show="scale"
@@ -52,7 +58,10 @@
             @clear="$emit('update:endDate', '')"
           >
             <template #append>
-              <q-icon name="event" class="cursor-pointer">
+              <q-icon
+                name="event"
+                class="cursor-pointer"
+              >
                 <q-popup-proxy
                   cover
                   transition-show="scale"

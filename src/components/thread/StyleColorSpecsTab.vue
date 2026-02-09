@@ -10,7 +10,10 @@
           Chọn màu chỉ cụ thể cho từng công đoạn, theo từng màu hàng
         </div>
       </div>
-      <div v-if="specs.length > 0" class="col-auto">
+      <div
+        v-if="specs.length > 0"
+        class="col-auto"
+      >
         <q-btn
           color="primary"
           icon="add"
@@ -23,8 +26,15 @@
     </div>
 
     <!-- Empty: no specs yet -->
-    <div v-if="specs.length === 0" class="text-center q-py-xl">
-      <q-icon name="palette" size="xl" color="grey-5" />
+    <div
+      v-if="specs.length === 0"
+      class="text-center q-py-xl"
+    >
+      <q-icon
+        name="palette"
+        size="xl"
+        color="grey-5"
+      />
       <p class="text-grey-6 q-mt-md">
         Vui lòng thêm định mức chỉ trước khi thiết lập màu
       </p>
@@ -37,20 +47,36 @@
     </div>
 
     <!-- Empty: no color groups yet -->
-    <div v-else-if="colorGroups.length === 0 && !colorSpecsLoading" class="text-center q-py-xl">
-      <q-icon name="palette" size="xl" color="grey-5" />
+    <div
+      v-else-if="colorGroups.length === 0 && !colorSpecsLoading"
+      class="text-center q-py-xl"
+    >
+      <q-icon
+        name="palette"
+        size="xl"
+        color="grey-5"
+      />
       <p class="text-grey-6 q-mt-md">
         Chưa có màu hàng nào. Bấm "Thêm màu hàng" để bắt đầu.
       </p>
     </div>
 
     <!-- Loading -->
-    <div v-else-if="colorSpecsLoading" class="row justify-center q-py-xl">
-      <q-spinner size="lg" color="primary" />
+    <div
+      v-else-if="colorSpecsLoading"
+      class="row justify-center q-py-xl"
+    >
+      <q-spinner
+        size="lg"
+        color="primary"
+      />
     </div>
 
     <!-- Color Groups -->
-    <div v-else class="q-gutter-md">
+    <div
+      v-else
+      class="q-gutter-md"
+    >
       <q-card
         v-for="group in colorGroups"
         :key="group.color.id"
@@ -107,7 +133,11 @@
                   <span class="cell-value">
                     {{ getThreadDisplayName(props.row) }}
                   </span>
-                  <q-icon name="edit" size="xs" class="edit-hint q-ml-xs text-grey-5" />
+                  <q-icon
+                    name="edit"
+                    size="xs"
+                    class="edit-hint q-ml-xs text-grey-5"
+                  />
                   <q-popup-edit
                     v-slot="scope"
                     v-model="props.row.threadTypeId"
@@ -136,10 +166,13 @@
 
             <!-- Chiều dài cuộn column - auto-fill from thread type -->
             <template #body-cell-meters_per_cone="props">
-              <q-td :props="props" class="text-right">
+              <q-td
+                :props="props"
+                class="text-right"
+              >
                 {{ props.row.threadType?.meters_per_cone != null
-                    ? Number(props.row.threadType.meters_per_cone).toLocaleString()
-                    : '-' }}
+                  ? Number(props.row.threadType.meters_per_cone).toLocaleString()
+                  : '-' }}
               </q-td>
             </template>
           </q-table>
@@ -151,9 +184,17 @@
     <q-dialog v-model="showAddColorDialog">
       <q-card style="min-width: 350px; max-width: 90vw">
         <q-card-section class="row items-center">
-          <div class="text-h6">Thêm màu hàng</div>
+          <div class="text-h6">
+            Thêm màu hàng
+          </div>
           <q-space />
-          <q-btn icon="close" flat round dense v-close-popup />
+          <q-btn
+            v-close-popup
+            icon="close"
+            flat
+            round
+            dense
+          />
         </q-card-section>
 
         <q-separator />
@@ -203,7 +244,10 @@
           </div>
 
           <!-- Mode 2: Create new color manually -->
-          <div v-else class="q-gutter-sm">
+          <div
+            v-else
+            class="q-gutter-sm"
+          >
             <q-input
               v-model="newColorName"
               label="Tên màu *"
@@ -225,8 +269,15 @@
                 />
               </template>
               <template #append>
-                <q-icon name="colorize" class="cursor-pointer">
-                  <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                <q-icon
+                  name="colorize"
+                  class="cursor-pointer"
+                >
+                  <q-popup-proxy
+                    cover
+                    transition-show="scale"
+                    transition-hide="scale"
+                  >
                     <q-color v-model="newColorHex" />
                   </q-popup-proxy>
                 </q-icon>
@@ -237,8 +288,16 @@
 
         <q-separator />
 
-        <q-card-actions align="right" class="q-pa-md">
-          <q-btn flat label="Hủy" color="grey" v-close-popup />
+        <q-card-actions
+          align="right"
+          class="q-pa-md"
+        >
+          <q-btn
+            v-close-popup
+            flat
+            label="Hủy"
+            color="grey"
+          />
           <q-btn
             v-if="!showNewColorForm"
             unelevated

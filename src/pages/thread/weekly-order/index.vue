@@ -39,12 +39,20 @@
     </WeekInfoCard>
 
     <!-- PO Selection Section -->
-    <AppCard flat bordered class="q-mb-md">
+    <AppCard
+      flat
+      bordered
+      class="q-mb-md"
+    >
       <q-card-section>
         <div class="row items-center q-mb-md">
           <div class="col">
-            <div class="text-subtitle1 text-weight-medium">Đơn hàng (PO)</div>
-            <div class="text-caption text-grey">Chọn PO để thêm mã hàng và màu sắc</div>
+            <div class="text-subtitle1 text-weight-medium">
+              Đơn hàng (PO)
+            </div>
+            <div class="text-caption text-grey">
+              Chọn PO để thêm mã hàng và màu sắc
+            </div>
           </div>
         </div>
 
@@ -62,7 +70,9 @@
             >
               <template #no-option>
                 <q-item>
-                  <q-item-section class="text-grey">Không có PO nào</q-item-section>
+                  <q-item-section class="text-grey">
+                    Không có PO nào
+                  </q-item-section>
                 </q-item>
               </template>
             </AppSelect>
@@ -113,22 +123,38 @@
         :disable="!canCalculate"
         @click="calculateAll"
       />
-      <span v-if="isResultsStale" class="text-caption text-warning">
+      <span
+        v-if="isResultsStale"
+        class="text-caption text-warning"
+      >
         Dữ liệu đã thay đổi, cần tính lại
       </span>
       <q-space />
-      <span v-if="isCalculating" class="text-caption text-grey">
+      <span
+        v-if="isCalculating"
+        class="text-caption text-grey"
+      >
         {{ calculationProgress.current }}/{{ calculationProgress.total }} mã hàng
       </span>
     </div>
 
     <!-- Calculation Errors -->
-    <AppBanner v-if="calculationErrors.length > 0" class="bg-negative text-white q-mb-md" rounded>
+    <AppBanner
+      v-if="calculationErrors.length > 0"
+      class="bg-negative text-white q-mb-md"
+      rounded
+    >
       <template #avatar>
         <q-icon name="warning" />
       </template>
-      <div class="text-weight-medium">Lỗi tính toán:</div>
-      <div v-for="err in calculationErrors" :key="err.style_id" class="text-caption">
+      <div class="text-weight-medium">
+        Lỗi tính toán:
+      </div>
+      <div
+        v-for="err in calculationErrors"
+        :key="err.style_id"
+        class="text-caption"
+      >
         {{ err.style_code }}: {{ err.error }}
       </div>
     </AppBanner>
@@ -137,7 +163,9 @@
     <template v-if="hasResults">
       <!-- Result View Toggle -->
       <div class="row items-center q-mb-md">
-        <div class="text-subtitle1 text-weight-medium q-mr-md">Kết quả tính toán</div>
+        <div class="text-subtitle1 text-weight-medium q-mr-md">
+          Kết quả tính toán
+        </div>
         <ButtonToggle
           v-model="resultView"
           :options="[
@@ -171,7 +199,9 @@
           :disable="!hasColorBreakdown"
           @click="handleCreateAllocations"
         >
-          <AppTooltip v-if="!hasColorBreakdown">Cần có dữ liệu định mức màu chỉ</AppTooltip>
+          <AppTooltip v-if="!hasColorBreakdown">
+            Cần có dữ liệu định mức màu chỉ
+          </AppTooltip>
         </AppButton>
         <AppButton
           flat
@@ -191,7 +221,11 @@
     />
 
     <!-- Allocation Summary Dialog -->
-    <AppDialog v-model="showAllocationSummary" persistent maximized>
+    <AppDialog
+      v-model="showAllocationSummary"
+      persistent
+      maximized
+    >
       <template #header>
         Xác nhận tạo phiếu phân bổ
       </template>
@@ -211,9 +245,9 @@
 
       <template #actions>
         <AppButton
+          v-close-popup
           flat
           label="Hủy"
-          v-close-popup
           :disable="creatingAllocations"
         />
         <AppButton
@@ -376,7 +410,6 @@ const handleRemovePO = (poId: number) => {
 
 const handleAddStyleFromPO = (
   style: { id: number; style_code: string; style_name: string; po_id: number; po_number: string },
-  skuColors: Array<{ id: number; name: string; hex_code: string }>,
 ) => {
   addStyle({
     id: style.id,
@@ -385,15 +418,6 @@ const handleAddStyleFromPO = (
     po_id: style.po_id,
     po_number: style.po_number,
   })
-
-  // Auto-add all SKU colors with default qty 1
-  for (const color of skuColors) {
-    addColorToStyle(style.id, {
-      color_id: color.id,
-      color_name: color.name,
-      hex_code: color.hex_code,
-    }, style.po_id)
-  }
 }
 
 const handleSave = async () => {

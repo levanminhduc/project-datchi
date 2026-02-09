@@ -8,7 +8,9 @@
       <!-- Header -->
       <q-card-section class="row items-center q-pb-none">
         <div>
-          <div class="text-h6">Nhà Cung Cấp</div>
+          <div class="text-h6">
+            Nhà Cung Cấp
+          </div>
           <div class="text-caption text-grey-7">
             {{ threadType?.code }} - {{ threadType?.name }}
           </div>
@@ -60,8 +62,12 @@
                   {{ getInitials(props.row.supplier?.name) }}
                 </q-avatar>
                 <div>
-                  <div class="text-weight-medium">{{ props.row.supplier?.name }}</div>
-                  <div class="text-caption text-grey-6">{{ props.row.supplier?.code }}</div>
+                  <div class="text-weight-medium">
+                    {{ props.row.supplier?.name }}
+                  </div>
+                  <div class="text-caption text-grey-6">
+                    {{ props.row.supplier?.code }}
+                  </div>
                 </div>
               </div>
             </q-td>

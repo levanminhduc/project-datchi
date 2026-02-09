@@ -13,7 +13,10 @@
         <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Chi tiết Mã hàng
         </h1>
-        <div v-if="selectedStyle" class="text-grey-6">
+        <div
+          v-if="selectedStyle"
+          class="text-grey-6"
+        >
           {{ selectedStyle.style_code }} - {{ selectedStyle.style_name }}
         </div>
       </div>
@@ -21,13 +24,22 @@
     </div>
 
     <!-- Loading -->
-    <div v-if="isLoading" class="row justify-center q-py-xl">
-      <q-spinner size="lg" color="primary" />
+    <div
+      v-if="isLoading"
+      class="row justify-center q-py-xl"
+    >
+      <q-spinner
+        size="lg"
+        color="primary"
+      />
     </div>
 
     <!-- Content -->
     <template v-else-if="selectedStyle">
-      <q-card flat bordered>
+      <q-card
+        flat
+        bordered
+      >
         <q-tabs
           v-model="activeTab"
           class="text-primary"
@@ -35,14 +47,26 @@
           active-color="primary"
           indicator-color="primary"
         >
-          <q-tab name="info" label="Thông tin chung" />
-          <q-tab name="specs" label="Định mức chỉ" />
-          <q-tab name="colors" label="Định mức màu" />
+          <q-tab
+            name="info"
+            label="Thông tin chung"
+          />
+          <q-tab
+            name="specs"
+            label="Định mức chỉ"
+          />
+          <q-tab
+            name="colors"
+            label="Định mức màu"
+          />
         </q-tabs>
 
         <q-separator />
 
-        <q-tab-panels v-model="activeTab" animated>
+        <q-tab-panels
+          v-model="activeTab"
+          animated
+        >
           <!-- Tab 1: Thông tin chung -->
           <q-tab-panel name="info">
             <div class="row q-col-gutter-md">
@@ -144,7 +168,11 @@
             >
               <!-- Inline Edit: Process Name Column -->
               <template #body-cell-process_name="props">
-                <q-td :props="props" data-testid="spec-cell-process" class="cursor-pointer editable-cell">
+                <q-td
+                  :props="props"
+                  data-testid="spec-cell-process"
+                  class="cursor-pointer editable-cell"
+                >
                   <q-spinner-dots
                     v-if="inlineEditLoading[getCellKey(props.row.id, 'process_name')]"
                     size="sm"
@@ -152,7 +180,11 @@
                   />
                   <template v-else>
                     <span class="cell-value">{{ props.row.process_name || '-' }}</span>
-                    <q-icon name="edit" size="xs" class="edit-hint q-ml-xs text-grey-5" />
+                    <q-icon
+                      name="edit"
+                      size="xs"
+                      class="edit-hint q-ml-xs text-grey-5"
+                    />
                     <q-popup-edit
                       v-slot="scope"
                       v-model="props.row.process_name"
@@ -175,7 +207,11 @@
 
               <!-- Inline Edit: Supplier Column (dropdown) -->
               <template #body-cell-supplier="props">
-                <q-td :props="props" data-testid="spec-cell-supplier" class="cursor-pointer editable-cell">
+                <q-td
+                  :props="props"
+                  data-testid="spec-cell-supplier"
+                  class="cursor-pointer editable-cell"
+                >
                   <q-spinner-dots
                     v-if="inlineEditLoading[getCellKey(props.row.id, 'supplier_id')]"
                     size="sm"
@@ -183,7 +219,11 @@
                   />
                   <template v-else>
                     <span class="cell-value">{{ props.row.suppliers?.name || '-' }}</span>
-                    <q-icon name="edit" size="xs" class="edit-hint q-ml-xs text-grey-5" />
+                    <q-icon
+                      name="edit"
+                      size="xs"
+                      class="edit-hint q-ml-xs text-grey-5"
+                    />
                     <q-popup-edit
                       v-slot="scope"
                       v-model="props.row.supplier_id"
@@ -211,7 +251,11 @@
 
               <!-- Inline Edit: Tex Column (dropdown, filtered by row's supplier) -->
               <template #body-cell-tex="props">
-                <q-td :props="props" data-testid="spec-cell-tex" class="cursor-pointer editable-cell">
+                <q-td
+                  :props="props"
+                  data-testid="spec-cell-tex"
+                  class="cursor-pointer editable-cell"
+                >
                   <q-spinner-dots
                     v-if="inlineEditLoading[getCellKey(props.row.id, 'tex_id')]"
                     size="sm"
@@ -219,7 +263,11 @@
                   />
                   <template v-else>
                     <span class="cell-value">{{ props.row.thread_types?.tex_number || '-' }}</span>
-                    <q-icon name="edit" size="xs" class="edit-hint q-ml-xs text-grey-5" />
+                    <q-icon
+                      name="edit"
+                      size="xs"
+                      class="edit-hint q-ml-xs text-grey-5"
+                    />
                     <q-popup-edit
                       v-slot="scope"
                       v-model="props.row.tex_id"
@@ -249,7 +297,11 @@
 
               <!-- Inline Edit: Meters Column -->
               <template #body-cell-meters="props">
-                <q-td :props="props" data-testid="spec-cell-meters" class="cursor-pointer editable-cell text-right">
+                <q-td
+                  :props="props"
+                  data-testid="spec-cell-meters"
+                  class="cursor-pointer editable-cell text-right"
+                >
                   <q-spinner-dots
                     v-if="inlineEditLoading[getCellKey(props.row.id, 'meters_per_unit')]"
                     size="sm"
@@ -257,7 +309,11 @@
                   />
                   <template v-else>
                     <span class="cell-value">{{ props.row.meters_per_unit?.toFixed(2) || '-' }}</span>
-                    <q-icon name="edit" size="xs" class="edit-hint q-ml-xs text-grey-5" />
+                    <q-icon
+                      name="edit"
+                      size="xs"
+                      class="edit-hint q-ml-xs text-grey-5"
+                    />
                     <q-popup-edit
                       v-slot="scope"
                       v-model="props.row.meters_per_unit"
@@ -282,7 +338,10 @@
 
               <!-- Actions Column (delete only - edit is inline now) -->
               <template #body-cell-actions="props">
-                <q-td :props="props" class="q-gutter-xs">
+                <q-td
+                  :props="props"
+                  class="q-gutter-xs"
+                >
                   <q-btn
                     flat
                     round
@@ -298,7 +357,11 @@
               </template>
               <template #no-data>
                 <div class="full-width row flex-center text-grey-6 q-py-lg">
-                  <q-icon name="info" size="sm" class="q-mr-sm" />
+                  <q-icon
+                    name="info"
+                    size="sm"
+                    class="q-mr-sm"
+                  />
                   Chưa có định mức chỉ nào được thiết lập
                 </div>
               </template>
@@ -321,9 +384,18 @@
     </template>
 
     <!-- Not found -->
-    <div v-else class="text-center q-py-xl">
-      <q-icon name="error" size="xl" color="negative" />
-      <p class="text-h6 text-grey-7 q-mt-md">Không tìm thấy mã hàng</p>
+    <div
+      v-else
+      class="text-center q-py-xl"
+    >
+      <q-icon
+        name="error"
+        size="xl"
+        color="negative"
+      />
+      <p class="text-h6 text-grey-7 q-mt-md">
+        Không tìm thấy mã hàng
+      </p>
       <q-btn
         color="primary"
         label="Quay lại danh sách"
@@ -331,7 +403,6 @@
         @click="$router.push('/thread/styles')"
       />
     </div>
-
   </q-page>
 </template>
 

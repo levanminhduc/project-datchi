@@ -13,7 +13,12 @@
             <span class="text-weight-medium">{{ result.style_code }}</span>
             <span class="text-grey-7 q-ml-sm">{{ result.style_name }}</span>
           </div>
-          <AppChip color="primary" text-color="white" dense :label="`${result.total_quantity} SP`" />
+          <AppChip
+            color="primary"
+            text-color="white"
+            dense
+            :label="`${result.total_quantity} SP`"
+          />
         </div>
 
         <q-table
@@ -42,7 +47,10 @@
                 :class="props.row.thread_color_code && isLightColor(props.row.thread_color_code) ? 'text-dark' : 'text-white'"
                 :label="props.row.thread_color"
               />
-              <span v-else class="text-grey-5">—</span>
+              <span
+                v-else
+                class="text-grey-5"
+              >—</span>
             </q-td>
           </template>
         </q-table>

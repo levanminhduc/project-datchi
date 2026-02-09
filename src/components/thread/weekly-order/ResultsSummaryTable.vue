@@ -1,7 +1,12 @@
 <template>
-  <AppCard flat bordered>
+  <AppCard
+    flat
+    bordered
+  >
     <q-card-section>
-      <div class="text-subtitle1 text-weight-medium q-mb-sm">Tổng hợp đặt hàng</div>
+      <div class="text-subtitle1 text-weight-medium q-mb-sm">
+        Tổng hợp đặt hàng
+      </div>
 
       <q-table
         :rows="rows"
@@ -28,7 +33,10 @@
               }"
             />
             <span v-if="props.row.thread_color">{{ props.row.thread_color }}</span>
-            <span v-else class="text-grey-5">—</span>
+            <span
+              v-else
+              class="text-grey-5"
+            >—</span>
           </q-td>
         </template>
         <template #no-data>

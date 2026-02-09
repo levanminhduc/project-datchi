@@ -1,13 +1,22 @@
 <template>
   <q-page class="flex flex-center bg-grey-2">
-    <q-card class="text-center q-pa-xl" style="max-width: 500px">
-      <q-icon name="lock" size="80px" color="negative" />
+    <q-card
+      class="text-center q-pa-xl"
+      style="max-width: 500px"
+    >
+      <q-icon
+        name="lock"
+        size="80px"
+        color="negative"
+      />
       
-      <h1 class="text-h4 q-mt-lg q-mb-sm">Truy Cập Bị Từ Chối</h1>
+      <h1 class="text-h4 q-mt-lg q-mb-sm">
+        Truy Cập Bị Từ Chối
+      </h1>
       
       <p class="text-grey-7 q-mb-lg">
         Bạn không có quyền truy cập trang này.
-        <br />
+        <br>
         Vui lòng liên hệ quản trị viên nếu bạn cho rằng đây là lỗi.
       </p>
 
@@ -28,8 +37,15 @@
       </div>
 
       <!-- Show current user info if authenticated -->
-      <div v-if="employee" class="q-mt-xl text-caption text-grey-6">
-        <q-icon name="person" size="xs" class="q-mr-xs" />
+      <div
+        v-if="employee"
+        class="q-mt-xl text-caption text-grey-6"
+      >
+        <q-icon
+          name="person"
+          size="xs"
+          class="q-mr-xs"
+        />
         Đang đăng nhập: {{ employee.fullName }} ({{ employee.employeeId }})
       </div>
     </q-card>

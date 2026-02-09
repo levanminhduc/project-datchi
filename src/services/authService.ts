@@ -180,7 +180,7 @@ class AuthService {
    * Authenticated fetch with automatic token refresh
    */
   async authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
-    let token = this.getAccessToken()
+    const token = this.getAccessToken()
 
     const makeRequest = (accessToken: string | null) => {
       return fetch(url, {

@@ -1,19 +1,33 @@
 <template>
   <q-page class="flex flex-center bg-grey-2">
-    <q-card class="login-card q-pa-lg" style="width: 400px; max-width: 90vw">
+    <q-card
+      class="login-card q-pa-lg"
+      style="width: 400px; max-width: 90vw"
+    >
       <!-- Logo & Title -->
       <div class="text-center q-mb-lg">
-        <q-icon name="inventory_2" size="64px" color="primary" />
-        <h1 class="text-h5 q-mt-md q-mb-none">Quản lý Kho Chỉ</h1>
-        <p class="text-grey-7">Đăng nhập để tiếp tục</p>
+        <q-icon
+          name="inventory_2"
+          size="64px"
+          color="primary"
+        />
+        <h1 class="text-h5 q-mt-md q-mb-none">
+          Quản lý Kho Chỉ
+        </h1>
+        <p class="text-grey-7">
+          Đăng nhập để tiếp tục
+        </p>
       </div>
 
       <!-- Login Form -->
-      <q-form @submit="handleLogin" class="q-gutter-md">
+      <q-form
+        class="q-gutter-md"
+        @submit="handleLogin"
+      >
         <AppInput
           v-model="form.employeeId"
           label="Mã Nhân Viên"
-          prependIcon="badge"
+          prepend-icon="badge"
           :rules="[required]"
           autocomplete="username"
           hint="Ví dụ: NV001"
@@ -41,7 +55,11 @@
         </q-input>
 
         <div class="row items-center justify-between">
-          <q-checkbox v-model="rememberMe" label="Ghi nhớ đăng nhập" dense />
+          <q-checkbox
+            v-model="rememberMe"
+            label="Ghi nhớ đăng nhập"
+            dense
+          />
           <!-- Note: Forgot password requires admin reset for employee-based auth -->
         </div>
 
@@ -56,7 +74,11 @@
       </q-form>
 
       <!-- Error Display -->
-      <q-banner v-if="authError" class="q-mt-md bg-negative text-white" rounded>
+      <q-banner
+        v-if="authError"
+        class="q-mt-md bg-negative text-white"
+        rounded
+      >
         <template #avatar>
           <q-icon name="error" />
         </template>
