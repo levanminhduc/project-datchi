@@ -13,7 +13,7 @@
             <span class="text-weight-medium">{{ result.style_code }}</span>
             <span class="text-grey-7 q-ml-sm">{{ result.style_name }}</span>
           </div>
-          <span class="text-caption text-grey">{{ result.total_quantity }} SP</span>
+          <AppChip color="primary" text-color="white" dense :label="`${result.total_quantity} SP`" />
         </div>
 
         <q-table

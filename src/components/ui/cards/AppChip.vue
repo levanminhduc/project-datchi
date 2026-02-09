@@ -31,6 +31,7 @@
 import type { AppChipProps } from '@/types/ui'
 
 withDefaults(defineProps<AppChipProps>(), {
+  modelValue: true,
   color: 'primary',
   square: false,
   outline: false,

@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## CRITICAL SAFETY RULES
 
-| Dangerous Command | Consequence | Requirement |
-|-------------------|-------------|-------------|
-| `supabase db reset` | **DELETES ALL DATA** | NEVER run automatically |
-| `DROP TABLE`, `TRUNCATE` | Permanent data loss | Must ask user first |
-| `DELETE FROM ... WHERE 1=1` | Deletes all records | Must ask user first |
-| `supabase migration repair` | Changes migration history | Ask user first |
-| Force push (`git push -f`) | Lost commit history | Ask user first |
+| Dangerous Command           | Consequence               | Requirement             |
+| --------------------------- | ------------------------- | ----------------------- |
+| `supabase db reset`         | **DELETES ALL DATA**      | NEVER run automatically |
+| `DROP TABLE`, `TRUNCATE`    | Permanent data loss       | Must ask user first     |
+| `DELETE FROM ... WHERE 1=1` | Deletes all records       | Must ask user first     |
+| `supabase migration repair` | Changes migration history | Ask user first          |
+| Force push (`git push -f`)  | Lost commit history       | Ask user first          |
 
 Before running migrations, backup first:
+
 ```bash
 pg_dump -h 127.0.0.1 -p 54322 -U postgres -d postgres > backup.sql
 ```
 
 To apply a single migration safely:
+
 ```bash
 psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/migrations/YYYYMMDD_name.sql
 ```
@@ -30,17 +32,17 @@ psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/migra
 
 ### Business Domains
 
-| Domain | Description | Key Routes |
-|--------|-------------|------------|
-| Thread Management | Thread types, colors, suppliers master data | `/thread`, `/thread/colors`, `/thread/suppliers` |
-| Inventory | Cone tracking with dual UoM (kg + meters), lots, warehouses | `/thread/inventory`, `/thread/lots` |
-| Allocations | Soft/hard allocation workflow (FEFO) | `/thread/allocations` |
-| Recovery | Partial cone recovery with electronic scale weighing | `/thread/recovery` |
-| Batch Operations | Receive, issue, transfer with barcode scanning | `/thread/batch/*`, `/thread/mobile/*` |
-| Thread Calculation | Calculate thread requirements per style/PO | `/thread/calculation` |
-| Weekly Ordering | Multi-style weekly thread ordering with aggregation | `/thread/weekly-order` |
-| Reports & Dashboard | Analytics and reporting | `/thread/dashboard`, `/reports/*` |
-| Employee Management | HR, RBAC with JWT auth | `/employees`, `/nhan-su/*` |
+| Domain              | Description                                                 | Key Routes                                       |
+| ------------------- | ----------------------------------------------------------- | ------------------------------------------------ |
+| Thread Management   | Thread types, colors, suppliers master data                 | `/thread`, `/thread/colors`, `/thread/suppliers` |
+| Inventory           | Cone tracking with dual UoM (kg + meters), lots, warehouses | `/thread/inventory`, `/thread/lots`              |
+| Allocations         | Soft/hard allocation workflow (FEFO)                        | `/thread/allocations`                            |
+| Recovery            | Partial cone recovery with electronic scale weighing        | `/thread/recovery`                               |
+| Batch Operations    | Receive, issue, transfer with barcode scanning              | `/thread/batch/*`, `/thread/mobile/*`            |
+| Thread Calculation  | Calculate thread requirements per style/PO                  | `/thread/calculation`                            |
+| Weekly Ordering     | Multi-style weekly thread ordering with aggregation         | `/thread/weekly-order`                           |
+| Reports & Dashboard | Analytics and reporting                                     | `/thread/dashboard`, `/reports/*`                |
+| Employee Management | HR, RBAC with JWT auth                                      | `/employees`, `/nhan-su/*`                       |
 
 ## Development Commands
 
@@ -71,34 +73,34 @@ Real-time subscriptions (useRealtime) for live updates
 
 ### Key Directories
 
-| Directory | Purpose |
-|-----------|---------|
-| `server/routes/` | 20 Hono API route files |
-| `server/middleware/auth.ts` | JWT verification, permission middleware |
-| `server/db/supabase.ts` | Dual Supabase clients (anon + admin) |
-| `src/pages/` | File-based routing via unplugin-vue-router |
-| `src/components/ui/` | 66 Quasar wrapper components (15 categories) |
-| `src/components/thread/` | 31+ domain-specific components |
-| `src/composables/` | 41+ composables (thread, hardware, core) |
-| `src/composables/hardware/` | Scanner, scale, audio, QR integration |
-| `src/services/` | 23 API client services |
-| `src/types/ui/` | TypeScript interfaces for UI components |
-| `src/types/thread/` | Thread domain type definitions |
-| `src/utils/errorMessages.ts` | Vietnamese error handling utility |
-| `supabase/migrations/` | 37+ SQL migration files |
+| Directory                    | Purpose                                      |
+| ---------------------------- | -------------------------------------------- |
+| `server/routes/`             | 20 Hono API route files                      |
+| `server/middleware/auth.ts`  | JWT verification, permission middleware      |
+| `server/db/supabase.ts`      | Dual Supabase clients (anon + admin)         |
+| `src/pages/`                 | File-based routing via unplugin-vue-router   |
+| `src/components/ui/`         | 66 Quasar wrapper components (15 categories) |
+| `src/components/thread/`     | 31+ domain-specific components               |
+| `src/composables/`           | 41+ composables (thread, hardware, core)     |
+| `src/composables/hardware/`  | Scanner, scale, audio, QR integration        |
+| `src/services/`              | 23 API client services                       |
+| `src/types/ui/`              | TypeScript interfaces for UI components      |
+| `src/types/thread/`          | Thread domain type definitions               |
+| `src/utils/errorMessages.ts` | Vietnamese error handling utility            |
+| `supabase/migrations/`       | 37+ SQL migration files                      |
 
 ### Where to Add New Code
 
-| Task | Location | Notes |
-|------|----------|-------|
-| API endpoint | `server/routes/{domain}.ts` | Register in `server/index.ts` |
-| Composable | `src/composables/` or `thread/` | Export from `index.ts` |
-| Service | `src/services/{name}Service.ts` | Export from `index.ts` |
-| Page | `src/pages/{path}.vue` | Auto-routing, `definePage()` for meta |
-| UI wrapper | `src/components/ui/{category}/` | `App[Name]` pattern |
-| Domain component | `src/components/thread/` | Feature-specific widgets |
-| Type | `src/types/{domain}/` | Export from `index.ts` |
-| Migration | `supabase/migrations/YYYYMMDD_name.sql` | Never modify existing migrations |
+| Task             | Location                                | Notes                                 |
+| ---------------- | --------------------------------------- | ------------------------------------- |
+| API endpoint     | `server/routes/{domain}.ts`             | Register in `server/index.ts`         |
+| Composable       | `src/composables/` or `thread/`         | Export from `index.ts`                |
+| Service          | `src/services/{name}Service.ts`         | Export from `index.ts`                |
+| Page             | `src/pages/{path}.vue`                  | Auto-routing, `definePage()` for meta |
+| UI wrapper       | `src/components/ui/{category}/`         | `App[Name]` pattern                   |
+| Domain component | `src/components/thread/`                | Feature-specific widgets              |
+| Type             | `src/types/{domain}/`                   | Export from `index.ts`                |
+| Migration        | `supabase/migrations/YYYYMMDD_name.sql` | Never modify existing migrations      |
 
 ## Mandatory Patterns
 
@@ -106,20 +108,20 @@ Real-time subscriptions (useRealtime) for live updates
 
 NEVER use Quasar components directly. Use the wrapper library in `src/components/ui/`:
 
-| Category | Components |
-|----------|------------|
-| `buttons/` | AppButton, IconButton, ButtonGroup, ButtonToggle, ButtonDropdown |
-| `inputs/` | AppInput, AppSelect, AppTextarea, AppCheckbox, AppToggle, SearchInput, AppWarehouseSelect, SupplierSelector, ColorSelector |
-| `dialogs/` | AppDialog, FormDialog, ConfirmDialog, DeleteDialog, AppMenu, AppTooltip, PopupEdit |
-| `feedback/` | AppSpinner, AppProgress, AppSkeleton, AppBanner, EmptyState, InnerLoading |
-| `cards/` | AppCard, StatCard, InfoCard, AppChip, AppBadge |
-| `tables/` | DataTable (wraps q-table with defaults: flat, bordered, Vietnamese labels) |
-| `navigation/` | AppTabs, TabPanel, AppStepper, AppPagination, AppBreadcrumbs, SidebarItem |
-| `layout/` | PageHeader, SectionHeader, AppToolbar, AppDrawer, AppSeparator, AppSpace |
-| `lists/` | AppList, ListItem |
-| `media/` | AppImage, AppVideo, AppCarousel, AppParallax |
-| `pickers/` | DatePicker, TimePicker, ColorPicker, FilePicker, AppEditor |
-| `scroll/` | ScrollArea, InfiniteScroll, VirtualScroll, PullToRefresh, Timeline |
+| Category      | Components                                                                                                                 |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `buttons/`    | AppButton, IconButton, ButtonGroup, ButtonToggle, ButtonDropdown                                                           |
+| `inputs/`     | AppInput, AppSelect, AppTextarea, AppCheckbox, AppToggle, SearchInput, AppWarehouseSelect, SupplierSelector, ColorSelector |
+| `dialogs/`    | AppDialog, FormDialog, ConfirmDialog, DeleteDialog, AppMenu, AppTooltip, PopupEdit                                         |
+| `feedback/`   | AppSpinner, AppProgress, AppSkeleton, AppBanner, EmptyState, InnerLoading                                                  |
+| `cards/`      | AppCard, StatCard, InfoCard, AppChip, AppBadge                                                                             |
+| `tables/`     | DataTable (wraps q-table with defaults: flat, bordered, Vietnamese labels)                                                 |
+| `navigation/` | AppTabs, TabPanel, AppStepper, AppPagination, AppBreadcrumbs, SidebarItem                                                  |
+| `layout/`     | PageHeader, SectionHeader, AppToolbar, AppDrawer, AppSeparator, AppSpace                                                   |
+| `lists/`      | AppList, ListItem                                                                                                          |
+| `media/`      | AppImage, AppVideo, AppCarousel, AppParallax                                                                               |
+| `pickers/`    | DatePicker, TimePicker, ColorPicker, FilePicker, AppEditor                                                                 |
+| `scroll/`     | ScrollArea, InfiniteScroll, VirtualScroll, PullToRefresh, Timeline                                                         |
 
 Naming: `App[Name]` (wrappers), `[Context][Name]` (composites), `[Parent]Item` (items).
 
@@ -128,9 +130,9 @@ Note: `AppSpace` is a div spacer (height/width). For flex spacer (push content a
 ### Composables Wrap Quasar Plugins
 
 ```typescript
-useSnackbar()  // NOT $q.notify()
-useConfirm()   // NOT $q.dialog()
-useLoading()   // withLoading() helper
+useSnackbar(); // NOT $q.notify()
+useConfirm(); // NOT $q.dialog()
+useLoading(); // withLoading() helper
 ```
 
 Composables already show success/error notifications on CRUD operations. Pages should NOT add duplicate notifications.
@@ -172,12 +174,12 @@ Use `$q.screen.lt.sm` for responsive logic. Never hardcode widths in px.
 definePage({
   meta: {
     requiresAuth: true,
-    permissions: ['thread.view'],        // OR logic
-    allPermissions: ['admin.full'],      // AND logic
-    roles: ['ADMIN', 'MANAGER'],
-    public: true,                        // No auth needed
-  }
-})
+    permissions: ["thread.view"], // OR logic
+    allPermissions: ["admin.full"], // AND logic
+    roles: ["ADMIN", "MANAGER"],
+    public: true, // No auth needed
+  },
+});
 ```
 
 ### API Response Structure
@@ -188,21 +190,21 @@ All endpoints return: `{ data: T | null, error: string | null, message?: string 
 
 ```typescript
 // server/db/supabase.ts
-supabase      // anon key - respects RLS
-supabaseAdmin // service_role key - bypasses RLS (use this for backend CRUD)
+supabase; // anon key - respects RLS
+supabaseAdmin; // service_role key - bypasses RLS (use this for backend CRUD)
 ```
 
 ## Anti-Patterns
 
-| Forbidden | Use Instead |
-|-----------|-------------|
-| `q-btn`, `q-input`, `q-table` etc. | `AppButton`, `AppInput`, `DataTable` |
-| `$q.notify()` direct | `useSnackbar()` composable |
-| `$q.dialog()` direct | `useConfirm()` composable |
-| `supabase` client in frontend | Service → Hono API → `supabaseAdmin` |
+| Forbidden                           | Use Instead                                    |
+| ----------------------------------- | ---------------------------------------------- |
+| `q-btn`, `q-input`, `q-table` etc.  | `AppButton`, `AppInput`, `DataTable`           |
+| `$q.notify()` direct                | `useSnackbar()` composable                     |
+| `$q.dialog()` direct                | `useConfirm()` composable                      |
+| `supabase` client in frontend       | Service → Hono API → `supabaseAdmin`           |
 | `createFoo(formData)` with reactive | `createFoo({ ...formData })` (spread reactive) |
-| `as any`, `@ts-ignore` | Fix types properly |
-| Duplicate notifications in pages | Composables already handle CRUD notifications |
+| `as any`, `@ts-ignore`              | Fix types properly                             |
+| Duplicate notifications in pages    | Composables already handle CRUD notifications  |
 
 ## Auth System
 
@@ -234,6 +236,7 @@ Test credentials: `ROOT001` / `password123` (ROOT), `NV001` / `password123` (EMP
 ## Environment Setup
 
 Copy `.env.example` to `.env`:
+
 ```
 PORT=3000
 FRONTEND_URL=http://localhost:5173
@@ -250,36 +253,145 @@ REFRESH_TOKEN_EXPIRES_IN=7d
 
 ```typescript
 // Barcode Scanner (keyboard wedge - detects rapid keystrokes vs manual typing)
-const { startScanning, stopScanning, lastScannedCode } = useScanner()
+const { startScanning, stopScanning, lastScannedCode } = useScanner();
 
 // Electronic Scale (Web Serial API)
-const { connect, disconnect, currentWeight, isConnected } = useScale()
+const { connect, disconnect, currentWeight, isConnected } = useScale();
 
 // Audio Feedback
-const { playSuccess, playError, playWarning } = useAudioFeedback()
+const { playSuccess, playError, playWarning } = useAudioFeedback();
 ```
 
 ## Real-time & Offline
 
 ```typescript
 // Real-time subscriptions (auto-cleanup on unmount)
-const realtime = useRealtime()
-realtime.subscribe({ table: 'thread_inventory', event: '*' }, callback)
+const realtime = useRealtime();
+realtime.subscribe({ table: "thread_inventory", event: "*" }, callback);
 
 // Offline operation queue
-const { queueOperation } = useOfflineOperation()
-const { syncPending } = useOfflineSync()
+const { queueOperation } = useOfflineOperation();
+const { syncPending } = useOfflineSync();
 ```
 
-## OpenSpec Subagents (Explore Mode)
+## Subagent & Skill Strategy
+
+### When to Use Subagents
+
+| Task Type                         | Subagent                       | Notes                              |
+| --------------------------------- | ------------------------------ | ---------------------------------- |
+| Research libraries/best practices | **research**                   | Web search, compare options        |
+| Explore codebase (broad search)   | **Explore**                    | Multi-file, multi-pattern searches |
+| Write/refactor code               | **senior-programmer**          | Follows project patterns           |
+| Review changes before commit      | **review-uncommitted-changes** | Check quality, simplify code       |
+| Debug errors                      | **debugger**                   | Stack trace analysis, root cause   |
+| Run tests / check build           | **test-runner**                | Isolate failures, report summary   |
+| Analyze project structure         | **project-analyzer**           | File locations, business workflows |
+| Check code quality                | **code-quality-check**         | Auto-fix errors, verify standards  |
+| Plan implementation               | **Plan**                       | Design approach, identify files    |
+
+Run independent subagents **in parallel** when possible (e.g., research + explore simultaneously).
+
+### When to Use Skills (Slash Commands)
+
+| Skill                               | When to Use                                                   |
+| ----------------------------------- | ------------------------------------------------------------- |
+| `/commit`                           | Commit staged changes                                         |
+| `/review-pr`                        | Review a pull request                                         |
+| `/vue-best-practices`               | Writing/reviewing Vue components, props, template typing      |
+| `/backend-development`              | API design, auth, DB queries, security                        |
+| `/ui-ux-pro-max`                    | UI/UX design: layouts, color palettes, typography, components |
+| `/databases`                        | PostgreSQL queries, indexes, migrations                       |
+| `/supabase-postgres-best-practices` | Supabase-specific Postgres optimization                       |
+| `/systematic-debugging`             | Four-phase debugging: never jump to solutions                 |
+| `/verification-before-completion`   | Run verification before claiming success                      |
+| `/code-review`                      | Receiving/giving code review feedback                         |
+| `/xlsx`                             | Working with Excel spreadsheet files                          |
+
+### OpenSpec Workflow (Feature Development)
+
+For structured feature development with specs:
+
+| Skill            | Purpose                                                |
+| ---------------- | ------------------------------------------------------ |
+| `/opsx:new`      | Start a new change (proposal → design → specs → tasks) |
+| `/opsx:ff`       | Fast-forward: generate all artifacts at once           |
+| `/opsx:continue` | Create next artifact step-by-step                      |
+| `/opsx:apply`    | Implement tasks from a change                          |
+| `/opsx:verify`   | Verify implementation matches specs                    |
+| `/opsx:archive`  | Archive completed change                               |
+| `/opsx:explore`  | Thinking partner for ideas/investigation               |
+
+Specs stored in `openspec/specs/` (approved) and `openspec/changes/` (WIP).
+
+### OpenSpec Explore Mode Subagents
 
 When in Explore Mode (planning/researching before implementation):
 
-| Instead of... | Use this subagent |
-|---------------|-------------------|
+| Instead of...                  | Use this subagent              |
+| ------------------------------ | ------------------------------ |
 | codebase-retrieval, grep, glob | **openspec-codebase-analyzer** |
-| web-search, web-fetch | **openspec-researcher** |
-| Manual UI/UX planning | **openspec-ui-ux-pro-max** |
-| Reading/analyzing log files | **openspec-log-analyzer** |
+| web-search, web-fetch          | **openspec-researcher**        |
+| Manual UI/UX planning          | **openspec-ui-ux-pro-max**     |
+| Reading/analyzing log files    | **openspec-log-analyzer**      |
 
-All subagents are READ-ONLY. Specs stored in `openspec/specs/` (approved) and `openspec/changes/` (WIP).
+## Excel Export Pattern
+
+All exports use **ExcelJS** (dynamic import to reduce bundle size). Pattern:
+
+```typescript
+const handleExport = async () => {
+  const ExcelJS = await import("exceljs");
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Sheet Name");
+
+  worksheet.columns = [{ header: "Tên cột", key: "field", width: 20 }];
+
+  // Style header: blue background, white bold text
+  worksheet.getRow(1).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF1976D2" },
+  };
+  worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+
+  data.forEach((row) => worksheet.addRow(row));
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  // Download via temporary link
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `filename-${new Date().toISOString().split("T")[0]}.xlsx`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+};
+```
+
+NEVER use CSV export. Always use `.xlsx` with ExcelJS for Vietnamese text support.
+
+## Date Picker Pattern
+
+NEVER use `<AppInput type="date">` (native HTML). Always use Quasar DatePicker with Vietnamese locale:
+
+```vue
+<AppInput
+  v-model="displayDate"
+  label="Từ ngày"
+  placeholder="DD/MM/YYYY"
+  dense
+  clearable
+>
+  <template #append>
+    <q-icon name="event" class="cursor-pointer">
+      <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+        <DatePicker v-model="displayDate" />
+      </q-popup-proxy>
+    </q-icon>
+  </template>
+</AppInput>
+```
+
+DatePicker uses `DD/MM/YYYY` format. Convert to/from `YYYY-MM-DD` (DB format) when needed.
