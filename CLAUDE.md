@@ -274,66 +274,41 @@ const { queueOperation } = useOfflineOperation();
 const { syncPending } = useOfflineSync();
 ```
 
-## Subagent & Skill Strategy
+## Required Skills (MUST invoke before coding)
 
-### When to Use Subagents
+**QUAN TRỌNG:** Trước khi viết/sửa code, PHẢI gọi skill tương ứng để đảm bảo đúng patterns.
 
-| Task Type                         | Subagent                       | Notes                              |
-| --------------------------------- | ------------------------------ | ---------------------------------- |
-| Research libraries/best practices | **research**                   | Web search, compare options        |
-| Explore codebase (broad search)   | **Explore**                    | Multi-file, multi-pattern searches |
-| Write/refactor code               | **senior-programmer**          | Follows project patterns           |
-| Review changes before commit      | **review-uncommitted-changes** | Check quality, simplify code       |
-| Debug errors                      | **debugger**                   | Stack trace analysis, root cause   |
-| Run tests / check build           | **test-runner**                | Isolate failures, report summary   |
-| Analyze project structure         | **project-analyzer**           | File locations, business workflows |
-| Check code quality                | **code-quality-check**         | Auto-fix errors, verify standards  |
-| Plan implementation               | **Plan**                       | Design approach, identify files    |
+### 4 Skill Chính (Ưu tiên cao nhất)
 
-Run independent subagents **in parallel** when possible (e.g., research + explore simultaneously).
+| Skill | PHẢI gọi khi | Ví dụ |
+|---|---|---|
+| `/vue-best-practices` | Viết/sửa Vue components, composables, template, TypeScript trong `.vue` files | Thêm component, fix lỗi template, refactor composable |
+| `/hono-routing` | Viết/sửa API routes, middleware, validation trong `server/` | Thêm endpoint, fix API error, thêm middleware |
+| `/backend-development` | Thiết kế architecture, auth flows, security review, complex API logic | Thiết kế feature mới, review security, auth changes |
+| `/supabase-postgres-best-practices` | Viết queries, migrations, schema design, DB optimization | Thêm migration, tối ưu query, fix DB error |
 
-### When to Use Skills (Slash Commands)
+**Quy tắc gọi skill:**
+- Sửa file `.vue` → gọi `/vue-best-practices` trước
+- Sửa route handlers, middleware, validation trong `server/` → gọi `/hono-routing`
+- Thiết kế feature mới, auth changes, security review → gọi `/backend-development`
+- Tạo API endpoint MỚI hoàn toàn → gọi cả `/hono-routing` + `/backend-development` (cần cả design + implementation)
+- Viết SQL/migration → gọi `/supabase-postgres-best-practices` trước
+- Fix bug → gọi skill tương ứng với layer bị lỗi (frontend/backend/DB)
+- Feature mới (full-stack) → gọi cả 3-4 skill theo thứ tự: DB → Backend → Frontend
 
-| Skill                               | When to Use                                                   |
-| ----------------------------------- | ------------------------------------------------------------- |
-| `/commit`                           | Commit staged changes                                         |
-| `/review-pr`                        | Review a pull request                                         |
-| `/vue-best-practices`               | Writing/reviewing Vue components, props, template typing      |
-| `/backend-development`              | API design, auth, DB queries, security                        |
-| `/ui-ux-pro-max`                    | UI/UX design: layouts, color palettes, typography, components |
-| `/databases`                        | PostgreSQL queries, indexes, migrations                       |
-| `/supabase-postgres-best-practices` | Supabase-specific Postgres optimization                       |
-| `/systematic-debugging`             | Four-phase debugging: never jump to solutions                 |
-| `/verification-before-completion`   | Run verification before claiming success                      |
-| `/code-review`                      | Receiving/giving code review feedback                         |
-| `/xlsx`                             | Working with Excel spreadsheet files                          |
+### Subagents
 
-### OpenSpec Workflow (Feature Development)
+| Task Type                         | Subagent                       |
+| --------------------------------- | ------------------------------ |
+| Research libraries/best practices | **research**                   |
+| Explore codebase (broad search)   | **Explore**                    |
+| Write/refactor code               | **senior-programmer**          |
+| Review changes before commit      | **review-uncommitted-changes** |
+| Debug errors                      | **debugger**                   |
+| Run tests / check build           | **test-runner**                |
+| Plan implementation               | **Plan**                       |
 
-For structured feature development with specs:
-
-| Skill            | Purpose                                                |
-| ---------------- | ------------------------------------------------------ |
-| `/opsx:new`      | Start a new change (proposal → design → specs → tasks) |
-| `/opsx:ff`       | Fast-forward: generate all artifacts at once           |
-| `/opsx:continue` | Create next artifact step-by-step                      |
-| `/opsx:apply`    | Implement tasks from a change                          |
-| `/opsx:verify`   | Verify implementation matches specs                    |
-| `/opsx:archive`  | Archive completed change                               |
-| `/opsx:explore`  | Thinking partner for ideas/investigation               |
-
-Specs stored in `openspec/specs/` (approved) and `openspec/changes/` (WIP).
-
-### OpenSpec Explore Mode Subagents
-
-When in Explore Mode (planning/researching before implementation):
-
-| Instead of...                  | Use this subagent              |
-| ------------------------------ | ------------------------------ |
-| codebase-retrieval, grep, glob | **openspec-codebase-analyzer** |
-| web-search, web-fetch          | **openspec-researcher**        |
-| Manual UI/UX planning          | **openspec-ui-ux-pro-max**     |
-| Reading/analyzing log files    | **openspec-log-analyzer**      |
+Run independent subagents **in parallel** when possible.
 
 ## Excel Export Pattern
 

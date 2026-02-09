@@ -1,32 +1,29 @@
 <script lang="ts" setup>
-import { onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
-import DarkModeToggle from './components/DarkModeToggle.vue'
-import { useDarkMode } from './composables/useDarkMode'
-import { useSidebar } from './composables/useSidebar'
+import { onMounted, computed } from "vue";
+import { useRoute } from "vue-router";
+import DarkModeToggle from "./components/DarkModeToggle.vue";
+import { useDarkMode } from "./composables/useDarkMode";
+import { useSidebar } from "./composables/useSidebar";
 
-const route = useRoute()
-const { init: initDarkMode } = useDarkMode()
-const { isOpen, navItems, toggle } = useSidebar()
+const route = useRoute();
+const { init: initDarkMode } = useDarkMode();
+const { isOpen, navItems, toggle } = useSidebar();
 
 // Hide sidebar on login page
-const showSidebar = computed(() => route.path !== '/login')
+const showSidebar = computed(() => route.path !== "/login");
 
 onMounted(() => {
   // Initialize dark mode preference
-  initDarkMode()
-  
+  initDarkMode();
+
   // Note: Auth is initialized in router guards (beforeEach)
   // to ensure proper auth state before any navigation
-})
+});
 </script>
 
 <template>
   <q-layout view="hHh Lpr fFf">
-    <q-header
-      elevated
-      class="bg-primary text-white"
-    >
+    <q-header elevated class="bg-primary text-white">
       <q-toolbar>
         <q-btn
           v-if="showSidebar"
@@ -36,9 +33,7 @@ onMounted(() => {
           icon="menu"
           @click="toggle"
         />
-        <q-toolbar-title>
-          App Title
-        </q-toolbar-title>
+        <q-toolbar-title> Hòa Thọ Điện Bàn </q-toolbar-title>
         <DarkModeToggle />
         <UserMenu />
       </q-toolbar>

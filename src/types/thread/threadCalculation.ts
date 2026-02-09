@@ -53,3 +53,7 @@ export interface POCalculationResult {
 export interface CalculateByPOInput {
   po_id: number
 }
+
+export interface BatchCalculationInput {
+  items: CalculationInput[]
+}

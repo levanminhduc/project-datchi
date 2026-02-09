@@ -3,7 +3,7 @@
     <!-- Page Header -->
     <PageHeader
       title="Đặt Hàng Chỉ Tuần"
-      subtitle="Quản lý đặt hàng chỉ theo tuần với nhiều mã hàng"
+      subtitle="Quản lý đặt hàng chỉ theo tuần - Chọn PO → Mã hàng → Màu → Số lượng"
     >
       <template #actions>
         <AppButton
@@ -38,31 +38,31 @@
       </template>
     </WeekInfoCard>
 
-    <!-- Style Order Entries Section -->
+    <!-- PO Selection Section -->
     <AppCard flat bordered class="q-mb-md">
       <q-card-section>
         <div class="row items-center q-mb-md">
           <div class="col">
-            <div class="text-subtitle1 text-weight-medium">Danh sách mã hàng</div>
-            <div class="text-caption text-grey">Thêm mã hàng và chọn màu với số lượng</div>
+            <div class="text-subtitle1 text-weight-medium">Đơn hàng (PO)</div>
+            <div class="text-caption text-grey">Chọn PO để thêm mã hàng và màu sắc</div>
           </div>
         </div>
 
-        <!-- Add style selector -->
+        <!-- Add PO selector -->
         <div class="row q-col-gutter-sm q-mb-md items-end">
           <div class="col-12 col-sm-6 col-md-4">
             <AppSelect
-              v-model="selectedStyleId"
-              :options="styleOptions"
-              label="Thêm mã hàng"
+              v-model="selectedPOId"
+              :options="poOptions"
+              label="Chọn PO"
               dense
               hide-bottom-space
               clearable
-              :loading="stylesLoading"
+              :loading="posLoading"
             >
               <template #no-option>
                 <q-item>
-                  <q-item-section class="text-grey">Không có dữ liệu</q-item-section>
+                  <q-item-section class="text-grey">Không có PO nào</q-item-section>
                 </q-item>
               </template>
             </AppSelect>
@@ -71,30 +71,33 @@
             <AppButton
               color="primary"
               icon="add"
-              label="Thêm"
-              :disable="!selectedStyleId"
-              @click="handleAddStyle"
+              label="Thêm PO"
+              :disable="!selectedPOId"
+              :loading="loadingPOId === selectedPOId"
+              @click="handleAddPO"
             />
           </div>
         </div>
 
-        <!-- Style cards list -->
-        <StyleOrderCard
-          v-for="entry in orderEntries"
-          :key="entry.style_id"
-          :entry="entry"
-          :color-options="colorOptionsList"
-          @remove="removeStyle"
-          @add-color="handleAddColor"
-          @remove-color="removeColorFromStyle"
-          @update-quantity="updateColorQuantity"
+        <!-- PO Cards -->
+        <POOrderCard
+          v-for="po in loadedPOs"
+          :key="po.id"
+          :po="po"
+          :entries="orderEntries"
+          @remove-po="handleRemovePO"
+          @add-style="handleAddStyleFromPO"
+          @remove-style="(styleId, poId) => removeStyle(styleId, poId)"
+          @add-color="(styleId, color, poId) => addColorToStyle(styleId, color, poId)"
+          @remove-color="(styleId, colorId, poId) => removeColorFromStyle(styleId, colorId, poId)"
+          @update-quantity="(styleId, colorId, qty, poId) => updateColorQuantity(styleId, colorId, qty, poId)"
         />
 
         <EmptyState
-          v-if="orderEntries.length === 0"
-          icon="playlist_add"
-          title="Chưa có mã hàng"
-          subtitle="Chọn mã hàng từ danh sách để bắt đầu"
+          v-if="loadedPOs.length === 0"
+          icon="assignment"
+          title="Chưa có PO nào"
+          subtitle="Chọn PO từ danh sách để bắt đầu"
           icon-color="grey-4"
         />
       </q-card-section>
@@ -231,14 +234,15 @@ import { useRouter } from 'vue-router'
 import {
   useWeeklyOrder,
   useWeeklyOrderCalculation,
-  useStyles,
-  useColors,
+  usePurchaseOrders,
   useSnackbar,
 } from '@/composables'
+import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { allocationService } from '@/services/allocationService'
 import { AllocationPriority } from '@/types/thread/enums'
 import type { QTableColumn } from 'quasar'
-import type { CreateAllocationDTO } from '@/types/thread'
+import type { CreateAllocationDTO, PurchaseOrderWithItems } from '@/types/thread'
+import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
 
 definePage({
   meta: {
@@ -274,6 +278,7 @@ const {
   isResultsStale,
   addStyle,
   removeStyle,
+  removePO,
   addColorToStyle,
   removeColorFromStyle,
   updateColorQuantity,
@@ -282,15 +287,20 @@ const {
   setFromWeekItems,
 } = useWeeklyOrderCalculation()
 
-const { styles, isLoading: stylesLoading, fetchStyles } = useStyles()
-const { activeColors, fetchColors } = useColors()
+const {
+  purchaseOrders: poList,
+  isLoading: posLoading,
+  fetchPurchaseOrders,
+} = usePurchaseOrders()
 
 // Local state
 const weekName = ref('')
 const startDate = ref('')
 const endDate = ref('')
 const notes = ref('')
-const selectedStyleId = ref<number | null>(null)
+const selectedPOId = ref<number | null>(null)
+const loadingPOId = ref<number | null>(null)
+const loadedPOs = ref<PurchaseOrderWithItems[]>([])
 const resultView = ref<'detail' | 'summary'>('summary')
 const showHistory = ref(false)
 const showAllocationSummary = ref(false)
@@ -308,14 +318,13 @@ interface AllocationCandidate {
 const allocationCandidates = ref<AllocationCandidate[]>([])
 
 // Computed
-const styleOptions = computed(() =>
-  styles.value
-    .filter((s) => !orderEntries.value.some((e) => e.style_id === s.id))
-    .map((s) => ({ label: `${s.style_code} - ${s.style_name}`, value: s.id }))
-)
-
-const colorOptionsList = computed(() =>
-  activeColors.value.map((c) => ({ id: c.id, name: c.name, hex_code: c.hex_code }))
+const poOptions = computed(() =>
+  poList.value
+    .filter((po) => !loadedPOs.value.some((loaded) => loaded.id === po.id))
+    .map((po) => ({
+      label: `${po.po_number}${po.customer_name ? ` - ${po.customer_name}` : ''}`,
+      value: po.id,
+    }))
 )
 
 const canSave = computed(() => {
@@ -344,24 +353,47 @@ const allocationColumns: QTableColumn[] = [
 ]
 
 // Handlers
-const handleAddStyle = () => {
-  if (!selectedStyleId.value) return
-  const style = styles.value.find((s) => s.id === selectedStyleId.value)
-  if (!style) return
+const handleAddPO = async () => {
+  if (!selectedPOId.value) return
 
+  loadingPOId.value = selectedPOId.value
+  try {
+    const poWithItems = await purchaseOrderService.getWithItems(selectedPOId.value)
+    loadedPOs.value.push(poWithItems)
+    selectedPOId.value = null
+  } catch (err) {
+    snackbar.error('Không thể tải dữ liệu PO')
+    console.error('[weekly-order] load PO error:', err)
+  } finally {
+    loadingPOId.value = null
+  }
+}
+
+const handleRemovePO = (poId: number) => {
+  loadedPOs.value = loadedPOs.value.filter((po) => po.id !== poId)
+  removePO(poId)
+}
+
+const handleAddStyleFromPO = (
+  style: { id: number; style_code: string; style_name: string; po_id: number; po_number: string },
+  skuColors: Array<{ id: number; name: string; hex_code: string }>,
+) => {
   addStyle({
     id: style.id,
     style_code: style.style_code,
     style_name: style.style_name,
+    po_id: style.po_id,
+    po_number: style.po_number,
   })
-  selectedStyleId.value = null
-}
 
-const handleAddColor = (
-  styleId: number,
-  color: { color_id: number; color_name: string; hex_code: string }
-) => {
-  addColorToStyle(styleId, color)
+  // Auto-add all SKU colors with default qty 1
+  for (const color of skuColors) {
+    addColorToStyle(style.id, {
+      color_id: color.id,
+      color_name: color.name,
+      hex_code: color.hex_code,
+    }, style.po_id)
+  }
 }
 
 const handleSave = async () => {
@@ -371,6 +403,7 @@ const handleSave = async () => {
     entry.colors
       .filter((c) => c.quantity > 0)
       .map((c) => ({
+        po_id: entry.po_id,
         style_id: entry.style_id,
         color_id: c.color_id,
         quantity: c.quantity,
@@ -416,8 +449,23 @@ const handleLoadWeek = async (weekId: number) => {
 
   if (week.items && week.items.length > 0) {
     setFromWeekItems(week.items)
+
+    // Rebuild loadedPOs from the items that have po_id
+    const poIds = new Set(
+      week.items.filter((item) => item.po_id).map((item) => item.po_id!)
+    )
+    loadedPOs.value = []
+    for (const poId of poIds) {
+      try {
+        const poWithItems = await purchaseOrderService.getWithItems(poId)
+        loadedPOs.value.push(poWithItems)
+      } catch {
+        // PO may have been deleted, entries still show from setFromWeekItems
+      }
+    }
   } else {
     clearAll()
+    loadedPOs.value = []
   }
 
   const savedResults = await loadResults(weekId)
@@ -554,6 +602,6 @@ const handleExport = async () => {
 
 // Lifecycle
 onMounted(async () => {
-  await Promise.all([fetchStyles(), fetchColors(), fetchWeeks()])
+  await Promise.all([fetchPurchaseOrders(), fetchWeeks()])
 })
 </script>

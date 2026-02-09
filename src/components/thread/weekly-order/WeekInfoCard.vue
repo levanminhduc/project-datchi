@@ -1,16 +1,18 @@
 <template>
   <AppCard flat bordered>
     <q-card-section>
-      <div class="text-subtitle1 text-weight-medium q-mb-md">Thông tin tuần</div>
+      <div class="text-subtitle1 text-weight-medium q-mb-md">
+        Thông tin đặt hàng
+      </div>
       <div class="row q-col-gutter-md">
         <div class="col-12 col-sm-4">
           <AppInput
             :model-value="modelValue"
-            label="Tên tuần *"
+            label="Thông tin đơn hàng*"
             dense
             hide-bottom-space
-            placeholder="VD: Tuần 7 - 2026"
-            @update:model-value="$emit('update:modelValue', $event)"
+            placeholder="Nhập thông tin đơn hàng"
+            @update:model-value="$emit('update:modelValue', String($event ?? ''))"
           />
         </div>
         <div class="col-12 col-sm-3">
@@ -25,7 +27,11 @@
           >
             <template #append>
               <q-icon name="event" class="cursor-pointer">
-                <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                <q-popup-proxy
+                  cover
+                  transition-show="scale"
+                  transition-hide="scale"
+                >
                   <DatePicker
                     :model-value="displayStartDate"
                     @update:model-value="onStartDateChange"
@@ -47,7 +53,11 @@
           >
             <template #append>
               <q-icon name="event" class="cursor-pointer">
-                <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                <q-popup-proxy
+                  cover
+                  transition-show="scale"
+                  transition-hide="scale"
+                >
                   <DatePicker
                     :model-value="displayEndDate"
                     @update:model-value="onEndDateChange"
@@ -68,7 +78,7 @@
             label="Ghi chú"
             dense
             hide-bottom-space
-            @update:model-value="$emit('update:notes', $event)"
+            @update:model-value="$emit('update:notes', String($event ?? ''))"
           />
         </div>
       </div>
@@ -77,44 +87,44 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+import { computed } from "vue";
+import DatePicker from "@/components/ui/pickers/DatePicker.vue";
 
 const props = defineProps<{
-  modelValue: string
-  startDate: string
-  endDate: string
-  notes: string
-}>()
+  modelValue: string;
+  startDate: string;
+  endDate: string;
+  notes: string;
+}>();
 
 const emit = defineEmits<{
-  'update:modelValue': [value: string]
-  'update:startDate': [value: string]
-  'update:endDate': [value: string]
-  'update:notes': [value: string]
-}>()
+  "update:modelValue": [value: string];
+  "update:startDate": [value: string];
+  "update:endDate": [value: string];
+  "update:notes": [value: string];
+}>();
 
 // Convert YYYY-MM-DD (DB) ↔ DD/MM/YYYY (DatePicker)
 function toDisplay(isoDate: string): string {
-  if (!isoDate) return ''
-  const [y, m, d] = isoDate.split('-')
-  return `${d}/${m}/${y}`
+  if (!isoDate) return "";
+  const [y, m, d] = isoDate.split("-");
+  return `${d}/${m}/${y}`;
 }
 
 function toIso(displayDate: string): string {
-  if (!displayDate) return ''
-  const [d, m, y] = displayDate.split('/')
-  return `${y}-${m}-${d}`
+  if (!displayDate) return "";
+  const [d, m, y] = displayDate.split("/");
+  return `${y}-${m}-${d}`;
 }
 
-const displayStartDate = computed(() => toDisplay(props.startDate))
-const displayEndDate = computed(() => toDisplay(props.endDate))
+const displayStartDate = computed(() => toDisplay(props.startDate));
+const displayEndDate = computed(() => toDisplay(props.endDate));
 
 function onStartDateChange(val: string | null) {
-  emit('update:startDate', val ? toIso(val) : '')
+  emit("update:startDate", val ? toIso(val) : "");
 }
 
 function onEndDateChange(val: string | null) {
-  emit('update:endDate', val ? toIso(val) : '')
+  emit("update:endDate", val ? toIso(val) : "");
 }
 </script>

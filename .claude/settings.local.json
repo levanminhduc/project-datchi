@@ -24,7 +24,11 @@
       "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat\\(weekly-order\\): thêm trang đặt hàng chỉ theo tuần\n\nTính năng mới cho phép Phòng Kế Hoạch đặt hàng chỉ theo tuần:\n- Chọn nhiều mã hàng, nhiều màu, nhập số lượng riêng từng màu\n- Tính toán gộp multi-style, hiển thị chi tiết + tổng hợp\n- Lưu/tải lịch sử tuần hàng, tạo phiếu phân bổ từ kết quả\n- DB: 3 bảng mới \\(thread_order_weeks, items, results\\)\n- API: CRUD + status transitions + save/load results\n- Archive openspec changes\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
       "mcp__tavily__tavily-search",
       "mcp__tavily__tavily-extract",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(npm install:*)",
+      "Bash(node -e:*)",
+      "Bash(node:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

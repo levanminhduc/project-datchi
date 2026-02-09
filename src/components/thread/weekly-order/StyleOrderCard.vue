@@ -13,7 +13,7 @@
           icon="close"
           color="negative"
           size="sm"
-          @click="$emit('remove', entry.style_id)"
+          @click="$emit('remove', entry.style_id, entry.po_id)"
         >
           <AppTooltip>Xóa mã hàng</AppTooltip>
         </AppButton>
@@ -49,7 +49,7 @@
               label="Số lượng (SP)"
               :min="0"
               style="width: 140px"
-              @update:model-value="$emit('update-quantity', entry.style_id, color.color_id, Number($event))"
+              @update:model-value="$emit('update-quantity', entry.style_id, color.color_id, Number($event), entry.po_id)"
             />
           </div>
           <div class="col-auto">
@@ -60,7 +60,7 @@
               icon="remove_circle_outline"
               color="negative"
               size="sm"
-              @click="$emit('remove-color', entry.style_id, color.color_id)"
+              @click="$emit('remove-color', entry.style_id, color.color_id, entry.po_id)"
             />
           </div>
         </div>
@@ -108,10 +108,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  remove: [styleId: number]
-  'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string }]
-  'remove-color': [styleId: number, colorId: number]
-  'update-quantity': [styleId: number, colorId: number, quantity: number]
+  remove: [styleId: number, poId: number | null]
+  'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string }, poId: number | null]
+  'remove-color': [styleId: number, colorId: number, poId: number | null]
+  'update-quantity': [styleId: number, colorId: number, quantity: number, poId: number | null]
 }>()
 
 const selectedColorId = ref<number | null>(null)
@@ -132,7 +132,7 @@ const handleAddColor = () => {
     color_id: color.id,
     color_name: color.name,
     hex_code: color.hex_code,
-  })
+  }, props.entry.po_id)
   selectedColorId.value = null
 }
 </script>

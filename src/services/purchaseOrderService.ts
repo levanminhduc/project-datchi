@@ -7,6 +7,7 @@
 import { fetchApi } from './api'
 import type {
   PurchaseOrder,
+  PurchaseOrderWithItems,
   CreatePurchaseOrderDTO,
   UpdatePurchaseOrderDTO,
   PurchaseOrderFilter,
@@ -58,6 +59,27 @@ export const purchaseOrderService = {
    */
   async getById(id: number): Promise<PurchaseOrder> {
     const response = await fetchApi<ApiResponse<PurchaseOrder>>(`${BASE}/${id}`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    if (!response.data) {
+      throw new Error('Không tìm thấy đơn hàng')
+    }
+
+    return response.data
+  },
+
+  /**
+   * Lấy thông tin đơn hàng kèm po_items, styles, skus, colors
+   * @param id - Purchase order ID
+   * @returns Purchase order with items
+   */
+  async getWithItems(id: number): Promise<PurchaseOrderWithItems> {
+    const response = await fetchApi<ApiResponse<PurchaseOrderWithItems>>(
+      `${BASE}/${id}?include=items`,
+    )
 
     if (response.error) {
       throw new Error(response.error)

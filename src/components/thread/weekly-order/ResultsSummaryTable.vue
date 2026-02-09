@@ -63,19 +63,19 @@ const columns: QTableColumn[] = [
     format: (val: number) => val.toLocaleString('vi-VN', { maximumFractionDigits: 2 }),
   },
   {
+    name: 'meters_per_cone',
+    label: 'Mét/cuộn',
+    field: 'meters_per_cone',
+    align: 'right',
+    format: (val: number | null) => val ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
     name: 'total_cones',
     label: 'Tổng cuộn',
     field: 'total_cones',
     align: 'right',
     sortable: true,
     format: (val: number) => val > 0 ? val.toLocaleString('vi-VN') : '—',
-  },
-  {
-    name: 'meters_per_cone',
-    label: 'Mét/cuộn',
-    field: 'meters_per_cone',
-    align: 'right',
-    format: (val: number | null) => val ? val.toLocaleString('vi-VN') : '—',
   },
 ]
 </script>

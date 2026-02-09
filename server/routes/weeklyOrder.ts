@@ -1,17 +1,19 @@
 import { Hono } from 'hono'
+import { ZodError } from 'zod'
 import { supabaseAdmin as supabase } from '../db/supabase'
-import type {
-  CreateWeeklyOrderDTO,
-  UpdateWeeklyOrderDTO,
-  SaveResultsDTO,
-  WeeklyOrderStatus,
-} from '../types/weeklyOrder'
+import { getErrorMessage } from '../utils/errorHelper'
+import {
+  CreateWeeklyOrderSchema,
+  UpdateWeeklyOrderSchema,
+  UpdateStatusSchema,
+  SaveResultsSchema,
+} from '../validation/weeklyOrder'
+import type { WeeklyOrderStatus } from '../types/weeklyOrder'
 
 const weeklyOrder = new Hono()
 
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err)
+function formatZodError(err: ZodError): string {
+  return err.issues.map((e) => e.message).join('; ')
 }
 
 const VALID_STATUS_TRANSITIONS: Record<WeeklyOrderStatus, WeeklyOrderStatus[]> = {
@@ -21,25 +23,43 @@ const VALID_STATUS_TRANSITIONS: Record<WeeklyOrderStatus, WeeklyOrderStatus[]> =
 }
 
 /**
- * GET /api/weekly-orders - List weekly orders with optional status filter
+ * GET /api/weekly-orders - List weekly orders with optional status filter and pagination
+ *
+ * Query params:
+ *   status  - filter by status
+ *   page    - page number (1-based), enables pagination
+ *   limit   - items per page (default 20, max 100)
  */
 weeklyOrder.get('/', async (c) => {
   try {
     const query = c.req.query()
 
+    const page = query.page ? parseInt(query.page) : null
+    const limit = query.limit ? Math.min(Math.max(parseInt(query.limit), 1), 100) : 20
+    const isPaginated = page !== null && !isNaN(page) && page >= 1
+
     let dbQuery = supabase
       .from('thread_order_weeks')
-      .select(`
+      .select(
+        `
         *,
         item_count:thread_order_items(count)
-      `)
+      `,
+        isPaginated ? { count: 'exact' } : undefined,
+      )
       .order('created_at', { ascending: false })
 
     if (query.status) {
       dbQuery = dbQuery.eq('status', query.status)
     }
 
-    const { data, error } = await dbQuery
+    if (isPaginated) {
+      const from = (page - 1) * limit
+      const to = from + limit - 1
+      dbQuery = dbQuery.range(from, to)
+    }
+
+    const { data, error, count } = await dbQuery
 
     if (error) throw error
 
@@ -48,6 +68,20 @@ weeklyOrder.get('/', async (c) => {
       ...row,
       item_count: row.item_count?.[0]?.count ?? 0,
     }))
+
+    if (isPaginated) {
+      const total = count ?? 0
+      return c.json({
+        data: result,
+        error: null,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      })
+    }
 
     return c.json({ data: result, error: null })
   } catch (err) {
@@ -69,19 +103,23 @@ weeklyOrder.get('/:id', async (c) => {
 
     const { data, error } = await supabase
       .from('thread_order_weeks')
-      .select(`
+      .select(
+        `
         *,
         items:thread_order_items (
           id,
           week_id,
+          po_id,
           style_id,
           color_id,
           quantity,
           created_at,
           style:styles (id, style_code, style_name),
-          color:colors (id, name, hex_code)
+          color:colors (id, name, hex_code),
+          po:purchase_orders (id, po_number)
         )
-      `)
+      `,
+      )
       .eq('id', id)
       .single()
 
@@ -104,26 +142,30 @@ weeklyOrder.get('/:id', async (c) => {
  */
 weeklyOrder.post('/', async (c) => {
   try {
-    const body: CreateWeeklyOrderDTO = await c.req.json()
+    const body = await c.req.json()
 
-    if (!body.week_name || !body.week_name.trim()) {
-      return c.json({ data: null, error: 'Tên tuần (week_name) là bắt buộc' }, 400)
-    }
-
-    if (!body.items || body.items.length === 0) {
-      return c.json({ data: null, error: 'Cần ít nhất một sản phẩm' }, 400)
+    let validated
+    try {
+      validated = CreateWeeklyOrderSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
     }
 
     // Insert the week
     const { data: week, error: weekError } = await supabase
       .from('thread_order_weeks')
-      .insert([{
-        week_name: body.week_name.trim(),
-        start_date: body.start_date || null,
-        end_date: body.end_date || null,
-        status: 'draft',
-        notes: body.notes || null,
-      }])
+      .insert([
+        {
+          week_name: validated.week_name,
+          start_date: validated.start_date || null,
+          end_date: validated.end_date || null,
+          status: 'draft',
+          notes: validated.notes || null,
+        },
+      ])
       .select()
       .single()
 
@@ -135,8 +177,9 @@ weeklyOrder.post('/', async (c) => {
     }
 
     // Insert items
-    const itemRows = body.items.map((item) => ({
+    const itemRows = validated.items.map((item) => ({
       week_id: week.id,
+      po_id: item.po_id || null,
       style_id: item.style_id,
       color_id: item.color_id,
       quantity: item.quantity,
@@ -145,22 +188,26 @@ weeklyOrder.post('/', async (c) => {
     const { data: items, error: itemsError } = await supabase
       .from('thread_order_items')
       .insert(itemRows)
-      .select(`
+      .select(
+        `
         id,
         week_id,
+        po_id,
         style_id,
         color_id,
         quantity,
         created_at,
         style:styles (id, style_code, style_name),
-        color:colors (id, name, hex_code)
-      `)
+        color:colors (id, name, hex_code),
+        po:purchase_orders (id, po_number)
+      `,
+      )
 
     if (itemsError) throw itemsError
 
     return c.json(
       { data: { ...week, items }, error: null, message: 'Tạo tuần đặt hàng thành công' },
-      201
+      201,
     )
   } catch (err) {
     console.error('Error creating weekly order:', err)
@@ -196,20 +243,30 @@ weeklyOrder.put('/:id', async (c) => {
     if (existing.status !== 'draft') {
       return c.json(
         { data: null, error: 'Chỉ có thể cập nhật tuần ở trạng thái nháp (draft)' },
-        400
+        400,
       )
     }
 
-    const body: UpdateWeeklyOrderDTO = await c.req.json()
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = UpdateWeeklyOrderSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
 
     // Update the week record
     const updateFields: Record<string, any> = {
       updated_at: new Date().toISOString(),
     }
-    if (body.week_name !== undefined) updateFields.week_name = body.week_name.trim()
-    if (body.start_date !== undefined) updateFields.start_date = body.start_date || null
-    if (body.end_date !== undefined) updateFields.end_date = body.end_date || null
-    if (body.notes !== undefined) updateFields.notes = body.notes || null
+    if (validated.week_name !== undefined) updateFields.week_name = validated.week_name
+    if (validated.start_date !== undefined) updateFields.start_date = validated.start_date || null
+    if (validated.end_date !== undefined) updateFields.end_date = validated.end_date || null
+    if (validated.notes !== undefined) updateFields.notes = validated.notes || null
 
     const { data: week, error: updateError } = await supabase
       .from('thread_order_weeks')
@@ -226,8 +283,8 @@ weeklyOrder.put('/:id', async (c) => {
     }
 
     // Replace items if provided
-    let items = null
-    if (body.items !== undefined) {
+    let items: Record<string, unknown>[] | null = null
+    if (validated.items !== undefined) {
       // Delete existing items
       const { error: deleteError } = await supabase
         .from('thread_order_items')
@@ -237,9 +294,10 @@ weeklyOrder.put('/:id', async (c) => {
       if (deleteError) throw deleteError
 
       // Insert new items
-      if (body.items.length > 0) {
-        const itemRows = body.items.map((item) => ({
+      if (validated.items.length > 0) {
+        const itemRows = validated.items.map((item) => ({
           week_id: id,
+          po_id: item.po_id || null,
           style_id: item.style_id,
           color_id: item.color_id,
           quantity: item.quantity,
@@ -248,16 +306,20 @@ weeklyOrder.put('/:id', async (c) => {
         const { data: newItems, error: insertError } = await supabase
           .from('thread_order_items')
           .insert(itemRows)
-          .select(`
+          .select(
+            `
             id,
             week_id,
+            po_id,
             style_id,
             color_id,
             quantity,
             created_at,
             style:styles (id, style_code, style_name),
-            color:colors (id, name, hex_code)
-          `)
+            color:colors (id, name, hex_code),
+            po:purchase_orders (id, po_number)
+          `,
+          )
 
         if (insertError) throw insertError
         items = newItems
@@ -303,7 +365,7 @@ weeklyOrder.delete('/:id', async (c) => {
     if (existing.status !== 'draft') {
       return c.json(
         { data: null, error: 'Chỉ có thể xóa tuần ở trạng thái nháp (draft)' },
-        400
+        400,
       )
     }
 
@@ -318,8 +380,11 @@ weeklyOrder.delete('/:id', async (c) => {
 
     if (results && results.length > 0) {
       return c.json(
-        { data: null, error: 'Không thể xóa vì đã có kết quả tính toán. Hãy xóa kết quả trước.' },
-        409
+        {
+          data: null,
+          error: 'Không thể xóa vì đã có kết quả tính toán. Hãy xóa kết quả trước.',
+        },
+        409,
       )
     }
 
@@ -358,11 +423,18 @@ weeklyOrder.patch('/:id/status', async (c) => {
     }
 
     const body = await c.req.json()
-    const newStatus = body.status as WeeklyOrderStatus
 
-    if (!newStatus) {
-      return c.json({ data: null, error: 'Trạng thái (status) là bắt buộc' }, 400)
+    let validated
+    try {
+      validated = UpdateStatusSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
     }
+
+    const newStatus = validated.status as WeeklyOrderStatus
 
     // Get current status
     const { data: existing, error: fetchError } = await supabase
@@ -387,7 +459,7 @@ weeklyOrder.patch('/:id/status', async (c) => {
           data: null,
           error: `Không thể chuyển từ '${currentStatus}' sang '${newStatus}'. Các trạng thái hợp lệ: ${allowedTransitions.join(', ') || 'không có'}`,
         },
-        400
+        400,
       )
     }
 
@@ -432,10 +504,16 @@ weeklyOrder.post('/:id/results', async (c) => {
       throw fetchError
     }
 
-    const body: SaveResultsDTO = await c.req.json()
+    const body = await c.req.json()
 
-    if (!body.calculation_data) {
-      return c.json({ data: null, error: 'Dữ liệu tính toán (calculation_data) là bắt buộc' }, 400)
+    let validated
+    try {
+      validated = SaveResultsSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
     }
 
     const { data, error } = await supabase
@@ -443,11 +521,11 @@ weeklyOrder.post('/:id/results', async (c) => {
       .upsert(
         {
           week_id: id,
-          calculation_data: body.calculation_data,
-          summary_data: body.summary_data || null,
+          calculation_data: validated.calculation_data,
+          summary_data: validated.summary_data || null,
           calculated_at: new Date().toISOString(),
         },
-        { onConflict: 'week_id' }
+        { onConflict: 'week_id' },
       )
       .select()
       .single()

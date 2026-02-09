@@ -1,24 +1,25 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { getErrorMessage } from '../utils/errorHelper'
 
 const purchaseOrders = new Hono()
 
-// Helper function to get error message
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err)
-}
-
 /**
  * GET /api/purchase-orders - List all purchase orders with optional filtering
+ * Query param: include=items to join po_items + styles + skus + colors
  */
 purchaseOrders.get('/', async (c) => {
   try {
     const query = c.req.query()
-    
+    const includeItems = query.include === 'items'
+
+    const selectQuery = includeItems
+      ? `*, items:po_items(id, po_id, style_id, quantity, style:styles(id, style_code, style_name), skus(id, color_id, quantity, color:colors(id, name, hex_code)))`
+      : '*'
+
     let dbQuery = supabase
       .from('purchase_orders')
-      .select('*')
+      .select(selectQuery)
       .order('created_at', { ascending: false })
 
     // Apply filters
@@ -48,18 +49,26 @@ purchaseOrders.get('/', async (c) => {
 
 /**
  * GET /api/purchase-orders/:id - Get a single purchase order by ID
+ * Query param: include=items to join po_items + styles + skus + colors
  */
 purchaseOrders.get('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
-    
+
     if (isNaN(id)) {
       return c.json({ data: null, error: 'ID khong hop le' }, 400)
     }
 
+    const query = c.req.query()
+    const includeItems = query.include === 'items'
+
+    const selectQuery = includeItems
+      ? `*, items:po_items(id, po_id, style_id, quantity, style:styles(id, style_code, style_name), skus(id, color_id, quantity, color:colors(id, name, hex_code)))`
+      : '*'
+
     const { data, error } = await supabase
       .from('purchase_orders')
-      .select('*')
+      .select(selectQuery)
       .eq('id', id)
       .single()
 

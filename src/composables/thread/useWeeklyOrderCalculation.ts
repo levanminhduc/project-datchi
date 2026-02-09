@@ -2,7 +2,7 @@
  * Weekly Order Calculation Composable
  *
  * Manages multi-style selection, parallel calculation, and aggregation
- * for weekly thread ordering.
+ * for weekly thread ordering. Supports PO → Style → Color flow.
  */
 
 import { ref, computed } from 'vue'
@@ -14,6 +14,13 @@ import type {
   CalculationResult,
   CalculationInput,
 } from '@/types/thread'
+
+/**
+ * Generate a unique key for an order entry (po_id + style_id)
+ */
+function entryKey(poId: number | null, styleId: number): string {
+  return `${poId ?? 'null'}_${styleId}`
+}
 
 export function useWeeklyOrderCalculation() {
   // State
@@ -46,17 +53,25 @@ export function useWeeklyOrderCalculation() {
   })
 
   /**
-   * Add a style to orderEntries if not already present
+   * Add a style to orderEntries (with PO context)
    */
   const addStyle = (style: {
     id: number
     style_code: string
     style_name: string
+    po_id?: number | null
+    po_number?: string
   }) => {
-    const exists = orderEntries.value.some((e) => e.style_id === style.id)
+    const poId = style.po_id ?? null
+    const key = entryKey(poId, style.id)
+    const exists = orderEntries.value.some(
+      (e) => entryKey(e.po_id, e.style_id) === key
+    )
     if (exists) return
 
     orderEntries.value.push({
+      po_id: poId,
+      po_number: style.po_number || '',
       style_id: style.id,
       style_code: style.style_code,
       style_name: style.style_name,
@@ -66,12 +81,21 @@ export function useWeeklyOrderCalculation() {
   }
 
   /**
-   * Remove a style from orderEntries
+   * Remove a style from orderEntries by po_id + style_id
    */
-  const removeStyle = (styleId: number) => {
+  const removeStyle = (styleId: number, poId?: number | null) => {
+    const targetPoId = poId ?? null
     orderEntries.value = orderEntries.value.filter(
-      (e) => e.style_id !== styleId
+      (e) => !(e.style_id === styleId && e.po_id === targetPoId)
     )
+    lastModifiedAt.value = Date.now()
+  }
+
+  /**
+   * Remove all entries for a specific PO
+   */
+  const removePO = (poId: number) => {
+    orderEntries.value = orderEntries.value.filter((e) => e.po_id !== poId)
     lastModifiedAt.value = Date.now()
   }
 
@@ -80,9 +104,13 @@ export function useWeeklyOrderCalculation() {
    */
   const addColorToStyle = (
     styleId: number,
-    color: { color_id: number; color_name: string; hex_code: string }
+    color: { color_id: number; color_name: string; hex_code: string },
+    poId?: number | null,
   ) => {
-    const entry = orderEntries.value.find((e) => e.style_id === styleId)
+    const targetPoId = poId ?? null
+    const entry = orderEntries.value.find(
+      (e) => e.style_id === styleId && e.po_id === targetPoId
+    )
     if (!entry) return
 
     const colorExists = entry.colors.some((c) => c.color_id === color.color_id)
@@ -100,8 +128,11 @@ export function useWeeklyOrderCalculation() {
   /**
    * Remove a color from a style entry
    */
-  const removeColorFromStyle = (styleId: number, colorId: number) => {
-    const entry = orderEntries.value.find((e) => e.style_id === styleId)
+  const removeColorFromStyle = (styleId: number, colorId: number, poId?: number | null) => {
+    const targetPoId = poId ?? null
+    const entry = orderEntries.value.find(
+      (e) => e.style_id === styleId && e.po_id === targetPoId
+    )
     if (!entry) return
 
     entry.colors = entry.colors.filter((c) => c.color_id !== colorId)
@@ -114,9 +145,13 @@ export function useWeeklyOrderCalculation() {
   const updateColorQuantity = (
     styleId: number,
     colorId: number,
-    qty: number
+    qty: number,
+    poId?: number | null,
   ) => {
-    const entry = orderEntries.value.find((e) => e.style_id === styleId)
+    const targetPoId = poId ?? null
+    const entry = orderEntries.value.find(
+      (e) => e.style_id === styleId && e.po_id === targetPoId
+    )
     if (!entry) return
 
     const color = entry.colors.find((c) => c.color_id === colorId)
@@ -191,35 +226,49 @@ export function useWeeklyOrderCalculation() {
   }
 
   /**
-   * Run calculations for all style entries in parallel
+   * Build CalculationInput array from valid order entries
+   * Deduplicates by style_id (same style across multiple POs combines quantities)
    */
-  const calculateAll = async () => {
-    isCalculating.value = true
-    calculationErrors.value = []
-    perStyleResults.value = []
+  const buildBatchInputs = (entries: StyleOrderEntry[]) => {
+    // Group by style_id to combine colors from same style across POs
+    const styleMap = new Map<number, { entry: StyleOrderEntry; colors: Map<number, number> }>()
 
-    // Filter entries that have at least one color with qty > 0
-    const validEntries = orderEntries.value.filter((entry) =>
-      entry.colors.some((c) => c.quantity > 0)
-    )
-
-    calculationProgress.value = { current: 0, total: validEntries.length }
-
-    const promises = validEntries.map((entry) => {
-      const totalQty = entry.colors.reduce((sum, c) => sum + c.quantity, 0)
-
-      const input: CalculationInput = {
-        style_id: entry.style_id,
-        quantity: totalQty,
-        color_breakdown: entry.colors
-          .filter((c) => c.quantity > 0)
-          .map((c) => ({
-            color_id: c.color_id,
-            quantity: c.quantity,
-          })),
+    for (const entry of entries) {
+      if (!styleMap.has(entry.style_id)) {
+        styleMap.set(entry.style_id, { entry, colors: new Map() })
       }
+      const group = styleMap.get(entry.style_id)!
+      for (const c of entry.colors) {
+        if (c.quantity > 0) {
+          group.colors.set(c.color_id, (group.colors.get(c.color_id) || 0) + c.quantity)
+        }
+      }
+    }
 
-      return threadCalculationService
+    return Array.from(styleMap.values()).map(({ entry, colors }) => {
+      const totalQty = Array.from(colors.values()).reduce((sum, q) => sum + q, 0)
+      return {
+        input: {
+          style_id: entry.style_id,
+          quantity: totalQty,
+          color_breakdown: Array.from(colors.entries()).map(([color_id, quantity]) => ({
+            color_id,
+            quantity,
+          })),
+        } as CalculationInput,
+        entry,
+      }
+    })
+  }
+
+  /**
+   * Fallback: Run calculations using N parallel individual requests
+   */
+  const calculateAllFallback = async (
+    batchItems: { input: CalculationInput; entry: StyleOrderEntry }[]
+  ) => {
+    const promises = batchItems.map(({ input, entry }) =>
+      threadCalculationService
         .calculate(input)
         .then((result) => {
           calculationProgress.value = {
@@ -239,12 +288,11 @@ export function useWeeklyOrderCalculation() {
             entry,
           }
         })
-    })
+    )
 
     const settled = await Promise.all(promises)
 
     const successResults: CalculationResult[] = []
-
     for (const result of settled) {
       if (result.status === 'fulfilled') {
         successResults.push(result.value)
@@ -255,6 +303,56 @@ export function useWeeklyOrderCalculation() {
           error: result.reason,
         })
       }
+    }
+
+    return successResults
+  }
+
+  /**
+   * Run calculations for all style entries using batch endpoint (1 request)
+   * Falls back to N parallel requests if batch fails
+   */
+  const calculateAll = async () => {
+    isCalculating.value = true
+    calculationErrors.value = []
+    perStyleResults.value = []
+
+    // Filter entries that have at least one color with qty > 0
+    const validEntries = orderEntries.value.filter((entry) =>
+      entry.colors.some((c) => c.quantity > 0)
+    )
+
+    const batchItems = buildBatchInputs(validEntries)
+    calculationProgress.value = { current: 0, total: batchItems.length }
+
+    let successResults: CalculationResult[]
+
+    try {
+      // Try batch endpoint (1 request instead of N)
+      const batchInputs = batchItems.map(({ input }) => input)
+      const results = await threadCalculationService.calculateBatch(batchInputs)
+
+      // Match results back to entries for error reporting on missing styles
+      const resultStyleIds = new Set(results.map((r) => r.style_id))
+      for (const { entry } of batchItems) {
+        if (!resultStyleIds.has(entry.style_id)) {
+          calculationErrors.value.push({
+            style_id: entry.style_id,
+            style_code: entry.style_code,
+            error: 'Mã hàng chưa có định mức chỉ',
+          })
+        }
+      }
+
+      calculationProgress.value = {
+        current: batchItems.length,
+        total: batchItems.length,
+      }
+      successResults = results
+    } catch {
+      // Batch endpoint failed — fallback to N parallel requests
+      calculationProgress.value = { current: 0, total: batchItems.length }
+      successResults = await calculateAllFallback(batchItems)
     }
 
     perStyleResults.value = successResults
@@ -281,21 +379,24 @@ export function useWeeklyOrderCalculation() {
    * Populate orderEntries from saved ThreadOrderItems (for loading from history)
    */
   const setFromWeekItems = (items: ThreadOrderItem[]) => {
-    const entryMap = new Map<number, StyleOrderEntry>()
+    const entryMap = new Map<string, StyleOrderEntry>()
 
     for (const item of items) {
-      const styleId = item.style_id
+      const poId = item.po_id ?? null
+      const key = entryKey(poId, item.style_id)
 
-      if (!entryMap.has(styleId)) {
-        entryMap.set(styleId, {
-          style_id: styleId,
-          style_code: item.style?.style_code || `Style #${styleId}`,
+      if (!entryMap.has(key)) {
+        entryMap.set(key, {
+          po_id: poId,
+          po_number: item.po?.po_number || '',
+          style_id: item.style_id,
+          style_code: item.style?.style_code || `Style #${item.style_id}`,
           style_name: item.style?.style_name || '',
           colors: [],
         })
       }
 
-      const entry = entryMap.get(styleId)!
+      const entry = entryMap.get(key)!
 
       const colorExists = entry.colors.some((c) => c.color_id === item.color_id)
       if (!colorExists) {
@@ -332,6 +433,7 @@ export function useWeeklyOrderCalculation() {
     // Actions
     addStyle,
     removeStyle,
+    removePO,
     addColorToStyle,
     removeColorFromStyle,
     updateColorQuantity,

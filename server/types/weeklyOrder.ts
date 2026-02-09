@@ -17,12 +17,14 @@ export interface ThreadOrderWeek {
 export interface ThreadOrderItem {
   id: number
   week_id: number
+  po_id: number | null
   style_id: number
   color_id: number
   quantity: number
   created_at: string
   style?: { id: number; style_code: string; style_name: string }
   color?: { id: number; name: string; hex_code: string }
+  po?: { id: number; po_number: string }
 }
 
 export interface CreateWeeklyOrderDTO {
@@ -31,6 +33,7 @@ export interface CreateWeeklyOrderDTO {
   end_date?: string
   notes?: string
   items: Array<{
+    po_id?: number | null
     style_id: number
     color_id: number
     quantity: number
@@ -43,6 +46,7 @@ export interface UpdateWeeklyOrderDTO {
   end_date?: string
   notes?: string
   items?: Array<{
+    po_id?: number | null
     style_id: number
     color_id: number
     quantity: number

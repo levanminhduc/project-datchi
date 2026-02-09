@@ -44,6 +44,24 @@ export const threadCalculationService = {
   },
 
   /**
+   * Tính toán định mức chỉ cho nhiều mã hàng cùng lúc (batch)
+   * @param items - Array of CalculationInput (max 100)
+   * @returns Array of calculation results
+   */
+  async calculateBatch(items: CalculationInput[]): Promise<CalculationResult[]> {
+    const response = await fetchApi<ApiResponse<CalculationResult[]>>(`${BASE}/calculate-batch`, {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
+  },
+
+  /**
    * Tính toán định mức chỉ theo đơn hàng (PO)
    * @param input - CalculateByPOInput with po_id
    * @returns Array of calculation results for each PO item

@@ -88,6 +88,7 @@ declare module 'vue' {
     PageHeader: typeof import('./components/ui/layout/PageHeader.vue')['default']
     PartialConeIndicator: typeof import('./components/thread/PartialConeIndicator.vue')['default']
     PendingAllocationsWidget: typeof import('./components/thread/PendingAllocationsWidget.vue')['default']
+    POOrderCard: typeof import('./components/thread/weekly-order/POOrderCard.vue')['default']
     PopupEdit: typeof import('./components/ui/dialogs/PopupEdit.vue')['default']
     PullToRefresh: typeof import('./components/ui/scroll/PullToRefresh.vue')['default']
     QrLabelGrid: typeof import('./components/qr/QrLabelGrid.vue')['default']

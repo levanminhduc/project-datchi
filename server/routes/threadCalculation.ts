@@ -1,13 +1,83 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { getErrorMessage } from '../utils/errorHelper'
 
 const threadCalculation = new Hono()
 
-// Helper function to get error message
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err)
+// ============ Supabase Query Result Types ============
+
+/** Row shape from: styles.select('id, style_code, style_name') */
+interface StyleRow {
+  id: number
+  style_code: string
+  style_name: string
 }
+
+/** Joined supplier shape from: suppliers:supplier_id (id, name) */
+interface SupplierJoin {
+  id: number
+  name: string
+}
+
+/** Joined thread_type shape from: thread_types:tex_id (id, tex_number, name, meters_per_cone, color, color_code) */
+interface ThreadTypeJoin {
+  id: number
+  tex_number: string
+  name: string
+  meters_per_cone: number | null
+  color: string | null
+  color_code: string | null
+}
+
+/** Row shape from style_thread_specs with joined suppliers and thread_types */
+interface SpecRow {
+  id: number
+  style_id: number
+  process_name: string
+  meters_per_unit: number
+  tex_id: number
+  suppliers: SupplierJoin | null
+  thread_types: ThreadTypeJoin | null
+}
+
+/** Joined color shape from: colors:color_id (id, name) */
+interface ColorJoin {
+  id: number
+  name: string
+}
+
+/** Joined thread_type shape from: thread_types:thread_type_id (id, name, tex_number) */
+interface ColorThreadTypeJoin {
+  id: number
+  name: string
+  tex_number: string
+}
+
+/** Row shape from style_color_thread_specs with joined colors and thread_types */
+interface ColorSpecRow {
+  style_thread_spec_id: number
+  color_id: number
+  thread_type_id: number
+  colors: ColorJoin | null
+  thread_types: ColorThreadTypeJoin | null
+}
+
+/** Row shape from po_items with joined styles */
+interface PoItemRow {
+  id: number
+  quantity: number
+  styles: StyleRow | null
+}
+
+/** Row shape from skus with joined colors */
+interface SkuRow {
+  po_item_id: number
+  color_id: number
+  quantity: number
+  colors: ColorJoin | null
+}
+
+// ============ Request/Response Interfaces ============
 
 interface CalculationInput {
   style_id: number
@@ -41,9 +111,74 @@ interface CalculationResult {
   }[]
 }
 
+// ============ Shared Helpers ============
+
+const SPEC_SELECT = `
+  id,
+  style_id,
+  process_name,
+  meters_per_unit,
+  tex_id,
+  suppliers:supplier_id (id, name),
+  thread_types:tex_id (id, tex_number, name, meters_per_cone, color, color_code)
+` as const
+
+const COLOR_SPEC_SELECT = `
+  style_thread_spec_id,
+  color_id,
+  thread_type_id,
+  colors:color_id (id, name),
+  thread_types:thread_type_id (id, name, tex_number)
+` as const
+
+/** Build a single calculation entry from a spec row, quantity, and optional color data */
+function buildCalculation(
+  spec: SpecRow,
+  quantity: number,
+  colorBreakdown: { color_id: number; quantity: number }[] | undefined,
+  colorSpecs: ColorSpecRow[]
+) {
+  const baseCalculation: CalculationResult['calculations'][number] = {
+    spec_id: spec.id,
+    process_name: spec.process_name,
+    supplier_name: spec.suppliers?.name || '',
+    tex_number: spec.thread_types?.tex_number || '',
+    meters_per_unit: spec.meters_per_unit,
+    total_meters: spec.meters_per_unit * quantity,
+    meters_per_cone: spec.thread_types?.meters_per_cone || null,
+    thread_color: spec.thread_types?.color || null,
+    thread_color_code: spec.thread_types?.color_code || null,
+  }
+
+  if (colorBreakdown && colorBreakdown.length > 0) {
+    const specColorSpecs = colorSpecs.filter(
+      (cs) => cs.style_thread_spec_id === spec.id
+    )
+
+    baseCalculation.color_breakdown = colorBreakdown.map((cb) => {
+      const colorSpec = specColorSpecs.find(
+        (sc) => sc.color_id === cb.color_id
+      )
+
+      return {
+        color_id: cb.color_id,
+        color_name: colorSpec?.colors?.name || '',
+        quantity: cb.quantity,
+        thread_type_id: colorSpec?.thread_type_id || spec.tex_id,
+        thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
+        total_meters: spec.meters_per_unit * cb.quantity,
+      }
+    })
+  }
+
+  return baseCalculation
+}
+
+// ============ Endpoints ============
+
 /**
  * POST /api/thread-calculation/calculate - Calculate thread requirements
- * 
+ *
  * Request body:
  * {
  *   style_id: number,
@@ -77,14 +212,7 @@ threadCalculation.post('/calculate', async (c) => {
     // Get thread specs for this style
     const { data: specs, error: specsError } = await supabase
       .from('style_thread_specs')
-      .select(`
-        id,
-        process_name,
-        meters_per_unit,
-        tex_id,
-        suppliers:supplier_id (id, name),
-        thread_types:tex_id (id, tex_number, name, meters_per_cone, color, color_code)
-      `)
+      .select(SPEC_SELECT)
       .eq('style_id', body.style_id)
 
     if (specsError) throw specsError
@@ -93,71 +221,33 @@ threadCalculation.post('/calculate', async (c) => {
       return c.json({ data: null, error: 'Ma hang chua co dinh muc chi' }, 400)
     }
 
+    const typedSpecs = specs as unknown as SpecRow[]
+
     // Get color-specific specs if color breakdown provided
-    let colorSpecs: any[] = []
+    let colorSpecs: ColorSpecRow[] = []
     if (body.color_breakdown && body.color_breakdown.length > 0) {
-      const specIds = specs.map(s => s.id)
+      const specIds = typedSpecs.map(s => s.id)
       const colorIds = body.color_breakdown.map(c => c.color_id)
-      
+
       const { data: cs, error: csError } = await supabase
         .from('style_color_thread_specs')
-        .select(`
-          style_thread_spec_id,
-          color_id,
-          thread_type_id,
-          colors:color_id (id, name),
-          thread_types:thread_type_id (id, name, tex_number)
-        `)
+        .select(COLOR_SPEC_SELECT)
         .in('style_thread_spec_id', specIds)
         .in('color_id', colorIds)
 
       if (csError) throw csError
-      colorSpecs = cs || []
+      colorSpecs = (cs || []) as unknown as ColorSpecRow[]
     }
 
     // Calculate results
-    const calculations = specs.map((spec: any) => {
-      const baseCalculation = {
-        spec_id: spec.id,
-        process_name: spec.process_name,
-        supplier_name: spec.suppliers?.name || '',
-        tex_number: spec.thread_types?.tex_number || '',
-        meters_per_unit: spec.meters_per_unit,
-        total_meters: spec.meters_per_unit * body.quantity,
-        meters_per_cone: spec.thread_types?.meters_per_cone || null,
-        thread_color: spec.thread_types?.color || null,
-        thread_color_code: spec.thread_types?.color_code || null,
-      }
-
-      // Add color breakdown if available
-      if (body.color_breakdown && body.color_breakdown.length > 0) {
-        const specColorSpecs = colorSpecs.filter(
-          (cs: any) => cs.style_thread_spec_id === spec.id
-        )
-
-        baseCalculation.color_breakdown = body.color_breakdown.map((cb: any) => {
-          const colorSpec = specColorSpecs.find(
-            (sc: any) => sc.color_id === cb.color_id
-          )
-          
-          return {
-            color_id: cb.color_id,
-            color_name: colorSpec?.colors?.name || '',
-            quantity: cb.quantity,
-            thread_type_id: colorSpec?.thread_type_id || spec.tex_id,
-            thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
-            total_meters: spec.meters_per_unit * cb.quantity,
-          }
-        })
-      }
-
-      return baseCalculation
-    })
+    const calculations = typedSpecs.map((spec) =>
+      buildCalculation(spec, body.quantity, body.color_breakdown, colorSpecs)
+    )
 
     const result: CalculationResult = {
-      style_id: style.id,
-      style_code: style.style_code,
-      style_name: style.style_name,
+      style_id: (style as StyleRow).id,
+      style_code: (style as StyleRow).style_code,
+      style_name: (style as StyleRow).style_name,
       total_quantity: body.quantity,
       calculations,
     }
@@ -170,12 +260,137 @@ threadCalculation.post('/calculate', async (c) => {
 })
 
 /**
+ * POST /api/thread-calculation/calculate-batch - Calculate thread requirements for multiple styles
+ *
+ * Request body:
+ * {
+ *   items: CalculationInput[]  (max 100)
+ * }
+ *
+ * Uses bulk .in() queries instead of per-item sequential queries.
+ */
+threadCalculation.post('/calculate-batch', async (c) => {
+  try {
+    const body = await c.req.json<{ items: CalculationInput[] }>()
+
+    if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
+      return c.json({ data: null, error: 'Danh sach items la bat buoc va khong duoc rong' }, 400)
+    }
+
+    if (body.items.length > 100) {
+      return c.json({ data: null, error: 'Toi da 100 items moi lan tinh' }, 400)
+    }
+
+    // Validate each item
+    for (const item of body.items) {
+      if (!item.style_id || isNaN(item.style_id)) {
+        return c.json({ data: null, error: `Ma hang (style_id) khong hop le: ${item.style_id}` }, 400)
+      }
+      if (!item.quantity || item.quantity <= 0) {
+        return c.json({ data: null, error: `So luong phai lon hon 0 cho style_id ${item.style_id}` }, 400)
+      }
+    }
+
+    // Collect all unique style_ids
+    const styleIds = [...new Set(body.items.map(item => item.style_id))]
+
+    // Bulk query 1: Get all styles
+    const { data: styles, error: stylesError } = await supabase
+      .from('styles')
+      .select('id, style_code, style_name')
+      .in('id', styleIds)
+
+    if (stylesError) throw stylesError
+
+    const typedStyles = (styles || []) as unknown as StyleRow[]
+    const styleMap = new Map(typedStyles.map(s => [s.id, s]))
+
+    // Bulk query 2: Get all specs for all styles
+    const { data: allSpecs, error: specsError } = await supabase
+      .from('style_thread_specs')
+      .select(SPEC_SELECT)
+      .in('style_id', styleIds)
+
+    if (specsError) throw specsError
+
+    const typedSpecs = (allSpecs || []) as unknown as SpecRow[]
+
+    // Group specs by style_id for lookup
+    const specsByStyleId = new Map<number, SpecRow[]>()
+    for (const spec of typedSpecs) {
+      const existing = specsByStyleId.get(spec.style_id) || []
+      existing.push(spec)
+      specsByStyleId.set(spec.style_id, existing)
+    }
+
+    // Collect all spec IDs and color IDs for color specs query
+    const allSpecIds = typedSpecs.map(s => s.id)
+    const allColorIds = new Set<number>()
+    for (const item of body.items) {
+      if (item.color_breakdown) {
+        for (const cb of item.color_breakdown) {
+          allColorIds.add(cb.color_id)
+        }
+      }
+    }
+
+    // Bulk query 3: Get all color specs (only if any color breakdowns exist)
+    let allColorSpecs: ColorSpecRow[] = []
+    if (allColorIds.size > 0 && allSpecIds.length > 0) {
+      const { data: cs, error: csError } = await supabase
+        .from('style_color_thread_specs')
+        .select(COLOR_SPEC_SELECT)
+        .in('style_thread_spec_id', allSpecIds)
+        .in('color_id', [...allColorIds])
+
+      if (csError) throw csError
+      allColorSpecs = (cs || []) as unknown as ColorSpecRow[]
+    }
+
+    // Map results in-memory
+    const results: CalculationResult[] = []
+    for (const item of body.items) {
+      const style = styleMap.get(item.style_id)
+      if (!style) continue // Skip unknown styles
+
+      const specs = specsByStyleId.get(item.style_id)
+      if (!specs || specs.length === 0) continue // Skip styles without specs
+
+      // Filter color specs relevant to this style's specs
+      const styleSpecIds = new Set(specs.map(s => s.id))
+      const relevantColorSpecs = allColorSpecs.filter(
+        cs => styleSpecIds.has(cs.style_thread_spec_id)
+      )
+
+      const calculations = specs.map((spec) =>
+        buildCalculation(spec, item.quantity, item.color_breakdown, relevantColorSpecs)
+      )
+
+      results.push({
+        style_id: style.id,
+        style_code: style.style_code,
+        style_name: style.style_name,
+        total_quantity: item.quantity,
+        calculations,
+      })
+    }
+
+    return c.json({ data: results, error: null })
+  } catch (err) {
+    console.error('Error in batch thread calculation:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * POST /api/thread-calculation/calculate-by-po - Calculate thread requirements by PO
- * 
+ *
  * Request body:
  * {
  *   po_id: number
  * }
+ *
+ * Optimized: uses bulk .in() queries instead of per-item sequential queries.
  */
 threadCalculation.post('/calculate-by-po', async (c) => {
   try {
@@ -201,72 +416,105 @@ threadCalculation.post('/calculate-by-po', async (c) => {
       return c.json({ data: null, error: 'Don hang khong co chi tiet ma hang' }, 400)
     }
 
-    // Calculate for each PO item
-    const results = []
-    for (const item of poItems) {
-      const style = item.styles as any
-      if (!style) continue
+    const typedPoItems = poItems as unknown as PoItemRow[]
 
-      // Get thread specs for this style
-      const { data: specs, error: specsError } = await supabase
-        .from('style_thread_specs')
-        .select(`
-          id,
-          process_name,
-          meters_per_unit,
-          tex_id,
-          suppliers:supplier_id (id, name),
-          thread_types:tex_id (id, tex_number, name, meters_per_cone, color, color_code)
-        `)
-        .eq('style_id', style.id)
+    // Filter out items without a valid style
+    const validItems = typedPoItems.filter(item => item.styles !== null)
+    if (validItems.length === 0) {
+      return c.json({ data: null, error: 'Don hang khong co chi tiet ma hang hop le' }, 400)
+    }
 
-      if (specsError || !specs || specs.length === 0) {
-        continue // Skip styles without specs
-      }
+    // Collect all unique style_ids and po_item_ids
+    const styleIds = [...new Set(validItems.map(item => item.styles!.id))]
+    const poItemIds = validItems.map(item => item.id)
 
-      // Get SKUs for color breakdown
-      const { data: skus, error: skusError } = await supabase
-        .from('skus')
-        .select(`
-          color_id,
-          quantity,
-          colors:color_id (id, name)
-        `)
-        .eq('po_item_id', item.id)
+    // Bulk query 1: Get all specs for all styles
+    const { data: allSpecs, error: specsError } = await supabase
+      .from('style_thread_specs')
+      .select(SPEC_SELECT)
+      .in('style_id', styleIds)
 
-      if (skusError) throw skusError
+    if (specsError) throw specsError
 
-      // Get color specs
-      const specIds = specs.map((s: any) => s.id)
-      const colorIds = skus?.map((s: any) => s.color_id) || []
-      
-      const { data: colorSpecs } = await supabase
+    const typedSpecs = (allSpecs || []) as unknown as SpecRow[]
+
+    // Group specs by style_id
+    const specsByStyleId = new Map<number, SpecRow[]>()
+    for (const spec of typedSpecs) {
+      const existing = specsByStyleId.get(spec.style_id) || []
+      existing.push(spec)
+      specsByStyleId.set(spec.style_id, existing)
+    }
+
+    // Bulk query 2: Get all SKUs for all PO items
+    const { data: allSkus, error: skusError } = await supabase
+      .from('skus')
+      .select(`
+        po_item_id,
+        color_id,
+        quantity,
+        colors:color_id (id, name)
+      `)
+      .in('po_item_id', poItemIds)
+
+    if (skusError) throw skusError
+
+    const typedSkus = (allSkus || []) as unknown as SkuRow[]
+
+    // Group SKUs by po_item_id
+    const skusByPoItemId = new Map<number, SkuRow[]>()
+    for (const sku of typedSkus) {
+      const existing = skusByPoItemId.get(sku.po_item_id) || []
+      existing.push(sku)
+      skusByPoItemId.set(sku.po_item_id, existing)
+    }
+
+    // Bulk query 3: Get all color specs for all specs and colors
+    const allSpecIds = typedSpecs.map(s => s.id)
+    const allColorIds = [...new Set(typedSkus.map(s => s.color_id))]
+
+    let allColorSpecs: ColorSpecRow[] = []
+    if (allSpecIds.length > 0 && allColorIds.length > 0) {
+      const { data: cs, error: csError } = await supabase
         .from('style_color_thread_specs')
-        .select(`
-          style_thread_spec_id,
-          color_id,
-          thread_type_id,
-          thread_types:thread_type_id (id, name, tex_number)
-        `)
-        .in('style_thread_spec_id', specIds)
-        .in('color_id', colorIds)
+        .select(COLOR_SPEC_SELECT)
+        .in('style_thread_spec_id', allSpecIds)
+        .in('color_id', allColorIds)
 
-      // Calculate
-      const calculations = specs.map((spec: any) => {
-        const colorBreakdown = skus?.map((sku: any) => {
-          const colorSpec = colorSpecs?.find(
-            (cs: any) => cs.style_thread_spec_id === spec.id && cs.color_id === sku.color_id
+      if (csError) throw csError
+      allColorSpecs = (cs || []) as unknown as ColorSpecRow[]
+    }
+
+    // Map results in-memory
+    const results = []
+    for (const item of validItems) {
+      const style = item.styles!
+      const specs = specsByStyleId.get(style.id)
+      if (!specs || specs.length === 0) continue
+
+      const skus = skusByPoItemId.get(item.id) || []
+
+      // Filter color specs relevant to this style's specs
+      const styleSpecIds = new Set(specs.map(s => s.id))
+      const relevantColorSpecs = allColorSpecs.filter(
+        cs => styleSpecIds.has(cs.style_thread_spec_id)
+      )
+
+      const calculations = specs.map((spec) => {
+        const colorBreakdown = skus.map((sku) => {
+          const colorSpec = relevantColorSpecs.find(
+            (cs) => cs.style_thread_spec_id === spec.id && cs.color_id === sku.color_id
           )
 
           return {
             color_id: sku.color_id,
-            color_name: (sku.colors as any)?.name || '',
+            color_name: sku.colors?.name || '',
             quantity: sku.quantity,
             thread_type_id: colorSpec?.thread_type_id || spec.tex_id,
             thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
             total_meters: spec.meters_per_unit * sku.quantity,
           }
-        }) || []
+        })
 
         return {
           spec_id: spec.id,

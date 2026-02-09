@@ -1,13 +1,8 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { getErrorMessage } from '../utils/errorHelper'
 
 const styleThreadSpecs = new Hono()
-
-// Helper function to get error message
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err)
-}
 
 /**
  * GET /api/style-thread-specs - List all style thread specs with optional filtering
