@@ -99,9 +99,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import StyleOrderCard from './StyleOrderCard.vue'
 import type { StyleOrderEntry, PurchaseOrderWithItems } from '@/types/thread'
+import { styleService } from '@/services/styleService'
 
 const props = defineProps<{
   po: PurchaseOrderWithItems
@@ -118,6 +119,21 @@ const emit = defineEmits<{
 }>()
 
 const selectedStyleId = ref<number | null>(null)
+
+// Cache spec-colors per style_id
+const specColorsCache = ref(new Map<number, Array<{ id: number; name: string; hex_code: string }>>())
+
+// Fetch spec-colors for a style and store in cache
+const fetchSpecColors = async (styleId: number) => {
+  if (specColorsCache.value.has(styleId)) return
+  try {
+    const colors = await styleService.getSpecColors(styleId)
+    specColorsCache.value.set(styleId, colors)
+  } catch (err) {
+    console.error(`Error fetching spec colors for style ${styleId}:`, err)
+    specColorsCache.value.set(styleId, [])
+  }
+}
 
 // Filter entries that belong to this PO
 const poEntries = computed(() => {
@@ -138,25 +154,24 @@ const availableStyleOptions = computed(() => {
 })
 
 /**
- * Get color options for a specific style (from SKUs of the PO item)
+ * Get color options for a specific style (from spec-colors cache)
  */
 const getColorOptionsForStyle = (styleId: number): Array<{ id: number; name: string; hex_code: string }> => {
-  if (!props.po.items) return []
-  const poItem = props.po.items.find((item) => item.style_id === styleId)
-  if (!poItem?.skus) return []
-
-  const colorMap = new Map<number, { id: number; name: string; hex_code: string }>()
-  for (const sku of poItem.skus) {
-    if (sku.color && !colorMap.has(sku.color.id)) {
-      colorMap.set(sku.color.id, {
-        id: sku.color.id,
-        name: sku.color.name,
-        hex_code: sku.color.hex_code,
-      })
-    }
-  }
-  return Array.from(colorMap.values())
+  return specColorsCache.value.get(styleId) || []
 }
+
+// Watch poEntries to fetch spec-colors for new styles
+watch(
+  poEntries,
+  (entries) => {
+    for (const entry of entries) {
+      if (!specColorsCache.value.has(entry.style_id)) {
+        fetchSpecColors(entry.style_id)
+      }
+    }
+  },
+  { immediate: true },
+)
 
 const handleAddStyle = () => {
   if (!selectedStyleId.value || !props.po.items) return

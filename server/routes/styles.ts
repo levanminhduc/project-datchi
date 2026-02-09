@@ -183,6 +183,46 @@ styles.delete('/:id', async (c) => {
 })
 
 /**
+ * GET /api/styles/:id/spec-colors - Get unique colors that have thread specs configured for a style
+ */
+styles.get('/:id/spec-colors', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID khong hop le' }, 400)
+    }
+
+    const { data, error } = await supabase
+      .from('style_color_thread_specs')
+      .select(`
+        color_id,
+        style_thread_spec:style_thread_specs!inner(style_id),
+        color:colors!inner(id, name, hex_code)
+      `)
+      .eq('style_thread_specs.style_id', id)
+
+    if (error) throw error
+
+    // Deduplicate by color_id
+    const colorMap = new Map<number, { id: number; name: string; hex_code: string }>()
+    if (data) {
+      for (const row of data) {
+        const color = row.color as unknown as { id: number; name: string; hex_code: string }
+        if (!colorMap.has(color.id)) {
+          colorMap.set(color.id, { id: color.id, name: color.name, hex_code: color.hex_code })
+        }
+      }
+    }
+
+    return c.json({ data: Array.from(colorMap.values()), error: null })
+  } catch (err) {
+    console.error('Error fetching spec colors:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * GET /api/styles/:id/thread-specs - Get thread specs for a style
  */
 styles.get('/:id/thread-specs', async (c) => {

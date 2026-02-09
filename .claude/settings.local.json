@@ -31,7 +31,8 @@
       "Bash(npm run build:*)",
       "Bash(npm run type-check:*)",
       "Bash(npm run lint)",
-      "Bash(if not exist \"D:\\\\HoaThoDienBan\\\\VueJS\\\\project-datchi\\\\openspec\\\\changes\\\\archive\" mkdir \"D:\\\\HoaThoDienBan\\\\VueJS\\\\project-datchi\\\\openspec\\\\changes\\\\archive\")"
+      "Bash(if not exist \"D:\\\\HoaThoDienBan\\\\VueJS\\\\project-datchi\\\\openspec\\\\changes\\\\archive\" mkdir \"D:\\\\HoaThoDienBan\\\\VueJS\\\\project-datchi\\\\openspec\\\\changes\\\\archive\")",
+      "Bash(npx eslint:*)"
     ]
   }
 }
