@@ -12,17 +12,22 @@
     </div>
 
     <!-- Filters -->
-    <div class="row q-mb-md q-gutter-sm">
-      <q-select
+    <div class="row q-mb-md q-gutter-sm items-center">
+      <AppSelect
         v-model="statusFilter"
         :options="statusOptions"
         label="Trạng thái"
         dense
-        outlined
-        emit-value
-        map-options
         style="min-width: 150px"
         @update:model-value="loadData"
+      />
+      <q-space />
+      <q-btn
+        color="primary"
+        icon="refresh"
+        label="Tải lại"
+        :loading="loading"
+        @click="loadData"
       />
     </div>
 
@@ -44,21 +49,12 @@
         <q-td :props="props">
           <span class="cursor-pointer text-primary">
             {{ formatDate(props.row.delivery_date) }}
-            <q-popup-edit
-              v-slot="scope"
-              v-model="props.row.delivery_date"
-              buttons
-              label-set="Lưu"
-              label-cancel="Hủy"
-              @save="(val: string) => updateDeliveryDate(props.row.id, val)"
-            >
-              <q-input
-                v-model="scope.value"
-                type="date"
-                dense
-                autofocus
+            <q-popup-proxy>
+              <DatePicker
+                :model-value="toDatePickerFormat(props.row.delivery_date)"
+                @update:model-value="(val: string | null) => handleDeliveryDateChange(props.row.id, val)"
               />
-            </q-popup-edit>
+            </q-popup-proxy>
           </span>
         </q-td>
       </template>
@@ -109,12 +105,26 @@
         </q-card-section>
         <q-card-section>
           <q-input
-            v-model="actualDeliveryDate"
-            type="date"
+            :model-value="formatDate(fromDatePickerFormat(actualDeliveryDate) || actualDeliveryDate)"
             label="Ngày giao thực tế"
             dense
             outlined
-          />
+            readonly
+          >
+            <template #append>
+              <q-icon
+                name="event"
+                class="cursor-pointer"
+              >
+                <q-popup-proxy>
+                  <DatePicker
+                    :model-value="actualDeliveryDate"
+                    @update:model-value="(val: string | null) => { if (val) actualDeliveryDate = val }"
+                  />
+                </q-popup-proxy>
+              </q-icon>
+            </template>
+          </q-input>
         </q-card-section>
         <q-card-actions align="right">
           <q-btn
@@ -139,6 +149,8 @@ import { ref, onMounted } from 'vue'
 import type { QTableColumn } from 'quasar'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { deliveryService } from '@/services/deliveryService'
+import AppSelect from '@/components/ui/inputs/AppSelect.vue'
+import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import type { DeliveryRecord } from '@/types/thread'
 
 definePage({
@@ -199,6 +211,26 @@ function getDaysColor(days: number | undefined, status: string): string {
   return 'green'
 }
 
+// Convert YYYY-MM-DD to DD/MM/YYYY for DatePicker
+function toDatePickerFormat(dateStr: string): string {
+  if (!dateStr) return ''
+  const [year, month, day] = dateStr.split('-')
+  return `${day}/${month}/${year}`
+}
+
+// Convert DD/MM/YYYY to YYYY-MM-DD for API
+function fromDatePickerFormat(dateStr: string): string {
+  if (!dateStr) return ''
+  const [day, month, year] = dateStr.split('/')
+  return `${year}-${month}-${day}`
+}
+
+async function handleDeliveryDateChange(deliveryId: number, val: string | null) {
+  if (!val) return
+  const isoDate = fromDatePickerFormat(val)
+  await updateDeliveryDate(deliveryId, isoDate)
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -224,7 +256,12 @@ async function updateDeliveryDate(deliveryId: number, newDate: string) {
 
 function openDeliveredDialog(delivery: DeliveryRecord) {
   selectedDelivery.value = delivery
-  actualDeliveryDate.value = new Date().toISOString().split('T')[0]
+  // Use DD/MM/YYYY format for DatePicker
+  const today = new Date()
+  const day = String(today.getDate()).padStart(2, '0')
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const year = today.getFullYear()
+  actualDeliveryDate.value = `${day}/${month}/${year}`
   showDeliveredDialog.value = true
 }
 
@@ -232,9 +269,11 @@ async function confirmDelivered() {
   if (!selectedDelivery.value) return
   updating.value = true
   try {
+    // Convert DD/MM/YYYY to YYYY-MM-DD for API
+    const isoDate = fromDatePickerFormat(actualDeliveryDate.value)
     await deliveryService.update(selectedDelivery.value.id, {
       status: 'delivered',
-      actual_delivery_date: actualDeliveryDate.value,
+      actual_delivery_date: isoDate,
     })
     snackbar.success('Đã xác nhận giao hàng')
     showDeliveredDialog.value = false
