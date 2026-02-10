@@ -69,6 +69,9 @@ export interface AggregatedRow {
   meters_per_cone: number | null
   thread_color: string | null
   thread_color_code: string | null
+  supplier_id?: number | null
+  delivery_date?: string | null
+  lead_time_days?: number | null
   inventory_cones?: number
   sl_can_dat?: number
   additional_order?: number
@@ -87,4 +90,35 @@ export interface StyleOrderEntry {
     hex_code: string
     quantity: number
   }>
+}
+
+export interface DeliveryRecord {
+  id: number
+  week_id: number
+  thread_type_id: number
+  supplier_id: number
+  delivery_date: string
+  actual_delivery_date: string | null
+  status: 'pending' | 'delivered'
+  notes: string | null
+  created_at: string
+  updated_at: string
+  days_remaining?: number
+  is_overdue?: boolean
+  supplier_name?: string
+  thread_type_name?: string
+  tex_number?: string
+  week_name?: string
+}
+
+export interface UpdateDeliveryDTO {
+  delivery_date?: string
+  actual_delivery_date?: string | null
+  status?: 'pending' | 'delivered'
+  notes?: string
+}
+
+export interface DeliveryFilter {
+  status?: 'pending' | 'delivered'
+  week_id?: number
 }

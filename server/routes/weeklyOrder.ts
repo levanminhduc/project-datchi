@@ -8,6 +8,7 @@ import {
   UpdateStatusSchema,
   SaveResultsSchema,
   EnrichInventorySchema,
+  UpdateDeliverySchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
 
@@ -148,6 +149,168 @@ weeklyOrder.post('/enrich-inventory', async (c) => {
     return c.json({ data: enrichedRows, error: null })
   } catch (err) {
     console.error('Error enriching inventory data:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * GET /api/weekly-orders/deliveries/overview - List all deliveries across weeks
+ */
+weeklyOrder.get('/deliveries/overview', async (c) => {
+  try {
+    const status = c.req.query('status')
+    const weekId = c.req.query('week_id')
+
+    let query = supabase
+      .from('thread_order_deliveries')
+      .select(`
+        *,
+        supplier:suppliers(id, name),
+        thread_type:thread_types(id, name, tex_number),
+        week:thread_order_weeks(id, week_name)
+      `)
+      .order('delivery_date', { ascending: true })
+
+    if (status) {
+      query = query.eq('status', status)
+    }
+    if (weekId) {
+      query = query.eq('week_id', parseInt(weekId))
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+    const enriched = (data || []).map((row: any) => {
+      const deliveryDate = new Date(row.delivery_date)
+      deliveryDate.setHours(0, 0, 0, 0)
+      const days_remaining = Math.ceil((deliveryDate.getTime() - now.getTime()) / 86400000)
+      return {
+        ...row,
+        supplier_name: row.supplier?.name || '',
+        thread_type_name: row.thread_type?.name || '',
+        tex_number: row.thread_type?.tex_number || '',
+        week_name: row.week?.week_name || '',
+        days_remaining,
+        is_overdue: days_remaining < 0 && row.status === 'pending',
+      }
+    })
+
+    return c.json({ data: enriched, error: null })
+  } catch (err) {
+    console.error('Error fetching deliveries overview:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * PATCH /api/weekly-orders/deliveries/:deliveryId - Update a delivery record
+ */
+weeklyOrder.patch('/deliveries/:deliveryId', async (c) => {
+  try {
+    const deliveryId = parseInt(c.req.param('deliveryId'))
+    if (isNaN(deliveryId)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = UpdateDeliverySchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    const updateFields: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    }
+    if (validated.delivery_date !== undefined) updateFields.delivery_date = validated.delivery_date
+    if (validated.actual_delivery_date !== undefined) updateFields.actual_delivery_date = validated.actual_delivery_date
+    if (validated.status !== undefined) updateFields.status = validated.status
+    if (validated.notes !== undefined) updateFields.notes = validated.notes
+
+    const { data, error } = await supabase
+      .from('thread_order_deliveries')
+      .update(updateFields)
+      .eq('id', deliveryId)
+      .select(`
+        *,
+        supplier:suppliers(id, name),
+        thread_type:thread_types(id, name, tex_number)
+      `)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy bản ghi giao hàng' }, 404)
+      }
+      throw error
+    }
+
+    return c.json({
+      data: {
+        ...data,
+        supplier_name: (data as any).supplier?.name || '',
+        thread_type_name: (data as any).thread_type?.name || '',
+        tex_number: (data as any).thread_type?.tex_number || '',
+      },
+      error: null,
+      message: 'Cập nhật thông tin giao hàng thành công',
+    })
+  } catch (err) {
+    console.error('Error updating delivery:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * GET /api/weekly-orders/:id/deliveries - List deliveries for a specific week
+ */
+weeklyOrder.get('/:id/deliveries', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data, error } = await supabase
+      .from('thread_order_deliveries')
+      .select(`
+        *,
+        supplier:suppliers(id, name),
+        thread_type:thread_types(id, name, tex_number)
+      `)
+      .eq('week_id', id)
+      .order('delivery_date', { ascending: true })
+
+    if (error) throw error
+
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+    const enriched = (data || []).map((row: any) => {
+      const deliveryDate = new Date(row.delivery_date)
+      deliveryDate.setHours(0, 0, 0, 0)
+      const days_remaining = Math.ceil((deliveryDate.getTime() - now.getTime()) / 86400000)
+      return {
+        ...row,
+        supplier_name: row.supplier?.name || '',
+        thread_type_name: row.thread_type?.name || '',
+        tex_number: row.thread_type?.tex_number || '',
+        days_remaining,
+        is_overdue: days_remaining < 0 && row.status === 'pending',
+      }
+    })
+
+    return c.json({ data: enriched, error: null })
+  } catch (err) {
+    console.error('Error fetching week deliveries:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })
@@ -593,6 +756,58 @@ weeklyOrder.post('/:id/results', async (c) => {
       .single()
 
     if (error) throw error
+
+    // Auto-create delivery records from summary_data
+    if (validated.summary_data && Array.isArray(validated.summary_data)) {
+      const summaryRows = validated.summary_data as Array<{
+        thread_type_id: number
+        supplier_id?: number | null
+        delivery_date?: string | null
+        lead_time_days?: number | null
+        [key: string]: unknown
+      }>
+
+      // Get existing delivery records for this week
+      const { data: existingDeliveries } = await supabase
+        .from('thread_order_deliveries')
+        .select('thread_type_id')
+        .eq('week_id', id)
+
+      const existingThreadTypeIds = new Set(
+        (existingDeliveries || []).map((d: { thread_type_id: number }) => d.thread_type_id)
+      )
+
+      // Only insert NEW delivery records (preserve existing ones with manual edits)
+      const newDeliveryRows = summaryRows
+        .filter((row) => row.supplier_id && !existingThreadTypeIds.has(row.thread_type_id))
+        .map((row) => {
+          const leadTime = (row.lead_time_days && row.lead_time_days > 0) ? row.lead_time_days : 7
+          const deliveryDate = row.delivery_date || (() => {
+            const d = new Date()
+            d.setDate(d.getDate() + leadTime)
+            return d.toISOString().split('T')[0]
+          })()
+
+          return {
+            week_id: id,
+            thread_type_id: row.thread_type_id,
+            supplier_id: row.supplier_id!,
+            delivery_date: deliveryDate,
+            status: 'pending',
+          }
+        })
+
+      if (newDeliveryRows.length > 0) {
+        const { error: deliveryError } = await supabase
+          .from('thread_order_deliveries')
+          .insert(newDeliveryRows)
+
+        if (deliveryError) {
+          console.warn('Error creating delivery records:', deliveryError)
+          // Don't throw - delivery creation is secondary to results saving
+        }
+      }
+    }
 
     return c.json({ data, error: null, message: 'Lưu kết quả tính toán thành công' })
   } catch (err) {

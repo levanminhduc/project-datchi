@@ -39,6 +39,13 @@ export const SaveResultsSchema = z.object({
   summary_data: z.any().optional(),
 })
 
+export const UpdateDeliverySchema = z.object({
+  delivery_date: z.string().optional(),
+  actual_delivery_date: z.string().nullable().optional(),
+  status: z.enum(['pending', 'delivered']).optional(),
+  notes: z.string().nullable().optional(),
+})
+
 export const EnrichInventorySchema = z.object({
   summary_rows: z
     .array(

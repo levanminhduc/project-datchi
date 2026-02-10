@@ -13,10 +13,11 @@ interface StyleRow {
   style_name: string
 }
 
-/** Joined supplier shape from: suppliers:supplier_id (id, name) */
+/** Joined supplier shape from: suppliers:supplier_id (id, name, lead_time_days) */
 interface SupplierJoin {
   id: number
   name: string
+  lead_time_days: number | null
 }
 
 /** Joined thread_type shape from: thread_types:tex_id (id, tex_number, name, meters_per_cone, color, color_code) */
@@ -100,6 +101,9 @@ interface CalculationResult {
     meters_per_cone?: number | null
     thread_color?: string | null
     thread_color_code?: string | null
+    supplier_id?: number | null
+    lead_time_days?: number | null
+    delivery_date?: string | null
     color_breakdown?: {
       color_id: number
       color_name: string
@@ -119,7 +123,7 @@ const SPEC_SELECT = `
   process_name,
   meters_per_unit,
   tex_id,
-  suppliers:supplier_id (id, name),
+  suppliers:supplier_id (id, name, lead_time_days),
   thread_types:tex_id (id, tex_number, name, meters_per_cone, color, color_code)
 ` as const
 
@@ -148,6 +152,20 @@ function buildCalculation(
     meters_per_cone: spec.thread_types?.meters_per_cone || null,
     thread_color: spec.thread_types?.color || null,
     thread_color_code: spec.thread_types?.color_code || null,
+    supplier_id: spec.suppliers?.id || null,
+    lead_time_days: (() => {
+      if (!spec.suppliers) return null
+      const lt = spec.suppliers.lead_time_days
+      return (lt && lt > 0) ? lt : 7
+    })(),
+    delivery_date: (() => {
+      if (!spec.suppliers) return null
+      const lt = spec.suppliers.lead_time_days
+      const days = (lt && lt > 0) ? lt : 7
+      const date = new Date()
+      date.setDate(date.getDate() + days)
+      return date.toISOString().split('T')[0]
+    })(),
   }
 
   if (colorBreakdown && colorBreakdown.length > 0) {
@@ -526,6 +544,20 @@ threadCalculation.post('/calculate-by-po', async (c) => {
           meters_per_cone: spec.thread_types?.meters_per_cone || null,
           thread_color: spec.thread_types?.color || null,
           thread_color_code: spec.thread_types?.color_code || null,
+          supplier_id: spec.suppliers?.id || null,
+          lead_time_days: (() => {
+            if (!spec.suppliers) return null
+            const lt = spec.suppliers.lead_time_days
+            return (lt && lt > 0) ? lt : 7
+          })(),
+          delivery_date: (() => {
+            if (!spec.suppliers) return null
+            const lt = spec.suppliers.lead_time_days
+            const days = (lt && lt > 0) ? lt : 7
+            const date = new Date()
+            date.setDate(date.getDate() + days)
+            return date.toISOString().split('T')[0]
+          })(),
           color_breakdown: colorBreakdown,
         }
       })

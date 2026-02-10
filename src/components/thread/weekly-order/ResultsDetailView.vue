@@ -75,6 +75,47 @@
               >—</span>
             </q-td>
           </template>
+          <template #body-cell-delivery_date="props">
+            <q-td :props="props">
+              <!-- No delivery date -->
+              <span
+                v-if="!getEffectiveDate(props.row)"
+                class="text-grey-5"
+              >—</span>
+
+              <!-- Editable: before save OR admin/root after save -->
+              <template v-else-if="canEditDeliveryDate">
+                <span class="cursor-pointer text-primary">
+                  {{ formatDateDisplay(getEffectiveDate(props.row)!) }}
+                  <q-icon
+                    name="edit_calendar"
+                    size="xs"
+                    class="q-ml-xs"
+                  />
+                  <q-popup-proxy
+                    cover
+                    transition-show="scale"
+                    transition-hide="scale"
+                  >
+                    <DatePicker
+                      :model-value="formatDateDisplay(getEffectiveDate(props.row)!)"
+                      @update:model-value="(val: string | null) => onDeliveryDateChange(props.row.spec_id, val)"
+                    />
+                  </q-popup-proxy>
+                </span>
+              </template>
+
+              <!-- Read-only countdown: after save, regular user -->
+              <template v-else>
+                <span :class="countdownClass(getEffectiveDate(props.row)!)">
+                  {{ formatCountdown(getEffectiveDate(props.row)!) }}
+                </span>
+                <AppTooltip>
+                  {{ formatDateDisplay(getEffectiveDate(props.row)!) }}
+                </AppTooltip>
+              </template>
+            </q-td>
+          </template>
         </q-table>
       </q-card-section>
     </AppCard>
@@ -90,14 +131,78 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { QTableColumn } from 'quasar'
 import type { CalculationResult, CalculationItem } from '@/types/thread'
 import type { StyleOrderEntry } from '@/types/thread/weeklyOrder'
+import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+import { useAuth } from '@/composables/useAuth'
 
 const props = defineProps<{
   results: CalculationResult[]
   orderEntries?: StyleOrderEntry[]
+  isSaved?: boolean
 }>()
+
+const emit = defineEmits<{
+  'update:delivery-date': [specId: number, date: string]
+}>()
+
+const { isAdmin, checkIsRoot } = useAuth()
+
+const canEditDeliveryDate = computed(() => {
+  if (!props.isSaved) return true
+  return checkIsRoot() || isAdmin()
+})
+
+// Date conversion: YYYY-MM-DD ↔ DD/MM/YYYY
+function formatDateDisplay(isoDate: string): string {
+  if (!isoDate) return ''
+  const [y, m, d] = isoDate.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function toIso(displayDate: string): string {
+  if (!displayDate) return ''
+  const [d, m, y] = displayDate.split('/')
+  return `${y}-${m}-${d}`
+}
+
+function getEffectiveDate(row: CalculationItem): string | null {
+  return row.delivery_date ?? null
+}
+
+function onDeliveryDateChange(specId: number, val: string | null) {
+  if (!val) return
+  const isoDate = toIso(val)
+  emit('update:delivery-date', specId, isoDate)
+}
+
+// Countdown logic
+function formatCountdown(isoDate: string): string {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const delivery = new Date(isoDate)
+  delivery.setHours(0, 0, 0, 0)
+  const diffMs = delivery.getTime() - today.getTime()
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffDays > 0) return `còn ${diffDays} Ngày`
+  return 'Đã đến hạn Giao'
+}
+
+function countdownClass(isoDate: string): string {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const delivery = new Date(isoDate)
+  delivery.setHours(0, 0, 0, 0)
+  const diffMs = delivery.getTime() - today.getTime()
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffDays <= 0) return 'text-negative text-weight-bold'
+  if (diffDays <= 3) return 'text-warning text-weight-medium'
+  return 'text-positive'
+}
 
 function isLightColor(hex: string): boolean {
   const color = hex.replace('#', '')
@@ -145,5 +250,11 @@ const columns: QTableColumn[] = [
     format: (val) => (val !== null && val !== undefined) ? Number(val).toLocaleString('vi-VN') : '—',
   },
   { name: 'thread_color', label: 'Màu chỉ', field: 'thread_color', align: 'center' },
+  {
+    name: 'delivery_date',
+    label: 'Ngày giao',
+    field: 'delivery_date',
+    align: 'center',
+  },
 ]
 </script>

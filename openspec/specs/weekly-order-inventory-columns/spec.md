@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Backend inventory enrichment endpoint
-The system SHALL provide a `POST /api/weekly-orders/enrich-inventory` endpoint that accepts an array of summary rows and returns them enriched with current inventory data. The endpoint SHALL query the `thread_inventory` table for cones with status `AVAILABLE`, aggregate by `thread_type_id`, and compute deficit values.
+The system SHALL provide a `POST /api/weekly-orders/enrich-inventory` endpoint that accepts an array of summary rows and returns them enriched with current inventory data. The endpoint SHALL query the `thread_inventory` table for cones with status `AVAILABLE`, aggregate by `thread_type_id`, and compute deficit values. The endpoint SHALL also compute `delivery_date` for each row by looking up the supplier's `lead_time_days` from the `suppliers` table using the `supplier_id` field in each summary row.
 
 #### Scenario: Successful enrichment with mixed inventory
 - **WHEN** the endpoint receives summary_rows containing thread_type_ids [42, 55] where thread_type_id 42 has total_cones=191 and thread_type_id 55 has total_cones=80
@@ -18,8 +18,8 @@ The system SHALL provide a `POST /api/weekly-orders/enrich-inventory` endpoint t
 - **THEN** the response SHALL return HTTP 400 with a validation error message
 
 #### Scenario: Passthrough of original fields
-- **WHEN** the endpoint receives summary rows with fields like thread_type_name, supplier_name, tex_number, etc.
-- **THEN** the response SHALL preserve all original fields and add the 4 new computed fields
+- **WHEN** the endpoint receives summary rows with fields like thread_type_name, supplier_name, tex_number, supplier_id, delivery_date, etc.
+- **THEN** the response SHALL preserve all original fields and add the computed fields
 
 ---
 
@@ -108,9 +108,9 @@ When loading saved weekly order results, the system SHALL display the inventory 
 ---
 
 ### Requirement: Excel export includes new columns
-The Excel export SHALL include all 4 new columns with their values.
+The Excel export SHALL include all inventory columns and the delivery date column with their values.
 
-#### Scenario: Export with inventory columns
+#### Scenario: Export with inventory and delivery columns
 - **WHEN** user exports aggregated results to Excel
 - **THEN** the exported file SHALL include columns: Ton kho KD, SL can dat, Dat them, Tong chot
 - **AND** values SHALL match what is displayed in the table

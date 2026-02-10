@@ -30,6 +30,9 @@ export interface CalculationItem {
   thread_color?: string | null
   thread_color_code?: string | null
   color_breakdown?: ColorCalculationResult[]
+  supplier_id?: number | null
+  delivery_date?: string | null
+  lead_time_days?: number | null
 }
 
 export interface ColorCalculationResult {

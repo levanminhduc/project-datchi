@@ -121,7 +121,7 @@
         label="Tính toán"
         :loading="isCalculating"
         :disable="!canCalculate"
-        @click="calculateAll"
+        @click="handleCalculate"
       />
       <span
         v-if="isResultsStale"
@@ -183,6 +183,8 @@
         v-if="resultView === 'detail'"
         :results="perStyleResults"
         :order-entries="orderEntries"
+        :is-saved="resultsSaved"
+        @update:delivery-date="handleUpdateDeliveryDate"
       />
 
       <!-- Summary View -->
@@ -322,6 +324,8 @@ const {
   clearAll,
   setFromWeekItems,
   updateAdditionalOrder,
+  updateDeliveryDate,
+  mergeDeliveryDateOverrides,
 } = useWeeklyOrderCalculation()
 
 const {
@@ -342,6 +346,7 @@ const resultView = ref<'detail' | 'summary'>('summary')
 const showHistory = ref(false)
 const showAllocationSummary = ref(false)
 const creatingAllocations = ref(false)
+const resultsSaved = ref(false)
 
 interface AllocationCandidate {
   order_id: string
@@ -427,8 +432,28 @@ const handleUpdateAdditionalOrder = (threadTypeId: number, value: number) => {
   updateAdditionalOrder(threadTypeId, value)
 }
 
+const handleCalculate = async () => {
+  resultsSaved.value = false
+  await calculateAll()
+}
+
+const handleUpdateDeliveryDate = (specId: number, date: string) => {
+  updateDeliveryDate(specId, date)
+  // Update the row's delivery_date directly for immediate UI reflection
+  for (const result of perStyleResults.value) {
+    const calc = result.calculations.find((c) => c.spec_id === specId)
+    if (calc) {
+      calc.delivery_date = date
+      break
+    }
+  }
+}
+
 const handleSave = async () => {
   if (!weekName.value) return
+
+  // Merge any delivery date overrides into results before saving
+  mergeDeliveryDateOverrides()
 
   const items = orderEntries.value.flatMap((entry) =>
     entry.colors
@@ -452,6 +477,7 @@ const handleSave = async () => {
 
     if (hasResults.value) {
       await saveResults(selectedWeek.value.id, perStyleResults.value, aggregatedResults.value)
+      resultsSaved.value = true
     }
   } else {
     const created = await createWeek({
@@ -464,6 +490,7 @@ const handleSave = async () => {
 
     if (created && hasResults.value) {
       await saveResults(created.id, perStyleResults.value, aggregatedResults.value)
+      resultsSaved.value = true
     }
   }
 }
@@ -507,7 +534,10 @@ const handleLoadWeek = async (weekId: number) => {
     if (savedResults.summary_data) {
       aggregatedResults.value = savedResults.summary_data
     }
+    resultsSaved.value = true
     snackbar.info('Đã tải kết quả tính toán đã lưu')
+  } else {
+    resultsSaved.value = false
   }
 }
 

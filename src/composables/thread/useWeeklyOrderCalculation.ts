@@ -5,7 +5,7 @@
  * for weekly thread ordering. Supports PO → Style → Color flow.
  */
 
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { threadCalculationService } from '@/services/threadCalculationService'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import type {
@@ -35,6 +35,9 @@ export function useWeeklyOrderCalculation() {
   >([])
   const lastCalculatedAt = ref<number | null>(null)
   const lastModifiedAt = ref<number | null>(null)
+
+  // Delivery date overrides: spec_id → YYYY-MM-DD string
+  const deliveryDateOverrides = reactive(new Map<number, string>())
 
   // Computed
   const canCalculate = computed(() => {
@@ -187,6 +190,9 @@ export function useWeeklyOrderCalculation() {
                 meters_per_cone: calc.meters_per_cone ?? null,
                 thread_color: calc.thread_color ?? null,
                 thread_color_code: calc.thread_color_code ?? null,
+                supplier_id: calc.supplier_id ?? null,
+                delivery_date: calc.delivery_date ?? null,
+                lead_time_days: calc.lead_time_days ?? null,
               })
             }
           }
@@ -208,6 +214,9 @@ export function useWeeklyOrderCalculation() {
               meters_per_cone: calc.meters_per_cone ?? null,
               thread_color: calc.thread_color ?? null,
               thread_color_code: calc.thread_color_code ?? null,
+              supplier_id: calc.supplier_id ?? null,
+              delivery_date: calc.delivery_date ?? null,
+              lead_time_days: calc.lead_time_days ?? null,
             })
           }
         }
@@ -317,6 +326,7 @@ export function useWeeklyOrderCalculation() {
     isCalculating.value = true
     calculationErrors.value = []
     perStyleResults.value = []
+    deliveryDateOverrides.clear()
 
     // Filter entries that have at least one color with qty > 0
     const validEntries = orderEntries.value.filter((entry) =>
@@ -383,6 +393,7 @@ export function useWeeklyOrderCalculation() {
     calculationErrors.value = []
     lastCalculatedAt.value = null
     lastModifiedAt.value = null
+    deliveryDateOverrides.clear()
   }
 
   /**
@@ -431,6 +442,40 @@ export function useWeeklyOrderCalculation() {
     row.total_final = (row.sl_can_dat || 0) + value
   }
 
+  /**
+   * Update a delivery date override for a specific spec_id
+   */
+  const updateDeliveryDate = (specId: number, date: string) => {
+    deliveryDateOverrides.set(specId, date)
+  }
+
+  /**
+   * Merge delivery date overrides into perStyleResults and aggregatedResults.
+   * Call before saving to persist edited dates.
+   */
+  const mergeDeliveryDateOverrides = () => {
+    if (deliveryDateOverrides.size === 0) return
+
+    for (const result of perStyleResults.value) {
+      for (const calc of result.calculations) {
+        const override = deliveryDateOverrides.get(calc.spec_id)
+        if (override) {
+          calc.delivery_date = override
+        }
+      }
+    }
+
+    // Also update aggregated results if they have delivery_date
+    for (const row of aggregatedResults.value) {
+      const aggRow = row as AggregatedRow & { delivery_date?: string | null; spec_id?: number }
+      if (aggRow.spec_id && deliveryDateOverrides.has(aggRow.spec_id)) {
+        aggRow.delivery_date = deliveryDateOverrides.get(aggRow.spec_id)!
+      }
+    }
+
+    deliveryDateOverrides.clear()
+  }
+
   return {
     // State
     orderEntries,
@@ -441,6 +486,7 @@ export function useWeeklyOrderCalculation() {
     calculationErrors,
     lastCalculatedAt,
     lastModifiedAt,
+    deliveryDateOverrides,
 
     // Computed
     canCalculate,
@@ -457,6 +503,8 @@ export function useWeeklyOrderCalculation() {
     calculateAll,
     aggregateResults,
     updateAdditionalOrder,
+    updateDeliveryDate,
+    mergeDeliveryDateOverrides,
     clearAll,
     setFromWeekItems,
   }

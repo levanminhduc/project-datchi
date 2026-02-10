@@ -23,6 +23,7 @@ export { styleService } from './styleService'
 export { styleThreadSpecService } from './styleThreadSpecService'
 export { threadCalculationService } from './threadCalculationService'
 export { weeklyOrderService } from './weeklyOrderService'
+export { deliveryService } from './deliveryService'
 
 // Reports
 export { reportService } from './reportService'
