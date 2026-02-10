@@ -86,6 +86,11 @@ interface CalculationInput {
   color_breakdown?: { color_id: number; quantity: number }[]
 }
 
+interface BatchCalculationRequest {
+  items: CalculationInput[]
+  include_inventory_preview?: boolean
+}
+
 interface CalculationResult {
   style_id: number
   style_code: string
@@ -112,6 +117,10 @@ interface CalculationResult {
       thread_type_name: string
       total_meters: number
     }[]
+    // Inventory preview fields
+    inventory_available?: number
+    shortage_cones?: number
+    is_fully_stocked?: boolean
   }[]
 }
 
@@ -134,6 +143,100 @@ const COLOR_SPEC_SELECT = `
   colors:color_id (id, name),
   thread_types:thread_type_id (id, name, tex_number)
 ` as const
+
+/**
+ * Query available inventory cones grouped by thread_type_id
+ * Returns a Map of thread_type_id -> available cone count
+ */
+async function getAvailableInventory(threadTypeIds: number[]): Promise<Map<number, number>> {
+  if (threadTypeIds.length === 0) return new Map()
+
+  const { data, error } = await supabase
+    .from('thread_inventory')
+    .select('thread_type_id')
+    .eq('status', 'AVAILABLE')
+    .in('thread_type_id', threadTypeIds)
+
+  if (error) throw error
+
+  // Count cones per thread_type_id
+  const inventoryMap = new Map<number, number>()
+  for (const row of data || []) {
+    const current = inventoryMap.get(row.thread_type_id) || 0
+    inventoryMap.set(row.thread_type_id, current + 1)
+  }
+
+  return inventoryMap
+}
+
+/**
+ * Apply preview allocation to calculation results
+ * Modifies results in-place to add inventory preview fields
+ */
+async function applyInventoryPreview(results: CalculationResult[]): Promise<void> {
+  // Collect all thread_type_ids from color_breakdown
+  const threadTypeIds = new Set<number>()
+  for (const result of results) {
+    for (const calc of result.calculations) {
+      if (calc.color_breakdown) {
+        for (const cb of calc.color_breakdown) {
+          threadTypeIds.add(cb.thread_type_id)
+        }
+      }
+    }
+  }
+
+  if (threadTypeIds.size === 0) return
+
+  // Get available inventory
+  const inventoryMap = await getAvailableInventory([...threadTypeIds])
+
+  // Track running balance per thread_type_id
+  const runningBalance = new Map<number, number>()
+  for (const [threadTypeId, available] of inventoryMap) {
+    runningBalance.set(threadTypeId, available)
+  }
+
+  // Process each calculation in order (position determines priority)
+  for (const result of results) {
+    for (const calc of result.calculations) {
+      // Calculate total needed cones for this calculation
+      const metersPerCone = calc.meters_per_cone || 0
+      const totalCones = metersPerCone > 0 ? Math.ceil(calc.total_meters / metersPerCone) : 0
+
+      if (totalCones === 0) {
+        calc.inventory_available = 0
+        calc.shortage_cones = 0
+        calc.is_fully_stocked = true
+        continue
+      }
+
+      // Get the primary thread_type_id for this calculation
+      // If color_breakdown exists, aggregate inventory across all thread types
+      let totalAvailable = 0
+      const threadTypesUsed: number[] = []
+
+      if (calc.color_breakdown && calc.color_breakdown.length > 0) {
+        // For each color, check its thread type's inventory
+        for (const cb of calc.color_breakdown) {
+          const cbNeededCones = metersPerCone > 0 ? Math.ceil(cb.total_meters / metersPerCone) : 0
+          const available = runningBalance.get(cb.thread_type_id) || 0
+          const allocated = Math.min(cbNeededCones, available)
+          totalAvailable += allocated
+          // Decrement running balance
+          runningBalance.set(cb.thread_type_id, available - allocated)
+          if (!threadTypesUsed.includes(cb.thread_type_id)) {
+            threadTypesUsed.push(cb.thread_type_id)
+          }
+        }
+      }
+
+      calc.inventory_available = totalAvailable
+      calc.shortage_cones = Math.max(0, totalCones - totalAvailable)
+      calc.is_fully_stocked = calc.shortage_cones === 0
+    }
+  }
+}
 
 /** Build a single calculation entry from a spec row, quantity, and optional color data */
 function buildCalculation(
@@ -283,13 +386,14 @@ threadCalculation.post('/calculate', async (c) => {
  * Request body:
  * {
  *   items: CalculationInput[]  (max 100)
+ *   include_inventory_preview?: boolean  // Add inventory availability preview
  * }
  *
  * Uses bulk .in() queries instead of per-item sequential queries.
  */
 threadCalculation.post('/calculate-batch', async (c) => {
   try {
-    const body = await c.req.json<{ items: CalculationInput[] }>()
+    const body = await c.req.json<BatchCalculationRequest>()
 
     if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
       return c.json({ data: null, error: 'Danh sach items la bat buoc va khong duoc rong' }, 400)
@@ -391,6 +495,11 @@ threadCalculation.post('/calculate-batch', async (c) => {
         total_quantity: item.quantity,
         calculations,
       })
+    }
+
+    // Apply inventory preview if requested
+    if (body.include_inventory_preview) {
+      await applyInventoryPreview(results)
     }
 
     return c.json({ data: results, error: null })

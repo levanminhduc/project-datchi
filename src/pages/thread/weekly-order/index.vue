@@ -184,7 +184,9 @@
         :results="perStyleResults"
         :order-entries="orderEntries"
         :is-saved="resultsSaved"
+        :is-reordering="isReordering"
         @update:delivery-date="handleUpdateDeliveryDate"
+        @reorder="handleReorder"
       />
 
       <!-- Summary View -->
@@ -279,7 +281,7 @@ import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { allocationService } from '@/services/allocationService'
 import { AllocationPriority } from '@/types/thread/enums'
 import type { QTableColumn } from 'quasar'
-import type { CreateAllocationDTO, PurchaseOrderWithItems } from '@/types/thread'
+import type { CreateAllocationDTO, PurchaseOrderWithItems, CalculationResult } from '@/types/thread'
 import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
 
 definePage({
@@ -309,6 +311,7 @@ const {
   perStyleResults,
   aggregatedResults,
   isCalculating,
+  isReordering,
   calculationProgress,
   calculationErrors,
   canCalculate,
@@ -326,6 +329,7 @@ const {
   updateAdditionalOrder,
   updateDeliveryDate,
   mergeDeliveryDateOverrides,
+  reorderResults,
 } = useWeeklyOrderCalculation()
 
 const {
@@ -447,6 +451,10 @@ const handleUpdateDeliveryDate = (specId: number, date: string) => {
       break
     }
   }
+}
+
+const handleReorder = async (newOrder: CalculationResult[]) => {
+  await reorderResults(newOrder)
 }
 
 const handleSave = async () => {

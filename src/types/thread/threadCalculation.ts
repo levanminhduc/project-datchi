@@ -33,6 +33,10 @@ export interface CalculationItem {
   supplier_id?: number | null
   delivery_date?: string | null
   lead_time_days?: number | null
+  // Inventory preview fields
+  inventory_available?: number    // Cones available from stock for this item
+  shortage_cones?: number         // Cones that need to be ordered
+  is_fully_stocked?: boolean      // True if inventory covers full requirement
 }
 
 export interface ColorCalculationResult {

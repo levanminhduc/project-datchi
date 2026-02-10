@@ -46,12 +46,16 @@ export const threadCalculationService = {
   /**
    * Tính toán định mức chỉ cho nhiều mã hàng cùng lúc (batch)
    * @param items - Array of CalculationInput (max 100)
+   * @param includeInventoryPreview - Include inventory availability preview
    * @returns Array of calculation results
    */
-  async calculateBatch(items: CalculationInput[]): Promise<CalculationResult[]> {
+  async calculateBatch(
+    items: CalculationInput[],
+    includeInventoryPreview = false,
+  ): Promise<CalculationResult[]> {
     const response = await fetchApi<ApiResponse<CalculationResult[]>>(`${BASE}/calculate-batch`, {
       method: 'POST',
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({ items, include_inventory_preview: includeInventoryPreview }),
     })
 
     if (response.error) {

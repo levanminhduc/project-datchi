@@ -716,7 +716,7 @@ weeklyOrder.post('/:id/results', async (c) => {
     }
 
     // Verify week exists
-    const { data: existing, error: fetchError } = await supabase
+    const { error: fetchError } = await supabase
       .from('thread_order_weeks')
       .select('id')
       .eq('id', id)
@@ -805,6 +805,88 @@ weeklyOrder.post('/:id/results', async (c) => {
         if (deliveryError) {
           console.warn('Error creating delivery records:', deliveryError)
           // Don't throw - delivery creation is secondary to results saving
+        }
+      }
+    }
+
+    // Create allocation records for shortage items from calculation_data
+    if (validated.calculation_data && Array.isArray(validated.calculation_data)) {
+      const allocationRows: Array<{
+        order_id: string
+        order_reference: string
+        thread_type_id: number
+        requested_meters: number
+        priority: string
+        status: string
+      }> = []
+
+      for (const result of validated.calculation_data as Array<{
+        style_id: number
+        style_code: string
+        style_name: string
+        calculations: Array<{
+          spec_id: number
+          process_name: string
+          shortage_cones?: number
+          is_fully_stocked?: boolean
+          meters_per_cone?: number | null
+          color_breakdown?: Array<{
+            thread_type_id: number
+            color_name: string
+            total_meters: number
+          }>
+        }>
+      }>) {
+        for (const calc of result.calculations) {
+          // Skip fully stocked items - no allocation needed
+          if (calc.is_fully_stocked === true) continue
+
+          // Only create allocation if there's a shortage
+          const shortageCones = calc.shortage_cones || 0
+          if (shortageCones <= 0) continue
+
+          const metersPerCone = calc.meters_per_cone || 0
+          if (metersPerCone <= 0) continue
+
+          // Get thread_type_id from color_breakdown
+          if (calc.color_breakdown && calc.color_breakdown.length > 0) {
+            // Create one allocation per thread_type_id in color_breakdown
+            const threadTypeMap = new Map<number, number>()
+            for (const cb of calc.color_breakdown) {
+              const cbNeededCones = Math.ceil(cb.total_meters / metersPerCone)
+              const current = threadTypeMap.get(cb.thread_type_id) || 0
+              threadTypeMap.set(cb.thread_type_id, current + cbNeededCones)
+            }
+
+            for (const [threadTypeId, neededCones] of threadTypeMap) {
+              // Calculate shortage proportion
+              const totalCones = [...threadTypeMap.values()].reduce((a, b) => a + b, 0)
+              const shortageForThisType = Math.ceil((shortageCones / totalCones) * neededCones)
+
+              if (shortageForThisType > 0) {
+                allocationRows.push({
+                  order_id: `WO-${id}-${result.style_code}-${calc.spec_id}`,
+                  order_reference: `Tuần ${id} - ${result.style_name} - ${calc.process_name}`,
+                  thread_type_id: threadTypeId,
+                  requested_meters: shortageForThisType * metersPerCone,
+                  priority: 'NORMAL',
+                  status: 'PENDING',
+                })
+              }
+            }
+          }
+        }
+      }
+
+      // Batch insert allocation records
+      if (allocationRows.length > 0) {
+        const { error: allocError } = await supabase
+          .from('thread_allocations')
+          .insert(allocationRows)
+
+        if (allocError) {
+          console.warn('Error creating allocation records:', allocError)
+          // Don't throw - allocation creation is secondary to results saving
         }
       }
     }

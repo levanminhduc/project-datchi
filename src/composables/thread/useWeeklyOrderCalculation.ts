@@ -29,6 +29,7 @@ export function useWeeklyOrderCalculation() {
   const perStyleResults = ref<CalculationResult[]>([])
   const aggregatedResults = ref<AggregatedRow[]>([])
   const isCalculating = ref(false)
+  const isReordering = ref(false)
   const calculationProgress = ref({ current: 0, total: 0 })
   const calculationErrors = ref<
     Array<{ style_id: number; style_code: string; error: string }>
@@ -339,9 +340,9 @@ export function useWeeklyOrderCalculation() {
     let successResults: CalculationResult[]
 
     try {
-      // Try batch endpoint (1 request instead of N)
+      // Try batch endpoint with inventory preview (1 request instead of N)
       const batchInputs = batchItems.map(({ input }) => input)
-      const results = await threadCalculationService.calculateBatch(batchInputs)
+      const results = await threadCalculationService.calculateBatch(batchInputs, true)
 
       // Match results back to entries for error reporting on missing styles
       const resultStyleIds = new Set(results.map((r) => r.style_id))
@@ -476,12 +477,26 @@ export function useWeeklyOrderCalculation() {
     deliveryDateOverrides.clear()
   }
 
+  /**
+   * Update perStyleResults with reordered results from drag-and-drop
+   * Then recalculate to get updated inventory preview
+   */
+  const reorderResults = async (newOrder: CalculationResult[]) => {
+    isReordering.value = true
+    perStyleResults.value = newOrder
+    aggregateResults(newOrder)
+    // Recalculate with new order to update inventory allocation preview
+    await calculateAll()
+    isReordering.value = false
+  }
+
   return {
     // State
     orderEntries,
     perStyleResults,
     aggregatedResults,
     isCalculating,
+    isReordering,
     calculationProgress,
     calculationErrors,
     lastCalculatedAt,
@@ -505,6 +520,7 @@ export function useWeeklyOrderCalculation() {
     updateAdditionalOrder,
     updateDeliveryDate,
     mergeDeliveryDateOverrides,
+    reorderResults,
     clearAll,
     setFromWeekItems,
   }
