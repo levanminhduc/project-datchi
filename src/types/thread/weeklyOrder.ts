@@ -103,12 +103,26 @@ export interface DeliveryRecord {
   notes: string | null
   created_at: string
   updated_at: string
+  // Inventory receiving fields
+  received_quantity: number
+  inventory_status: 'pending' | 'partial' | 'received'
+  warehouse_id: number | null
+  received_by: string | null
+  received_at: string | null
+  // Computed fields from API
   days_remaining?: number
   is_overdue?: boolean
   supplier_name?: string
   thread_type_name?: string
   tex_number?: string
   week_name?: string
+  total_cones?: number | null
+}
+
+export interface ReceiveDeliveryDTO {
+  warehouse_id: number
+  quantity: number
+  received_by: string
 }
 
 export interface UpdateDeliveryDTO {

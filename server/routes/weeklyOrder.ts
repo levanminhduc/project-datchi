@@ -9,6 +9,7 @@ import {
   SaveResultsSchema,
   EnrichInventorySchema,
   UpdateDeliverySchema,
+  ReceiveDeliverySchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
 
@@ -182,22 +183,54 @@ weeklyOrder.get('/deliveries/overview', async (c) => {
 
     if (error) throw error
 
+    // Get all unique week_ids to fetch summary_data
+    const weekIds = [...new Set((data || []).map((row: any) => row.week_id))]
+
+    // Fetch summary_data for all weeks
+    const { data: resultsData } = await supabase
+      .from('thread_order_results')
+      .select('week_id, summary_data')
+      .in('week_id', weekIds)
+
+    // Build a map: week_id -> thread_type_id -> total_final
+    const summaryMap = new Map<number, Map<number, number>>()
+    for (const result of resultsData || []) {
+      if (result.summary_data && Array.isArray(result.summary_data)) {
+        const threadMap = new Map<number, number>()
+        for (const row of result.summary_data as Array<{ thread_type_id: number; total_final?: number }>) {
+          if (row.thread_type_id && row.total_final !== undefined) {
+            threadMap.set(row.thread_type_id, row.total_final)
+          }
+        }
+        summaryMap.set(result.week_id, threadMap)
+      }
+    }
+
     const now = new Date()
     now.setHours(0, 0, 0, 0)
-    const enriched = (data || []).map((row: any) => {
-      const deliveryDate = new Date(row.delivery_date)
-      deliveryDate.setHours(0, 0, 0, 0)
-      const days_remaining = Math.ceil((deliveryDate.getTime() - now.getTime()) / 86400000)
-      return {
-        ...row,
-        supplier_name: row.supplier?.name || '',
-        thread_type_name: row.thread_type?.name || '',
-        tex_number: row.thread_type?.tex_number || '',
-        week_name: row.week?.week_name || '',
-        days_remaining,
-        is_overdue: days_remaining < 0 && row.status === 'pending',
-      }
-    })
+    const enriched = (data || [])
+      .map((row: any) => {
+        const deliveryDate = new Date(row.delivery_date)
+        deliveryDate.setHours(0, 0, 0, 0)
+        const days_remaining = Math.ceil((deliveryDate.getTime() - now.getTime()) / 86400000)
+
+        // Get total_final from summary_data
+        const threadMap = summaryMap.get(row.week_id)
+        const total_cones = threadMap?.get(row.thread_type_id) ?? null
+
+        return {
+          ...row,
+          supplier_name: row.supplier?.name || '',
+          thread_type_name: row.thread_type?.name || '',
+          tex_number: row.thread_type?.tex_number || '',
+          week_name: row.week?.week_name || '',
+          days_remaining,
+          is_overdue: days_remaining < 0 && row.status === 'pending',
+          total_cones,
+        }
+      })
+      // Filter out records where total_cones < 1 (no need to order, inventory is sufficient)
+      .filter((row: any) => row.total_cones === null || row.total_cones >= 1)
 
     return c.json({ data: enriched, error: null })
   } catch (err) {
@@ -266,6 +299,161 @@ weeklyOrder.patch('/deliveries/:deliveryId', async (c) => {
     })
   } catch (err) {
     console.error('Error updating delivery:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * POST /api/weekly-orders/deliveries/:deliveryId/receive - Receive delivery into inventory
+ * Creates thread_inventory records and updates delivery receiving status
+ */
+weeklyOrder.post('/deliveries/:deliveryId/receive', async (c) => {
+  try {
+    const deliveryId = parseInt(c.req.param('deliveryId'))
+    if (isNaN(deliveryId)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = ReceiveDeliverySchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    const { warehouse_id, quantity, received_by } = validated
+
+    // 1. Get delivery record with thread_type info
+    const { data: delivery, error: deliveryError } = await supabase
+      .from('thread_order_deliveries')
+      .select(`
+        *,
+        thread_type:thread_types(id, name, tex_number, meters_per_cone)
+      `)
+      .eq('id', deliveryId)
+      .single()
+
+    if (deliveryError) {
+      if (deliveryError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy delivery' }, 404)
+      }
+      throw deliveryError
+    }
+
+    // 2. Validate delivery status
+    if (delivery.status !== 'delivered') {
+      return c.json({ data: null, error: 'Chỉ có thể nhập kho cho đơn đã giao' }, 400)
+    }
+
+    // 3. Validate warehouse exists
+    const { data: warehouse, error: warehouseError } = await supabase
+      .from('warehouses')
+      .select('id, name')
+      .eq('id', warehouse_id)
+      .single()
+
+    if (warehouseError || !warehouse) {
+      return c.json({ data: null, error: 'Kho không tồn tại' }, 400)
+    }
+
+    // 4. Generate lot number: LOT-{YYYYMMDD}-{HHmmss}
+    const now = new Date()
+    const lotNumber = `LOT-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+
+    // 5. Get meters_per_cone from thread_type
+    const metersPerCone = (delivery as any).thread_type?.meters_per_cone || 5000
+    const threadTypeId = delivery.thread_type_id
+
+    // 6. Generate cone records
+    const timestamp = now.getTime()
+    const cones = []
+    for (let i = 0; i < quantity; i++) {
+      cones.push({
+        cone_id: `CONE-${timestamp}-${String(i + 1).padStart(4, '0')}`,
+        thread_type_id: threadTypeId,
+        warehouse_id: warehouse_id,
+        quantity_cones: 1,
+        quantity_meters: metersPerCone,
+        is_partial: false,
+        status: 'AVAILABLE',
+        lot_number: lotNumber,
+        received_date: now.toISOString().split('T')[0],
+      })
+    }
+
+    // 7. Insert cone records
+    const { data: insertedCones, error: insertError } = await supabase
+      .from('thread_inventory')
+      .insert(cones)
+      .select('cone_id')
+
+    if (insertError) {
+      console.error('Error inserting cones:', insertError)
+      throw insertError
+    }
+
+    // 8. Update delivery record
+    const newReceivedQuantity = (delivery.received_quantity || 0) + quantity
+
+    // Get total_final from thread_order_results to calculate inventory_status
+    const { data: results } = await supabase
+      .from('thread_order_results')
+      .select('summary_data')
+      .eq('week_id', delivery.week_id)
+      .single()
+
+    let totalFinal = 0
+    if (results?.summary_data) {
+      const summaryRows = results.summary_data as any[]
+      const matchingRow = summaryRows.find((row: any) => row.thread_type_id === threadTypeId)
+      if (matchingRow) {
+        totalFinal = matchingRow.total_final || matchingRow.total_cones || 0
+      }
+    }
+
+    // Calculate inventory_status
+    let inventoryStatus: 'pending' | 'partial' | 'received' = 'pending'
+    if (newReceivedQuantity > 0 && newReceivedQuantity < totalFinal) {
+      inventoryStatus = 'partial'
+    } else if (newReceivedQuantity >= totalFinal && totalFinal > 0) {
+      inventoryStatus = 'received'
+    } else if (newReceivedQuantity > 0) {
+      // If we can't determine total_final, just mark as partial if any received
+      inventoryStatus = 'partial'
+    }
+
+    const { data: updatedDelivery, error: updateError } = await supabase
+      .from('thread_order_deliveries')
+      .update({
+        received_quantity: newReceivedQuantity,
+        inventory_status: inventoryStatus,
+        warehouse_id: warehouse_id,
+        received_by: received_by,
+        received_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      })
+      .eq('id', deliveryId)
+      .select()
+      .single()
+
+    if (updateError) throw updateError
+
+    return c.json({
+      data: {
+        delivery: updatedDelivery,
+        cones_created: insertedCones?.length || 0,
+        lot_number: lotNumber,
+      },
+      error: null,
+      message: `Đã nhập ${quantity} cuộn chỉ vào kho ${warehouse.name}`,
+    })
+  } catch (err) {
+    console.error('Error receiving delivery:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })
