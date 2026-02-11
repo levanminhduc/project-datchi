@@ -82,6 +82,12 @@
           :to="{ name: 'thread-mobile-issue' }"
         />
         <q-route-tab
+          name="return"
+          icon="assignment_returned"
+          label="Nhập Lại"
+          :to="{ name: 'thread-mobile-return' }"
+        />
+        <q-route-tab
           name="recovery"
           icon="assignment_return"
           label="Hoàn Trả"
@@ -106,6 +112,7 @@ const showSyncStatus = ref(true)
 
 const activeTab = computed(() => {
   if (route.path.includes('receive')) return 'receive'
+  if (route.path.includes('return')) return 'return'
   if (route.path.includes('issue')) return 'issue'
   if (route.path.includes('recovery')) return 'recovery'
   return 'receive'
@@ -115,6 +122,7 @@ const title = computed(() => {
   const titles: Record<string, string> = {
     receive: 'Nhập Kho',
     issue: 'Xuất Kho',
+    return: 'Nhập Lại',
     recovery: 'Hoàn Trả',
   }
   return titles[activeTab.value] || 'Kho Chỉ'

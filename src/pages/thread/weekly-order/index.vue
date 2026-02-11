@@ -194,6 +194,7 @@
         v-if="resultView === 'summary'"
         :rows="aggregatedResults"
         @update:additional-order="handleUpdateAdditionalOrder"
+        @update:quota-cones="handleUpdateQuotaCones"
       />
 
       <!-- Result Actions -->
@@ -279,6 +280,7 @@ import {
 } from '@/composables'
 import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { allocationService } from '@/services/allocationService'
+import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { AllocationPriority } from '@/types/thread/enums'
 import type { QTableColumn } from 'quasar'
 import type { CreateAllocationDTO, PurchaseOrderWithItems, CalculationResult } from '@/types/thread'
@@ -327,6 +329,7 @@ const {
   clearAll,
   setFromWeekItems,
   updateAdditionalOrder,
+  updateQuotaCones,
   updateDeliveryDate,
   mergeDeliveryDateOverrides,
   reorderResults,
@@ -434,6 +437,34 @@ const handleAddStyleFromPO = (
 
 const handleUpdateAdditionalOrder = (threadTypeId: number, value: number) => {
   updateAdditionalOrder(threadTypeId, value)
+}
+
+// Debounce timer for quota_cones updates
+let quotaConesDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+const handleUpdateQuotaCones = async (threadTypeId: number, value: number) => {
+  // Update local state immediately
+  updateQuotaCones(threadTypeId, value)
+
+  // Debounce API call
+  if (quotaConesDebounceTimer) {
+    clearTimeout(quotaConesDebounceTimer)
+  }
+
+  quotaConesDebounceTimer = setTimeout(async () => {
+    if (!selectedWeek.value?.id) {
+      snackbar.warning('Vui long luu tuan dat hang truoc khi cap nhat dinh muc')
+      return
+    }
+
+    try {
+      await weeklyOrderService.updateQuotaCones(selectedWeek.value.id, threadTypeId, value)
+      snackbar.success('Da cap nhat dinh muc cuon')
+    } catch (err) {
+      console.error('[weekly-order] update quota_cones error:', err)
+      snackbar.error('Khong the cap nhat dinh muc. Vui long thu lai.')
+    }
+  }, 500)
 }
 
 const handleCalculate = async () => {
@@ -634,6 +665,7 @@ const handleExport = async () => {
       { header: 'Màu chỉ', key: 'thread_color', width: 15 },
       { header: 'Tổng mét', key: 'total_meters', width: 15 },
       { header: 'Tổng cuộn', key: 'total_cones', width: 12 },
+      { header: 'Định mức (cuộn)', key: 'quota_cones', width: 15 },
       { header: 'Mét/cuộn', key: 'meters_per_cone', width: 12 },
       { header: 'Tồn kho KD', key: 'inventory_cones', width: 12 },
       { header: 'SL cần đặt', key: 'sl_can_dat', width: 12 },
@@ -657,6 +689,7 @@ const handleExport = async () => {
         thread_color: r.thread_color || '',
         total_meters: Number(r.total_meters.toFixed(2)),
         total_cones: r.total_cones,
+        quota_cones: r.quota_cones || r.total_cones || '',
         meters_per_cone: r.meters_per_cone || '',
         inventory_cones: r.inventory_cones || '',
         sl_can_dat: r.sl_can_dat || '',

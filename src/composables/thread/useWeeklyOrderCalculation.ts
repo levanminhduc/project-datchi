@@ -444,6 +444,15 @@ export function useWeeklyOrderCalculation() {
   }
 
   /**
+   * Update quota_cones for a specific thread type in aggregatedResults
+   */
+  const updateQuotaCones = (threadTypeId: number, value: number) => {
+    const row = aggregatedResults.value.find((r) => r.thread_type_id === threadTypeId)
+    if (!row) return
+    row.quota_cones = value
+  }
+
+  /**
    * Update a delivery date override for a specific spec_id
    */
   const updateDeliveryDate = (specId: number, date: string) => {
@@ -518,6 +527,7 @@ export function useWeeklyOrderCalculation() {
     calculateAll,
     aggregateResults,
     updateAdditionalOrder,
+    updateQuotaCones,
     updateDeliveryDate,
     mergeDeliveryDateOverrides,
     reorderResults,

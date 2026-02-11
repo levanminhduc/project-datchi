@@ -76,6 +76,7 @@ export interface AggregatedRow {
   sl_can_dat?: number
   additional_order?: number
   total_final?: number
+  quota_cones?: number
 }
 
 export interface StyleOrderEntry {

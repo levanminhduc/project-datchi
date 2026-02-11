@@ -10,6 +10,7 @@ import {
   EnrichInventorySchema,
   UpdateDeliverySchema,
   ReceiveDeliverySchema,
+  UpdateQuotaConesSchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
 
@@ -150,6 +151,101 @@ weeklyOrder.post('/enrich-inventory', async (c) => {
     return c.json({ data: enrichedRows, error: null })
   } catch (err) {
     console.error('Error enriching inventory data:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * PUT /api/weekly-orders/items/:id/quota - Update quota_cones for a thread type in a week
+ * Body: { thread_type_id: number, quota_cones: number }
+ */
+weeklyOrder.put('/items/:id/quota', async (c) => {
+  try {
+    const weekId = parseInt(c.req.param('id'))
+    if (isNaN(weekId)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = UpdateQuotaConesSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    const { thread_type_id, quota_cones } = validated
+
+    // 1. Get all order items for this week with this thread type
+    // First, we need to find items that use this thread type through style/color relationships
+    // Since thread_order_items stores style_id and color_id, we need to update summary_data in thread_order_results
+
+    // 2. Check if week exists
+    const { error: weekError } = await supabase
+      .from('thread_order_weeks')
+      .select('id')
+      .eq('id', weekId)
+      .single()
+
+    if (weekError) {
+      if (weekError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
+      }
+      throw weekError
+    }
+
+    // 3. Get current results
+    const { data: results, error: resultsError } = await supabase
+      .from('thread_order_results')
+      .select('*')
+      .eq('week_id', weekId)
+      .single()
+
+    if (resultsError) {
+      if (resultsError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Chưa có kết quả tính toán cho tuần này' }, 404)
+      }
+      throw resultsError
+    }
+
+    // 4. Update quota_cones in summary_data
+    let updated = false
+    const summaryData = results.summary_data as any[]
+    for (const row of summaryData) {
+      if (row.thread_type_id === thread_type_id) {
+        row.quota_cones = quota_cones
+        updated = true
+        break
+      }
+    }
+
+    if (!updated) {
+      return c.json({ data: null, error: 'Không tìm thấy loại chỉ trong kết quả tuần này' }, 404)
+    }
+
+    // 5. Save updated summary_data
+    const { error: updateError } = await supabase
+      .from('thread_order_results')
+      .update({
+        summary_data: summaryData,
+      })
+      .eq('week_id', weekId)
+      .select()
+      .single()
+
+    if (updateError) throw updateError
+
+    return c.json({
+      data: { thread_type_id, quota_cones },
+      error: null,
+      message: `Đã cập nhật định mức cuộn cho loại chỉ`,
+    })
+  } catch (err) {
+    console.error('Error updating quota cones:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })
@@ -304,8 +400,8 @@ weeklyOrder.patch('/deliveries/:deliveryId', async (c) => {
 })
 
 /**
- * POST /api/weekly-orders/deliveries/:deliveryId/receive - Receive delivery into inventory
- * Creates thread_inventory records and updates delivery receiving status
+ * POST /api/weekly-orders/deliveries/:deliveryId/receive - Receive delivery into stock
+ * Creates ONE thread_stock record (not individual cones) and updates delivery receiving status
  */
 weeklyOrder.post('/deliveries/:deliveryId/receive', async (c) => {
   try {
@@ -365,35 +461,29 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', async (c) => {
     const now = new Date()
     const lotNumber = `LOT-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
 
-    // 5. Get meters_per_cone from thread_type
-    const metersPerCone = (delivery as any).thread_type?.meters_per_cone || 5000
+    // 5. Get thread_type_id from delivery
     const threadTypeId = delivery.thread_type_id
 
-    // 6. Generate cone records
-    const timestamp = now.getTime()
-    const cones = []
-    for (let i = 0; i < quantity; i++) {
-      cones.push({
-        cone_id: `CONE-${timestamp}-${String(i + 1).padStart(4, '0')}`,
-        thread_type_id: threadTypeId,
-        warehouse_id: warehouse_id,
-        quantity_cones: 1,
-        quantity_meters: metersPerCone,
-        is_partial: false,
-        status: 'AVAILABLE',
-        lot_number: lotNumber,
-        received_date: now.toISOString().split('T')[0],
-      })
+    // 6. Create ONE thread_stock record (not individual cones)
+    const stockRecord = {
+      thread_type_id: threadTypeId,
+      warehouse_id: warehouse_id,
+      lot_number: lotNumber,
+      qty_full_cones: quantity,
+      qty_partial_cones: 0,
+      received_date: now.toISOString().split('T')[0],
+      notes: `Nhập từ delivery #${deliveryId} bởi ${received_by}`,
     }
 
-    // 7. Insert cone records
-    const { data: insertedCones, error: insertError } = await supabase
-      .from('thread_inventory')
-      .insert(cones)
-      .select('cone_id')
+    // 7. Insert thread_stock record
+    const { data: insertedStock, error: insertError } = await supabase
+      .from('thread_stock')
+      .insert(stockRecord)
+      .select()
+      .single()
 
     if (insertError) {
-      console.error('Error inserting cones:', insertError)
+      console.error('Error inserting stock:', insertError)
       throw insertError
     }
 
@@ -446,7 +536,8 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', async (c) => {
     return c.json({
       data: {
         delivery: updatedDelivery,
-        cones_created: insertedCones?.length || 0,
+        stock_id: insertedStock?.id || null,
+        qty_full_cones: quantity,
         lot_number: lotNumber,
       },
       error: null,
@@ -929,13 +1020,63 @@ weeklyOrder.post('/:id/results', async (c) => {
       throw err
     }
 
+    // Task 5.1: Compute quota_cones for each row in summary_data
+    let enrichedSummaryData = validated.summary_data || null
+    if (validated.summary_data && Array.isArray(validated.summary_data)) {
+      const summaryRows = validated.summary_data as Array<{
+        thread_type_id: number
+        total_meters?: number
+        meters_per_cone?: number
+        [key: string]: unknown
+      }>
+
+      // Get thread_type_ids to fetch meters_per_cone
+      const threadTypeIds = [...new Set(summaryRows.map((r) => r.thread_type_id))]
+
+      // Fetch meters_per_cone for all thread types
+      const { data: threadTypes, error: threadError } = await supabase
+        .from('thread_types')
+        .select('id, meters_per_cone')
+        .in('id', threadTypeIds)
+
+      if (threadError) {
+        console.warn('Error fetching thread types for quota calculation:', threadError)
+      }
+
+      // Build a map of thread_type_id -> meters_per_cone
+      const metersPerConeMap = new Map<number, number>()
+      for (const tt of threadTypes || []) {
+        // Default to 2000 if meters_per_cone is null
+        metersPerConeMap.set(tt.id, tt.meters_per_cone || 2000)
+      }
+
+      // Compute quota_cones for each row
+      enrichedSummaryData = summaryRows.map((row) => {
+        const totalMeters = row.total_meters || 0
+        const metersPerCone = row.meters_per_cone || metersPerConeMap.get(row.thread_type_id) || 2000
+
+        // quota_cones = CEILING(total_meters / meters_per_cone)
+        const quotaCones = totalMeters > 0 ? Math.ceil(totalMeters / metersPerCone) : 0
+
+        // Log warning if meters_per_cone was missing
+        if (!row.meters_per_cone && !metersPerConeMap.has(row.thread_type_id)) {
+          console.warn(`Thread type ${row.thread_type_id} has no meters_per_cone, using default 2000`)
+        }
+
+        return {
+          ...row,
+          quota_cones: quotaCones,
+        }
+      })
+    }
+
     const { data, error } = await supabase
       .from('thread_order_results')
       .upsert(
         {
           week_id: id,
           calculation_data: validated.calculation_data,
-          summary_data: validated.summary_data || null,
+          summary_data: enrichedSummaryData,
           calculated_at: new Date().toISOString(),
         },
         { onConflict: 'week_id' },
@@ -945,9 +1086,9 @@ weeklyOrder.post('/:id/results', async (c) => {
 
     if (error) throw error
 
-    // Auto-create delivery records from summary_data
-    if (validated.summary_data && Array.isArray(validated.summary_data)) {
-      const summaryRows = validated.summary_data as Array<{
+    // Auto-create delivery records from summary_data (use enrichedSummaryData with quota_cones)
+    if (enrichedSummaryData && Array.isArray(enrichedSummaryData)) {
+      const summaryRows = enrichedSummaryData as Array<{
         thread_type_id: number
         supplier_id?: number | null
         delivery_date?: string | null

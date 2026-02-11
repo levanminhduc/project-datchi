@@ -79,4 +79,13 @@ export const employeeService = {
     const response = await fetchApi<ApiResponse<{ count: number }>>('/api/employees/count')
     return response.data?.count || 0
   },
+
+  /**
+   * Lấy danh sách các bộ phận (departments) duy nhất
+   * @returns Array of unique department names
+   */
+  async getDepartments(): Promise<string[]> {
+    const response = await fetchApi<ApiResponse<string[]>>('/api/employees/departments')
+    return response.data || []
+  },
 }

@@ -95,6 +95,46 @@ employees.get('/count', async (c) => {
   }
 })
 
+/**
+ * GET /api/employees/departments - Get unique departments
+ * Returns distinct department values from employees table
+ */
+employees.get('/departments', async (c) => {
+  try {
+    const { data, error } = await supabase
+      .from('employees')
+      .select('department')
+      .not('department', 'is', null)
+      .eq('is_active', true)
+
+    if (error) {
+      console.error('Supabase error:', error)
+      return c.json<ApiResponse<null>>(
+        { data: null, error: 'Lỗi khi lấy danh sách bộ phận' },
+        500
+      )
+    }
+
+    // Extract unique departments
+    const uniqueDepartments = [...new Set(
+      (data || [])
+        .map(e => e.department)
+        .filter((d): d is string => !!d)
+    )].sort()
+
+    return c.json<ApiResponse<string[]>>({
+      data: uniqueDepartments,
+      error: null,
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ApiResponse<null>>(
+      { data: null, error: 'Lỗi hệ thống' },
+      500
+    )
+  }
+})
+
 employees.get('/', async (c) => {
   try {
     const page = parseInt(c.req.query('page') || '1', 10)

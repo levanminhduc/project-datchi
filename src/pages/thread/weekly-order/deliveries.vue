@@ -127,7 +127,10 @@
                   :label="`Chờ nhập (${props.row.total_cones || 0})`"
                 />
               </template>
-              <span v-else class="text-grey-5">—</span>
+              <span
+                v-else
+                class="text-grey-5"
+              >—</span>
             </q-td>
           </template>
 

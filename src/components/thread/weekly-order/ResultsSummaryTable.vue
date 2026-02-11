@@ -68,6 +68,36 @@
             </q-popup-edit>
           </q-td>
         </template>
+        <template #body-cell-quota_cones="props">
+          <q-td :props="props">
+            <span class="cursor-pointer text-primary">
+              {{ (props.row.quota_cones && props.row.quota_cones > 0) ? props.row.quota_cones.toLocaleString('vi-VN') : (props.row.total_cones > 0 ? props.row.total_cones.toLocaleString('vi-VN') : '—') }}
+              <q-icon
+                name="edit"
+                size="xs"
+                class="q-ml-xs"
+              />
+              <q-tooltip>= tổng mét / mét mỗi cuộn (có thể điều chỉnh)</q-tooltip>
+            </span>
+            <q-popup-edit
+              v-slot="scope"
+              :model-value="props.row.quota_cones || props.row.total_cones || 0"
+              buttons
+              label-set="Lưu"
+              label-cancel="Hủy"
+              @save="(val: number) => emit('update:quota-cones', props.row.thread_type_id, val)"
+            >
+              <q-input
+                v-model.number="scope.value"
+                type="number"
+                :min="0"
+                dense
+                autofocus
+                label="Định mức (cuộn)"
+              />
+            </q-popup-edit>
+          </q-td>
+        </template>
         <template #no-data>
           <div class="text-center text-grey q-pa-md">
             Chưa có dữ liệu tổng hợp
@@ -88,6 +118,7 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:additional-order': [threadTypeId: number, value: number]
+  'update:quota-cones': [threadTypeId: number, value: number]
 }>()
 
 const columns: QTableColumn[] = [
@@ -117,6 +148,13 @@ const columns: QTableColumn[] = [
     align: 'right',
     sortable: true,
     format: (val: number) => val > 0 ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
+    name: 'quota_cones',
+    label: 'Định mức (cuộn)',
+    field: 'quota_cones',
+    align: 'right',
+    format: (val: number | undefined) => (val && val > 0) ? val.toLocaleString('vi-VN') : '—',
   },
   {
     name: 'inventory_cones',

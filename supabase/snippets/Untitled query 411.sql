@@ -1,17 +1,14 @@
-ALTER TABLE thread_order_items
-  ADD COLUMN po_id INTEGER REFERENCES purchase_orders(id) ON DELETE RESTRICT;
-
--- Xoa constraint cu (week_id, style_id, color_id)
-ALTER TABLE thread_order_items
-  DROP CONSTRAINT thread_order_items_week_id_style_id_color_id_key;
-
--- Them constraint moi bao gom po_id
-ALTER TABLE thread_order_items
-  ADD CONSTRAINT thread_order_items_week_po_style_color_key
-  UNIQUE(week_id, po_id, style_id, color_id);
-
--- Index cho po_id
-CREATE INDEX idx_thread_order_items_po_id ON thread_order_items(po_id);
-
--- Comment
-COMMENT ON COLUMN thread_order_items.po_id IS 'FK den bang purchase_orders - Don hang (PO)';
+ SELECT
+    w.id,
+    w.code AS warehouse_code,
+    w.name AS warehouse_name,
+    COUNT(ti.id) AS total_cones,
+    COUNT(ti.id) FILTER (WHERE ti.status = 'AVAILABLE') AS available_cones,
+    COUNT(ti.id) FILTER (WHERE ti.status = 'ALLOCATED') AS allocated_cones,
+    COUNT(ti.id) FILTER (WHERE ti.is_partial = true) AS partial_cones
+  FROM warehouses w
+  LEFT JOIN thread_inventory ti ON ti.warehouse_id = w.id
+  WHERE w.type = 'STORAGE'  -- Chỉ lấy kho lưu trữ, không lấy LOCATION
+    AND w.is_active = true
+  GROUP BY w.id, w.code, w.name
+  ORDER BY w.name;

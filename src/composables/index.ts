@@ -31,8 +31,15 @@ export { useThreadCalculation } from './thread/useThreadCalculation'
 export { useWeeklyOrder } from './thread/useWeeklyOrder'
 export { useWeeklyOrderCalculation } from './thread/useWeeklyOrderCalculation'
 
+// Issue V2
+export { useIssueV2 } from './thread/useIssueV2'
+export { useReturnV2 } from './thread/useReturnV2'
+
 // Reports
 export { useReports } from './useReports'
+
+// Settings
+export { useSettings } from './useSettings'
 
 // Real-time subscriptions
 export { useRealtime } from './useRealtime'

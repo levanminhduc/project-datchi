@@ -64,3 +64,8 @@ export const ReceiveDeliverySchema = z.object({
   quantity: z.number({ required_error: 'Số lượng là bắt buộc' }).int().positive('Số lượng phải lớn hơn 0'),
   received_by: z.string({ required_error: 'Người nhập là bắt buộc' }).min(1, 'Người nhập không được để trống'),
 })
+
+export const UpdateQuotaConesSchema = z.object({
+  thread_type_id: z.number({ required_error: 'thread_type_id là bắt buộc' }).int().positive('thread_type_id phải là số nguyên dương'),
+  quota_cones: z.number({ required_error: 'quota_cones là bắt buộc' }).int().nonnegative('quota_cones phải >= 0'),
+})

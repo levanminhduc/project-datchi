@@ -67,6 +67,20 @@ const threadModules = [
     color: 'info'
   },
   {
+    title: 'Xuất Kho SX',
+    description: 'Quản lý phiếu xuất kho sản xuất',
+    icon: 'output',
+    to: '/thread/issues',
+    color: 'deep-orange'
+  },
+  {
+    title: 'Đối Chiếu',
+    description: 'Đối chiếu tiêu hao chỉ',
+    icon: 'fact_check',
+    to: '/thread/issues/reconciliation',
+    color: 'cyan'
+  },
+  {
     title: 'Thu Hồi',
     description: 'Thu hồi chỉ dư từ sản xuất',
     icon: 'assignment_return',

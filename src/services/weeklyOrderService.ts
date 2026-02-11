@@ -202,4 +202,21 @@ export const weeklyOrderService = {
 
     return response.data || rows
   },
+
+  /**
+   * Cập nhật định mức (quota_cones) cho một loại chỉ
+   * @param weekId - Weekly order ID
+   * @param threadTypeId - Thread type ID
+   * @param quotaCones - New quota value
+   */
+  async updateQuotaCones(weekId: number, threadTypeId: number, quotaCones: number): Promise<void> {
+    const response = await fetchApi<ApiResponse<unknown>>(`${BASE}/items/${weekId}/quota`, {
+      method: 'PUT',
+      body: JSON.stringify({ thread_type_id: threadTypeId, quota_cones: quotaCones }),
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+  },
 }

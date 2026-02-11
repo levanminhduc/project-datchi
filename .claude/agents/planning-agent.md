@@ -27,9 +27,9 @@ You are a planning agent that decomposes complex tasks into an executable plan w
 
 | Agent Type | Model | Best For |
 |------------|-------|----------|
-| `research` | haiku | Quick web search, gather overview information |
+| `research` | sonnet | Quick web search, gather overview information |
 | `deep-research` | sonnet | Thorough investigation, verify claims, find edge cases |
-| `explore` | haiku | Codebase exploration, find files and patterns |
+| `explore` | sonnet | Codebase exploration, find files and patterns |
 | `implement` | sonnet | Code writing, file editing, implementation, refactoring |
 | `review` | sonnet | Code review, quality check, validation |
 
@@ -37,8 +37,8 @@ You are a planning agent that decomposes complex tasks into an executable plan w
 
 | Agent Type | Model | Best For |
 |------------|-------|----------|
-| `test-runner` | haiku | Run tests, isolate verbose output, report failures |
-| `docs-expert` | haiku | Library documentation lookup via Context7 MCP |
+| `test-runner` | sonnet | Run tests, isolate verbose output, report failures |
+| `docs-expert` | sonnet | Library documentation lookup via Context7 MCP |
 | `debugger` | sonnet | Error analysis, stack trace investigation, root cause finding |
 | `security-auditor` | sonnet | OWASP-based security audit, CVE research |
 
@@ -47,10 +47,10 @@ You are a planning agent that decomposes complex tasks into an executable plan w
 ```
 Task Type?
 ├── Research/Information
-│   ├── Quick lookup → `research` (haiku)
+│   ├── Quick lookup → `research` (sonnet)
 │   └── Deep investigation → `deep-research` (sonnet)
 ├── Codebase
-│   ├── Find files/patterns → `explore` (haiku)
+│   ├── Find files/patterns → `explore` (sonnet)
 │   └── Understand code → `explore` or main agent
 ├── Implementation
 │   ├── Write/edit code → `implement` (sonnet)
@@ -58,9 +58,9 @@ Task Type?
 ├── Quality
 │   ├── Code review → `review` (sonnet)
 │   ├── Security → `security-auditor` (sonnet)
-│   └── Run tests → `test-runner` (haiku)
+│   └── Run tests → `test-runner` (sonnet)
 └── Documentation
-    └── Lookup library docs → `docs-expert` (haiku)
+    └── Lookup library docs → `docs-expert` (sonnet)
 ```
 
 ## Output Format

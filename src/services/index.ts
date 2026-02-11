@@ -25,6 +25,13 @@ export { threadCalculationService } from './threadCalculationService'
 export { weeklyOrderService } from './weeklyOrderService'
 export { deliveryService } from './deliveryService'
 
+// Issue management services (xuất kho sản xuất)
+export { issueService } from './issueService'
+export { issueReturnService } from './issueReturnService'
+export { reconciliationService } from './reconciliationService'
+export { stockService } from './stockService'
+export { issueV2Service } from './issueV2Service'
+
 // Reports
 export { reportService } from './reportService'
 export type {
@@ -32,3 +39,7 @@ export type {
   AllocationReportRow,
   AllocationReportData,
 } from './reportService'
+
+// Settings
+export { settingsService } from './settingsService'
+export type { SystemSetting } from './settingsService'
