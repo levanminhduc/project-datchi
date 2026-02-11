@@ -10,16 +10,20 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDebounceFn } from '@vueuse/core'
 import { useIssueV2 } from '@/composables/thread/useIssueV2'
-import { purchaseOrderService } from '@/services/purchaseOrderService'
-import { styleService } from '@/services/styleService'
+import { issueV2Service } from '@/services/issueV2Service'
 import { employeeService } from '@/services/employeeService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import type { QTableColumn } from 'quasar'
-import type { PurchaseOrder, Style } from '@/types/thread'
-import type { ThreadTypeForIssue, ValidateLineResponse } from '@/types/thread/issueV2'
+import type {
+  ThreadTypeForIssue,
+  ValidateLineResponse,
+  OrderOptionPO,
+  OrderOptionStyle,
+  OrderOptionColor,
+} from '@/types/thread/issueV2'
 
 const router = useRouter()
 const snackbar = useSnackbar()
@@ -59,9 +63,6 @@ const styleOptions = ref<{ value: number; label: string }[]>([])
 const colorOptions = ref<{ value: number; label: string }[]>([])
 const departmentOptions = ref<{ value: string; label: string }[]>([])
 
-// Raw data
-const allStyles = ref<Style[]>([])
-
 // Loading states
 const loadingOptions = ref(false)
 const loadingFormData = ref(false)
@@ -95,6 +96,12 @@ const canConfirm = computed(() => {
   return hasLines && allOverQuotaHaveNotes
 })
 
+// Filter out thread types that have already been added to the issue
+const availableThreadTypes = computed(() => {
+  const addedThreadTypeIds = new Set(lines.value.map((line) => line.thread_type_id))
+  return threadTypes.value.filter((tt) => !addedThreadTypeIds.has(tt.thread_type_id))
+})
+
 // Table columns
 const columns: QTableColumn[] = [
   { name: 'thread', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
@@ -109,38 +116,45 @@ const columns: QTableColumn[] = [
 // Watchers
 // ============================================================================
 
-// When PO changes, filter styles
+// When PO changes, load styles from confirmed weekly orders
 watch(selectedPoId, async (newPoId) => {
+  // Clear dependent selections
   selectedStyleId.value = null
   selectedColorId.value = null
   styleOptions.value = []
   colorOptions.value = []
 
-  if (newPoId) {
-    // Filter styles that belong to this PO (through po_items)
-    // For simplicity, show all styles for now - can be refined with API
-    styleOptions.value = allStyles.value.map((s) => ({
+  if (!newPoId) return
+
+  try {
+    const styles = await issueV2Service.getOrderOptions(newPoId)
+    styleOptions.value = (styles as OrderOptionStyle[]).map((s) => ({
       value: s.id,
       label: `${s.style_code} - ${s.style_name || ''}`.trim(),
     }))
+  } catch (err) {
+    console.error('Failed to load styles:', err)
+    snackbar.error('Khong the tai danh sach ma hang')
   }
 })
 
-// When Style changes, load colors from spec-colors
+// When Style changes, load colors from confirmed weekly orders
 watch(selectedStyleId, async (newStyleId) => {
+  // Clear color selection
   selectedColorId.value = null
   colorOptions.value = []
 
-  if (newStyleId) {
-    try {
-      const colors = await styleService.getSpecColors(newStyleId)
-      colorOptions.value = colors.map((c) => ({
-        value: c.id,
-        label: c.name,
-      }))
-    } catch (err) {
-      console.error('Failed to load colors:', err)
-    }
+  if (!newStyleId || !selectedPoId.value) return
+
+  try {
+    const colors = await issueV2Service.getOrderOptions(selectedPoId.value, newStyleId)
+    colorOptions.value = (colors as OrderOptionColor[]).map((c) => ({
+      value: c.id,
+      label: c.name,
+    }))
+  } catch (err) {
+    console.error('Failed to load colors:', err)
+    snackbar.error('Khong the tai danh sach mau')
   }
 })
 
@@ -158,17 +172,12 @@ watch([selectedPoId, selectedStyleId, selectedColorId], async ([poId, styleId, c
 async function loadInitialOptions() {
   loadingOptions.value = true
   try {
-    // Load POs
-    const pos = await purchaseOrderService.getAll()
-    poOptions.value = pos
-      .filter((po: PurchaseOrder) => po.status !== 'cancelled' && po.status !== 'completed')
-      .map((po: PurchaseOrder) => ({
-        value: po.id,
-        label: `${po.po_number} - ${po.customer_name || 'N/A'}`,
-      }))
-
-    // Load all styles
-    allStyles.value = await styleService.getAll()
+    // Load POs from confirmed weekly orders only
+    const pos = await issueV2Service.getOrderOptions()
+    poOptions.value = (pos as OrderOptionPO[]).map((po) => ({
+      value: po.id,
+      label: po.po_number,
+    }))
 
     // Load departments
     const depts = await employeeService.getDepartments()
@@ -199,16 +208,19 @@ async function handleLoadFormData() {
 
   loadingFormData.value = true
   try {
-    await loadFormData(selectedPoId.value!, selectedStyleId.value!, selectedColorId.value!)
+    const data = await loadFormData(selectedPoId.value!, selectedStyleId.value!, selectedColorId.value!)
 
-    // Initialize line inputs for each thread type
+    // Initialize line inputs for each thread type using returned data directly
+    // (fixes race condition where threadTypes.value may not be updated yet)
     lineInputs.value = {}
-    for (const tt of threadTypes.value) {
-      lineInputs.value[tt.thread_type_id] = {
-        full: 0,
-        partial: 0,
-        notes: '',
-        validation: null,
+    if (data?.thread_types) {
+      for (const tt of data.thread_types) {
+        lineInputs.value[tt.thread_type_id] = {
+          full: 0,
+          partial: 0,
+          notes: '',
+          validation: null,
+        }
       }
     }
   } finally {
@@ -243,10 +255,87 @@ function handleQuantityChange(threadTypeId: number) {
   debouncedValidate(threadTypeId)
 }
 
+// Handle input change with max limit enforcement
+function handleInputChange(threadTypeId: number, field: 'full' | 'partial', value: number, max: number) {
+  const input = lineInputs.value[threadTypeId]
+  if (!input) return
+
+  // Clamp value to max (stock available)
+  const clampedValue = Math.min(Math.max(0, value), max)
+  input[field] = clampedValue
+
+  handleQuantityChange(threadTypeId)
+}
+
+// Calculate under-quota amount for added lines
+function getLineUnderQuotaAmount(line: { quota_cones: number | null; issued_equivalent: number }): number {
+  if (!line.quota_cones) return 0
+  const remaining = line.quota_cones - line.issued_equivalent
+  return remaining > 0 ? remaining : 0
+}
+
+// Calculate under-quota amount (how many cones still need to be issued)
+function getUnderQuotaAmount(threadType: ThreadTypeForIssue): number {
+  const input = lineInputs.value[threadType.thread_type_id]
+  if (!input || !threadType.quota_cones) return 0
+
+  const validation = input.validation
+  if (!validation) {
+    // No validation yet, show full quota as remaining
+    if (input.full === 0 && input.partial === 0) {
+      return threadType.quota_cones
+    }
+    return 0
+  }
+
+  // If over quota, don't show under-quota message
+  if (validation.is_over_quota) return 0
+
+  // Calculate remaining: quota - issued_equivalent
+  const remaining = threadType.quota_cones - validation.issued_equivalent
+  return remaining > 0 ? remaining : 0
+}
+
+// Check if add button should be disabled for a thread type
+function isAddButtonDisabled(threadTypeId: number): boolean {
+  const input = lineInputs.value[threadTypeId]
+  if (!input) return true
+
+  // No quantity entered
+  if (input.full === 0 && input.partial === 0) return true
+
+  // Check stock_sufficient from validation
+  if (input.validation && !input.validation.stock_sufficient) return true
+
+  return false
+}
+
+// Get tooltip for add button
+function getAddButtonTooltip(threadTypeId: number): string {
+  const input = lineInputs.value[threadTypeId]
+  if (!input) return 'Nhập số lượng xuất'
+
+  if (input.full === 0 && input.partial === 0) {
+    return 'Nhập số lượng xuất'
+  }
+
+  if (input.validation && !input.validation.stock_sufficient) {
+    return 'Không đủ tồn kho'
+  }
+
+  return 'Thêm vào phiếu'
+}
+
 async function handleAddLine(threadType: ThreadTypeForIssue) {
   const input = lineInputs.value[threadType.thread_type_id]
   if (!input || (input.full === 0 && input.partial === 0)) {
     snackbar.warning('Nhập số lượng xuất')
+    return
+  }
+
+  // Check stock_sufficient from validation
+  if (input.validation && !input.validation.stock_sufficient) {
+    snackbar.error('Không đủ tồn kho để xuất')
     return
   }
 
@@ -440,7 +529,15 @@ onMounted(() => {
               fill-input
               hide-selected
               placeholder="Chọn đơn hàng..."
-            />
+            >
+              <template #no-option>
+                <q-item>
+                  <q-item-section class="text-grey">
+                    Không có đơn hàng trong tuần đã xác nhận
+                  </q-item-section>
+                </q-item>
+              </template>
+            </AppSelect>
           </div>
           <div class="col-12 col-md-3">
             <AppSelect
@@ -454,7 +551,15 @@ onMounted(() => {
               fill-input
               hide-selected
               placeholder="Chọn mã hàng..."
-            />
+            >
+              <template #no-option>
+                <q-item>
+                  <q-item-section class="text-grey">
+                    Không có mã hàng cho PO này
+                  </q-item-section>
+                </q-item>
+              </template>
+            </AppSelect>
           </div>
           <div class="col-12 col-md-3">
             <AppSelect
@@ -465,7 +570,15 @@ onMounted(() => {
               emit-value
               map-options
               placeholder="Chọn màu..."
-            />
+            >
+              <template #no-option>
+                <q-item>
+                  <q-item-section class="text-grey">
+                    Không có màu cho mã hàng này
+                  </q-item-section>
+                </q-item>
+              </template>
+            </AppSelect>
           </div>
           <div class="col-12 col-md-3">
             <AppButton
@@ -483,7 +596,7 @@ onMounted(() => {
 
     <!-- Step 3: Thread Type Entry Table -->
     <q-card
-      v-if="hasIssue && threadTypes.length > 0 && !isConfirmed"
+      v-if="hasIssue && availableThreadTypes.length > 0 && !isConfirmed"
       flat
       bordered
       class="q-mb-lg"
@@ -494,7 +607,7 @@ onMounted(() => {
         </div>
 
         <q-table
-          :rows="threadTypes"
+          :rows="availableThreadTypes"
           :columns="columns"
           row-key="thread_type_id"
           flat
@@ -528,28 +641,42 @@ onMounted(() => {
             <q-td :props="props">
               <div class="row q-gutter-xs items-center no-wrap">
                 <q-input
-                  v-model.number="lineInputs[props.row.thread_type_id].full"
+                  :model-value="lineInputs[props.row.thread_type_id]?.full ?? 0"
                   type="number"
                   dense
                   outlined
                   class="col"
                   style="min-width: 60px; max-width: 80px"
                   :min="0"
+                  :max="props.row.stock_available_full"
                   placeholder="Nguyên"
-                  @update:model-value="handleQuantityChange(props.row.thread_type_id)"
+                  @update:model-value="(v) => handleInputChange(props.row.thread_type_id, 'full', Number(v) || 0, props.row.stock_available_full)"
                 />
                 <span>+</span>
                 <q-input
-                  v-model.number="lineInputs[props.row.thread_type_id].partial"
+                  :model-value="lineInputs[props.row.thread_type_id]?.partial ?? 0"
                   type="number"
                   dense
                   outlined
                   class="col"
                   style="min-width: 60px; max-width: 80px"
                   :min="0"
+                  :max="props.row.stock_available_partial"
                   placeholder="Lẻ"
-                  @update:model-value="handleQuantityChange(props.row.thread_type_id)"
+                  @update:model-value="(v) => handleInputChange(props.row.thread_type_id, 'partial', Number(v) || 0, props.row.stock_available_partial)"
                 />
+              </div>
+              <!-- Under quota warning -->
+              <div
+                v-if="getUnderQuotaAmount(props.row) > 0 && (lineInputs[props.row.thread_type_id]?.full || lineInputs[props.row.thread_type_id]?.partial)"
+                class="q-mt-xs"
+              >
+                <q-badge
+                  color="info"
+                  outline
+                >
+                  Còn {{ getUnderQuotaAmount(props.row).toFixed(2) }} cuộn chưa xuất
+                </q-badge>
               </div>
               <!-- Over quota warning and notes -->
               <div
@@ -563,11 +690,12 @@ onMounted(() => {
                   Vượt định mức!
                 </q-badge>
                 <q-input
-                  v-model="lineInputs[props.row.thread_type_id].notes"
+                  :model-value="lineInputs[props.row.thread_type_id]?.notes ?? ''"
                   dense
                   outlined
                   placeholder="Ghi chú lý do..."
                   class="q-mt-xs"
+                  @update:model-value="(v) => { const input = lineInputs[props.row.thread_type_id]; if (input) { input.notes = String(v) } }"
                 />
               </div>
             </q-td>
@@ -577,9 +705,9 @@ onMounted(() => {
           <template #body-cell-equivalent="props">
             <q-td :props="props">
               <span v-if="lineInputs[props.row.thread_type_id]?.validation">
-                {{ lineInputs[props.row.thread_type_id].validation?.issued_equivalent.toFixed(2) }}
+                {{ lineInputs[props.row.thread_type_id]?.validation?.issued_equivalent.toFixed(2) }}
                 <q-icon
-                  v-if="!lineInputs[props.row.thread_type_id].validation?.stock_sufficient"
+                  v-if="!lineInputs[props.row.thread_type_id]?.validation?.stock_sufficient"
                   name="warning"
                   color="negative"
                 >
@@ -602,10 +730,10 @@ onMounted(() => {
                 color="primary"
                 dense
                 round
-                :disable="!lineInputs[props.row.thread_type_id]?.full && !lineInputs[props.row.thread_type_id]?.partial"
+                :disable="isAddButtonDisabled(props.row.thread_type_id)"
                 @click="handleAddLine(props.row)"
               >
-                <q-tooltip>Thêm vào phiếu</q-tooltip>
+                <q-tooltip>{{ getAddButtonTooltip(props.row.thread_type_id) }}</q-tooltip>
               </AppButton>
             </q-td>
           </template>
@@ -670,10 +798,17 @@ onMounted(() => {
                 Vượt ĐM
               </q-badge>
               <q-badge
+                v-else-if="getLineUnderQuotaAmount(props.row) > 0"
+                color="info"
+                outline
+              >
+                Còn {{ getLineUnderQuotaAmount(props.row).toFixed(2) }} cuộn
+              </q-badge>
+              <q-badge
                 v-else
                 color="positive"
               >
-                OK
+                Đủ ĐM
               </q-badge>
               <div
                 v-if="props.row.over_quota_notes"

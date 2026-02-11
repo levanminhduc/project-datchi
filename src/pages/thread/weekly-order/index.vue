@@ -200,14 +200,18 @@
       <!-- Result Actions -->
       <div class="row q-gutter-sm q-mt-md">
         <AppButton
-          color="primary"
-          icon="add_circle"
-          label="Tạo phiếu phân bổ"
-          :disable="!hasColorBreakdown"
-          @click="handleCreateAllocations"
+          color="positive"
+          icon="check_circle"
+          label="Xác nhận tuần"
+          :disable="!selectedWeek || selectedWeek.status === 'confirmed' || !resultsSaved"
+          :loading="confirmingWeek"
+          @click="handleConfirmWeek"
         >
-          <AppTooltip v-if="!hasColorBreakdown">
-            Cần có dữ liệu định mức màu chỉ
+          <AppTooltip v-if="!resultsSaved">
+            Cần lưu kết quả tính toán trước
+          </AppTooltip>
+          <AppTooltip v-else-if="selectedWeek?.status === 'confirmed'">
+            Tuần này đã được xác nhận
           </AppTooltip>
         </AppButton>
         <AppButton
@@ -226,52 +230,11 @@
       :loading="weekLoading"
       @load="handleLoadWeek"
     />
-
-    <!-- Allocation Summary Dialog -->
-    <AppDialog
-      v-model="showAllocationSummary"
-      persistent
-      maximized
-    >
-      <template #header>
-        Xác nhận tạo phiếu phân bổ
-      </template>
-
-      <div class="text-body2 text-grey-7 q-mb-md">
-        Sẽ tạo {{ allocationCandidates.length }} phiếu phân bổ từ kết quả tính toán:
-      </div>
-
-      <DataTable
-        :rows="allocationCandidates"
-        :columns="allocationColumns"
-        row-key="thread_type_id"
-        dense
-        hide-bottom
-        :rows-per-page-options="[0]"
-      />
-
-      <template #actions>
-        <AppButton
-          v-close-popup
-          flat
-          label="Hủy"
-          :disable="creatingAllocations"
-        />
-        <AppButton
-          color="primary"
-          icon="check"
-          label="Xác nhận tạo"
-          :loading="creatingAllocations"
-          @click="confirmCreateAllocations"
-        />
-      </template>
-    </AppDialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import {
   useWeeklyOrder,
   useWeeklyOrderCalculation,
@@ -279,11 +242,8 @@ import {
   useSnackbar,
 } from '@/composables'
 import { purchaseOrderService } from '@/services/purchaseOrderService'
-import { allocationService } from '@/services/allocationService'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
-import { AllocationPriority } from '@/types/thread/enums'
-import type { QTableColumn } from 'quasar'
-import type { CreateAllocationDTO, PurchaseOrderWithItems, CalculationResult } from '@/types/thread'
+import type { PurchaseOrderWithItems, CalculationResult } from '@/types/thread'
 import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
 
 definePage({
@@ -294,7 +254,6 @@ definePage({
 })
 
 // Composables
-const router = useRouter()
 const snackbar = useSnackbar()
 const {
   weeks,
@@ -351,20 +310,8 @@ const loadingPOId = ref<number | null>(null)
 const loadedPOs = ref<PurchaseOrderWithItems[]>([])
 const resultView = ref<'detail' | 'summary'>('summary')
 const showHistory = ref(false)
-const showAllocationSummary = ref(false)
-const creatingAllocations = ref(false)
+const confirmingWeek = ref(false)
 const resultsSaved = ref(false)
-
-interface AllocationCandidate {
-  order_id: string
-  order_reference: string
-  thread_type_id: number
-  thread_type_name: string
-  requested_meters: number
-  process_name: string
-  color_name: string
-}
-const allocationCandidates = ref<AllocationCandidate[]>([])
 
 // Computed
 const poOptions = computed(() =>
@@ -379,27 +326,6 @@ const poOptions = computed(() =>
 const canSave = computed(() => {
   return orderEntries.value.length > 0
 })
-
-const hasColorBreakdown = computed(() => {
-  return perStyleResults.value.some((r) =>
-    r.calculations.some((c) => c.color_breakdown && c.color_breakdown.length > 0)
-  )
-})
-
-// Allocation columns
-const allocationColumns: QTableColumn[] = [
-  { name: 'order_id', label: 'Mã hàng', field: 'order_id', align: 'left' },
-  { name: 'process_name', label: 'Công đoạn', field: 'process_name', align: 'left' },
-  { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left' },
-  { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left' },
-  {
-    name: 'requested_meters',
-    label: 'Số mét',
-    field: 'requested_meters',
-    align: 'right',
-    format: (val: number) => val.toFixed(2),
-  },
-]
 
 // Handlers
 const handleAddPO = async () => {
@@ -580,70 +506,29 @@ const handleLoadWeek = async (weekId: number) => {
   }
 }
 
-const handleCreateAllocations = () => {
-  const candidates: AllocationCandidate[] = []
-
-  for (const result of perStyleResults.value) {
-    for (const calc of result.calculations) {
-      if (calc.color_breakdown) {
-        for (const cb of calc.color_breakdown) {
-          candidates.push({
-            order_id: result.style_code,
-            order_reference: `${weekName.value} - ${result.style_name}`,
-            thread_type_id: cb.thread_type_id,
-            thread_type_name: cb.thread_type_name,
-            requested_meters: cb.total_meters,
-            process_name: calc.process_name,
-            color_name: cb.color_name,
-          })
-        }
-      }
-    }
-  }
-
-  if (candidates.length === 0) {
-    snackbar.warning('Không có dữ liệu màu chỉ để tạo phiếu phân bổ')
+const handleConfirmWeek = async () => {
+  if (!selectedWeek.value) {
+    snackbar.warning('Chưa chọn tuần đặt hàng')
     return
   }
 
-  allocationCandidates.value = candidates
-  showAllocationSummary.value = true
-}
+  if (selectedWeek.value.status === 'confirmed') {
+    snackbar.info('Tuần này đã được xác nhận')
+    return
+  }
 
-const confirmCreateAllocations = async () => {
-  creatingAllocations.value = true
-  let successCount = 0
-  let errorCount = 0
-
+  confirmingWeek.value = true
   try {
-    for (const candidate of allocationCandidates.value) {
-      try {
-        const dto: CreateAllocationDTO = {
-          order_id: candidate.order_id,
-          order_reference: candidate.order_reference,
-          thread_type_id: candidate.thread_type_id,
-          requested_meters: candidate.requested_meters,
-          priority: AllocationPriority.NORMAL,
-          notes: `Đặt hàng tuần: ${weekName.value} - ${candidate.process_name} - ${candidate.color_name}`,
-        }
-        await allocationService.create(dto)
-        successCount++
-      } catch {
-        errorCount++
-      }
-    }
-
-    if (successCount > 0) {
-      snackbar.success(
-        `Đã tạo ${successCount} phiếu phân bổ thành công${errorCount > 0 ? `, ${errorCount} lỗi` : ''}`
-      )
-      showAllocationSummary.value = false
-      router.push('/thread/allocations')
-    } else {
-      snackbar.error('Không thể tạo phiếu phân bổ. Vui lòng thử lại.')
-    }
+    await weeklyOrderService.updateStatus(selectedWeek.value.id, 'confirmed')
+    selectedWeek.value.status = 'confirmed'
+    snackbar.success('Đã xác nhận tuần đặt hàng thành công')
+    // Refresh weeks list to update status
+    await fetchWeeks()
+  } catch (err) {
+    console.error('Failed to confirm week:', err)
+    snackbar.error('Không thể xác nhận tuần. Vui lòng thử lại.')
   } finally {
-    creatingAllocations.value = false
+    confirmingWeek.value = false
   }
 }
 

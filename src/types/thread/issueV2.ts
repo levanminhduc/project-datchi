@@ -211,3 +211,38 @@ export interface CreateIssueV2Response {
   issue_id: number
   issue_code: string
 }
+
+// ============================================================================
+// Order Options Types (for cascading dropdowns)
+// ============================================================================
+
+/**
+ * PO option from confirmed weekly orders
+ */
+export interface OrderOptionPO {
+  id: number
+  po_number: string
+}
+
+/**
+ * Style option for a specific PO
+ */
+export interface OrderOptionStyle {
+  id: number
+  style_code: string
+  style_name: string
+}
+
+/**
+ * Color option for a specific PO/Style combination
+ */
+export interface OrderOptionColor {
+  id: number
+  name: string
+  hex_code: string | null
+}
+
+/**
+ * Union type for order options response
+ */
+export type OrderOptionsResponse = OrderOptionPO[] | OrderOptionStyle[] | OrderOptionColor[]

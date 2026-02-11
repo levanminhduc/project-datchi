@@ -21,6 +21,7 @@ import {
   FormDataQuerySchema,
   ReturnIssueV2Schema,
   ConfirmIssueV2Schema,
+  OrderOptionsQuerySchema,
 } from '../validation/issuesV2'
 import type { ThreadApiResponse } from '../types/thread'
 
@@ -100,15 +101,17 @@ async function generateIssueCode(): Promise<string> {
 /**
  * Get stock availability for a thread type
  * Returns { full_cones, partial_cones }
+ * Queries thread_inventory (same as Weekly Order) for consistency
  */
 async function getStockAvailability(
   threadTypeId: number,
   warehouseId?: number
 ): Promise<{ full_cones: number; partial_cones: number }> {
   let query = supabase
-    .from('thread_stock')
-    .select('qty_full_cones, qty_partial_cones')
+    .from('thread_inventory')
+    .select('is_partial')
     .eq('thread_type_id', threadTypeId)
+    .eq('status', 'AVAILABLE')
 
   if (warehouseId) {
     query = query.eq('warehouse_id', warehouseId)
@@ -120,9 +123,9 @@ async function getStockAvailability(
     return { full_cones: 0, partial_cones: 0 }
   }
 
-  // Sum across all lots/warehouses
-  const fullCones = data.reduce((sum, row) => sum + (row.qty_full_cones || 0), 0)
-  const partialCones = data.reduce((sum, row) => sum + (row.qty_partial_cones || 0), 0)
+  // Count full cones (is_partial = false) and partial cones (is_partial = true)
+  const fullCones = data.filter((row) => !row.is_partial).length
+  const partialCones = data.filter((row) => row.is_partial).length
 
   return { full_cones: fullCones, partial_cones: partialCones }
 }
@@ -156,18 +159,33 @@ async function getQuotaCones(
   }
 
   // Calculate quota based on BOM and quantity
-  // Get the spec from style_color_thread_specs for this thread type
-  const { data: spec } = await supabase
+  // Get the spec from style_color_thread_specs joined with style_thread_specs
+  // style_color_thread_specs has: style_thread_spec_id, color_id, thread_type_id
+  // style_thread_specs has: style_id, meters_per_unit (consumption)
+  const { data: specs, error: specError } = await supabase
     .from('style_color_thread_specs')
-    .select('thread_type_id, consumption_per_unit')
-    .eq('style_id', styleId)
+    .select(`
+      thread_type_id,
+      style_thread_specs:style_thread_spec_id(
+        style_id,
+        meters_per_unit
+      )
+    `)
     .eq('color_id', colorId)
     .eq('thread_type_id', threadTypeId)
-    .single()
 
-  if (!spec || !spec.consumption_per_unit) {
+  if (specError) {
+    console.error('Error fetching spec:', specError)
     return null
   }
+
+  // Find the spec matching the style_id
+  const matchingSpec = (specs || []).find((s: any) => s.style_thread_specs?.style_id === styleId) as any
+  if (!matchingSpec || !matchingSpec.style_thread_specs?.meters_per_unit) {
+    return null
+  }
+
+  const consumptionPerUnit = matchingSpec.style_thread_specs.meters_per_unit as number
 
   // Get meters_per_cone from thread_types
   const { data: threadType } = await supabase
@@ -182,7 +200,7 @@ async function getQuotaCones(
 
   // Calculate: total_meters = quantity × consumption_per_unit
   // quota_cones = CEIL(total_meters / meters_per_cone)
-  const totalMeters = orderItem.quantity * spec.consumption_per_unit
+  const totalMeters = orderItem.quantity * consumptionPerUnit
   const quotaCones = Math.ceil(totalMeters / threadType.meters_per_cone)
 
   return quotaCones
@@ -191,132 +209,184 @@ async function getQuotaCones(
 /**
  * Deduct stock using FEFO (First Expired First Out)
  */
+/**
+ * Deduct stock by updating thread_inventory status
+ * Changes cones from AVAILABLE to HARD_ALLOCATED (FEFO order)
+ */
 async function deductStock(
   threadTypeId: number,
   deductFull: number,
-  deductPartial: number
-): Promise<{ success: boolean; message?: string }> {
-  // Get stock records ordered by received_date (FEFO)
-  const { data: stocks, error } = await supabase
-    .from('thread_stock')
-    .select('id, qty_full_cones, qty_partial_cones')
-    .eq('thread_type_id', threadTypeId)
-    .gt('qty_full_cones', 0)
-    .or('qty_partial_cones.gt.0')
-    .order('received_date', { ascending: true })
+  deductPartial: number,
+  issueLineId?: number
+): Promise<{ success: boolean; message?: string; allocatedConeIds?: number[] }> {
+  const allocatedConeIds: number[] = []
 
-  if (error) {
-    return { success: false, message: 'Loi truy van ton kho' }
-  }
+  // Deduct full cones first (FEFO: earliest expiry/received first)
+  if (deductFull > 0) {
+    const { data: fullCones, error: fullError } = await supabase
+      .from('thread_inventory')
+      .select('id')
+      .eq('thread_type_id', threadTypeId)
+      .eq('status', 'AVAILABLE')
+      .eq('is_partial', false)
+      .order('expiry_date', { ascending: true, nullsFirst: false })
+      .order('received_date', { ascending: true })
+      .limit(deductFull)
 
-  if (!stocks || stocks.length === 0) {
-    return { success: false, message: 'Khong co ton kho' }
-  }
-
-  let remainingFull = deductFull
-  let remainingPartial = deductPartial
-  const updates: { id: number; qty_full_cones: number; qty_partial_cones: number }[] = []
-
-  for (const stock of stocks) {
-    if (remainingFull <= 0 && remainingPartial <= 0) break
-
-    let newFull = stock.qty_full_cones
-    let newPartial = stock.qty_partial_cones
-
-    // Deduct full cones
-    if (remainingFull > 0 && newFull > 0) {
-      const deduct = Math.min(remainingFull, newFull)
-      newFull -= deduct
-      remainingFull -= deduct
+    if (fullError) {
+      return { success: false, message: 'Loi truy van ton kho cuon nguyen' }
     }
 
-    // Deduct partial cones
-    if (remainingPartial > 0 && newPartial > 0) {
-      const deduct = Math.min(remainingPartial, newPartial)
-      newPartial -= deduct
-      remainingPartial -= deduct
+    if (!fullCones || fullCones.length < deductFull) {
+      return {
+        success: false,
+        message: `Khong du cuon nguyen. Can ${deductFull}, chi co ${fullCones?.length || 0}`,
+      }
     }
 
-    if (newFull !== stock.qty_full_cones || newPartial !== stock.qty_partial_cones) {
-      updates.push({ id: stock.id, qty_full_cones: newFull, qty_partial_cones: newPartial })
-    }
-  }
-
-  // Check if we have enough
-  if (remainingFull > 0 || remainingPartial > 0) {
-    return {
-      success: false,
-      message: `Khong du ton kho. Thieu ${remainingFull} cuon nguyen, ${remainingPartial} cuon le`,
-    }
-  }
-
-  // Apply updates
-  for (const update of updates) {
-    const { error: updateError } = await supabase
-      .from('thread_stock')
+    // Update status to HARD_ALLOCATED
+    const fullIds = fullCones.map((c) => c.id)
+    const { error: updateFullError } = await supabase
+      .from('thread_inventory')
       .update({
-        qty_full_cones: update.qty_full_cones,
-        qty_partial_cones: update.qty_partial_cones,
+        status: 'HARD_ALLOCATED',
         updated_at: new Date().toISOString(),
       })
-      .eq('id', update.id)
+      .in('id', fullIds)
 
-    if (updateError) {
-      console.error('Error updating stock:', updateError)
-      return { success: false, message: 'Loi cap nhat ton kho' }
+    if (updateFullError) {
+      console.error('Error allocating full cones:', updateFullError)
+      return { success: false, message: 'Loi cap nhat trang thai cuon nguyen' }
     }
+
+    allocatedConeIds.push(...fullIds)
   }
 
-  return { success: true }
+  // Deduct partial cones (FEFO: earliest expiry/received first)
+  if (deductPartial > 0) {
+    const { data: partialCones, error: partialError } = await supabase
+      .from('thread_inventory')
+      .select('id')
+      .eq('thread_type_id', threadTypeId)
+      .eq('status', 'AVAILABLE')
+      .eq('is_partial', true)
+      .order('expiry_date', { ascending: true, nullsFirst: false })
+      .order('received_date', { ascending: true })
+      .limit(deductPartial)
+
+    if (partialError) {
+      return { success: false, message: 'Loi truy van ton kho cuon le' }
+    }
+
+    if (!partialCones || partialCones.length < deductPartial) {
+      return {
+        success: false,
+        message: `Khong du cuon le. Can ${deductPartial}, chi co ${partialCones?.length || 0}`,
+      }
+    }
+
+    // Update status to HARD_ALLOCATED
+    const partialIds = partialCones.map((c) => c.id)
+    const { error: updatePartialError } = await supabase
+      .from('thread_inventory')
+      .update({
+        status: 'HARD_ALLOCATED',
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', partialIds)
+
+    if (updatePartialError) {
+      console.error('Error allocating partial cones:', updatePartialError)
+      return { success: false, message: 'Loi cap nhat trang thai cuon le' }
+    }
+
+    allocatedConeIds.push(...partialIds)
+  }
+
+  return { success: true, allocatedConeIds }
 }
 
 /**
  * Add stock back (for returns)
+ * Changes cones from HARD_ALLOCATED back to AVAILABLE
  */
 async function addStock(
   threadTypeId: number,
   addFull: number,
   addPartial: number
 ): Promise<{ success: boolean; message?: string }> {
-  // Get the most recent stock record for this thread type
-  const { data: stock, error } = await supabase
-    .from('thread_stock')
-    .select('id, qty_full_cones, qty_partial_cones')
-    .eq('thread_type_id', threadTypeId)
-    .order('received_date', { ascending: false })
-    .limit(1)
-    .single()
+  // Return full cones to AVAILABLE status
+  if (addFull > 0) {
+    const { data: fullCones, error: fullError } = await supabase
+      .from('thread_inventory')
+      .select('id')
+      .eq('thread_type_id', threadTypeId)
+      .eq('status', 'HARD_ALLOCATED')
+      .eq('is_partial', false)
+      .order('updated_at', { ascending: false }) // Most recently allocated first (LIFO for returns)
+      .limit(addFull)
 
-  if (error || !stock) {
-    // No existing stock record, create new one
-    const { error: insertError } = await supabase.from('thread_stock').insert({
-      thread_type_id: threadTypeId,
-      qty_full_cones: addFull,
-      qty_partial_cones: addPartial,
-      received_date: new Date().toISOString().split('T')[0],
-    })
-
-    if (insertError) {
-      console.error('Error creating stock record:', insertError)
-      return { success: false, message: 'Loi tao ban ghi ton kho' }
+    if (fullError) {
+      return { success: false, message: 'Loi truy van cuon nguyen da xuat' }
     }
 
-    return { success: true }
+    if (!fullCones || fullCones.length < addFull) {
+      return {
+        success: false,
+        message: `Khong du cuon nguyen da xuat de tra. Can tra ${addFull}, chi co ${fullCones?.length || 0} da xuat`,
+      }
+    }
+
+    const fullIds = fullCones.map((c) => c.id)
+    const { error: updateFullError } = await supabase
+      .from('thread_inventory')
+      .update({
+        status: 'AVAILABLE',
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', fullIds)
+
+    if (updateFullError) {
+      console.error('Error returning full cones:', updateFullError)
+      return { success: false, message: 'Loi tra cuon nguyen ve kho' }
+    }
   }
 
-  // Update existing record
-  const { error: updateError } = await supabase
-    .from('thread_stock')
-    .update({
-      qty_full_cones: stock.qty_full_cones + addFull,
-      qty_partial_cones: stock.qty_partial_cones + addPartial,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', stock.id)
+  // Return partial cones to AVAILABLE status
+  if (addPartial > 0) {
+    const { data: partialCones, error: partialError } = await supabase
+      .from('thread_inventory')
+      .select('id')
+      .eq('thread_type_id', threadTypeId)
+      .eq('status', 'HARD_ALLOCATED')
+      .eq('is_partial', true)
+      .order('updated_at', { ascending: false })
+      .limit(addPartial)
 
-  if (updateError) {
-    console.error('Error updating stock:', updateError)
-    return { success: false, message: 'Loi cap nhat ton kho' }
+    if (partialError) {
+      return { success: false, message: 'Loi truy van cuon le da xuat' }
+    }
+
+    if (!partialCones || partialCones.length < addPartial) {
+      return {
+        success: false,
+        message: `Khong du cuon le da xuat de tra. Can tra ${addPartial}, chi co ${partialCones?.length || 0} da xuat`,
+      }
+    }
+
+    const partialIds = partialCones.map((c) => c.id)
+    const { error: updatePartialError } = await supabase
+      .from('thread_inventory')
+      .update({
+        status: 'AVAILABLE',
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', partialIds)
+
+    if (updatePartialError) {
+      console.error('Error returning partial cones:', updatePartialError)
+      return { success: false, message: 'Loi tra cuon le ve kho' }
+    }
   }
 
   return { success: true }
@@ -325,6 +395,237 @@ async function addStock(
 // ============================================================================
 // Routes
 // ============================================================================
+
+/**
+ * GET /api/issues/v2/order-options - Get order options for cascading selects
+ *
+ * Query params:
+ * - No params: Return distinct POs from confirmed weekly orders
+ * - ?po_id=X: Return distinct Styles for that PO
+ * - ?po_id=X&style_id=Y: Return distinct Colors for that PO+Style
+ *
+ * Returns: { data: [...], error: null }
+ */
+issuesV2.get('/order-options', async (c) => {
+  try {
+    const rawQuery = c.req.query()
+    const validated = OrderOptionsQuerySchema.parse(rawQuery)
+    const { po_id, style_id } = validated
+
+    // Case 3: Return Colors for specific PO + Style
+    if (po_id && style_id) {
+      const { data: colors, error } = await supabase
+        .from('thread_order_items')
+        .select(`
+          color_id,
+          colors:color_id (
+            id,
+            name,
+            hex_code
+          )
+        `)
+        .eq('po_id', po_id)
+        .eq('style_id', style_id)
+        .not('color_id', 'is', null)
+        .eq('thread_order_weeks.status', 'confirmed')
+
+      if (error) {
+        // Try alternative query without join filter
+        const { data: weekIds } = await supabase
+          .from('thread_order_weeks')
+          .select('id')
+          .eq('status', 'confirmed')
+
+        if (!weekIds || weekIds.length === 0) {
+          return c.json({
+            data: [],
+            error: null,
+          })
+        }
+
+        const { data: colorItems, error: colorError } = await supabase
+          .from('thread_order_items')
+          .select(`
+            color_id,
+            colors:color_id (
+              id,
+              name,
+              hex_code
+            )
+          `)
+          .eq('po_id', po_id)
+          .eq('style_id', style_id)
+          .not('color_id', 'is', null)
+          .in(
+            'week_id',
+            weekIds.map((w) => w.id)
+          )
+
+        if (colorError) {
+          return c.json(
+            {
+              data: null,
+              error: 'Loi truy van mau sac',
+            },
+            500
+          )
+        }
+
+        // Extract unique colors
+        const uniqueColors = new Map()
+        for (const item of colorItems || []) {
+          if (item.colors && !uniqueColors.has(item.color_id)) {
+            uniqueColors.set(item.color_id, item.colors)
+          }
+        }
+
+        return c.json({
+          data: Array.from(uniqueColors.values()),
+          error: null,
+        })
+      }
+
+      // Extract unique colors
+      const uniqueColors = new Map()
+      for (const item of colors || []) {
+        if (item.colors && !uniqueColors.has(item.color_id)) {
+          uniqueColors.set(item.color_id, item.colors)
+        }
+      }
+
+      return c.json({
+        data: Array.from(uniqueColors.values()),
+        error: null,
+      })
+    }
+
+    // Case 2: Return Styles for specific PO
+    if (po_id) {
+      // Get confirmed week IDs first
+      const { data: weekIds } = await supabase
+        .from('thread_order_weeks')
+        .select('id')
+        .eq('status', 'confirmed')
+
+      if (!weekIds || weekIds.length === 0) {
+        return c.json({
+          data: [],
+          error: null,
+        })
+      }
+
+      const { data: styleItems, error } = await supabase
+        .from('thread_order_items')
+        .select(`
+          style_id,
+          styles:style_id (
+            id,
+            style_code,
+            style_name
+          )
+        `)
+        .eq('po_id', po_id)
+        .not('style_id', 'is', null)
+        .in(
+          'week_id',
+          weekIds.map((w) => w.id)
+        )
+
+      if (error) {
+        return c.json(
+          {
+            data: null,
+            error: 'Loi truy van style',
+          },
+          500
+        )
+      }
+
+      // Extract unique styles
+      const uniqueStyles = new Map()
+      for (const item of styleItems || []) {
+        if (item.styles && !uniqueStyles.has(item.style_id)) {
+          uniqueStyles.set(item.style_id, item.styles)
+        }
+      }
+
+      return c.json({
+        data: Array.from(uniqueStyles.values()),
+        error: null,
+      })
+    }
+
+    // Case 1: Return distinct POs (no params)
+    // Get confirmed week IDs first
+    const { data: weekIds } = await supabase
+      .from('thread_order_weeks')
+      .select('id')
+      .eq('status', 'confirmed')
+
+    if (!weekIds || weekIds.length === 0) {
+      return c.json({
+        data: [],
+        error: null,
+      })
+    }
+
+    const { data: poItems, error } = await supabase
+      .from('thread_order_items')
+      .select(`
+        po_id,
+        purchase_orders:po_id (
+          id,
+          po_number
+        )
+      `)
+      .not('po_id', 'is', null)
+      .in(
+        'week_id',
+        weekIds.map((w) => w.id)
+      )
+
+    if (error) {
+      return c.json(
+        {
+          data: null,
+          error: 'Loi truy van PO',
+        },
+        500
+      )
+    }
+
+    // Extract unique POs
+    const uniquePOs = new Map()
+    for (const item of poItems || []) {
+      if (item.purchase_orders && !uniquePOs.has(item.po_id)) {
+        uniquePOs.set(item.po_id, item.purchase_orders)
+      }
+    }
+
+    return c.json({
+      data: Array.from(uniquePOs.values()),
+      error: null,
+    })
+  } catch (err) {
+    console.error('Error in GET /api/issues/v2/order-options:', err)
+    if (err instanceof ZodError) {
+      return c.json(
+        {
+          data: null,
+          error: formatZodError(err),
+        },
+        400
+      )
+    }
+    return c.json(
+      {
+        data: null,
+        error: getErrorMessage(err),
+      },
+      500
+    )
+  }
+})
 
 /**
  * POST /api/issues/v2 - Create new issue
@@ -425,25 +726,24 @@ issuesV2.get('/form-data', async (c) => {
 
     const { po_id, style_id, color_id } = validated
 
-    // Get thread types from BOM (style_color_thread_specs)
-    let threadTypesQuery = supabase
+    // Get thread types from BOM (style_color_thread_specs -> style_thread_specs)
+    // style_color_thread_specs has: style_thread_spec_id, color_id, thread_type_id
+    // style_thread_specs has: style_id, meters_per_unit (consumption)
+    const { data: specs, error: specsError } = await supabase
       .from('style_color_thread_specs')
       .select(
         `
         thread_type_id,
-        consumption_per_unit,
-        thread_types!inner(id, code, name, meters_per_cone)
+        color_id,
+        style_thread_specs:style_thread_spec_id(
+          id,
+          style_id,
+          meters_per_unit
+        ),
+        thread_types:thread_type_id(id, code, name, meters_per_cone)
       `
       )
-
-    if (style_id) {
-      threadTypesQuery = threadTypesQuery.eq('style_id', style_id)
-    }
-    if (color_id) {
-      threadTypesQuery = threadTypesQuery.eq('color_id', color_id)
-    }
-
-    const { data: specs, error: specsError } = await threadTypesQuery
+      .eq('color_id', color_id)
 
     if (specsError) {
       console.error('Error fetching thread specs:', specsError)
@@ -456,15 +756,24 @@ issuesV2.get('/form-data', async (c) => {
       )
     }
 
-    // Get stock for each thread type
+    // Filter by style_id in JS since we can't filter on joined FK table
+    const filteredSpecs = (specs || []).filter((spec: any) => {
+      return spec.style_thread_specs?.style_id === style_id
+    })
+
+    // Deduplicate by thread_type_id (same thread may appear in multiple specs)
+    const uniqueThreadTypeIds = [...new Set(filteredSpecs.map((s: any) => s.thread_type_id))]
+
+    // Get stock for each unique thread type
     const threadTypes = await Promise.all(
-      (specs || []).map(async (spec: any) => {
-        const threadType = spec.thread_types
-        const stock = await getStockAvailability(spec.thread_type_id)
-        const quotaCones = await getQuotaCones(po_id, style_id, color_id, spec.thread_type_id)
+      uniqueThreadTypeIds.map(async (threadTypeId) => {
+        const spec = filteredSpecs.find((s: any) => s.thread_type_id === threadTypeId) as any
+        const threadType = spec?.thread_types as any
+        const stock = await getStockAvailability(threadTypeId)
+        const quotaCones = await getQuotaCones(po_id, style_id, color_id, threadTypeId)
 
         return {
-          thread_type_id: spec.thread_type_id,
+          thread_type_id: threadTypeId,
           thread_code: threadType?.code || '',
           thread_name: threadType?.name || '',
           quota_cones: quotaCones,
@@ -669,6 +978,23 @@ issuesV2.post('/:id/lines', async (c) => {
       )
     }
 
+    // Check stock availability before adding line
+    const stock = await getStockAvailability(thread_type_id)
+    const stockSufficient =
+      (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
+
+    if (!stockSufficient) {
+      const shortFull = Math.max(0, (issued_full || 0) - stock.full_cones)
+      const shortPartial = Math.max(0, (issued_partial || 0) - stock.partial_cones)
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: `Khong du ton kho. Thieu ${shortFull > 0 ? shortFull + ' cuon nguyen' : ''}${shortFull > 0 && shortPartial > 0 ? ', ' : ''}${shortPartial > 0 ? shortPartial + ' cuon le' : ''}. Ton kho hien tai: ${stock.full_cones} nguyen, ${stock.partial_cones} le.`,
+        },
+        400
+      )
+    }
+
     // Insert line
     const { data: line, error: lineError } = await supabase
       .from('thread_issue_lines')
@@ -699,9 +1025,7 @@ issuesV2.post('/:id/lines', async (c) => {
       )
     }
 
-    // Get stock for response
-    const stock = await getStockAvailability(thread_type_id)
-
+    // Stock already fetched above for validation, reuse it
     // Get thread type name
     const { data: threadType } = await supabase
       .from('thread_types')

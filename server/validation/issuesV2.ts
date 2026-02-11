@@ -108,3 +108,14 @@ export const ConfirmIssueV2Schema = z.object({
 })
 
 export type ConfirmIssueV2DTO = z.infer<typeof ConfirmIssueV2Schema>
+
+// ============================================================================
+// Order Options Query
+// ============================================================================
+
+export const OrderOptionsQuerySchema = z.object({
+  po_id: z.coerce.number().int().positive().optional(),
+  style_id: z.coerce.number().int().positive().optional(),
+})
+
+export type OrderOptionsQueryDTO = z.infer<typeof OrderOptionsQuerySchema>

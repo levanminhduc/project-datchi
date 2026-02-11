@@ -21,6 +21,7 @@ import type {
   IssueV2ListResponse,
   IssueLineV2WithComputed,
   ReturnIssueV2DTO,
+  OrderOptionsResponse,
 } from '@/types/thread/issueV2'
 
 const BASE = '/api/issues/v2'
@@ -89,6 +90,28 @@ export const issueV2Service = {
     }
 
     return response.data || { data: [], total: 0, page: 1, limit: 20, totalPages: 0 }
+  },
+
+  /**
+   * Lay danh sach options cho cascading dropdown (PO -> Style -> Color)
+   * Chi tra ve cac PO/Style/Color tu don hang tuan da xac nhan
+   * @param poId - Optional: filter styles by PO
+   * @param styleId - Optional: filter colors by style (requires poId)
+   * @returns Array of PO options, Style options, or Color options
+   */
+  async getOrderOptions(poId?: number, styleId?: number): Promise<OrderOptionsResponse> {
+    const params = new URLSearchParams()
+    if (poId) params.append('po_id', String(poId))
+    if (styleId) params.append('style_id', String(styleId))
+
+    const queryString = params.toString()
+    const url = queryString ? `${BASE}/order-options?${queryString}` : `${BASE}/order-options`
+
+    const response = await fetchApi<ApiResponse<OrderOptionsResponse>>(url)
+    if (response.error) {
+      throw new Error(response.error)
+    }
+    return response.data || []
   },
 
   /**
