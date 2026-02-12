@@ -34,7 +34,8 @@
       "Bash(if not exist \"D:\\\\HoaThoDienBan\\\\VueJS\\\\project-datchi\\\\openspec\\\\changes\\\\archive\" mkdir \"D:\\\\HoaThoDienBan\\\\VueJS\\\\project-datchi\\\\openspec\\\\changes\\\\archive\")",
       "Bash(npx eslint:*)",
       "mcp__Better_Web_Search__web-search",
-      "mcp__Better_Web_Search__web-fetch"
+      "mcp__Better_Web_Search__web-fetch",
+      "mcp__auggie-prompt-enhancer-mcp__enhance-prompt"
     ]
   }
 }

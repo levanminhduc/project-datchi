@@ -6,6 +6,7 @@ import { useIssueV2 } from '@/composables/thread/useIssueV2'
 import { issueV2Service } from '@/services/issueV2Service'
 import { employeeService } from '@/services/employeeService'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirm } from '@/composables/useConfirm'
 import { IssueV2Status } from '@/types/thread/issueV2'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
@@ -26,6 +27,7 @@ import type {
 const route = useRoute()
 const router = useRouter()
 const snackbar = useSnackbar()
+const { confirmWarning, confirmDelete } = useConfirm()
 
 const {
   currentIssue,
@@ -130,6 +132,7 @@ const historyColumns: QTableColumn[] = [
   { name: 'status', label: 'Trạng Thái', field: 'status', align: 'center' },
   { name: 'created_at', label: 'Ngày Tạo', field: 'created_at', align: 'left', sortable: true },
   { name: 'created_by', label: 'Người Tạo', field: 'created_by', align: 'left' },
+  { name: 'actions', label: 'Thao Tác', field: 'actions', align: 'center', sortable: false },
 ]
 
 function formatDate(dateStr: string): string {
@@ -428,6 +431,39 @@ const handleClearHistoryFilters = () => {
 
 const handleHistoryRowClick = (evt: Event, row: { id: number }) => {
   router.push(`/thread/issues/v2/${row.id}`)
+}
+
+const handleConfirmFromList = async (issue: any) => {
+  const confirmed = await confirmWarning(
+    'Phiếu sẽ được xác nhận và trừ tồn kho. Bạn có chắc chắn?',
+    'Xác nhận phiếu xuất'
+  )
+  if (!confirmed) return
+
+  try {
+    await issueV2Service.confirm(issue.id)
+    snackbar.success('Xác nhận phiếu xuất thành công')
+    await fetchIssues()
+  } catch (err: any) {
+    snackbar.error(err.message || 'Không thể xác nhận phiếu xuất')
+  }
+}
+
+const handleDeleteFromList = async (issue: any) => {
+  const confirmed = await confirmDelete(issue.issue_code)
+  if (!confirmed) return
+
+  try {
+    await issueV2Service.deleteIssue(issue.id)
+    snackbar.success('Xóa phiếu xuất thành công')
+    await fetchIssues()
+  } catch (err: any) {
+    snackbar.error(err.message || 'Không thể xóa phiếu xuất')
+  }
+}
+
+const handleReturnFromList = () => {
+  router.push('/thread/issues/v2/return')
 }
 
 onMounted(() => {
@@ -1029,6 +1065,49 @@ onMounted(() => {
             <template #body-cell-created_at="props">
               <q-td :props="props">
                 {{ formatDate(props.row.created_at) }}
+              </q-td>
+            </template>
+
+            <template #body-cell-actions="props">
+              <q-td :props="props">
+                <div class="row no-wrap justify-center q-gutter-xs">
+                  <q-btn
+                    v-if="props.row.status === IssueV2Status.DRAFT"
+                    flat
+                    round
+                    dense
+                    size="sm"
+                    icon="check_circle"
+                    color="positive"
+                    @click.stop="handleConfirmFromList(props.row)"
+                  >
+                    <q-tooltip>Xác nhận</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    v-if="props.row.status === IssueV2Status.DRAFT"
+                    flat
+                    round
+                    dense
+                    size="sm"
+                    icon="delete"
+                    color="negative"
+                    @click.stop="handleDeleteFromList(props.row)"
+                  >
+                    <q-tooltip>Xóa</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    v-if="props.row.status === IssueV2Status.CONFIRMED"
+                    flat
+                    round
+                    dense
+                    size="sm"
+                    icon="replay"
+                    color="info"
+                    @click.stop="handleReturnFromList()"
+                  >
+                    <q-tooltip>Nhập trả</q-tooltip>
+                  </q-btn>
+                </div>
               </q-td>
             </template>
 

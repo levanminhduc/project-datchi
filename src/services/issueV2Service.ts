@@ -216,6 +216,16 @@ export const issueV2Service = {
     }
   },
 
+  async deleteIssue(id: number): Promise<void> {
+    const response = await fetchApi<ApiResponse<null>>(`${BASE}/${id}`, {
+      method: 'DELETE',
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+  },
+
   /**
    * Cap nhat ghi chu dong (Update line notes)
    * @param issueId - Issue ID

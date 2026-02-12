@@ -1651,10 +1651,92 @@ issuesV2.post('/:id/return', async (c) => {
   }
 })
 
-/**
- * DELETE /api/issues/v2/:id/lines/:lineId - Remove line from issue
- * Only allowed for DRAFT issues
- */
+issuesV2.delete('/:id', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+
+    if (isNaN(id)) {
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'ID khong hop le',
+        },
+        400
+      )
+    }
+
+    const { data: issue, error: issueError } = await supabase
+      .from('thread_issues')
+      .select('id, issue_code, status')
+      .eq('id', id)
+      .single()
+
+    if (issueError || !issue) {
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Không tìm thấy phiếu xuất',
+        },
+        404
+      )
+    }
+
+    if (issue.status !== 'DRAFT') {
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Chỉ có thể xóa phiếu xuất ở trạng thái Nháp',
+        },
+        400
+      )
+    }
+
+    const { error: deleteLinesError } = await supabase
+      .from('thread_issue_lines')
+      .delete()
+      .eq('issue_id', id)
+
+    if (deleteLinesError) {
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Không thể xóa các dòng của phiếu xuất',
+        },
+        500
+      )
+    }
+
+    const { error: deleteIssueError } = await supabase
+      .from('thread_issues')
+      .delete()
+      .eq('id', id)
+
+    if (deleteIssueError) {
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Không thể xóa phiếu xuất',
+        },
+        500
+      )
+    }
+
+    return c.json({
+      data: { id: issue.id, issue_code: issue.issue_code },
+      error: null,
+    })
+  } catch (err) {
+    console.error('Error in DELETE /api/issues/v2/:id:', err)
+    return c.json<ThreadApiResponse<null>>(
+      {
+        data: null,
+        error: getErrorMessage(err),
+      },
+      500
+    )
+  }
+})
+
 issuesV2.delete('/:id/lines/:lineId', async (c) => {
   try {
     const issueId = parseInt(c.req.param('id'))
