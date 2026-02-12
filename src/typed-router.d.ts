@@ -47,6 +47,8 @@ declare module 'vue-router/auto-routes' {
     '/thread/issues/new': RouteRecordInfo<'/thread/issues/new', '/thread/issues/new', Record<never, never>, Record<never, never>>,
     '/thread/issues/reconciliation': RouteRecordInfo<'/thread/issues/reconciliation', '/thread/issues/reconciliation', Record<never, never>, Record<never, never>>,
     '/thread/issues/v2/': RouteRecordInfo<'/thread/issues/v2/', '/thread/issues/v2', Record<never, never>, Record<never, never>>,
+    '/thread/issues/v2/[id]': RouteRecordInfo<'/thread/issues/v2/[id]', '/thread/issues/v2/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
+    '/thread/issues/v2/history': RouteRecordInfo<'/thread/issues/v2/history', '/thread/issues/v2/history', Record<never, never>, Record<never, never>>,
     '/thread/issues/v2/return': RouteRecordInfo<'/thread/issues/v2/return', '/thread/issues/v2/return', Record<never, never>, Record<never, never>>,
     '/thread/lots/': RouteRecordInfo<'/thread/lots/', '/thread/lots', Record<never, never>, Record<never, never>>,
     '/thread/lots/[id]': RouteRecordInfo<'/thread/lots/[id]', '/thread/lots/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
@@ -190,6 +192,14 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/thread/issues/v2/index.vue': {
       routes: '/thread/issues/v2/'
+      views: never
+    }
+    'src/pages/thread/issues/v2/[id].vue': {
+      routes: '/thread/issues/v2/[id]'
+      views: never
+    }
+    'src/pages/thread/issues/v2/history.vue': {
+      routes: '/thread/issues/v2/history'
       views: never
     }
     'src/pages/thread/issues/v2/return.vue': {

@@ -48,7 +48,7 @@
     :icon-last-page="iconLastPage"
     class="app-data-table"
     @request="emit('request', $event)"
-    @row-click="emit('rowClick', $event)"
+    @row-click="(evt, row, index) => emit('rowClick', evt, row, index)"
   >
     <!-- Loading State -->
     <template #loading>
@@ -126,7 +126,7 @@ const emit = defineEmits<{
   'update:pagination': [value: DataTableProps['pagination']]
   'update:selected': [value: any[]]
   request: [props: any]
-  rowClick: [evt: any]
+  rowClick: [evt: Event, row: any, index: number]
 }>()
 
 const paginationModel = computed({

@@ -81,6 +81,7 @@ declare module 'vue' {
     IssueDialog: typeof import('./components/thread/IssueDialog.vue')['default']
     IssueItemList: typeof import('./components/thread/IssueItemList.vue')['default']
     IssueRequestForm: typeof import('./components/thread/IssueRequestForm.vue')['default']
+    IssueV2StatusBadge: typeof import('./components/thread/IssueV2StatusBadge.vue')['default']
     ListItem: typeof import('./components/ui/lists/ListItem.vue')['default']
     LotFormDialog: typeof import('./components/thread/LotFormDialog.vue')['default']
     LotSelector: typeof import('./components/thread/LotSelector.vue')['default']

@@ -26,6 +26,15 @@ import type {
 
 const BASE = '/api/issues/v2'
 
+function convertDateFormat(dateStr: string): string {
+  if (!dateStr) return ''
+  const parts = dateStr.split('/')
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`
+  }
+  return dateStr
+}
+
 function buildQueryString(filters?: IssueV2Filters): string {
   if (!filters) return ''
 
@@ -33,8 +42,8 @@ function buildQueryString(filters?: IssueV2Filters): string {
 
   if (filters.department) params.append('department', filters.department)
   if (filters.status) params.append('status', filters.status)
-  if (filters.from) params.append('from', filters.from)
-  if (filters.to) params.append('to', filters.to)
+  if (filters.from) params.append('from', convertDateFormat(filters.from))
+  if (filters.to) params.append('to', convertDateFormat(filters.to))
   if (filters.page) params.append('page', String(filters.page))
   if (filters.limit) params.append('limit', String(filters.limit))
 

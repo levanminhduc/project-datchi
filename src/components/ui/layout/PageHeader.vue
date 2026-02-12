@@ -46,8 +46,8 @@ const headerClass = computed(() => ({
       v-if="showBack"
       flat
       round
-      dense
-      icon="mdi-arrow-left"
+      icon="arrow_back"
+      color="primary"
       class="q-mr-sm"
       @click="goBack"
     />
