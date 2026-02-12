@@ -68,7 +68,7 @@ const getRemainingQuota = (row: { quota_cones: number | null; issued_equivalent:
 }
 
 const goBackToHistory = () => {
-  router.push('/thread/issues/v2/history')
+  router.push('/thread/issues/v2?tab=history')
 }
 
 onMounted(() => {
@@ -82,7 +82,7 @@ onMounted(() => {
       title="Chi Tiết Phiếu Xuất"
       subtitle="Xem thông tin chi tiết phiếu xuất chỉ"
       show-back
-      back-to="/thread/issues/v2/history"
+      back-to="/thread/issues/v2?tab=history"
     />
 
     <template v-if="isLoading">
