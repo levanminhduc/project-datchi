@@ -98,9 +98,19 @@ export interface CreateIssueV2DTO {
   notes?: string
 }
 
-/**
- * DTO for adding line to issue
- */
+export interface CreateIssueWithLineDTO {
+  department: string
+  created_by: string
+  notes?: string
+  po_id?: number | null
+  style_id?: number | null
+  color_id?: number | null
+  thread_type_id: number
+  issued_full?: number
+  issued_partial?: number
+  over_quota_notes?: string | null
+}
+
 export interface AddIssueLineV2DTO {
   po_id?: number | null
   style_id?: number | null

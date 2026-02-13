@@ -25,6 +25,25 @@ export const CreateIssueV2Schema = z.object({
 export type CreateIssueV2DTO = z.infer<typeof CreateIssueV2Schema>
 
 // ============================================================================
+// Create Issue With Line (defer creation)
+// ============================================================================
+
+export const CreateIssueWithLineSchema = z.object({
+  department: z.string().min(1, 'Bo phan nhan chi khong duoc de trong').trim(),
+  created_by: z.string().min(1, 'Nguoi tao khong duoc de trong').trim(),
+  notes: z.string().optional(),
+  po_id: z.number().int().positive().optional().nullable(),
+  style_id: z.number().int().positive().optional().nullable(),
+  color_id: z.number().int().positive().optional().nullable(),
+  thread_type_id: z.number().int().positive('thread_type_id phai la so nguyen duong'),
+  issued_full: z.number().int().min(0, 'So cuon nguyen phai >= 0').default(0),
+  issued_partial: z.number().int().min(0, 'So cuon le phai >= 0').default(0),
+  over_quota_notes: z.string().optional().nullable(),
+})
+
+export type CreateIssueWithLineDTO = z.infer<typeof CreateIssueWithLineSchema>
+
+// ============================================================================
 // Add Issue Line
 // ============================================================================
 

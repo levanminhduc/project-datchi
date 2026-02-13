@@ -40,6 +40,8 @@ const {
   total,
   filters,
   createIssue,
+  createIssueWithFirstLine,
+  fetchIssue,
   loadFormData,
   validateLine,
   addLine,
@@ -50,6 +52,7 @@ const {
 } = useIssueV2()
 
 const activeTab = ref(route.query.tab === 'history' ? 'history' : 'create')
+const step2Visible = ref(false)
 
 const department = ref('')
 const createdBy = ref('')
@@ -69,11 +72,11 @@ const loadingFormData = ref(false)
 const lineInputs = ref<Record<number, { full: number; partial: number; notes: string; validation: ValidateLineResponse | null }>>({})
 
 const canCreateIssue = computed(() => {
-  return department.value.trim() && createdBy.value.trim() && !hasIssue.value
+  return department.value.trim() && createdBy.value.trim() && !hasIssue.value && !step2Visible.value
 })
 
 const canLoadThreadTypes = computed(() => {
-  return hasIssue.value && selectedPoId.value && selectedStyleId.value && selectedColorId.value
+  return selectedPoId.value && selectedStyleId.value && selectedColorId.value
 })
 
 const canConfirm = computed(() => {
@@ -180,7 +183,7 @@ watch(selectedStyleId, async (newStyleId) => {
 })
 
 watch([selectedPoId, selectedStyleId, selectedColorId], async ([poId, styleId, colorId]) => {
-  if (poId && styleId && colorId && hasIssue.value) {
+  if (poId && styleId && colorId) {
     await handleLoadFormData()
   }
 })
@@ -213,14 +216,7 @@ async function loadInitialOptions() {
 
 async function handleCreateIssue() {
   if (!canCreateIssue.value) return
-
-  const result = await createIssue({
-    department: department.value.trim(),
-    created_by: createdBy.value.trim(),
-  })
-
-  if (result) {
-  }
+  step2Visible.value = true
 }
 
 async function handleLoadFormData() {
@@ -349,6 +345,28 @@ async function handleAddLine(threadType: ThreadTypeForIssue) {
     return
   }
 
+  if (!hasIssue.value) {
+    const result = await createIssueWithFirstLine({
+      department: department.value.trim(),
+      created_by: createdBy.value.trim(),
+      po_id: selectedPoId.value,
+      style_id: selectedStyleId.value,
+      color_id: selectedColorId.value,
+      thread_type_id: threadType.thread_type_id,
+      issued_full: input.full,
+      issued_partial: input.partial,
+      over_quota_notes: input.notes.trim() || null,
+    })
+
+    if (result) {
+      input.full = 0
+      input.partial = 0
+      input.notes = ''
+      input.validation = null
+    }
+    return
+  }
+
   const result = await addLine({
     po_id: selectedPoId.value,
     style_id: selectedStyleId.value,
@@ -386,6 +404,7 @@ function handleBack() {
 
 function handleNewIssue() {
   clearIssue()
+  step2Visible.value = false
   department.value = ''
   createdBy.value = ''
   selectedPoId.value = null
@@ -429,8 +448,12 @@ const handleClearHistoryFilters = () => {
   handleHistorySearch()
 }
 
-const handleHistoryRowClick = (evt: Event, row: { id: number }) => {
-  router.push(`/thread/issues/v2/${row.id}`)
+const handleHistoryRowClick = (evt: Event, row: { id: number; status: string }) => {
+  if (row.status === IssueV2Status.DRAFT) {
+    router.push(`/thread/issues/v2?tab=create&issue=${row.id}`)
+  } else {
+    router.push(`/thread/issues/v2/${row.id}`)
+  }
 }
 
 const handleConfirmFromList = async (issue: any) => {
@@ -466,8 +489,40 @@ const handleReturnFromList = () => {
   router.push('/thread/issues/v2/return')
 }
 
-onMounted(() => {
+const loadDraftFromQuery = async (issueParam: unknown) => {
+  if (!issueParam) return false
+  const issueId = Number(issueParam)
+  if (isNaN(issueId)) return false
+
+  await fetchIssue(issueId)
+  if (currentIssue.value && currentIssue.value.status === IssueV2Status.DRAFT) {
+    activeTab.value = 'create'
+    step2Visible.value = true
+    department.value = currentIssue.value.department || ''
+    createdBy.value = currentIssue.value.created_by || ''
+    router.replace({ query: { tab: 'create' } })
+    return true
+  } else {
+    router.replace(`/thread/issues/v2/${issueId}`)
+    return true
+  }
+}
+
+watch(
+  () => route.query.issue,
+  async (newIssue, oldIssue) => {
+    if (newIssue && newIssue !== oldIssue) {
+      await loadDraftFromQuery(newIssue)
+    }
+  }
+)
+
+onMounted(async () => {
   loadInitialOptions()
+
+  const loaded = await loadDraftFromQuery(route.query.issue)
+  if (loaded) return
+
   if (activeTab.value === 'history') {
     historyLoaded.value = true
     loadHistoryData()
@@ -570,7 +625,7 @@ onMounted(() => {
           </div>
 
           <q-card
-            v-if="!hasIssue"
+            v-if="!hasIssue && !step2Visible"
             flat
             bordered
             class="q-mb-lg"
@@ -604,7 +659,7 @@ onMounted(() => {
             </q-card-section>
             <q-card-actions align="right">
               <AppButton
-                label="Tạo Phiếu Xuất"
+                label="Tiếp Tục"
                 color="primary"
                 :loading="isLoading"
                 :disable="!canCreateIssue"
@@ -614,7 +669,7 @@ onMounted(() => {
           </q-card>
 
           <q-card
-            v-if="hasIssue && !isConfirmed"
+            v-if="(step2Visible || hasIssue) && !isConfirmed"
             flat
             bordered
             class="q-mb-lg"
@@ -702,7 +757,7 @@ onMounted(() => {
           </q-card>
 
           <q-card
-            v-if="hasIssue && availableThreadTypes.length > 0 && !isConfirmed"
+            v-if="(step2Visible || hasIssue) && availableThreadTypes.length > 0 && !isConfirmed"
             flat
             bordered
             class="q-mb-lg"
@@ -934,7 +989,7 @@ onMounted(() => {
           </q-card>
 
           <q-card
-            v-if="hasIssue && lines.length === 0 && threadTypes.length === 0"
+            v-if="(step2Visible || hasIssue) && lines.length === 0 && threadTypes.length === 0"
             flat
             bordered
           >

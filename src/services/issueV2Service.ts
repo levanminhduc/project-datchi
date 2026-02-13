@@ -13,6 +13,7 @@ import type {
   IssueV2WithLines,
   CreateIssueV2DTO,
   CreateIssueV2Response,
+  CreateIssueWithLineDTO,
   AddIssueLineV2DTO,
   ValidateIssueLineV2DTO,
   ValidateLineResponse,
@@ -65,6 +66,19 @@ export const issueV2Service = {
 
     if (response.error || !response.data) {
       throw new Error(response.error || 'Khong the tao phieu xuat')
+    }
+
+    return response.data
+  },
+
+  async createWithFirstLine(data: CreateIssueWithLineDTO): Promise<IssueV2WithLines> {
+    const response = await fetchApi<ApiResponse<IssueV2WithLines>>(`${BASE}/create-with-lines`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+
+    if (response.error || !response.data) {
+      throw new Error(response.error || 'Không thể tạo phiếu xuất')
     }
 
     return response.data
@@ -171,8 +185,9 @@ export const issueV2Service = {
    * @param data - ValidateIssueLineV2DTO
    * @returns Validation result with computed fields
    */
-  async validateLine(issueId: number, data: ValidateIssueLineV2DTO): Promise<ValidateLineResponse> {
-    const response = await fetchApi<ApiResponse<ValidateLineResponse>>(`${BASE}/${issueId}/lines/validate`, {
+  async validateLine(issueId: number | undefined, data: ValidateIssueLineV2DTO): Promise<ValidateLineResponse> {
+    const url = issueId ? `${BASE}/${issueId}/lines/validate` : `${BASE}/validate-line`
+    const response = await fetchApi<ApiResponse<ValidateLineResponse>>(url, {
       method: 'POST',
       body: JSON.stringify(data),
     })

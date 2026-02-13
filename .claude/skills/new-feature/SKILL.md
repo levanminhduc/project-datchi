@@ -924,24 +924,322 @@ Frontend → fetchApi() → Hono API → supabaseAdmin → PostgreSQL
 ### Không thêm comment trong code
 Code phải tự giải thích. Không thêm `//`, `/* */` hay docstring trừ khi thực sự cần thiết.
 
+### Error Handling - dùng getErrorMessage()
+LUÔN dùng utility có sẵn thay vì xử lý error thủ công:
+```typescript
+import { getErrorMessage } from '@/utils/errorMessages'
+
+try {
+  await someOperation()
+} catch (err) {
+  snackbar.error(getErrorMessage(err))
+}
+```
+
+### Confirmation Dialogs - dùng useConfirm()
+Khi cần xác nhận từ user (xóa, hành động nguy hiểm):
+```typescript
+import { useConfirm } from '@/composables/useConfirm'
+
+const { confirmDelete, confirmWarning } = useConfirm()
+
+const handleDelete = async (item: TenBang) => {
+  const confirmed = await confirmDelete(item.name)
+  if (!confirmed) return
+  await remove(item.id)
+}
+
+const handleDangerAction = async () => {
+  const confirmed = await confirmWarning('Hành động này không thể hoàn tác')
+  if (!confirmed) return
+  // ...
+}
+```
+
+### Real-time Subscriptions - useRealtime()
+Nếu tính năng cần cập nhật real-time (dashboard, danh sách live):
+```typescript
+import { useRealtime } from '@/composables/useRealtime'
+
+const { subscribe, unsubscribeAll } = useRealtime()
+
+onMounted(() => {
+  subscribe({
+    table: 'ten_bang',
+    event: '*',
+    filter: 'deleted_at=is.null',
+  }, (payload) => {
+    fetchList()
+  })
+})
+
+onUnmounted(() => {
+  unsubscribeAll()
+})
+```
+
+### Route Guards - definePage meta
+MỌI trang PHẢI có `definePage` để khai báo permissions:
+```typescript
+definePage({
+  meta: {
+    title: 'Tên Trang',
+    permissions: ['module.action'],
+  }
+})
+```
+
+Các meta options:
+```typescript
+{
+  public: true,                     // Không cần đăng nhập
+  requiresAuth: true,               // Cần đăng nhập (default)
+  requiresAdmin: true,              // Chỉ admin/root
+  permissions: ['perm1', 'perm2'],  // OR logic (có 1 trong các quyền)
+  allPermissions: ['p1', 'p2'],     // AND logic (phải có TẤT CẢ quyền)
+  title: 'Tên hiển thị',
+}
+```
+
+### Server-Side Pagination - @request handler
+Khi dùng DataTable với dữ liệu lớn, PHẢI dùng server-side pagination:
+```typescript
+import type { QTableProps } from 'quasar'
+
+const pagination = ref({
+  page: 1,
+  rowsPerPage: 20,
+  rowsNumber: 0,
+})
+
+const handleRequest = async (props: Parameters<NonNullable<QTableProps['onRequest']>>[0]) => {
+  const { page, rowsPerPage } = props.pagination
+  await fetchList({ page, limit: rowsPerPage })
+  pagination.value.page = page
+  pagination.value.rowsPerPage = rowsPerPage
+  pagination.value.rowsNumber = total.value
+}
+```
+
+Template:
+```vue
+<DataTable
+  v-model:pagination="pagination"
+  :rows="items"
+  :columns="columns"
+  :loading="isLoading"
+  row-key="id"
+  @request="handleRequest"
+/>
+```
+
+### Debounced Search - useDebounceFn
+Khi có ô tìm kiếm, LUÔN debounce để tránh spam API:
+```typescript
+import { useDebounceFn } from '@vueuse/core'
+
+const searchQuery = ref('')
+
+const debouncedSearch = useDebounceFn(() => {
+  fetchList({ search: searchQuery.value, page: 1 })
+}, 300)
+
+watch(searchQuery, () => debouncedSearch())
+```
+
+### Excel Export - ExcelJS
+Khi tính năng cần xuất Excel, dùng dynamic import:
+```typescript
+const exportExcel = async () => {
+  const ExcelJS = (await import('exceljs')).default
+  const workbook = new ExcelJS.Workbook()
+  const sheet = workbook.addWorksheet('Tên Sheet')
+
+  sheet.columns = [
+    { header: 'ID', key: 'id', width: 10 },
+    { header: 'Tên', key: 'name', width: 30 },
+  ]
+
+  items.value.forEach((item) => sheet.addRow(item))
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `ten-file-${Date.now()}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+```
+
+Nút export trong PageHeader:
+```vue
+<template #actions>
+  <AppButton outline color="positive" icon="file_download" label="Xuất Excel" @click="exportExcel" />
+  <AppButton color="primary" icon="add" label="Thêm Mới" @click="openCreateDialog" />
+</template>
+```
+
+### DatePicker Popup Pattern
+Khi dùng DatePicker kết hợp input, dùng popup pattern:
+```vue
+<AppInput v-model="filters.from" label="Từ ngày" dense readonly>
+  <template #append>
+    <q-icon name="event" class="cursor-pointer">
+      <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+        <DatePicker v-model="filters.from" />
+      </q-popup-proxy>
+    </q-icon>
+  </template>
+</AppInput>
+```
+
+### Empty State - DataTable
+DataTable hỗ trợ slot `#empty-action` cho trạng thái rỗng:
+```vue
+<DataTable ...>
+  <template #empty-action>
+    <AppButton color="primary" label="Tạo Mới" icon="add" @click="openCreateDialog" />
+  </template>
+</DataTable>
+```
+
+### Responsive Grid
+LUÔN dùng responsive breakpoints:
+```vue
+<div class="row q-col-gutter-md">
+  <!-- Full → Half → Third → Quarter -->
+  <div class="col-12 col-sm-6 col-md-4 col-lg-3">...</div>
+</div>
+```
+
+Filters toolbar pattern:
+```vue
+<div class="row q-col-gutter-sm q-mb-md">
+  <div class="col-12 col-sm-4 col-md-3">
+    <AppInput v-model="searchQuery" label="Tìm kiếm" dense clearable />
+  </div>
+  <div class="col-12 col-sm-4 col-md-3">
+    <AppSelect v-model="filters.status" label="Trạng thái" dense clearable emit-value map-options :options="statusOptions" />
+  </div>
+  <div class="col-12 col-sm-4 col-md-3">
+    <AppInput v-model="filters.from" label="Từ ngày" dense readonly>
+      <template #append>
+        <q-icon name="event" class="cursor-pointer">
+          <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+            <DatePicker v-model="filters.from" />
+          </q-popup-proxy>
+        </q-icon>
+      </template>
+    </AppInput>
+  </div>
+</div>
+```
+
+### Status Badge Pattern
+Khi hiển thị trạng thái trong table, dùng color mapping:
+```typescript
+const statusColors: Record<string, string> = {
+  DRAFT: 'grey',
+  CONFIRMED: 'positive',
+  CANCELLED: 'negative',
+  PENDING: 'warning',
+}
+
+const statusLabels: Record<string, string> = {
+  DRAFT: 'Nháp',
+  CONFIRMED: 'Đã xác nhận',
+  CANCELLED: 'Đã hủy',
+  PENDING: 'Chờ xử lý',
+}
+```
+
+```vue
+<template #body-cell-status="props">
+  <q-td :props="props">
+    <q-badge
+      :color="statusColors[props.row.status] || 'grey'"
+      :label="statusLabels[props.row.status] || props.row.status"
+    />
+  </q-td>
+</template>
+```
+
+### Form Validation Rules
+Dùng `:rules` prop cho AppInput/AppSelect:
+```vue
+<AppInput
+  v-model="formData.name"
+  label="Tên *"
+  :rules="[
+    (v: string) => !!v || 'Không được để trống',
+    (v: string) => v.length >= 2 || 'Tối thiểu 2 ký tự',
+  ]"
+/>
+
+<AppInput
+  v-model="formData.quantity"
+  label="Số lượng *"
+  type="number"
+  :rules="[
+    (v: number) => v > 0 || 'Phải lớn hơn 0',
+  ]"
+/>
+```
+
+### Number Formatting - chuẩn VN
+Số lượng và tiền tệ hiển thị theo format Việt Nam:
+```typescript
+function formatNumber(value: number): string {
+  return value.toLocaleString('vi-VN')
+}
+
+function formatCurrency(value: number): string {
+  return value.toLocaleString('vi-VN') + ' đ'
+}
+```
+
 ---
 
 ## BƯỚC 8: CHECKLIST TRƯỚC KHI HOÀN THÀNH
 
+### Database & Backend
 - [ ] Migration có `created_at`, `updated_at`, trigger
 - [ ] Types frontend + backend khớp nhau
 - [ ] Zod validation cho mọi input từ client
 - [ ] Route đã đăng ký trong `server/index.ts`
 - [ ] Service dùng `fetchApi()`, không dùng `fetch()` trực tiếp
+
+### Frontend - State
 - [ ] Composable có `useSnackbar()`, `useLoading()`
+- [ ] Error handling dùng `getErrorMessage()` utility
+- [ ] Xóa/hành động nguy hiểm dùng `useConfirm()`
+- [ ] Search input có debounce (300ms)
+- [ ] Real-time nếu cần (useRealtime)
+
+### Frontend - UI
 - [ ] Page có `PageHeader` với title + actions
 - [ ] Dùng `AppInput`, `AppSelect`, `AppButton`, `DatePicker`
 - [ ] Tab layout nếu có ≥2 tính năng con
-- [ ] Action buttons trong table theo pattern chuẩn
+- [ ] Action buttons trong table theo pattern chuẩn (flat round dense)
+- [ ] Status badge với color mapping nếu có trạng thái
+- [ ] DataTable có `#empty-action` slot
+- [ ] Server-side pagination với `@request` handler
+- [ ] Responsive grid (`col-12 col-sm-6 col-md-4`)
+- [ ] DatePicker dùng popup pattern (icon + q-popup-proxy)
+- [ ] Form validation dùng `:rules` prop
+
+### Quy tắc chung
 - [ ] Mọi thông báo bằng tiếng Việt
 - [ ] Ngày tháng hiển thị đúng DD/MM/YYYY (không dùng toLocaleDateString)
+- [ ] Số lượng format theo chuẩn VN (toLocaleString('vi-VN'))
+- [ ] `definePage` meta có permissions phù hợp
 - [ ] Không có comment thừa trong code
 - [ ] File-based routing đúng (unplugin-vue-router)
+- [ ] Excel export dùng ExcelJS (nếu cần xuất dữ liệu)
 
 ---
 

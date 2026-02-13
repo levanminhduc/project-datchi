@@ -15,6 +15,7 @@ import { supabaseAdmin as supabase } from '../db/supabase'
 import { getErrorMessage } from '../utils/errorHelper'
 import {
   CreateIssueV2Schema,
+  CreateIssueWithLineSchema,
   AddIssueLineV2Schema,
   ValidateIssueLineV2Schema,
   IssueV2FiltersSchema,
@@ -688,6 +689,251 @@ issuesV2.post('/', async (c) => {
     })
   } catch (err) {
     console.error('Error in POST /api/issues/v2:', err)
+    return c.json<ThreadApiResponse<null>>(
+      {
+        data: null,
+        error: getErrorMessage(err),
+      },
+      500
+    )
+  }
+})
+
+issuesV2.post('/validate-line', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = ValidateIssueLineV2Schema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json<ThreadApiResponse<null>>(
+          {
+            data: null,
+            error: formatZodError(err),
+          },
+          400
+        )
+      }
+      throw err
+    }
+
+    const { thread_type_id, issued_full, issued_partial, po_id, style_id, color_id } = validated
+
+    const ratio = await getPartialConeRatio()
+
+    const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
+
+    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id)
+
+    const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
+
+    const stock = await getStockAvailability(thread_type_id)
+
+    const stockSufficient =
+      (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
+
+    let message: string | undefined
+    if (isOverQuota) {
+      message = `Vuot dinh muc ${(issuedEquivalent - (quotaCones || 0)).toFixed(2)} cuon`
+    }
+    if (!stockSufficient) {
+      const shortFull = Math.max(0, (issued_full || 0) - stock.full_cones)
+      const shortPartial = Math.max(0, (issued_partial || 0) - stock.partial_cones)
+      message = message
+        ? `${message}. Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le`
+        : `Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le`
+    }
+
+    return c.json({
+      data: {
+        issued_equivalent: issuedEquivalent,
+        is_over_quota: isOverQuota,
+        stock_sufficient: stockSufficient,
+        quota_cones: quotaCones,
+        stock_available_full: stock.full_cones,
+        stock_available_partial: stock.partial_cones,
+        message,
+      },
+      error: null,
+    })
+  } catch (err) {
+    console.error('Error in POST /api/issues/v2/validate-line:', err)
+    return c.json<ThreadApiResponse<null>>(
+      {
+        data: null,
+        error: getErrorMessage(err),
+      },
+      500
+    )
+  }
+})
+
+issuesV2.post('/create-with-lines', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = CreateIssueWithLineSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json<ThreadApiResponse<null>>(
+          {
+            data: null,
+            error: formatZodError(err),
+          },
+          400
+        )
+      }
+      throw err
+    }
+
+    const {
+      department,
+      created_by,
+      notes,
+      po_id,
+      style_id,
+      color_id,
+      thread_type_id,
+      issued_full,
+      issued_partial,
+      over_quota_notes,
+    } = validated
+
+    const ratio = await getPartialConeRatio()
+    const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
+
+    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id)
+    const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
+
+    if (isOverQuota && !over_quota_notes?.trim()) {
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Vuot dinh muc, yeu cau ghi chu ly do',
+        },
+        400
+      )
+    }
+
+    const stock = await getStockAvailability(thread_type_id)
+    const stockSufficient =
+      (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
+
+    if (!stockSufficient) {
+      const shortFull = Math.max(0, (issued_full || 0) - stock.full_cones)
+      const shortPartial = Math.max(0, (issued_partial || 0) - stock.partial_cones)
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: `Khong du ton kho. Thieu ${shortFull > 0 ? shortFull + ' cuon nguyen' : ''}${shortFull > 0 && shortPartial > 0 ? ', ' : ''}${shortPartial > 0 ? shortPartial + ' cuon le' : ''}. Ton kho hien tai: ${stock.full_cones} nguyen, ${stock.partial_cones} le.`,
+        },
+        400
+      )
+    }
+
+    const issueCode = await generateIssueCode()
+
+    const { data: issue, error: issueError } = await supabase
+      .from('thread_issues')
+      .insert({
+        issue_code: issueCode,
+        department,
+        created_by,
+        notes: notes || null,
+        status: 'DRAFT',
+      })
+      .select('*')
+      .single()
+
+    if (issueError || !issue) {
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Khong the tao phieu xuat: ' + (issueError?.message || 'Loi khong xac dinh'),
+        },
+        500
+      )
+    }
+
+    const { data: line, error: lineError } = await supabase
+      .from('thread_issue_lines')
+      .insert({
+        issue_id: issue.id,
+        po_id: po_id || null,
+        style_id: style_id || null,
+        color_id: color_id || null,
+        thread_type_id,
+        quota_cones: quotaCones,
+        issued_full: issued_full || 0,
+        issued_partial: issued_partial || 0,
+        returned_full: 0,
+        returned_partial: 0,
+        over_quota_notes: over_quota_notes || null,
+      })
+      .select('*')
+      .single()
+
+    if (lineError || !line) {
+      await supabase.from('thread_issues').delete().eq('id', issue.id)
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Khong the them dong: ' + (lineError?.message || 'Loi khong xac dinh'),
+        },
+        500
+      )
+    }
+
+    const { data: threadType } = await supabase
+      .from('thread_types')
+      .select('code, name')
+      .eq('id', thread_type_id)
+      .single()
+
+    const { data: poData } = po_id
+      ? await supabase.from('purchase_orders').select('id, po_number').eq('id', po_id).single()
+      : { data: null }
+
+    const { data: styleData } = style_id
+      ? await supabase
+          .from('styles')
+          .select('id, style_code, style_name')
+          .eq('id', style_id)
+          .single()
+      : { data: null }
+
+    const { data: colorData } = color_id
+      ? await supabase.from('colors').select('id, name').eq('id', color_id).single()
+      : { data: null }
+
+    const lineWithComputed = {
+      ...line,
+      issued_equivalent: issuedEquivalent,
+      is_over_quota: isOverQuota,
+      stock_available_full: stock.full_cones,
+      stock_available_partial: stock.partial_cones,
+      thread_code: threadType?.code,
+      thread_name: threadType?.name,
+      po_number: (poData as any)?.po_number,
+      style_code: (styleData as any)?.style_code,
+      style_name: (styleData as any)?.style_name,
+      color_name: (colorData as any)?.name,
+    }
+
+    return c.json({
+      data: {
+        ...issue,
+        lines: [lineWithComputed],
+      },
+      error: null,
+      message: 'Tao phieu xuat thanh cong',
+    })
+  } catch (err) {
+    console.error('Error in POST /api/issues/v2/create-with-lines:', err)
     return c.json<ThreadApiResponse<null>>(
       {
         data: null,

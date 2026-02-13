@@ -18,6 +18,7 @@ import type {
   IssueV2WithLines,
   IssueLineV2WithComputed,
   CreateIssueV2DTO,
+  CreateIssueWithLineDTO,
   AddIssueLineV2DTO,
   ValidateIssueLineV2DTO,
   ValidateLineResponse,
@@ -84,6 +85,26 @@ export function useIssueV2() {
       error.value = errorMessage
       snackbar.error(errorMessage)
       console.error('[useIssueV2] createIssue error:', err)
+      return null
+    }
+  }
+
+  const createIssueWithFirstLine = async (data: CreateIssueWithLineDTO) => {
+    clearError()
+
+    try {
+      const result = await loading.withLoading(async () => {
+        return await issueV2Service.createWithFirstLine(data)
+      })
+
+      currentIssue.value = result
+      snackbar.success(`Đã tạo phiếu ${result.issue_code} và thêm dòng đầu tiên`)
+      return result
+    } catch (err) {
+      const errorMessage = getErrorMessage(err, 'Không thể tạo phiếu xuất')
+      error.value = errorMessage
+      snackbar.error(errorMessage)
+      console.error('[useIssueV2] createIssueWithFirstLine error:', err)
       return null
     }
   }
@@ -163,13 +184,8 @@ export function useIssueV2() {
    * @param data - Validate line data
    */
   const validateLine = async (data: ValidateIssueLineV2DTO): Promise<ValidateLineResponse | null> => {
-    if (!currentIssue.value) {
-      snackbar.error('Chưa tạo phiếu xuất')
-      return null
-    }
-
     try {
-      validationResult.value = await issueV2Service.validateLine(currentIssue.value.id, data)
+      validationResult.value = await issueV2Service.validateLine(currentIssue.value?.id, data)
       return validationResult.value
     } catch (err) {
       console.error('[useIssueV2] validateLine error:', err)
@@ -317,6 +333,7 @@ export function useIssueV2() {
     isConfirmed,
     // Actions
     createIssue,
+    createIssueWithFirstLine,
     fetchIssue,
     fetchIssues,
     loadFormData,
