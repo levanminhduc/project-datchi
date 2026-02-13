@@ -256,3 +256,20 @@ export interface OrderOptionColor {
  * Union type for order options response
  */
 export type OrderOptionsResponse = OrderOptionPO[] | OrderOptionStyle[] | OrderOptionColor[]
+
+// ============================================================================
+// Return Log Types
+// ============================================================================
+
+export interface ReturnLog {
+  id: number
+  issue_id: number
+  line_id: number
+  returned_full: number
+  returned_partial: number
+  created_by: string | null
+  created_at: string
+  thread_name: string
+  thread_code: string
+  color_name: string | null
+}

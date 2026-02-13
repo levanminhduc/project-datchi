@@ -1304,6 +1304,105 @@ issuesV2.post('/:id/lines', async (c) => {
   }
 })
 
+issuesV2.get('/:id/return-logs', async (c) => {
+  try {
+    const issueId = parseInt(c.req.param('id'))
+    if (isNaN(issueId)) {
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'ID khong hop le',
+        },
+        400
+      )
+    }
+
+    const { data: issue, error: issueError } = await supabase
+      .from('thread_issues')
+      .select('id')
+      .eq('id', issueId)
+      .single()
+
+    if (issueError || !issue) {
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Khong tim thay phieu xuat',
+        },
+        404
+      )
+    }
+
+    const { data: logs, error: logsError } = await supabase
+      .from('thread_issue_return_logs')
+      .select('id, issue_id, line_id, returned_full, returned_partial, created_at')
+      .eq('issue_id', issueId)
+      .order('created_at', { ascending: false })
+
+    if (logsError) {
+      console.error('Error fetching return logs:', logsError)
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Khong the tai lich su tra hang',
+        },
+        500
+      )
+    }
+
+    const lineIds = [...new Set((logs || []).map((l: any) => l.line_id))]
+    let linesMap: Record<number, any> = {}
+
+    if (lineIds.length > 0) {
+      const { data: lines } = await supabase
+        .from('thread_issue_lines')
+        .select(`
+          id,
+          thread_type_id,
+          thread_types ( id, name, code ),
+          color_id,
+          colors ( id, name )
+        `)
+        .in('id', lineIds)
+
+      if (lines) {
+        for (const line of lines) {
+          linesMap[(line as any).id] = line
+        }
+      }
+    }
+
+    const formattedLogs = (logs || []).map((log: any) => {
+      const line = linesMap[log.line_id]
+      return {
+        id: log.id,
+        issue_id: log.issue_id,
+        line_id: log.line_id,
+        returned_full: log.returned_full,
+        returned_partial: log.returned_partial,
+        created_at: log.created_at,
+        thread_name: line?.thread_types?.name || '',
+        thread_code: line?.thread_types?.code || '',
+        color_name: line?.colors?.name || null,
+      }
+    })
+
+    return c.json({
+      data: formattedLogs,
+      error: null,
+    })
+  } catch (err) {
+    console.error('Error in GET /api/issues/v2/:id/return-logs:', err)
+    return c.json<ThreadApiResponse<null>>(
+      {
+        data: null,
+        error: getErrorMessage(err),
+      },
+      500
+    )
+  }
+})
+
 /**
  * GET /api/issues/v2/:id - Get issue with all lines and computed fields
  */
@@ -1852,7 +1951,21 @@ issuesV2.post('/:id/return', async (c) => {
       }
     }
 
-    // Check if all items are returned
+    try {
+      for (const returnLine of validated.lines) {
+        await supabase
+          .from('thread_issue_return_logs')
+          .insert({
+            issue_id: issueId,
+            line_id: returnLine.line_id,
+            returned_full: returnLine.returned_full,
+            returned_partial: returnLine.returned_partial,
+          })
+      }
+    } catch (logError) {
+      console.error('[issuesV2] Failed to insert return log:', logError)
+    }
+
     const { data: updatedLines } = await supabase
       .from('thread_issue_lines')
       .select('*')
@@ -1862,7 +1975,6 @@ issuesV2.post('/:id/return', async (c) => {
       (l) => l.returned_full >= l.issued_full && l.returned_partial >= l.issued_partial
     )
 
-    // Update issue status if all returned
     if (allReturned) {
       await supabase
         .from('thread_issues')
@@ -1873,7 +1985,6 @@ issuesV2.post('/:id/return', async (c) => {
         .eq('id', issueId)
     }
 
-    // Return updated issue
     const { data: finalIssue } = await supabase
       .from('thread_issues')
       .select('*')

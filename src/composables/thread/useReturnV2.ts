@@ -17,6 +17,7 @@ import type {
   IssueV2,
   IssueV2WithLines,
   ReturnIssueV2DTO,
+  ReturnLog,
 } from '@/types/thread/issueV2'
 
 /**
@@ -32,6 +33,7 @@ export function useReturnV2() {
   // State
   const confirmedIssues = ref<IssueV2[]>([])
   const selectedIssue = ref<IssueV2WithLines | null>(null)
+  const returnLogs = ref<ReturnLog[]>([])
   const error = ref<string | null>(null)
 
   // Composables
@@ -155,6 +157,22 @@ export function useReturnV2() {
   /**
    * Clear selected issue
    */
+  const loadReturnLogs = async (issueId: number): Promise<void> => {
+    try {
+      const result = await loading.withLoading(async () => {
+        const response = await fetchApi<ApiResponse<ReturnLog[]>>(
+          `/api/issues/v2/${issueId}/return-logs`
+        )
+        return response.data || []
+      })
+      returnLogs.value = result
+    } catch (err) {
+      const errorMessage = getErrorMessage(err, 'Không thể tải lịch sử trả kho')
+      snackbar.error(errorMessage)
+      console.error('[useReturnV2] loadReturnLogs error:', err)
+    }
+  }
+
   const clearSelectedIssue = () => {
     selectedIssue.value = null
   }
@@ -200,6 +218,7 @@ export function useReturnV2() {
     // State
     confirmedIssues,
     selectedIssue,
+    returnLogs,
     error,
     // Computed
     isLoading,
@@ -207,6 +226,7 @@ export function useReturnV2() {
     // Actions
     loadConfirmedIssues,
     loadIssueDetails,
+    loadReturnLogs,
     submitReturn,
     clearError,
     clearSelectedIssue,

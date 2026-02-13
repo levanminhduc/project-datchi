@@ -7,6 +7,7 @@
  * Displays data from API - no calculations in frontend.
  */
 import { ref, computed, onMounted, watch } from 'vue'
+import { date } from 'quasar'
 import { useReturnV2, type ReturnLineInput } from '@/composables/thread/useReturnV2'
 import { useSnackbar } from '@/composables'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
@@ -19,9 +20,11 @@ const snackbar = useSnackbar()
 const {
   confirmedIssues,
   selectedIssue,
+  returnLogs,
   isLoading,
   loadConfirmedIssues,
   loadIssueDetails,
+  loadReturnLogs,
   submitReturn,
   clearSelectedIssue,
   validateReturnQuantities,
@@ -53,7 +56,7 @@ const hasReturnInputs = computed(() => {
 watch(selectedIssueId, async (newId) => {
   if (newId) {
     await loadIssueDetails(newId)
-    // Reset inputs when issue changes
+    await loadReturnLogs(newId)
     returnInputs.value = new Map()
     validationErrors.value = []
   } else {
@@ -143,12 +146,10 @@ async function handleSubmit() {
 
   const success = await submitReturn(selectedIssueId.value, lines)
   if (success) {
-    // Reset inputs after successful submit
     returnInputs.value = new Map()
     validationErrors.value = []
-    // Reload issue details to show updated values
     await loadIssueDetails(selectedIssueId.value)
-    // Reload confirmed issues in case status changed
+    await loadReturnLogs(selectedIssueId.value)
     await loadConfirmedIssues()
   }
 }
@@ -360,6 +361,66 @@ function handleReset() {
           @click="handleSubmit"
         />
       </q-card-actions>
+    </q-card>
+
+    <!-- Return History -->
+    <q-card
+      v-if="selectedIssue"
+      flat
+      bordered
+      class="q-mt-md"
+    >
+      <q-card-section>
+        <div class="text-subtitle1 q-mb-md">
+          Lịch Sử Trả Kho
+        </div>
+
+        <q-table
+          :rows="returnLogs"
+          :columns="[
+            { name: 'index', label: 'Lần', field: 'id', align: 'center' },
+            { name: 'thread', label: 'Loại chỉ', field: 'thread_name', align: 'left' },
+            { name: 'returned_full', label: 'Nguyên', field: 'returned_full', align: 'center' },
+            { name: 'returned_partial', label: 'Lẻ', field: 'returned_partial', align: 'center' },
+            { name: 'created_at', label: 'Thời gian', field: 'created_at', align: 'left' },
+          ]"
+          row-key="id"
+          flat
+          bordered
+          :pagination="{ rowsPerPage: 0 }"
+          hide-bottom
+        >
+          <template #body-cell-index="props">
+            <q-td :props="props">
+              {{ props.rowIndex + 1 }}
+            </q-td>
+          </template>
+
+          <template #body-cell-thread="props">
+            <q-td :props="props">
+              <div>{{ props.row.thread_code }} - {{ props.row.thread_name }}</div>
+              <div
+                v-if="props.row.color_name"
+                class="text-caption text-grey"
+              >
+                {{ props.row.color_name }}
+              </div>
+            </q-td>
+          </template>
+
+          <template #body-cell-created_at="props">
+            <q-td :props="props">
+              {{ date.formatDate(props.row.created_at, 'HH:mm DD/MM/YYYY') }}
+            </q-td>
+          </template>
+
+          <template #no-data>
+            <div class="text-center q-pa-lg text-grey">
+              Chưa có lịch sử trả kho
+            </div>
+          </template>
+        </q-table>
+      </q-card-section>
     </q-card>
 
     <!-- Empty State -->
