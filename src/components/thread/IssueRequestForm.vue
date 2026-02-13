@@ -274,6 +274,9 @@ defineExpose({ resetForm })
           required
           emit-value
           map-options
+          use-input
+          fill-input
+          hide-selected
           option-value="value"
           option-label="label"
           placeholder="Chọn đơn hàng..."
@@ -288,6 +291,9 @@ defineExpose({ resetForm })
           required
           emit-value
           map-options
+          use-input
+          fill-input
+          hide-selected
           option-value="value"
           option-label="label"
           placeholder="Chọn mã hàng..."
@@ -302,6 +308,9 @@ defineExpose({ resetForm })
           required
           emit-value
           map-options
+          use-input
+          fill-input
+          hide-selected
           option-value="value"
           option-label="label"
           placeholder="Chọn màu..."
@@ -333,6 +342,9 @@ defineExpose({ resetForm })
           required
           emit-value
           map-options
+          use-input
+          fill-input
+          hide-selected
           option-value="value"
           option-label="label"
           placeholder="Chọn bộ phận..."

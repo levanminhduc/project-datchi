@@ -396,6 +396,9 @@
             label="Chất Liệu"
             :options="materialOptions"
             required
+            use-input
+            fill-input
+            hide-selected
             popup-content-class="z-max"
           />
         </div>

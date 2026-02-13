@@ -187,6 +187,9 @@ function onCancel() {
           label="Loại chỉ"
           required
           :disable="isEdit"
+          use-input
+          fill-input
+          hide-selected
           popup-content-class="z-max"
           emit-value
           map-options

@@ -39,6 +39,9 @@
             :options="availableStyleOptions"
             label="Thêm mã hàng từ PO"
             dense
+            use-input
+            fill-input
+            hide-selected
             hide-bottom-space
             clearable
           >

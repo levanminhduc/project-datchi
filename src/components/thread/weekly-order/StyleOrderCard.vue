@@ -81,6 +81,9 @@
             :options="availableColors"
             label="Thêm màu"
             dense
+            use-input
+            fill-input
+            hide-selected
             hide-bottom-space
             clearable
             option-value="value"

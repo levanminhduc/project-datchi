@@ -242,6 +242,9 @@ const onCancel = () => {
           :options="materialOptions"
           label="Chất liệu"
           required
+          use-input
+          fill-input
+          hide-selected
           popup-content-class="z-max"
           emit-value
           map-options

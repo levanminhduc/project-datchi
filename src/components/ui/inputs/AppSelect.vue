@@ -59,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, useAttrs } from 'vue'
+import { computed, ref, useAttrs } from 'vue'
 import type { AppSelectProps } from '@/types/ui'
 
 defineOptions({
@@ -108,8 +108,14 @@ const handleUpdateModelValue = (val: unknown) => {
   emit('update:modelValue', val)
 }
 
-// Computed wrapper for options to ensure reactivity
-const computedOptions = computed(() => props.options ?? [])
+const filteredOptions = ref<Array<any>>([])
+
+const computedOptions = computed(() => {
+  if (props.useInput && filteredOptions.value.length > 0) {
+    return filteredOptions.value
+  }
+  return props.options ?? []
+})
 
 const computedRules = computed(() => {
   const rules = [...(props.rules || [])]
@@ -127,13 +133,24 @@ const computedRules = computed(() => {
 // Handle @filter event - auto-calls update() if no parent handler exists
 // This prevents infinite loading when QSelect waits for update() to be called
 const handleFilter = (val: string, update: (fn: () => void) => void, abort: () => void) => {
-  // If parent has a filter handler, emit to let them handle it
-  // Otherwise, just call update() immediately to show all options
   if (attrs.onFilter) {
     emit('filter', val, update, abort)
   } else {
     update(() => {
-      // No filtering needed, show all options
+      if (!val) {
+        filteredOptions.value = props.options ?? []
+        return
+      }
+      const needle = val.toLowerCase()
+      const labelFn = typeof props.optionLabel === 'function'
+        ? props.optionLabel
+        : (opt: any) => {
+            if (typeof opt === 'string') return opt
+            return opt?.[props.optionLabel as string] ?? ''
+          }
+      filteredOptions.value = (props.options ?? []).filter((opt) =>
+        String(labelFn(opt)).toLowerCase().includes(needle)
+      )
     })
   }
 }

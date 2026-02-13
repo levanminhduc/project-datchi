@@ -64,6 +64,9 @@
               :options="poOptions"
               label="Chọn PO"
               dense
+              use-input
+              fill-input
+              hide-selected
               hide-bottom-space
               clearable
               :loading="posLoading"

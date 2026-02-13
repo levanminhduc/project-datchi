@@ -37,6 +37,9 @@
               clearable
               emit-value
               map-options
+              use-input
+              fill-input
+              hide-selected
               @update:model-value="handleFilterChange"
             />
           </div>
@@ -310,6 +313,9 @@
             required
             emit-value
             map-options
+            use-input
+            fill-input
+            hide-selected
             popup-content-class="z-max"
           />
         </div>

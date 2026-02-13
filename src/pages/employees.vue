@@ -293,6 +293,9 @@
           v-model="formData.chuc_vu"
           label="Chức Vụ"
           :options="chucVuOptions"
+          use-input
+          fill-input
+          hide-selected
           clearable
           popup-content-class="z-max"
         >

@@ -113,6 +113,9 @@
                 required
                 emit-value
                 map-options
+                use-input
+                fill-input
+                hide-selected
               />
             </div>
             <div class="col-12 col-sm-6">

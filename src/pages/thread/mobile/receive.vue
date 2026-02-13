@@ -170,6 +170,9 @@
               :options="warehouseOptions"
               label="Kho"
               dense
+              use-input
+              fill-input
+              hide-selected
             />
           </div>
           <div class="col-6">

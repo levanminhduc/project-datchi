@@ -287,6 +287,9 @@
             label="Kho nhập *"
             option-value="id"
             option-label="name"
+            use-input
+            fill-input
+            hide-selected
             emit-value
             map-options
             :rules="[(v: number | null) => !!v || 'Vui lòng chọn kho nhập']"

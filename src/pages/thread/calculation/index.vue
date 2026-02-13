@@ -43,6 +43,9 @@
                 hide-bottom-space
                 :loading="stylesLoading"
                 clearable
+                use-input
+                fill-input
+                hide-selected
               >
                 <template #no-option>
                   <q-item>
@@ -76,6 +79,9 @@
                 hide-bottom-space
                 :loading="poLoading"
                 clearable
+                use-input
+                fill-input
+                hide-selected
               >
                 <template #no-option>
                   <q-item>

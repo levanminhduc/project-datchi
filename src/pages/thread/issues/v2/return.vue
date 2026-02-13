@@ -180,6 +180,9 @@ function handleReset() {
           label="Chọn phiếu xuất"
           :loading="isLoading"
           clearable
+          use-input
+          fill-input
+          hide-selected
           style="max-width: 500px"
         />
       </q-card-section>

@@ -644,6 +644,9 @@ onMounted(async () => {
                     required
                     emit-value
                     map-options
+                    use-input
+                    fill-input
+                    hide-selected
                     placeholder="Chọn bộ phận..."
                   />
                 </div>
@@ -731,6 +734,9 @@ onMounted(async () => {
                     :disable="!selectedStyleId"
                     emit-value
                     map-options
+                    use-input
+                    fill-input
+                    hide-selected
                     placeholder="Chọn màu..."
                   >
                     <template #no-option>

@@ -83,6 +83,9 @@ const onCancel = () => {
           option-value="id"
           option-label="name"
           required
+          use-input
+          fill-input
+          hide-selected
           emit-value
           map-options
           popup-content-class="z-max"
@@ -119,6 +122,9 @@ const onCancel = () => {
           label="Kho"
           :options="warehouseOptions"
           required
+          use-input
+          fill-input
+          hide-selected
           emit-value
           map-options
           popup-content-class="z-max"

@@ -125,6 +125,9 @@ onMounted(() => {
               label="PO"
               emit-value
               map-options
+              use-input
+              fill-input
+              hide-selected
               @update:model-value="handlePoChange"
             />
           </div>
@@ -135,6 +138,9 @@ onMounted(() => {
               label="Mã hàng"
               emit-value
               map-options
+              use-input
+              fill-input
+              hide-selected
               @update:model-value="handleStyleChange"
             />
           </div>

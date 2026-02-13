@@ -43,6 +43,9 @@
               clearable
               emit-value
               map-options
+              use-input
+              fill-input
+              hide-selected
               @update:model-value="handleFilterChange"
             />
           </div>
@@ -76,6 +79,9 @@
               clearable
               emit-value
               map-options
+              use-input
+              fill-input
+              hide-selected
               @update:model-value="handleFilterChange"
             />
           </div>
@@ -95,6 +101,9 @@
               clearable
               emit-value
               map-options
+              use-input
+              fill-input
+              hide-selected
               @update:model-value="handleSupplierFilterChange"
             />
           </div>
@@ -311,6 +320,9 @@
             required
             emit-value
             map-options
+            use-input
+            fill-input
+            hide-selected
           />
         </div>
         
@@ -323,6 +335,9 @@
             required
             emit-value
             map-options
+            use-input
+            fill-input
+            hide-selected
           />
         </div>
         <div class="col-12 col-sm-6">

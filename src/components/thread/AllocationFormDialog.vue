@@ -168,6 +168,9 @@ const onCancel = () => {
           searchable
           emit-value
           map-options
+          use-input
+          fill-input
+          hide-selected
           :disable="isEditMode"
         >
           <template #option="scope">
