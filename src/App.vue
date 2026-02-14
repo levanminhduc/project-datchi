@@ -1,23 +1,28 @@
 <script lang="ts" setup>
-import { onMounted, computed } from "vue";
+import { onMounted, computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import DarkModeToggle from "./components/DarkModeToggle.vue";
 import { useDarkMode } from "./composables/useDarkMode";
 import { useSidebar } from "./composables/useSidebar";
+import { useNotifications } from "./composables/useNotifications";
 
 const route = useRoute();
 const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
+const { startPolling, stopPolling } = useNotifications();
 
-// Hide sidebar on login page
 const showSidebar = computed(() => route.path !== "/login");
 
-onMounted(() => {
-  // Initialize dark mode preference
-  initDarkMode();
+watch(showSidebar, (show) => {
+  if (show) {
+    startPolling()
+  } else {
+    stopPolling()
+  }
+}, { immediate: true })
 
-  // Note: Auth is initialized in router guards (beforeEach)
-  // to ensure proper auth state before any navigation
+onMounted(() => {
+  initDarkMode();
 });
 </script>
 
@@ -37,6 +42,7 @@ onMounted(() => {
           @click="toggle"
         />
         <q-toolbar-title> Hòa Thọ Điện Bàn </q-toolbar-title>
+        <NotificationBell v-if="showSidebar" />
         <DarkModeToggle />
         <UserMenu />
       </q-toolbar>

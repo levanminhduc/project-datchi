@@ -87,6 +87,7 @@ declare module 'vue' {
     LotSelector: typeof import('./components/thread/LotSelector.vue')['default']
     LotStatusBadge: typeof import('./components/thread/LotStatusBadge.vue')['default']
     ManualWeightInput: typeof import('./components/hardware/ManualWeightInput.vue')['default']
+    NotificationBell: typeof import('./components/ui/NotificationBell.vue')['default']
     OfflineSyncBanner: typeof import('./components/offline/OfflineSyncBanner.vue')['default']
     PageHeader: typeof import('./components/ui/layout/PageHeader.vue')['default']
     PartialConeIndicator: typeof import('./components/thread/PartialConeIndicator.vue')['default']

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { ZodError } from 'zod'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import { getErrorMessage } from '../utils/errorHelper'
+import { broadcastNotification, getWarehouseEmployeeIds } from '../utils/notificationService'
 import {
   CreateWeeklyOrderSchema,
   UpdateWeeklyOrderSchema,
@@ -975,6 +976,19 @@ weeklyOrder.patch('/:id/status', async (c) => {
       .single()
 
     if (error) throw error
+
+    const statusLabels: Record<string, string> = {
+      confirmed: 'xác nhận',
+      cancelled: 'hủy',
+    }
+    const warehouseIds = await getWarehouseEmployeeIds()
+    broadcastNotification({
+      employeeIds: warehouseIds,
+      type: 'WEEKLY_ORDER',
+      title: `Đơn đặt hàng tuần #${id} đã được ${statusLabels[newStatus] || newStatus}`,
+      actionUrl: '/thread/weekly-order',
+      metadata: { weekly_order_id: id, new_status: newStatus },
+    })
 
     return c.json({ data, error: null, message: 'Cập nhật trạng thái thành công' })
   } catch (err) {

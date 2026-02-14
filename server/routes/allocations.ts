@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { createNotification, broadcastNotification, getWarehouseEmployeeIds } from '../utils/notificationService'
 import type {
   ThreadApiResponse,
   AllocationRow,
@@ -595,6 +596,25 @@ allocations.post('/:id/approve', async (c) => {
       }, 500)
     }
 
+    if (allocation.requesting_warehouse_id && updated) {
+      const reqBy = (updated as AllocationWithRelations).requested_by
+      if (reqBy) {
+        const { data: emp } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('employee_id', reqBy)
+          .single()
+        if (emp) {
+          createNotification({
+            employeeId: emp.id,
+            type: 'ALLOCATION',
+            title: `Yêu cầu phân bổ #${id} đã được duyệt`,
+            actionUrl: '/thread/allocations',
+          }).catch(() => {})
+        }
+      }
+    }
+
     return c.json<ThreadApiResponse<AllocationWithRelations>>({
       data: updated as AllocationWithRelations,
       error: null,
@@ -635,7 +655,7 @@ allocations.post('/:id/reject', async (c) => {
     // Check allocation exists and is pending
     const { data: allocation, error: fetchError } = await supabase
       .from('thread_allocations')
-      .select('id, status')
+      .select('id, status, requested_by')
       .eq('id', id)
       .single()
 
@@ -678,6 +698,23 @@ allocations.post('/:id/reject', async (c) => {
         data: null,
         error: 'Lỗi khi từ chối yêu cầu',
       }, 500)
+    }
+
+    if (allocation.requested_by) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('employee_id', allocation.requested_by)
+        .single()
+      if (emp) {
+        createNotification({
+          employeeId: emp.id,
+          type: 'ALLOCATION',
+          title: `Yêu cầu phân bổ #${id} đã bị từ chối`,
+          body: body.reason,
+          actionUrl: '/thread/allocations',
+        }).catch(() => {})
+      }
     }
 
     return c.json<ThreadApiResponse<AllocationWithRelations>>({
@@ -1239,6 +1276,16 @@ allocations.post('/:id/resolve', async (c) => {
         })
         .contains('competing_allocation_ids', [id])
         .eq('status', 'PENDING')
+
+      const warehouseIds = await getWarehouseEmployeeIds()
+      broadcastNotification({
+        employeeIds: warehouseIds,
+        type: 'CONFLICT',
+        title: `Xung đột phân bổ #${id} đã được giải quyết`,
+        body: body.resolution_notes || 'Xung đột đã được giải quyết',
+        actionUrl: '/thread/allocations',
+        metadata: { allocation_id: id },
+      })
     }
 
     return c.json<ThreadApiResponse<AllocationWithRelations>>({
@@ -1313,6 +1360,16 @@ allocations.post('/conflicts/:id/escalate', async (c) => {
         error: 'Không thể leo thang xung đột',
       }, 500)
     }
+
+    const warehouseIds = await getWarehouseEmployeeIds()
+    broadcastNotification({
+      employeeIds: warehouseIds,
+      type: 'CONFLICT',
+      title: `Xung đột #${id} đã được leo thang`,
+      body: notes || 'Xung đột đã được leo thang lên cấp quản lý',
+      actionUrl: '/thread/allocations',
+      metadata: { conflict_id: id },
+    })
 
     return c.json<ThreadApiResponse<ConflictRow>>({
       data: data as ConflictRow,

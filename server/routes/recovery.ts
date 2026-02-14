@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { broadcastNotification, getWarehouseEmployeeIds } from '../utils/notificationService'
 import type {
   ThreadApiResponse,
   RecoveryRow,
@@ -329,8 +330,18 @@ recovery.post('/initiate', async (c) => {
 
     if (updateError) {
       console.error('Cone update error:', updateError)
-      // Don't fail the request, recovery was created
     }
+
+    getWarehouseEmployeeIds().then(ids => {
+      if (ids.length > 0) {
+        broadcastNotification({
+          employeeIds: ids,
+          type: 'RECOVERY',
+          title: `Yêu cầu thu hồi cuộn ${cone.cone_id} đã được tạo`,
+          actionUrl: '/thread/recovery',
+        }).catch(() => {})
+      }
+    }).catch(() => {})
 
     return c.json<ThreadApiResponse<RecoveryWithCone>>({
       data: recovery as RecoveryWithCone,

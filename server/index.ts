@@ -30,6 +30,7 @@ import issuesRouter from './routes/issues'
 import settingsRouter from './routes/settings'
 import stockRouter from './routes/stock'
 import issuesV2Router from './routes/issuesV2'
+import notificationsRouter from './routes/notifications'
 
 const app = new Hono()
 
@@ -79,6 +80,7 @@ app.route('/api/issues/v2', issuesV2Router)
 app.route('/api/issues', issuesRouter)
 app.route('/api/settings', settingsRouter)
 app.route('/api/stock', stockRouter)
+app.route('/api/notifications', notificationsRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
@@ -136,3 +138,4 @@ console.log(`Issues V2 API: http://localhost:${PORT}/api/issues/v2`)
 console.log(`Issues API: http://localhost:${PORT}/api/issues`)
 console.log(`Settings API: http://localhost:${PORT}/api/settings`)
 console.log(`Stock API: http://localhost:${PORT}/api/stock`)
+console.log(`Notifications API: http://localhost:${PORT}/api/notifications`)
