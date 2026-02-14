@@ -136,6 +136,29 @@ export interface UpdateRoleData {
   permissionIds?: number[]
 }
 
+export interface CreatePermissionData {
+  code: string
+  name: string
+  description?: string
+  module: string
+  resource: string
+  action: PermissionAction
+  routePath?: string
+  isPageAccess?: boolean
+  sortOrder?: number
+}
+
+export interface UpdatePermissionData {
+  name?: string
+  description?: string
+  module?: string
+  resource?: string
+  action?: PermissionAction
+  routePath?: string
+  isPageAccess?: boolean
+  sortOrder?: number
+}
+
 // ============================================
 // API RESPONSES
 // ============================================

@@ -7,6 +7,8 @@ import type {
   Permission,
   CreateRoleData,
   UpdateRoleData,
+  CreatePermissionData,
+  UpdatePermissionData,
   EmployeeAuth,
 } from '@/types/auth'
 
@@ -227,6 +229,87 @@ export function usePermissionManagement() {
     }
   }
 
+  async function createPermission(data: CreatePermissionData): Promise<Permission> {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await authService.authenticatedFetch(`${API_URL}/api/auth/permissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Không thể tạo quyền')
+      }
+
+      await fetchPermissions()
+      return result.data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Lỗi khi tạo quyền'
+      error.value = msg
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function updatePermission(id: number, data: UpdatePermissionData): Promise<Permission> {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await authService.authenticatedFetch(
+        `${API_URL}/api/auth/permissions/${id}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        }
+      )
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Không thể cập nhật quyền')
+      }
+
+      await fetchPermissions()
+      return result.data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Lỗi khi cập nhật quyền'
+      error.value = msg
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function deletePermission(id: number): Promise<void> {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await authService.authenticatedFetch(
+        `${API_URL}/api/auth/permissions/${id}`,
+        {
+          method: 'DELETE',
+        }
+      )
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Không thể xóa quyền')
+      }
+
+      await fetchPermissions()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Lỗi khi xóa quyền'
+      error.value = msg
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   // ============================================
   // Employee Permissions API
   // ============================================
@@ -358,6 +441,9 @@ export function usePermissionManagement() {
 
     // Permissions methods
     fetchPermissions,
+    createPermission,
+    updatePermission,
+    deletePermission,
 
     // Employee methods
     searchEmployees,

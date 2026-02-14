@@ -10,7 +10,7 @@ import {
   type EmployeeSearchResult,
   type EmployeeRolesPermissions,
 } from '@/composables/usePermissionManagement'
-import type { Role, Permission, CreateRoleData, UpdateRoleData } from '@/types/auth'
+import type { Role, Permission, CreateRoleData, UpdateRoleData, CreatePermissionData, UpdatePermissionData } from '@/types/auth'
 
 // Route protection - ROOT only
 definePage({
@@ -210,6 +210,110 @@ const filteredPermissionsByModule = computed(() => {
 })
 
 const filteredModuleList = computed(() => Object.keys(filteredPermissionsByModule.value).sort())
+
+// Permission CRUD
+const permDialogOpen = ref(false)
+const permDialogMode = ref<'create' | 'edit'>('create')
+const selectedPermission = ref<Permission | null>(null)
+const permForm = ref<CreatePermissionData>({
+  code: '',
+  name: '',
+  description: '',
+  module: '',
+  resource: '',
+  action: 'view',
+  routePath: '',
+  isPageAccess: false,
+  sortOrder: 0,
+})
+
+const actionOptions = ['view', 'create', 'edit', 'delete', 'manage']
+
+const existingModules = computed(() => {
+  const modules = new Set<string>()
+  for (const perm of permMgmt.permissions.value) {
+    modules.add(perm.module)
+  }
+  return Array.from(modules).sort()
+})
+
+const moduleFilterOptions = ref<string[]>([])
+
+function filterModuleOptions(val: string, update: (fn: () => void) => void) {
+  update(() => {
+    if (!val) {
+      moduleFilterOptions.value = existingModules.value
+    } else {
+      const needle = val.toLowerCase()
+      moduleFilterOptions.value = existingModules.value.filter((m) =>
+        m.toLowerCase().includes(needle)
+      )
+    }
+  })
+}
+
+function openCreatePermissionDialog() {
+  permDialogMode.value = 'create'
+  selectedPermission.value = null
+  permForm.value = {
+    code: '',
+    name: '',
+    description: '',
+    module: '',
+    resource: '',
+    action: 'view',
+    routePath: '',
+    isPageAccess: false,
+    sortOrder: 0,
+  }
+  permDialogOpen.value = true
+}
+
+function openEditPermissionDialog(perm: Permission) {
+  permDialogMode.value = 'edit'
+  selectedPermission.value = perm
+  permForm.value = {
+    code: perm.code,
+    name: perm.name,
+    description: perm.description || '',
+    module: perm.module,
+    resource: perm.resource,
+    action: perm.action,
+    routePath: perm.routePath || '',
+    isPageAccess: perm.isPageAccess,
+    sortOrder: perm.sortOrder,
+  }
+  permDialogOpen.value = true
+}
+
+async function savePermission() {
+  try {
+    if (permDialogMode.value === 'create') {
+      await permMgmt.createPermission(permForm.value)
+      snackbar.success('Tạo quyền thành công')
+    } else if (selectedPermission.value) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { code: _code, ...updateData } = permForm.value
+      await permMgmt.updatePermission(selectedPermission.value.id, updateData as UpdatePermissionData)
+      snackbar.success('Cập nhật quyền thành công')
+    }
+    permDialogOpen.value = false
+  } catch (err) {
+    snackbar.error(err instanceof Error ? err.message : 'Có lỗi xảy ra')
+  }
+}
+
+async function confirmDeletePermission(perm: Permission) {
+  const confirmed = await confirm(`Bạn có chắc muốn xóa quyền "${perm.name}" (${perm.code})?`)
+  if (!confirmed) return
+
+  try {
+    await permMgmt.deletePermission(perm.id)
+    snackbar.success('Xóa quyền thành công')
+  } catch (err) {
+    snackbar.error(err instanceof Error ? err.message : 'Có lỗi xảy ra')
+  }
+}
 
 // ============================================
 // Tab 3: Employee Permissions
@@ -615,12 +719,12 @@ onMounted(async () => {
       >
         <AppCard>
           <q-card-section class="row items-center q-col-gutter-md">
-            <div class="col-12 col-sm-6">
+            <div class="col-12 col-sm-4">
               <div class="text-h6">
                 Danh sách quyền hệ thống
               </div>
             </div>
-            <div class="col-12 col-sm-6">
+            <div class="col-12 col-sm-5">
               <q-input
                 v-model="permissionFilter"
                 placeholder="Tìm kiếm quyền..."
@@ -632,6 +736,14 @@ onMounted(async () => {
                   <q-icon name="search" />
                 </template>
               </q-input>
+            </div>
+            <div class="col-12 col-sm-3 text-right">
+              <q-btn
+                color="primary"
+                icon="add"
+                label="Thêm quyền"
+                @click="openCreatePermissionDialog"
+              />
             </div>
           </q-card-section>
 
@@ -672,6 +784,7 @@ onMounted(async () => {
                   { name: 'action', label: 'Hành động', field: 'action', align: 'center' },
                   { name: 'description', label: 'Mô tả', field: 'description', align: 'left' },
                   { name: 'routePath', label: 'Route', field: 'routePath', align: 'left' },
+                  { name: 'actions', label: 'Thao tác', field: 'actions', align: 'center' },
                 ]"
                 row-key="id"
                 flat
@@ -701,6 +814,33 @@ onMounted(async () => {
                     </q-chip>
                   </q-td>
                 </template>
+
+                <template #body-cell-actions="props">
+                  <q-td :props="props">
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      color="primary"
+                      icon="edit"
+                      size="sm"
+                      @click="openEditPermissionDialog(props.row)"
+                    >
+                      <q-tooltip>Sửa</q-tooltip>
+                    </q-btn>
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      color="negative"
+                      icon="delete"
+                      size="sm"
+                      @click="confirmDeletePermission(props.row)"
+                    >
+                      <q-tooltip>Xóa</q-tooltip>
+                    </q-btn>
+                  </q-td>
+                </template>
               </q-table>
             </q-expansion-item>
           </q-list>
@@ -713,6 +853,133 @@ onMounted(async () => {
             />
           </template>
         </AppCard>
+
+        <!-- Permission Create/Edit Dialog -->
+        <q-dialog
+          v-model="permDialogOpen"
+          persistent
+        >
+          <q-card style="min-width: 600px; max-width: 90vw">
+            <q-card-section class="row items-center q-pb-none">
+              <div class="text-h6">
+                {{ permDialogMode === 'create' ? 'Tạo quyền mới' : 'Sửa quyền' }}
+              </div>
+              <q-space />
+              <q-btn
+                v-close-popup
+                icon="close"
+                flat
+                round
+                dense
+              />
+            </q-card-section>
+
+            <q-card-section>
+              <div class="row q-col-gutter-md">
+                <div class="col-12 col-sm-6">
+                  <q-input
+                    v-model="permForm.code"
+                    label="Mã quyền *"
+                    :readonly="permDialogMode === 'edit'"
+                    outlined
+                    dense
+                    hint="Ví dụ: module.resource.action"
+                    :rules="[(v) => !!v || 'Bắt buộc']"
+                  />
+                </div>
+                <div class="col-12 col-sm-6">
+                  <q-input
+                    v-model="permForm.name"
+                    label="Tên quyền *"
+                    outlined
+                    dense
+                    :rules="[(v) => !!v || 'Bắt buộc']"
+                  />
+                </div>
+                <div class="col-12">
+                  <q-input
+                    v-model="permForm.description"
+                    label="Mô tả"
+                    outlined
+                    dense
+                  />
+                </div>
+                <div class="col-12 col-sm-6">
+                  <q-select
+                    v-model="permForm.module"
+                    label="Module *"
+                    :options="moduleFilterOptions"
+                    outlined
+                    dense
+                    use-input
+                    new-value-mode="add-unique"
+                    :rules="[(v) => !!v || 'Bắt buộc']"
+                    @filter="filterModuleOptions"
+                  />
+                </div>
+                <div class="col-12 col-sm-6">
+                  <q-input
+                    v-model="permForm.resource"
+                    label="Resource *"
+                    outlined
+                    dense
+                    :rules="[(v) => !!v || 'Bắt buộc']"
+                  />
+                </div>
+                <div class="col-12 col-sm-6">
+                  <q-select
+                    v-model="permForm.action"
+                    label="Hành động *"
+                    :options="actionOptions"
+                    outlined
+                    dense
+                    :rules="[(v) => !!v || 'Bắt buộc']"
+                  />
+                </div>
+                <div class="col-12 col-sm-6">
+                  <q-input
+                    v-model="permForm.routePath"
+                    label="Route path"
+                    outlined
+                    dense
+                  />
+                </div>
+                <div class="col-12 col-sm-6">
+                  <q-toggle
+                    v-model="permForm.isPageAccess"
+                    label="Truy cập trang"
+                  />
+                </div>
+                <div class="col-12 col-sm-6">
+                  <q-input
+                    v-model.number="permForm.sortOrder"
+                    label="Thứ tự"
+                    type="number"
+                    outlined
+                    dense
+                  />
+                </div>
+              </div>
+            </q-card-section>
+
+            <q-card-actions
+              align="right"
+              class="q-pa-md"
+            >
+              <q-btn
+                v-close-popup
+                flat
+                label="Hủy"
+              />
+              <q-btn
+                color="primary"
+                :label="permDialogMode === 'create' ? 'Tạo' : 'Lưu'"
+                :loading="permMgmt.loading.value"
+                @click="savePermission"
+              />
+            </q-card-actions>
+          </q-card>
+        </q-dialog>
       </q-tab-panel>
 
       <!-- ============================================ -->

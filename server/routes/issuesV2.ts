@@ -1351,7 +1351,7 @@ issuesV2.get('/:id/return-logs', async (c) => {
     }
 
     const lineIds = [...new Set((logs || []).map((l: any) => l.line_id))]
-    let linesMap: Record<number, any> = {}
+    const linesMap: Record<number, any> = {}
 
     if (lineIds.length > 0) {
       const { data: lines } = await supabase

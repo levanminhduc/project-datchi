@@ -11,6 +11,7 @@ import {
   type AuthContext,
   type JwtPayload,
 } from '../middleware/auth'
+import { createPermissionSchema, updatePermissionSchema } from '../validation/auth'
 
 const JWT_SECRET = process.env.JWT_SECRET!
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m'
@@ -731,7 +732,7 @@ auth.get('/permissions/all', authMiddleware, requireAdmin, async (c) => {
   try {
     const { data: permissions, error } = await supabaseAdmin
       .from('permissions')
-      .select('id, code, name, description, module, resource, action, route_path, is_page_access')
+      .select('id, code, name, description, module, resource, action, route_path, is_page_access, sort_order')
       .order('sort_order', { ascending: true })
 
     if (error) {
@@ -751,6 +752,207 @@ auth.get('/permissions/all', authMiddleware, requireAdmin, async (c) => {
 
 // ============================================================
 // ROOT-ONLY ROUTES (Permissions Management)
+// ============================================================
+
+/**
+ * POST /api/auth/permissions - Create new permission (ROOT only)
+ */
+auth.post('/permissions', authMiddleware, requireAdmin, async (c) => {
+  const authContext = c.get('auth') as AuthContext
+
+  if (!authContext.isRoot) {
+    return c.json({ success: false, error: 'FORBIDDEN', message: 'Chỉ ROOT mới có thể tạo quyền' }, 403)
+  }
+
+  const body = await c.req.json()
+  const parsed = createPermissionSchema.safeParse(body)
+
+  if (!parsed.success) {
+    return c.json({
+      success: false,
+      error: 'VALIDATION_ERROR',
+      message: parsed.error.errors.map((e) => e.message).join(', '),
+    }, 400)
+  }
+
+  const { code, name, description, module, resource, action, routePath, isPageAccess, sortOrder } = parsed.data
+
+  try {
+    // Check for duplicate code
+    const { data: existing } = await supabaseAdmin
+      .from('permissions')
+      .select('id')
+      .eq('code', code)
+      .single()
+
+    if (existing) {
+      return c.json({ success: false, error: 'DUPLICATE_CODE', message: 'Mã quyền đã tồn tại' }, 409)
+    }
+
+    const { data: permission, error } = await supabaseAdmin
+      .from('permissions')
+      .insert({
+        code,
+        name,
+        description: description || null,
+        module,
+        resource,
+        action,
+        route_path: routePath || null,
+        is_page_access: isPageAccess ?? false,
+        sort_order: sortOrder ?? 0,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Create permission error:', error)
+      return c.json({ success: false, message: 'Không thể tạo quyền' }, 500)
+    }
+
+    return c.json({ success: true, data: permission }, 201)
+  } catch (err) {
+    console.error('Create permission error:', err)
+    return c.json({ success: false, message: 'Lỗi hệ thống' }, 500)
+  }
+})
+
+/**
+ * PUT /api/auth/permissions/:id - Update permission (ROOT only)
+ */
+auth.put('/permissions/:id', authMiddleware, requireAdmin, async (c) => {
+  const authContext = c.get('auth') as AuthContext
+
+  if (!authContext.isRoot) {
+    return c.json({ success: false, error: 'FORBIDDEN', message: 'Chỉ ROOT mới có thể sửa quyền' }, 403)
+  }
+
+  const permId = parseInt(c.req.param('id'))
+  const body = await c.req.json()
+
+  // Remove code field if present (not updatable)
+  delete body.code
+
+  const parsed = updatePermissionSchema.safeParse(body)
+
+  if (!parsed.success) {
+    return c.json({
+      success: false,
+      error: 'VALIDATION_ERROR',
+      message: parsed.error.errors.map((e) => e.message).join(', '),
+    }, 400)
+  }
+
+  try {
+    // Check if permission exists
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from('permissions')
+      .select('id')
+      .eq('id', permId)
+      .single()
+
+    if (fetchError || !existing) {
+      return c.json({ success: false, error: 'NOT_FOUND', message: 'Quyền không tồn tại' }, 404)
+    }
+
+    // Build update object (snake_case for DB)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updates: any = { updated_at: new Date().toISOString() }
+    const d = parsed.data
+    if (d.name !== undefined) updates.name = d.name
+    if (d.description !== undefined) updates.description = d.description
+    if (d.module !== undefined) updates.module = d.module
+    if (d.resource !== undefined) updates.resource = d.resource
+    if (d.action !== undefined) updates.action = d.action
+    if (d.routePath !== undefined) updates.route_path = d.routePath
+    if (d.isPageAccess !== undefined) updates.is_page_access = d.isPageAccess
+    if (d.sortOrder !== undefined) updates.sort_order = d.sortOrder
+
+    const { data: permission, error } = await supabaseAdmin
+      .from('permissions')
+      .update(updates)
+      .eq('id', permId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Update permission error:', error)
+      return c.json({ success: false, message: 'Không thể cập nhật quyền' }, 500)
+    }
+
+    return c.json({ success: true, data: permission })
+  } catch (err) {
+    console.error('Update permission error:', err)
+    return c.json({ success: false, message: 'Lỗi hệ thống' }, 500)
+  }
+})
+
+/**
+ * DELETE /api/auth/permissions/:id - Delete permission (ROOT only)
+ */
+auth.delete('/permissions/:id', authMiddleware, requireAdmin, async (c) => {
+  const authContext = c.get('auth') as AuthContext
+
+  if (!authContext.isRoot) {
+    return c.json({ success: false, error: 'FORBIDDEN', message: 'Chỉ ROOT mới có thể xóa quyền' }, 403)
+  }
+
+  const permId = parseInt(c.req.param('id'))
+
+  try {
+    // Check if permission exists
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from('permissions')
+      .select('id')
+      .eq('id', permId)
+      .single()
+
+    if (fetchError || !existing) {
+      return c.json({ success: false, error: 'NOT_FOUND', message: 'Quyền không tồn tại' }, 404)
+    }
+
+    // Check usage in role_permissions
+    const { count: roleCount } = await supabaseAdmin
+      .from('role_permissions')
+      .select('id', { count: 'exact', head: true })
+      .eq('permission_id', permId)
+
+    // Check usage in employee_permissions
+    const { count: empCount } = await supabaseAdmin
+      .from('employee_permissions')
+      .select('id', { count: 'exact', head: true })
+      .eq('permission_id', permId)
+
+    const totalRoles = roleCount ?? 0
+    const totalEmps = empCount ?? 0
+
+    if (totalRoles > 0 || totalEmps > 0) {
+      return c.json({
+        success: false,
+        error: 'IN_USE',
+        message: `Không thể xóa quyền đang được sử dụng bởi ${totalRoles} vai trò và ${totalEmps} nhân viên`,
+      }, 409)
+    }
+
+    const { error } = await supabaseAdmin
+      .from('permissions')
+      .delete()
+      .eq('id', permId)
+
+    if (error) {
+      console.error('Delete permission error:', error)
+      return c.json({ success: false, message: 'Không thể xóa quyền' }, 500)
+    }
+
+    return c.json({ success: true, message: 'Xóa quyền thành công' })
+  } catch (err) {
+    console.error('Delete permission error:', err)
+    return c.json({ success: false, message: 'Lỗi hệ thống' }, 500)
+  }
+})
+
+// ============================================================
+// ROOT-ONLY ROUTES (Roles Management)
 // ============================================================
 
 /**
