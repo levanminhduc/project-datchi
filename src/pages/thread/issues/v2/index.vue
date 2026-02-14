@@ -138,6 +138,18 @@ const historyColumns: QTableColumn[] = [
   { name: 'actions', label: 'Thao Tác', field: 'actions', align: 'center', sortable: false },
 ]
 
+const addedLinesColumns: QTableColumn[] = [
+  { name: 'thread', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
+  { name: 'po', label: 'PO', field: 'po_number', align: 'left' },
+  { name: 'style', label: 'Mã Hàng', field: 'style_code', align: 'left' },
+  { name: 'color', label: 'Màu', field: 'color_name', align: 'left' },
+  { name: 'quota', label: 'Định Mức', field: 'quota_cones', align: 'center', format: (v: number | null) => v !== null ? `${v}` : '-' },
+  { name: 'issued', label: 'Xuất', field: 'issued', align: 'center' },
+  { name: 'equivalent', label: 'Quy Đổi', field: 'issued_equivalent', align: 'center', format: (v: number) => v.toFixed(2) },
+  { name: 'status', label: 'Trạng Thái', field: 'status', align: 'center' },
+  { name: 'actions', label: '', field: 'actions', align: 'center' },
+]
+
 function formatDate(dateStr: string): string {
   if (!dateStr) return '-'
   const date = new Date(dateStr)
@@ -391,10 +403,7 @@ async function handleRemoveLine(lineId: number) {
 
 async function handleConfirm() {
   if (!canConfirm.value) return
-
-  const success = await confirmIssue()
-  if (success) {
-  }
+  await confirmIssue()
 }
 
 function handleBack() {
@@ -456,7 +465,7 @@ const handleHistoryRowClick = (evt: Event, row: { id: number; status: string }) 
   }
 }
 
-const handleConfirmFromList = async (issue: any) => {
+const handleConfirmFromList = async (issue: { id: number; issue_code: string }) => {
   const confirmed = await confirmWarning(
     'Phiếu sẽ được xác nhận và trừ tồn kho. Bạn có chắc chắn?',
     'Xác nhận phiếu xuất'
@@ -467,12 +476,12 @@ const handleConfirmFromList = async (issue: any) => {
     await issueV2Service.confirm(issue.id)
     snackbar.success('Xác nhận phiếu xuất thành công')
     await fetchIssues()
-  } catch (err: any) {
-    snackbar.error(err.message || 'Không thể xác nhận phiếu xuất')
+  } catch (err: unknown) {
+    snackbar.error(err instanceof Error ? err.message : 'Không thể xác nhận phiếu xuất')
   }
 }
 
-const handleDeleteFromList = async (issue: any) => {
+const handleDeleteFromList = async (issue: { id: number; issue_code: string }) => {
   const confirmed = await confirmDelete(issue.issue_code)
   if (!confirmed) return
 
@@ -480,8 +489,8 @@ const handleDeleteFromList = async (issue: any) => {
     await issueV2Service.deleteIssue(issue.id)
     snackbar.success('Xóa phiếu xuất thành công')
     await fetchIssues()
-  } catch (err: any) {
-    snackbar.error(err.message || 'Không thể xóa phiếu xuất')
+  } catch (err: unknown) {
+    snackbar.error(err instanceof Error ? err.message : 'Không thể xóa phiếu xuất')
   }
 }
 
@@ -574,9 +583,9 @@ onMounted(async () => {
       >
         <q-tab-panel name="create">
           <div class="row items-center q-mb-lg">
-            <q-btn
+            <AppButton
               icon="arrow_back"
-              flat
+              variant="flat"
               round
               @click="handleBack"
             />
@@ -804,11 +813,10 @@ onMounted(async () => {
                 <template #body-cell-issue="props">
                   <q-td :props="props">
                     <div class="row q-gutter-xs items-center no-wrap">
-                      <q-input
+                      <AppInput
                         :model-value="lineInputs[props.row.thread_type_id]?.full ?? 0"
                         type="number"
                         dense
-                        outlined
                         class="col"
                         style="min-width: 60px; max-width: 80px"
                         :min="0"
@@ -817,11 +825,10 @@ onMounted(async () => {
                         @update:model-value="(v) => handleInputChange(props.row.thread_type_id, 'full', Number(v) || 0, props.row.stock_available_full)"
                       />
                       <span>+</span>
-                      <q-input
+                      <AppInput
                         :model-value="lineInputs[props.row.thread_type_id]?.partial ?? 0"
                         type="number"
                         dense
-                        outlined
                         class="col"
                         style="min-width: 60px; max-width: 80px"
                         :min="0"
@@ -851,10 +858,9 @@ onMounted(async () => {
                       >
                         Vượt định mức!
                       </q-badge>
-                      <q-input
+                      <AppInput
                         :model-value="lineInputs[props.row.thread_type_id]?.notes ?? ''"
                         dense
-                        outlined
                         placeholder="Ghi chú lý do..."
                         class="q-mt-xs"
                         @update:model-value="(v) => { const input = lineInputs[props.row.thread_type_id]; if (input) { input.notes = String(v) } }"
@@ -913,17 +919,7 @@ onMounted(async () => {
 
               <q-table
                 :rows="lines"
-                :columns="[
-                  { name: 'thread', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
-                  { name: 'po', label: 'PO', field: 'po_number', align: 'left' },
-                  { name: 'style', label: 'Mã Hàng', field: 'style_code', align: 'left' },
-                  { name: 'color', label: 'Màu', field: 'color_name', align: 'left' },
-                  { name: 'quota', label: 'Định Mức', field: 'quota_cones', align: 'center', format: (v: number | null) => v !== null ? `${v}` : '-' },
-                  { name: 'issued', label: 'Xuất', field: 'issued', align: 'center' },
-                  { name: 'equivalent', label: 'Quy Đổi', field: 'issued_equivalent', align: 'center', format: (v: number) => v.toFixed(2) },
-                  { name: 'status', label: 'Trạng Thái', field: 'status', align: 'center' },
-                  { name: 'actions', label: '', field: 'actions', align: 'center' },
-                ]"
+                :columns="addedLinesColumns"
                 row-key="id"
                 flat
                 bordered
@@ -977,17 +973,17 @@ onMounted(async () => {
 
                 <template #body-cell-actions="props">
                   <q-td :props="props">
-                    <q-btn
+                    <AppButton
                       v-if="!isConfirmed"
                       icon="delete"
                       size="sm"
-                      flat
+                      variant="flat"
                       round
                       color="negative"
                       @click="handleRemoveLine(props.row.id)"
                     >
                       <q-tooltip>Xóa dòng</q-tooltip>
-                    </q-btn>
+                    </AppButton>
                   </q-td>
                 </template>
               </q-table>
@@ -1132,9 +1128,9 @@ onMounted(async () => {
             <template #body-cell-actions="props">
               <q-td :props="props">
                 <div class="row no-wrap justify-center q-gutter-xs">
-                  <q-btn
+                  <AppButton
                     v-if="props.row.status === IssueV2Status.DRAFT"
-                    flat
+                    variant="flat"
                     round
                     dense
                     size="sm"
@@ -1143,10 +1139,10 @@ onMounted(async () => {
                     @click.stop="handleConfirmFromList(props.row)"
                   >
                     <q-tooltip>Xác nhận</q-tooltip>
-                  </q-btn>
-                  <q-btn
+                  </AppButton>
+                  <AppButton
                     v-if="props.row.status === IssueV2Status.DRAFT"
-                    flat
+                    variant="flat"
                     round
                     dense
                     size="sm"
@@ -1155,10 +1151,10 @@ onMounted(async () => {
                     @click.stop="handleDeleteFromList(props.row)"
                   >
                     <q-tooltip>Xóa</q-tooltip>
-                  </q-btn>
-                  <q-btn
+                  </AppButton>
+                  <AppButton
                     v-if="props.row.status === IssueV2Status.CONFIRMED"
-                    flat
+                    variant="flat"
                     round
                     dense
                     size="sm"
@@ -1167,17 +1163,16 @@ onMounted(async () => {
                     @click.stop="handleReturnFromList()"
                   >
                     <q-tooltip>Nhập trả</q-tooltip>
-                  </q-btn>
+                  </AppButton>
                 </div>
               </q-td>
             </template>
 
             <template #empty-action>
-              <q-btn
+              <AppButton
                 color="primary"
                 label="Tạo Phiếu Xuất"
                 icon="add"
-                unelevated
                 @click="activeTab = 'create'"
               />
             </template>

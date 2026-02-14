@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { RouteLocationNormalizedLoaded } from 'vue-router'
 import { useIssueV2 } from '@/composables/thread/useIssueV2'
 import type { QTableColumn } from 'quasar'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
 import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
+import AppButton from '@/components/ui/buttons/AppButton.vue'
 
 function formatDateTime(dateStr: string): string {
   if (!dateStr) return '-'
@@ -14,7 +14,7 @@ function formatDateTime(dateStr: string): string {
   return date.toLocaleString('vi-VN')
 }
 
-const route = useRoute() as RouteLocationNormalizedLoaded & { params: { id: string } }
+const route = useRoute()
 const router = useRouter()
 const { currentIssue, isLoading, fetchIssue } = useIssueV2()
 
@@ -111,11 +111,10 @@ onMounted(() => {
         <div class="text-body2 text-grey-6 q-mb-lg">
           Phiếu xuất này không tồn tại hoặc đã bị xóa
         </div>
-        <q-btn
+        <AppButton
           color="primary"
           label="Quay lại danh sách"
           icon="arrow_back"
-          unelevated
           @click="goBackToHistory"
         />
       </q-card>
@@ -283,8 +282,4 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.detail-table :deep(.q-table__middle) {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
 </style>

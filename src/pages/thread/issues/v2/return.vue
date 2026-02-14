@@ -1,11 +1,4 @@
 <script setup lang="ts">
-/**
- * Return V2 Page
- * Nhap Lai Chi - Return Thread Cones
- *
- * UI for returning issued thread cones back to inventory.
- * Displays data from API - no calculations in frontend.
- */
 import { ref, computed, onMounted, watch } from 'vue'
 import { date } from 'quasar'
 import { useReturnV2, type ReturnLineInput } from '@/composables/thread/useReturnV2'
@@ -15,7 +8,6 @@ import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import type { IssueLineV2WithComputed } from '@/types/thread/issueV2'
 
-// Composables
 const snackbar = useSnackbar()
 const {
   confirmedIssues,
@@ -30,12 +22,10 @@ const {
   validateReturnQuantities,
 } = useReturnV2()
 
-// Local state
 const selectedIssueId = ref<number | null>(null)
 const returnInputs = ref<Map<number, { full: number; partial: number }>>(new Map())
 const validationErrors = ref<string[]>([])
 
-// Computed
 const issueOptions = computed(() => {
   return confirmedIssues.value.map((issue) => ({
     value: issue.id,
@@ -52,7 +42,6 @@ const hasReturnInputs = computed(() => {
   return false
 })
 
-// Watch for issue selection change
 watch(selectedIssueId, async (newId) => {
   if (newId) {
     await loadIssueDetails(newId)
@@ -66,12 +55,10 @@ watch(selectedIssueId, async (newId) => {
   }
 })
 
-// Lifecycle
 onMounted(() => {
   loadConfirmedIssues()
 })
 
-// Methods
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('vi-VN')
 }
@@ -129,7 +116,7 @@ async function handleSubmit() {
   if (!selectedIssue.value || !selectedIssueId.value) return
 
   if (validationErrors.value.length > 0) {
-    snackbar.error('Vui long sua cac loi truoc khi xac nhan')
+    snackbar.error('Vui lòng sửa các lỗi trước khi xác nhận')
     return
   }
 
@@ -168,7 +155,6 @@ function handleReset() {
       </h5>
     </div>
 
-    <!-- Issue Selection -->
     <q-card
       flat
       bordered
@@ -189,7 +175,6 @@ function handleReset() {
       </q-card-section>
     </q-card>
 
-    <!-- Issue Lines Table -->
     <q-card
       v-if="selectedIssue"
       flat
@@ -206,7 +191,6 @@ function handleReset() {
           </q-badge>
         </div>
 
-        <!-- Validation Errors -->
         <q-banner
           v-if="validationErrors.length > 0"
           class="bg-negative text-white q-mb-md"
@@ -222,7 +206,6 @@ function handleReset() {
           </div>
         </q-banner>
 
-        <!-- Lines Table -->
         <q-table
           :rows="selectedIssue.lines"
           :columns="[
@@ -238,7 +221,6 @@ function handleReset() {
           :pagination="{ rowsPerPage: 0 }"
           hide-bottom
         >
-          <!-- Thread Name Column -->
           <template #body-cell-thread="props">
             <q-td :props="props">
               <div>
@@ -256,7 +238,6 @@ function handleReset() {
             </q-td>
           </template>
 
-          <!-- Issued Column -->
           <template #body-cell-issued="props">
             <q-td :props="props">
               <div>
@@ -267,7 +248,6 @@ function handleReset() {
             </q-td>
           </template>
 
-          <!-- Returned Column -->
           <template #body-cell-returned="props">
             <q-td :props="props">
               <div>
@@ -278,7 +258,6 @@ function handleReset() {
             </q-td>
           </template>
 
-          <!-- Outstanding Column -->
           <template #body-cell-outstanding="props">
             <q-td :props="props">
               <div :class="{ 'text-positive': !hasOutstandingItems(props.row) }">
@@ -289,7 +268,6 @@ function handleReset() {
             </q-td>
           </template>
 
-          <!-- Return Input Column -->
           <template #body-cell-return_input="props">
             <q-td :props="props">
               <div
@@ -334,7 +312,6 @@ function handleReset() {
             </q-td>
           </template>
 
-          <!-- No Data -->
           <template #no-data>
             <div class="text-center q-pa-lg text-grey">
               Phiếu xuất không có dòng nào
@@ -343,7 +320,6 @@ function handleReset() {
         </q-table>
       </q-card-section>
 
-      <!-- Action Buttons -->
       <q-card-actions align="right">
         <AppButton
           label="Đặt lại"
@@ -363,7 +339,6 @@ function handleReset() {
       </q-card-actions>
     </q-card>
 
-    <!-- Return History -->
     <q-card
       v-if="selectedIssue"
       flat
@@ -423,7 +398,6 @@ function handleReset() {
       </q-card-section>
     </q-card>
 
-    <!-- Empty State -->
     <q-card
       v-else-if="!isLoading && !selectedIssueId"
       flat
@@ -439,7 +413,6 @@ function handleReset() {
       </q-card-section>
     </q-card>
 
-    <!-- Loading State -->
     <q-card
       v-else-if="isLoading && selectedIssueId"
       flat
@@ -451,13 +424,9 @@ function handleReset() {
           size="48px"
         />
         <div class="q-mt-md text-grey">
-          Dang tai...
+          Đang tải...
         </div>
       </q-card-section>
     </q-card>
   </q-page>
 </template>
-
-<style scoped>
-/* Custom styles for the return page */
-</style>
