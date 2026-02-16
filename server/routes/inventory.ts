@@ -25,7 +25,7 @@ inventory.get('/', async (c) => {
       while (hasMore) {
         let query = supabase
           .from('thread_inventory')
-          .select('*, thread_types(code, name, color, color_code)')
+          .select('*, thread_types(code, name, color_data:colors!color_id(name, hex_code))')
           .order('created_at', { ascending: false })
           .range(offset, offset + BATCH_SIZE - 1)
 
@@ -81,7 +81,7 @@ inventory.get('/', async (c) => {
     // Normal paginated query
     let query = supabase
       .from('thread_inventory')
-      .select('*, thread_types(code, name, color, color_code)')
+      .select('*, thread_types(code, name, color_data:colors!color_id(name, hex_code))')
       .order('created_at', { ascending: false })
 
     if (search) {
@@ -191,7 +191,7 @@ inventory.get('/by-barcode/:coneId', async (c) => {
 
     const { data, error } = await supabase
       .from('thread_inventory')
-      .select('*, thread_types(code, name, color, color_code, density_grams_per_meter), warehouses(name)')
+      .select('*, thread_types(code, name, color_data:colors!color_id(name, hex_code), density_grams_per_meter), warehouses(name)')
       .eq('cone_id', coneId)
       .single()
 
@@ -303,7 +303,7 @@ inventory.get('/summary/by-cone', async (c) => {
         is_partial,
         lot_id,
         thread_types(
-          code, name, color, color_code, material, tex_number, meters_per_cone, supplier_id
+          code, name, color_data:colors!color_id(name, hex_code), material, tex_number, meters_per_cone, supplier_id
         ),
         lots(supplier_id)
       `)
@@ -334,8 +334,7 @@ inventory.get('/summary/by-cone', async (c) => {
       const tt = (Array.isArray(ttRaw) ? ttRaw[0] : ttRaw) as {
         code: string
         name: string
-        color: string | null
-        color_code: string | null
+        color_data: { name: string; hex_code: string | null } | null
         material: string
         tex_number: number | null
         meters_per_cone: number | null
@@ -363,10 +362,10 @@ inventory.get('/summary/by-cone', async (c) => {
       // Apply search filter
       if (search) {
         const searchLower = search.toLowerCase()
-        const matchesSearch = 
+        const matchesSearch =
           tt.code.toLowerCase().includes(searchLower) ||
           tt.name.toLowerCase().includes(searchLower) ||
-          (tt.color && tt.color.toLowerCase().includes(searchLower))
+          (tt.color_data?.name && tt.color_data.name.toLowerCase().includes(searchLower))
         if (!matchesSearch) continue
       }
 
@@ -375,8 +374,7 @@ inventory.get('/summary/by-cone', async (c) => {
           thread_type_id: cone.thread_type_id,
           thread_code: tt.code,
           thread_name: tt.name,
-          color: tt.color,
-          color_code: tt.color_code,
+          color_data: tt.color_data || null,
           material: tt.material as ConeSummaryRow['material'],
           tex_number: tt.tex_number,
           meters_per_cone: tt.meters_per_cone,
@@ -567,7 +565,7 @@ inventory.get('/unassigned-by-thread-type', async (c) => {
       .select(`
         id,
         thread_type_id,
-        thread_types(id, code, name, color_code)
+        thread_types(id, code, name, color_data:colors!color_id(name, hex_code))
       `)
       .eq('warehouse_id', parsedWarehouseId)
       .is('lot_id', null)
@@ -585,7 +583,8 @@ inventory.get('/unassigned-by-thread-type', async (c) => {
       thread_type_id: number
       thread_type_name: string
       thread_type_code: string
-      color_code: string | null
+      color_name: string | null
+      color_hex: string | null
       cone_count: number
       cone_ids: number[]
     }
@@ -598,7 +597,7 @@ inventory.get('/unassigned-by-thread-type', async (c) => {
         id: number
         code: string
         name: string
-        color_code: string | null
+        color_data: { name: string; hex_code: string | null } | null
       } | null
 
       if (!tt) continue
@@ -608,7 +607,8 @@ inventory.get('/unassigned-by-thread-type', async (c) => {
           thread_type_id: cone.thread_type_id,
           thread_type_name: tt.name,
           thread_type_code: tt.code,
-          color_code: tt.color_code,
+          color_name: tt.color_data?.name || null,
+          color_hex: tt.color_data?.hex_code || null,
           cone_count: 0,
           cone_ids: []
         })
@@ -657,7 +657,7 @@ inventory.get('/:id', async (c) => {
 
     const { data, error } = await supabase
       .from('thread_inventory')
-      .select('*, thread_types(code, name, color, color_code, density_grams_per_meter)')
+      .select('*, thread_types(code, name, color_data:colors!color_id(name, hex_code), density_grams_per_meter)')
       .eq('id', parsedId)
       .single()
 

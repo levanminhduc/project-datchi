@@ -103,7 +103,7 @@
           <div class="row items-center no-wrap">
             <q-badge
               rounded
-              :style="{ backgroundColor: props.row.cone?.thread_type?.hex_color || '#ccc' }"
+              :style="{ backgroundColor: props.row.cone?.thread_type?.color_data?.hex_code || '#ccc' }"
               class="q-mr-xs"
               style="width: 12px; height: 12px; border: 1px solid rgba(0,0,0,0.1)"
             />
@@ -444,7 +444,7 @@
                   <q-item-label class="row items-center">
                     <q-badge
                       rounded
-                      :style="{ backgroundColor: detailDialog.recovery.cone?.thread_type?.color_code || '#ccc' }"
+                      :style="{ backgroundColor: detailDialog.recovery.cone?.thread_type?.color_data?.hex_code || '#ccc' }"
                       class="q-mr-xs"
                       style="width: 10px; height: 10px"
                     />

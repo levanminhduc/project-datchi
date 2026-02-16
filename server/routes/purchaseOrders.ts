@@ -20,6 +20,7 @@ purchaseOrders.get('/', async (c) => {
     let dbQuery = supabase
       .from('purchase_orders')
       .select(selectQuery)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
     // Apply filters
@@ -105,7 +106,7 @@ purchaseOrders.post('/', async (c) => {
         customer_name: body.customer_name,
         order_date: body.order_date,
         delivery_date: body.delivery_date,
-        status: body.status || 'pending',
+        status: body.status || 'PENDING',
         priority: body.priority || 'normal',
         notes: body.notes,
       }])
@@ -183,10 +184,12 @@ purchaseOrders.delete('/:id', async (c) => {
       return c.json({ data: null, error: 'ID khong hop le' }, 400)
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('purchase_orders')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)
+      .select()
+      .single()
 
     if (error) {
       if (error.code === 'PGRST116') {
@@ -195,7 +198,7 @@ purchaseOrders.delete('/:id', async (c) => {
       throw error
     }
 
-    return c.json({ data: null, error: null, message: 'Xoa don hang thanh cong' })
+    return c.json({ data, error: null, message: 'Xoa don hang thanh cong' })
   } catch (err) {
     console.error('Error deleting purchase order:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)

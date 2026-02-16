@@ -48,7 +48,7 @@
         <div class="row items-center q-gutter-sm">
           <div
             class="color-dot"
-            :style="{ backgroundColor: activeRecovery.cone?.thread_type?.color_code || '#ccc' }"
+            :style="{ backgroundColor: activeRecovery.cone?.thread_type?.color_data?.hex_code || '#ccc' }"
           />
           <div class="col">
             <div class="text-weight-medium">

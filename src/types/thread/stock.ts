@@ -30,8 +30,7 @@ export interface ThreadStockWithRelations extends ThreadStockRow {
     id: number
     code: string
     name: string
-    color?: string
-    color_code?: string
+    color_data?: { name: string; hex_code: string } | null
   }
   warehouse?: {
     id: number

@@ -37,8 +37,6 @@ interface RecoveryWithCone extends RecoveryRow {
       id: number
       code: string
       name: string
-      color: string | null
-      color_code: string | null
       density_grams_per_meter: number
     }
   }
@@ -101,7 +99,7 @@ recovery.get('/', async (c) => {
           is_partial,
           warehouse_id,
           thread_type_id,
-          thread_types(id, code, name, color, color_code, density_grams_per_meter)
+          thread_types(id, code, name, density_grams_per_meter)
         )
       `)
       .order('created_at', { ascending: false })
@@ -185,7 +183,7 @@ recovery.get('/:id', async (c) => {
           is_partial,
           warehouse_id,
           thread_type_id,
-          thread_types(id, code, name, color, color_code, density_grams_per_meter)
+          thread_types(id, code, name, density_grams_per_meter)
         )
       `)
       .eq('id', parsedId)
@@ -306,7 +304,7 @@ recovery.post('/initiate', async (c) => {
           is_partial,
           warehouse_id,
           thread_type_id,
-          thread_types(id, code, name, color, color_code, density_grams_per_meter)
+          thread_types(id, code, name, density_grams_per_meter)
         )
       `)
       .single()
@@ -465,7 +463,7 @@ recovery.post('/:id/weigh', async (c) => {
           is_partial,
           warehouse_id,
           thread_type_id,
-          thread_types(id, code, name, color, color_code, density_grams_per_meter)
+          thread_types(id, code, name, density_grams_per_meter)
         )
       `)
       .single()
@@ -605,7 +603,7 @@ recovery.post('/:id/confirm', async (c) => {
           is_partial,
           warehouse_id,
           thread_type_id,
-          thread_types(id, code, name, color, color_code, density_grams_per_meter)
+          thread_types(id, code, name, density_grams_per_meter)
         )
       `)
       .single()
@@ -765,7 +763,7 @@ recovery.post('/:id/writeoff', async (c) => {
           is_partial,
           warehouse_id,
           thread_type_id,
-          thread_types(id, code, name, color, color_code, density_grams_per_meter)
+          thread_types(id, code, name, density_grams_per_meter)
         )
       `)
       .single()
@@ -910,7 +908,7 @@ recovery.post('/:id/reject', async (c) => {
           is_partial,
           warehouse_id,
           thread_type_id,
-          thread_types(id, code, name, color, color_code, density_grams_per_meter)
+          thread_types(id, code, name, density_grams_per_meter)
         )
       `)
       .single()

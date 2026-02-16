@@ -50,25 +50,15 @@ interface ReconciliationData {
   rows: ReconciliationRow[]
 }
 
-interface OverLimitItem {
-  issue_request_id: number
-  issue_code: string
+interface OverQuotaItem {
   po_number: string | null
   style_code: string | null
   color_name: string | null
   thread_name: string | null
-  over_limit_notes: string
-  quantity_meters: number
-  issued_at: string
-}
-
-interface OverLimitGroup {
-  issue_request_id: number
-  issue_code: string
-  po_number: string | null
-  style_code: string | null
-  color_name: string | null
-  items: OverLimitItem[]
+  quota_meters: number
+  total_issued_meters: number
+  consumed_meters: number
+  consumption_percentage: number
 }
 
 // ============ HELPER FUNCTIONS ============
@@ -206,7 +196,7 @@ reconciliation.get('/', async (c) => {
 
     // Build query from view
     let query = supabase
-      .from('v_issue_reconciliation')
+      .from('v_issue_reconciliation_v2')
       .select('*')
 
     // Apply filters
@@ -219,10 +209,6 @@ reconciliation.get('/', async (c) => {
     if (filters.color_id) {
       query = query.eq('color_id', filters.color_id)
     }
-
-    // Note: department and date filters require joining thread_issue_requests
-    // For now, we query the view directly. If these filters are needed,
-    // we may need to query the base table with joins instead.
 
     const { data: rows, error } = await query
 
@@ -276,7 +262,7 @@ reconciliation.get('/export', async (c) => {
 
     // Build query from view
     let query = supabase
-      .from('v_issue_reconciliation')
+      .from('v_issue_reconciliation_v2')
       .select('*')
 
     // Apply filters
@@ -340,27 +326,10 @@ reconciliation.get('/export', async (c) => {
  */
 reconciliation.get('/over-limit', async (c) => {
   try {
-    // Query thread_issue_items where over_limit_notes IS NOT NULL
     const { data: items, error } = await supabase
-      .from('thread_issue_items')
-      .select(`
-        id,
-        issue_request_id,
-        quantity_meters,
-        over_limit_notes,
-        issued_at,
-        issue_request:thread_issue_requests(
-          id,
-          issue_code,
-          po:purchase_orders(po_number),
-          style:styles(style_code),
-          color:colors(name),
-          thread_type:thread_types(name)
-        )
-      `)
-      .not('over_limit_notes', 'is', null)
-      .neq('over_limit_notes', '')
-      .order('issued_at', { ascending: false })
+      .from('v_issue_reconciliation_v2')
+      .select('*')
+      .eq('is_over_quota', true)
 
     if (error) {
       console.error('Over limit query error:', error)
@@ -370,44 +339,21 @@ reconciliation.get('/over-limit', async (c) => {
       }, 500)
     }
 
-    // Transform and group by issue_request_id
-    const groupedMap = new Map<number, OverLimitGroup>()
+    const overQuotaItems: OverQuotaItem[] = (items || []).map((item: any) => ({
+      po_number: item.po_number || null,
+      style_code: item.style_code || null,
+      color_name: item.color_name || null,
+      thread_name: item.thread_name || null,
+      quota_meters: Number(item.quota_meters) || 0,
+      total_issued_meters: Number(item.total_issued_meters) || 0,
+      consumed_meters: Number(item.consumed_meters) || 0,
+      consumption_percentage: Number(item.consumption_percentage) || 0,
+    }))
 
-    ;(items || []).forEach((item: any) => {
-      const requestId = item.issue_request_id
-      const request = item.issue_request
-
-      if (!groupedMap.has(requestId)) {
-        groupedMap.set(requestId, {
-          issue_request_id: requestId,
-          issue_code: request?.issue_code || '',
-          po_number: request?.po?.po_number || null,
-          style_code: request?.style?.style_code || null,
-          color_name: request?.color?.name || null,
-          items: [],
-        })
-      }
-
-      const group = groupedMap.get(requestId)!
-      group.items.push({
-        issue_request_id: requestId,
-        issue_code: request?.issue_code || '',
-        po_number: request?.po?.po_number || null,
-        style_code: request?.style?.style_code || null,
-        color_name: request?.color?.name || null,
-        thread_name: request?.thread_type?.name || null,
-        over_limit_notes: item.over_limit_notes || '',
-        quantity_meters: Number(item.quantity_meters) || 0,
-        issued_at: item.issued_at || '',
-      })
-    })
-
-    const groups = Array.from(groupedMap.values())
-
-    return c.json<ThreadApiResponse<OverLimitGroup[]>>({
-      data: groups,
+    return c.json<ThreadApiResponse<OverQuotaItem[]>>({
+      data: overQuotaItems,
       error: null,
-      message: `Tìm thấy ${groups.length} phiếu có xuat vượt định mức`,
+      message: `Tìm thấy ${overQuotaItems.length} mục vượt định mức`,
     })
   } catch (err) {
     console.error('Over limit error:', err)

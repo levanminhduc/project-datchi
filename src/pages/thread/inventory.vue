@@ -190,9 +190,9 @@
             <q-td :props="props">
               <div class="row items-center q-gutter-x-xs">
                 <div
-                  v-if="props.row.thread_type?.color_code"
+                  v-if="props.row.thread_type?.color_data?.hex_code"
                   class="color-dot shadow-1"
-                  :style="{ backgroundColor: props.row.thread_type.color_code }"
+                  :style="{ backgroundColor: props.row.thread_type.color_data.hex_code }"
                 />
                 <span class="text-weight-medium text-primary">{{ props.row.thread_type?.name || '---' }}</span>
               </div>
@@ -444,9 +444,9 @@
                   </div>
                   <div class="row items-center q-gutter-x-xs">
                     <div
-                      v-if="detailDialog.cone.thread_type?.color_code"
+                      v-if="detailDialog.cone.thread_type?.color_data?.hex_code"
                       class="color-dot shadow-1"
-                      :style="{ backgroundColor: detailDialog.cone.thread_type.color_code }"
+                      :style="{ backgroundColor: detailDialog.cone.thread_type.color_data.hex_code }"
                     />
                     <div class="text-subtitle1 text-weight-medium">
                       {{ detailDialog.cone.thread_type?.name }}

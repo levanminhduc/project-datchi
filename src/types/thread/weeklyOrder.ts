@@ -1,11 +1,12 @@
 import type { CalculationResult } from './threadCalculation'
+import type { OrderWeekStatus, DeliveryStatus, InventoryReceiptStatus } from './enums'
 
 export interface ThreadOrderWeek {
   id: number
   week_name: string
   start_date: string | null
   end_date: string | null
-  status: 'draft' | 'confirmed' | 'cancelled'
+  status: OrderWeekStatus
   notes: string | null
   created_by: string | null
   created_at: string
@@ -100,17 +101,15 @@ export interface DeliveryRecord {
   supplier_id: number
   delivery_date: string
   actual_delivery_date: string | null
-  status: 'pending' | 'delivered'
+  status: DeliveryStatus
   notes: string | null
   created_at: string
   updated_at: string
-  // Inventory receiving fields
   received_quantity: number
-  inventory_status: 'pending' | 'partial' | 'received'
+  inventory_status: InventoryReceiptStatus
   warehouse_id: number | null
   received_by: string | null
   received_at: string | null
-  // Computed fields from API
   days_remaining?: number
   is_overdue?: boolean
   supplier_name?: string
@@ -129,11 +128,11 @@ export interface ReceiveDeliveryDTO {
 export interface UpdateDeliveryDTO {
   delivery_date?: string
   actual_delivery_date?: string | null
-  status?: 'pending' | 'delivered'
+  status?: DeliveryStatus
   notes?: string
 }
 
 export interface DeliveryFilter {
-  status?: 'pending' | 'delivered'
+  status?: DeliveryStatus
   week_id?: number
 }

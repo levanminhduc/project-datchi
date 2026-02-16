@@ -36,6 +36,7 @@ warehouses.get('/', async (c) => {
       .from('warehouses')
       .select('*')
       .eq('is_active', true)
+      .is('deleted_at', null)
       .order('parent_id', { ascending: true, nullsFirst: true })
       .order('sort_order', { ascending: true })
 
@@ -80,6 +81,7 @@ warehouses.get('/locations', async (c) => {
       .from('warehouses')
       .select('*')
       .eq('is_active', true)
+      .is('deleted_at', null)
       .eq('type', 'LOCATION')
       .order('sort_order', { ascending: true })
 
@@ -115,6 +117,7 @@ warehouses.get('/storage', async (c) => {
       .from('warehouses')
       .select('*')
       .eq('is_active', true)
+      .is('deleted_at', null)
       .eq('type', 'STORAGE')
 
     // Filter by parent location if provided

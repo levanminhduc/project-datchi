@@ -103,9 +103,9 @@
         <q-td :props="props">
           <div class="row items-center no-wrap q-gutter-xs">
             <div
-              v-if="props.row.thread_type?.color_code"
+              v-if="props.row.thread_type?.color_data?.hex_code"
               class="color-swatch"
-              :style="{ backgroundColor: props.row.thread_type.color_code }"
+              :style="{ backgroundColor: props.row.thread_type.color_data.hex_code }"
             />
             <span>{{ props.row.thread_type?.name || '-' }}</span>
           </div>

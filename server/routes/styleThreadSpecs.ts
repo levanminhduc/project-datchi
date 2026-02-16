@@ -17,7 +17,7 @@ styleThreadSpecs.get('/', async (c) => {
         *,
         styles:style_id (id, style_code, style_name),
         suppliers:supplier_id (id, name),
-        thread_types:tex_id (id, tex_number, name, color)
+        thread_types:tex_id (id, tex_number, name, color_data:colors!color_id(name, hex_code))
       `)
       .order('display_order', { ascending: true })
 
@@ -57,7 +57,7 @@ styleThreadSpecs.get('/:id', async (c) => {
         *,
         styles:style_id (id, style_code, style_name),
         suppliers:supplier_id (id, name),
-        thread_types:tex_id (id, tex_number, name, color)
+        thread_types:tex_id (id, tex_number, name, color_data:colors!color_id(name, hex_code))
       `)
       .eq('id', id)
       .single()
@@ -245,7 +245,7 @@ styleThreadSpecs.get('/:id/color-specs', async (c) => {
       .select(`
         *,
         colors:color_id (id, name, hex_code),
-        thread_types:thread_type_id (id, tex_number, name, color, supplier_id)
+        thread_types:thread_type_id (id, tex_number, name, color_data:colors!color_id(name, hex_code), supplier_id)
       `)
       .eq('style_thread_spec_id', id)
       .order('created_at', { ascending: false })
@@ -332,7 +332,7 @@ styleThreadSpecs.get('/by-style/:styleId/all-color-specs', async (c) => {
       .select(`
         *,
         colors:color_id (id, name, hex_code),
-        thread_types:thread_type_id (id, tex_number, name, color, supplier_id, meters_per_cone)
+        thread_types:thread_type_id (id, tex_number, name, color_data:colors!color_id(name, hex_code), supplier_id, meters_per_cone)
       `)
       .in('style_thread_spec_id', specIds)
       .order('created_at', { ascending: true })
@@ -373,7 +373,7 @@ styleThreadSpecs.put('/color-specs/:id', async (c) => {
       .select(`
         *,
         colors:color_id (id, name, hex_code),
-        thread_types:thread_type_id (id, tex_number, name, color, supplier_id, meters_per_cone)
+        thread_types:thread_type_id (id, tex_number, name, color_data:colors!color_id(name, hex_code), supplier_id, meters_per_cone)
       `)
       .single()
 

@@ -64,7 +64,7 @@ stock.get('/', async (c) => {
       .from('thread_stock')
       .select(`
         *,
-        thread_type:thread_types(id, code, name, color, color_code),
+        thread_type:thread_types(id, code, name),
         warehouse:warehouses(id, name, code)
       `)
       .order('received_date', { ascending: true })

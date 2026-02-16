@@ -23,9 +23,9 @@ function buildQueryString(filters?: ThreadTypeFilters): string {
   const params = new URLSearchParams()
 
   if (filters.search) params.append('search', filters.search)
-  if (filters.color) params.append('color', filters.color)
+  if (filters.color_id) params.append('color_id', String(filters.color_id))
   if (filters.material) params.append('material', filters.material)
-  if (filters.supplier) params.append('supplier', filters.supplier)
+  if (filters.supplier_id) params.append('supplier_id', String(filters.supplier_id))
   if (filters.is_active !== undefined) params.append('is_active', String(filters.is_active))
 
   const queryString = params.toString()

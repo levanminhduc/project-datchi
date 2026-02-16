@@ -351,7 +351,7 @@ interface ColorSpecRow {
   threadType: {
     id: number
     name: string
-    color: string | null
+    color_data?: { name: string; hex_code: string } | null
     meters_per_cone: number | null
     tex_number: string
   } | null
@@ -401,7 +401,7 @@ const getColorHex = (colorId: number): string => {
 
 const getThreadDisplayName = (row: ColorSpecRow): string => {
   if (!row.threadType) return '-'
-  return row.threadType.color || row.threadType.name || '-'
+  return row.threadType.color_data?.name || row.threadType.name || '-'
 }
 
 /**
@@ -422,7 +422,7 @@ const getThreadOptionsForSpec = (spec: StyleThreadSpec): { label: string; value:
       t.is_active
     )
     .map(t => ({
-      label: `${t.color || t.name || t.code}`,
+      label: `${t.color_data?.name || t.name || t.code}`,
       value: t.id,
     }))
 }
@@ -457,7 +457,7 @@ const colorGroups = computed<ColorGroup[]>(() => {
           ? {
               id: match.thread_types.id,
               name: match.thread_types.name,
-              color: match.thread_types.color ?? null,
+              color_data: match.thread_types.color_data ?? null,
               meters_per_cone: match.thread_types.meters_per_cone ?? null,
               tex_number: match.thread_types.tex_number,
             }

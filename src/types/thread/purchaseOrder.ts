@@ -1,4 +1,4 @@
-// Purchase Order Types
+import type { POStatus } from './enums'
 
 export interface PurchaseOrder {
   id: number
@@ -6,7 +6,7 @@ export interface PurchaseOrder {
   customer_name: string | null
   order_date: string | null
   delivery_date: string | null
-  status: 'pending' | 'confirmed' | 'in_production' | 'completed' | 'cancelled'
+  status: POStatus
   priority: 'low' | 'normal' | 'high' | 'urgent'
   notes: string | null
   created_at: string
@@ -18,7 +18,7 @@ export interface CreatePurchaseOrderDTO {
   customer_name?: string
   order_date?: string
   delivery_date?: string
-  status?: 'pending' | 'confirmed' | 'in_production' | 'completed' | 'cancelled'
+  status?: POStatus
   priority?: 'low' | 'normal' | 'high' | 'urgent'
   notes?: string
 }
@@ -28,7 +28,7 @@ export interface UpdatePurchaseOrderDTO {
   customer_name?: string
   order_date?: string
   delivery_date?: string
-  status?: 'pending' | 'confirmed' | 'in_production' | 'completed' | 'cancelled'
+  status?: POStatus
   priority?: 'low' | 'normal' | 'high' | 'urgent'
   notes?: string
 }

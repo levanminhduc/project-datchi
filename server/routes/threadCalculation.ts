@@ -20,14 +20,13 @@ interface SupplierJoin {
   lead_time_days: number | null
 }
 
-/** Joined thread_type shape from: thread_types:tex_id (id, tex_number, name, meters_per_cone, color, color_code) */
 interface ThreadTypeJoin {
   id: number
   tex_number: string
   name: string
   meters_per_cone: number | null
-  color: string | null
-  color_code: string | null
+  color_id: number | null
+  color_data: { name: string; hex_code: string | null } | null
 }
 
 /** Row shape from style_thread_specs with joined suppliers and thread_types */
@@ -133,7 +132,7 @@ const SPEC_SELECT = `
   meters_per_unit,
   tex_id,
   suppliers:supplier_id (id, name, lead_time_days),
-  thread_types:tex_id (id, tex_number, name, meters_per_cone, color, color_code)
+  thread_types:tex_id (id, tex_number, name, meters_per_cone, color_id, color_data:colors(name, hex_code))
 ` as const
 
 const COLOR_SPEC_SELECT = `
@@ -253,8 +252,8 @@ function buildCalculation(
     meters_per_unit: spec.meters_per_unit,
     total_meters: spec.meters_per_unit * quantity,
     meters_per_cone: spec.thread_types?.meters_per_cone || null,
-    thread_color: spec.thread_types?.color || null,
-    thread_color_code: spec.thread_types?.color_code || null,
+    thread_color: spec.thread_types?.color_data?.name || null,
+    thread_color_code: spec.thread_types?.color_data?.hex_code || null,
     supplier_id: spec.suppliers?.id || null,
     lead_time_days: (() => {
       if (!spec.suppliers) return null
@@ -651,8 +650,8 @@ threadCalculation.post('/calculate-by-po', async (c) => {
           meters_per_unit: spec.meters_per_unit,
           total_meters: spec.meters_per_unit * item.quantity,
           meters_per_cone: spec.thread_types?.meters_per_cone || null,
-          thread_color: spec.thread_types?.color || null,
-          thread_color_code: spec.thread_types?.color_code || null,
+          thread_color: spec.thread_types?.color_data?.name || null,
+          thread_color_code: spec.thread_types?.color_data?.hex_code || null,
           supplier_id: spec.suppliers?.id || null,
           lead_time_days: (() => {
             if (!spec.suppliers) return null

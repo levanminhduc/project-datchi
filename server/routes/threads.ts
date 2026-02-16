@@ -2,37 +2,12 @@ import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import type {
   ThreadApiResponse,
-  ThreadTypeRow,
   ThreadTypeWithRelations,
   CreateThreadTypeDTO,
   UpdateThreadTypeDTO,
 } from '../types/thread'
 
 const threads = new Hono()
-
-/**
- * Helper: Lookup color name from color_id for dual-write
- */
-async function lookupColorName(colorId: number): Promise<{ name: string; hex_code: string } | null> {
-  const { data } = await supabase
-    .from('colors')
-    .select('name, hex_code')
-    .eq('id', colorId)
-    .single()
-  return data
-}
-
-/**
- * Helper: Lookup supplier name from supplier_id for dual-write
- */
-async function lookupSupplierName(supplierId: number): Promise<string | null> {
-  const { data } = await supabase
-    .from('suppliers')
-    .select('name')
-    .eq('id', supplierId)
-    .single()
-  return data?.name || null
-}
 
 /**
  * GET /api/threads - List all thread types with filters
@@ -42,10 +17,8 @@ async function lookupSupplierName(supplierId: number): Promise<string | null> {
 threads.get('/', async (c) => {
   try {
     const search = c.req.query('search') || ''
-    const color = c.req.query('color')
     const colorId = c.req.query('color_id')
     const material = c.req.query('material')
-    const supplier = c.req.query('supplier')
     const supplierId = c.req.query('supplier_id')
     const isActive = c.req.query('is_active')
 
@@ -59,6 +32,7 @@ threads.get('/', async (c) => {
         supplier_data:suppliers(id, code, name),
         suppliers:thread_type_supplier(id, supplier_item_code, unit_price, is_active, supplier:suppliers(id, code, name))
       `)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
     // Apply search filter - searches code and name
@@ -68,21 +42,13 @@ threads.get('/', async (c) => {
 
     // Apply individual filters
     if (colorId) {
-      // Filter by color FK (new way)
       query = query.eq('color_id', parseInt(colorId))
-    } else if (color) {
-      // Filter by color text (legacy)
-      query = query.eq('color', color)
     }
     if (material) {
       query = query.eq('material', material)
     }
     if (supplierId) {
-      // Filter by supplier FK (new way)
       query = query.eq('supplier_id', parseInt(supplierId))
-    } else if (supplier) {
-      // Filter by supplier text (legacy)
-      query = query.ilike('supplier', `%${supplier}%`)
     }
     if (isActive !== undefined) {
       query = query.eq('is_active', isActive === 'true')
@@ -171,7 +137,6 @@ threads.get('/:id', async (c) => {
 /**
  * POST /api/threads - Create thread type
  * Checks for duplicate code before insert (returns 409)
- * Implements dual-write: writes both FK fields and legacy text fields
  */
 threads.post('/', async (c) => {
   try {
@@ -199,35 +164,11 @@ threads.post('/', async (c) => {
       )
     }
 
-    // Dual-write: If color_id provided, lookup color name for legacy field
-    let colorName = body.color?.trim() || null
-    let colorCode = body.color_code?.trim() || null
-    if (body.color_id) {
-      const colorData = await lookupColorName(body.color_id)
-      if (colorData) {
-        colorName = colorData.name
-        colorCode = colorData.hex_code
-      }
-    }
-
-    // Dual-write: If supplier_id provided, lookup supplier name for legacy field
-    let supplierName = body.supplier?.trim() || null
-    if (body.supplier_id) {
-      const name = await lookupSupplierName(body.supplier_id)
-      if (name) {
-        supplierName = name
-      }
-    }
-
-    // Insert with FK and legacy fields
     const insertData = {
       code: body.code.trim(),
       name: body.name.trim(),
       density_grams_per_meter: body.density_grams_per_meter,
-      color: colorName,
-      color_code: colorCode,
       color_id: body.color_id || null,
-      supplier: supplierName,
       supplier_id: body.supplier_id || null,
       color_supplier_id: body.color_supplier_id || null,
       ...(body.material && { material: body.material }),
@@ -275,7 +216,6 @@ threads.post('/', async (c) => {
 /**
  * PUT /api/threads/:id - Update thread type
  * If updating code, checks for duplicates (excludes current record)
- * Implements dual-write: writes both FK fields and legacy text fields
  */
 threads.put('/:id', async (c) => {
   try {
@@ -332,43 +272,8 @@ threads.put('/:id', async (c) => {
     if (body.lead_time_days !== undefined) updateData.lead_time_days = body.lead_time_days
     if (body.is_active !== undefined) updateData.is_active = body.is_active
     if (body.color_supplier_id !== undefined) updateData.color_supplier_id = body.color_supplier_id
-
-    // Dual-write: Handle color_id and color fields
-    if (body.color_id !== undefined) {
-      updateData.color_id = body.color_id
-      if (body.color_id) {
-        const colorData = await lookupColorName(body.color_id)
-        if (colorData) {
-          updateData.color = colorData.name
-          updateData.color_code = colorData.hex_code
-        }
-      } else {
-        // Clearing color_id, also clear legacy fields if not explicitly set
-        if (body.color === undefined) updateData.color = null
-        if (body.color_code === undefined) updateData.color_code = null
-      }
-    } else {
-      // Legacy: update text fields directly
-      if (body.color !== undefined) updateData.color = body.color?.trim() || null
-      if (body.color_code !== undefined) updateData.color_code = body.color_code?.trim() || null
-    }
-
-    // Dual-write: Handle supplier_id and supplier fields
-    if (body.supplier_id !== undefined) {
-      updateData.supplier_id = body.supplier_id
-      if (body.supplier_id) {
-        const supplierName = await lookupSupplierName(body.supplier_id)
-        if (supplierName) {
-          updateData.supplier = supplierName
-        }
-      } else {
-        // Clearing supplier_id, also clear legacy field if not explicitly set
-        if (body.supplier === undefined) updateData.supplier = null
-      }
-    } else {
-      // Legacy: update text field directly
-      if (body.supplier !== undefined) updateData.supplier = body.supplier?.trim() || null
-    }
+    if (body.color_id !== undefined) updateData.color_id = body.color_id
+    if (body.supplier_id !== undefined) updateData.supplier_id = body.supplier_id
 
     const { data, error } = await supabase
       .from('thread_types')
@@ -432,10 +337,9 @@ threads.delete('/:id', async (c) => {
       )
     }
 
-    // Soft delete - set is_active to false
     const { error } = await supabase
       .from('thread_types')
-      .update({ is_active: false })
+      .update({ is_active: false, deleted_at: new Date().toISOString() })
       .eq('id', id)
 
     if (error) {

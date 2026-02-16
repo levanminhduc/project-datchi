@@ -79,7 +79,7 @@ lots.post('/', async (c) => {
       })
       .select(`
         *,
-        thread_type:thread_types(id, code, name, color_code),
+        thread_type:thread_types(id, code, name, color_data:colors!color_id(name, hex_code)),
         warehouse:warehouses(id, code, name),
         supplier_data:suppliers(id, code, name)
       `)
@@ -125,7 +125,7 @@ lots.get('/', async (c) => {
       .from('lots')
       .select(`
         *,
-        thread_type:thread_types(id, code, name, color_code),
+        thread_type:thread_types(id, code, name, color_data:colors!color_id(name, hex_code)),
         warehouse:warehouses(id, code, name),
         supplier_data:suppliers(id, code, name)
       `)
@@ -215,7 +215,7 @@ lots.get('/:id', async (c) => {
       .from('lots')
       .select(`
         *,
-        thread_type:thread_types(id, code, name, color_code),
+        thread_type:thread_types(id, code, name, color_data:colors!color_id(name, hex_code)),
         warehouse:warehouses(id, code, name)
       `)
       .eq('id', id)
@@ -294,7 +294,7 @@ lots.patch('/:id', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_type:thread_types(id, code, name, color_code),
+        thread_type:thread_types(id, code, name, color_data:colors!color_id(name, hex_code)),
         warehouse:warehouses(id, code, name),
         supplier_data:suppliers(id, code, name)
       `)
@@ -339,7 +339,7 @@ lots.get('/:id/cones', async (c) => {
       .from('thread_inventory')
       .select(`
         *,
-        thread_type:thread_types(id, code, name, color_code),
+        thread_type:thread_types(id, code, name, color_data:colors!color_id(name, hex_code)),
         warehouse:warehouses(id, code, name)
       `)
       .eq('lot_id', id)

@@ -73,6 +73,7 @@ employees.get('/count', async (c) => {
       .from('employees')
       .select('*', { count: 'exact', head: true })
       .eq('is_active', true)
+      .is('deleted_at', null)
 
     if (error) {
       console.error('Supabase error:', error)
@@ -106,6 +107,7 @@ employees.get('/departments', async (c) => {
       .select('department')
       .not('department', 'is', null)
       .eq('is_active', true)
+      .is('deleted_at', null)
 
     if (error) {
       console.error('Supabase error:', error)
@@ -145,6 +147,7 @@ employees.get('/', async (c) => {
     let query = supabase
       .from('employees')
       .select('id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at', { count: 'exact' })
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
     if (search) {
@@ -196,6 +199,7 @@ employees.get('/', async (c) => {
       let batchQuery = supabase
         .from('employees')
         .select('id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .range(offset, offset + BATCH_SIZE - 1)
 
@@ -483,7 +487,7 @@ employees.delete('/:id', async (c) => {
 
     const { error } = await supabase
       .from('employees')
-      .delete()
+      .update({ deleted_at: new Date().toISOString(), is_active: false })
       .eq('id', id)
 
     if (error) {

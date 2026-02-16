@@ -67,11 +67,11 @@
       <q-td :props="props">
         <div class="row items-center no-wrap q-gutter-sm">
           <div
-            v-if="props.row.color_code"
+            v-if="props.row.color_data?.hex_code"
             class="color-swatch"
-            :style="{ backgroundColor: props.row.color_code }"
+            :style="{ backgroundColor: props.row.color_data.hex_code }"
           />
-          <span>{{ props.row.color || '-' }}</span>
+          <span>{{ props.row.color_data?.name || '-' }}</span>
         </div>
       </q-td>
     </template>
@@ -252,7 +252,7 @@ const columns: QTableColumn[] = [
   {
     name: 'color',
     label: 'Màu',
-    field: 'color',
+    field: (row: any) => row.color_data?.name || '-',
     align: 'left',
     sortable: true,
   },

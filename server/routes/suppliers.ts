@@ -22,6 +22,7 @@ suppliers.get('/', async (c) => {
     let query = supabase
       .from('suppliers')
       .select('*')
+      .is('deleted_at', null)
       .order('name', { ascending: true })
 
     // Filter by is_active (default: only active)
@@ -266,10 +267,9 @@ suppliers.delete('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
-    // Always soft delete for suppliers (maintain history)
     const { data, error } = await supabase
       .from('suppliers')
-      .update({ is_active: false })
+      .update({ is_active: false, deleted_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .single()

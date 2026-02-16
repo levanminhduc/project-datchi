@@ -80,8 +80,7 @@ export interface ConeSummaryRow {
   thread_type_id: number
   thread_code: string
   thread_name: string
-  color: string | null
-  color_code: string | null
+  color_data: { name: string; hex_code: string | null } | null
   material: string
   tex_number: number | null
   meters_per_cone: number | null

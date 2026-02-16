@@ -96,7 +96,7 @@ const onCancel = () => {
                 <div 
                   class="color-dot" 
                   :style="{ 
-                    backgroundColor: opt.color_code || '#ccc',
+                    backgroundColor: opt.color_data?.hex_code || '#ccc',
                     width: '20px',
                     height: '20px',
                     borderRadius: '50%',

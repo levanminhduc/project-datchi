@@ -44,8 +44,8 @@
           <q-avatar
             v-else
             size="32px"
-            :color="opt.thread_type?.color_code ? undefined : 'grey-3'"
-            :style="opt.thread_type?.color_code ? { backgroundColor: opt.thread_type.color_code } : undefined"
+            :color="opt.thread_type?.color_data?.hex_code ? undefined : 'grey-3'"
+            :style="opt.thread_type?.color_data?.hex_code ? { backgroundColor: opt.thread_type.color_data.hex_code } : undefined"
           >
             <span class="text-caption text-weight-bold text-white">
               {{ (opt.thread_type?.code || 'L').substring(0, 2).toUpperCase() }}

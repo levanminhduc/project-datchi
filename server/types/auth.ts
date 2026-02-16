@@ -42,8 +42,6 @@ export interface EmployeeAuthRow {
   failed_login_attempts: number
   locked_until: string | null
   last_login_at: string | null
-  refresh_token: string | null
-  refresh_token_expires_at: string | null
 }
 
 export interface RoleRow {

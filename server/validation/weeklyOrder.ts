@@ -24,8 +24,8 @@ export const UpdateWeeklyOrderSchema = z.object({
 })
 
 export const UpdateStatusSchema = z.object({
-  status: z.enum(['draft', 'confirmed', 'cancelled'], {
-    message: 'Trạng thái không hợp lệ. Chọn: draft, confirmed, cancelled',
+  status: z.enum(['DRAFT', 'CONFIRMED', 'CANCELLED'], {
+    message: 'Trạng thái không hợp lệ. Chọn: DRAFT, CONFIRMED, CANCELLED',
   }),
 })
 
@@ -42,7 +42,7 @@ export const SaveResultsSchema = z.object({
 export const UpdateDeliverySchema = z.object({
   delivery_date: z.string().optional(),
   actual_delivery_date: z.string().nullable().optional(),
-  status: z.enum(['pending', 'delivered']).optional(),
+  status: z.enum(['PENDING', 'DELIVERED']).optional(),
   notes: z.string().nullable().optional(),
 })
 

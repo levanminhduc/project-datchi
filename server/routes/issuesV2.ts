@@ -428,14 +428,14 @@ issuesV2.get('/order-options', async (c) => {
         .eq('po_id', po_id)
         .eq('style_id', style_id)
         .not('color_id', 'is', null)
-        .eq('thread_order_weeks.status', 'confirmed')
+        .eq('thread_order_weeks.status', 'CONFIRMED')
 
       if (error) {
         // Try alternative query without join filter
         const { data: weekIds } = await supabase
           .from('thread_order_weeks')
           .select('id')
-          .eq('status', 'confirmed')
+          .eq('status', 'CONFIRMED')
 
         if (!weekIds || weekIds.length === 0) {
           return c.json({
@@ -506,7 +506,7 @@ issuesV2.get('/order-options', async (c) => {
       const { data: weekIds } = await supabase
         .from('thread_order_weeks')
         .select('id')
-        .eq('status', 'confirmed')
+        .eq('status', 'CONFIRMED')
 
       if (!weekIds || weekIds.length === 0) {
         return c.json({
@@ -561,7 +561,7 @@ issuesV2.get('/order-options', async (c) => {
     const { data: weekIds } = await supabase
       .from('thread_order_weeks')
       .select('id')
-      .eq('status', 'confirmed')
+      .eq('status', 'CONFIRMED')
 
     if (!weekIds || weekIds.length === 0) {
       return c.json({

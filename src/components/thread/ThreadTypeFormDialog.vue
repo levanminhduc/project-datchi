@@ -39,10 +39,7 @@ const materialOptions = [
 const defaultForm: ThreadTypeFormData = {
   code: '',
   name: '',
-  color: '',
-  color_code: '',
   color_id: null,
-  supplier: '',
   supplier_id: null,
   material: ThreadMaterial.POLYESTER,
   tex_number: undefined,
@@ -55,7 +52,6 @@ const defaultForm: ThreadTypeFormData = {
 
 const form = ref<ThreadTypeFormData>({ ...defaultForm })
 
-// Store color/supplier data for dual-write
 const selectedColorData = ref<Color | null>(null)
 const selectedSupplierData = ref<Supplier | null>(null)
 
@@ -66,10 +62,7 @@ const resetForm = () => {
     form.value = {
       code: props.threadType.code,
       name: props.threadType.name,
-      color: props.threadType.color || '',
-      color_code: props.threadType.color_code || '',
       color_id: props.threadType.color_id,
-      supplier: props.threadType.supplier || '',
       supplier_id: props.threadType.supplier_id,
       material: props.threadType.material,
       tex_number: props.threadType.tex_number ?? undefined,
@@ -127,47 +120,23 @@ watch(() => props.threadType, () => {
   }
 }, { deep: true })
 
-/**
- * Handle color selection - update both ID and legacy text fields
- */
 const handleColorChange = (colorData: Color | null) => {
   selectedColorData.value = colorData
-  if (colorData) {
-    form.value.color = colorData.name
-    form.value.color_code = colorData.hex_code
-  } else {
-    form.value.color = ''
-    form.value.color_code = ''
-  }
 }
 
-/**
- * Handle supplier selection - update both ID and legacy text fields
- */
 const handleSupplierChange = (supplierData: Supplier | null) => {
   selectedSupplierData.value = supplierData
-  if (supplierData) {
-    form.value.supplier = supplierData.name
-    // Update lead_time_days from supplier if available
-    if (supplierData.lead_time_days) {
-      form.value.lead_time_days = supplierData.lead_time_days
-    }
-  } else {
-    form.value.supplier = ''
+  if (supplierData?.lead_time_days) {
+    form.value.lead_time_days = supplierData.lead_time_days
   }
 }
 
 const onSubmit = () => {
-  // Deep copy form to avoid reactive issues
   const submitData = { ...form.value }
-  
-  // Ensure color_id and supplier_id are included
-  // Backend will auto-populate legacy text fields via dual-write
-  
-  // Clean up undefined optional values
+
   if (submitData.tex_number === undefined) delete submitData.tex_number
   if (submitData.meters_per_cone === undefined) delete submitData.meters_per_cone
-  
+
   emit('submit', submitData)
 }
 
@@ -216,21 +185,17 @@ const onCancel = () => {
       </div>
       <div class="col-12 col-sm-6">
         <AppInput
-          v-model="form.color_code"
+          :model-value="selectedColorData?.hex_code || ''"
           label="Mã màu"
           readonly
           hint="Tự động điền từ màu đã chọn"
         >
           <template #append>
             <div
-              v-if="form.color_code"
+              v-if="selectedColorData?.hex_code"
               class="color-preview shadow-1"
-              :style="{ backgroundColor: form.color_code.startsWith('#') ? form.color_code : undefined }"
-            >
-              <q-tooltip v-if="!form.color_code.startsWith('#')">
-                Chỉ hiển thị xem trước cho mã HEX (bắt đầu bằng #)
-              </q-tooltip>
-            </div>
+              :style="{ backgroundColor: selectedColorData.hex_code }"
+            />
           </template>
         </AppInput>
       </div>

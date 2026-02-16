@@ -60,19 +60,15 @@ export interface ThreadTypeRow {
   id: number
   code: string
   name: string
-  color: string | null
-  color_code: string | null
   material: ThreadMaterial
   tex_number: number | null
   density_grams_per_meter: number
   meters_per_cone: number | null
-  supplier: string | null
   reorder_level_meters: number
   lead_time_days: number
   is_active: boolean
   created_at: string
   updated_at: string
-  // Thread restructure FK fields (nullable during migration)
   color_id: number | null
   supplier_id: number | null
   color_supplier_id: number | null
@@ -197,16 +193,12 @@ export interface WarehouseTreeNode extends WarehouseRow {
 export interface CreateThreadTypeDTO {
   code: string
   name: string
-  color?: string
-  color_code?: string
   material?: ThreadMaterial
   tex_number?: number
   density_grams_per_meter: number
   meters_per_cone?: number
-  supplier?: string
   reorder_level_meters?: number
   lead_time_days?: number
-  // Thread restructure FK fields (dual-write)
   color_id?: number
   supplier_id?: number
   color_supplier_id?: number
@@ -348,8 +340,7 @@ export interface ConeSummaryRow {
   thread_type_id: number
   thread_code: string
   thread_name: string
-  color: string | null
-  color_code: string | null
+  color_data: { name: string; hex_code: string | null } | null
   material: ThreadMaterial
   tex_number: number | null
   meters_per_cone: number | null

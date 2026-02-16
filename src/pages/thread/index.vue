@@ -86,7 +86,6 @@
         </q-inner-loading>
       </template>
 
-      <!-- Color Column - Display from color_data joined object -->
       <template #body-cell-color="props">
         <q-td :props="props">
           <div class="row items-center q-gutter-x-sm">
@@ -95,20 +94,14 @@
               class="color-indicator shadow-1"
               :style="{ backgroundColor: props.row.color_data.hex_code }"
             />
-            <div
-              v-else-if="props.row.color_code"
-              class="color-indicator shadow-1"
-              :style="{ backgroundColor: props.row.color_code }"
-            />
-            <span>{{ props.row.color_data?.name || props.row.color || '---' }}</span>
+            <span>{{ props.row.color_data?.name || '---' }}</span>
           </div>
         </q-td>
       </template>
 
-      <!-- Supplier Column - Display suppliers from junction table or legacy supplier_data -->
+      <!-- Supplier Column -->
       <template #body-cell-supplier="props">
         <q-td :props="props">
-          <!-- New: Show suppliers from junction table if available -->
           <div
             v-if="props.row.suppliers && props.row.suppliers.length > 0"
             class="row items-center no-wrap"
@@ -138,7 +131,6 @@
               </q-tooltip>
             </q-badge>
           </div>
-          <!-- Fallback: Legacy single supplier display -->
           <div
             v-else-if="props.row.supplier_data"
             class="row items-center no-wrap"
@@ -358,38 +350,12 @@
         </div>
         
         <div class="col-12 col-sm-6">
-          <AppInput
-            v-model="formData.color"
-            label="Tên Màu"
-            placeholder="VD: Trắng"
+          <ColorSelector
+            v-model="formData.color_id"
+            label="Màu Chỉ"
+            clearable
           />
         </div>
-        <div class="col-12 col-sm-6">
-          <AppInput
-            v-model="formData.color_code"
-            label="Mã Màu (HEX)"
-            placeholder="#FFFFFF"
-          >
-            <template #append>
-              <q-icon
-                name="colorize"
-                class="cursor-pointer"
-              >
-                <q-popup-proxy
-                  cover
-                  transition-show="scale"
-                  transition-hide="scale"
-                >
-                  <q-color
-                    v-model="formData.color_code"
-                    :dark="$q.dark.isActive"
-                  />
-                </q-popup-proxy>
-              </q-icon>
-            </template>
-          </AppInput>
-        </div>
-
         <div class="col-12 col-sm-6">
           <AppSelect
             v-model="formData.material"
@@ -428,9 +394,10 @@
         </div>
 
         <div class="col-12 col-sm-6">
-          <AppInput
-            v-model="formData.supplier"
+          <SupplierSelector
+            v-model="formData.supplier_id"
             label="Nhà Cung Cấp"
+            clearable
           />
         </div>
         <div class="col-12 col-sm-6">
@@ -544,12 +511,12 @@
               </div>
               <div class="row items-center q-gutter-x-sm">
                 <div
-                  v-if="detailDialog.threadType.color_code"
+                  v-if="detailDialog.threadType.color_data?.hex_code"
                   class="color-indicator shadow-1"
-                  :style="{ backgroundColor: detailDialog.threadType.color_code }"
+                  :style="{ backgroundColor: detailDialog.threadType.color_data.hex_code }"
                 />
                 <div class="text-subtitle1">
-                  {{ detailDialog.threadType.color || '---' }}
+                  {{ detailDialog.threadType.color_data?.name || '---' }}
                 </div>
               </div>
             </div>
@@ -592,7 +559,7 @@
                 Nhà cung cấp
               </div>
               <div class="text-subtitle1">
-                {{ detailDialog.threadType.supplier || '---' }}
+                {{ detailDialog.threadType.supplier_data?.name || '---' }}
               </div>
             </div>
 
@@ -666,7 +633,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { type QTableColumn, useQuasar } from 'quasar'
+import { type QTableColumn } from 'quasar'
 import { useThreadTypes, useSnackbar } from '@/composables'
 import { ThreadMaterial } from '@/types/thread/enums'
 import type { ThreadType, ThreadTypeFormData } from '@/types/thread/thread-type'
@@ -676,7 +643,6 @@ import ThreadTypeSuppliersDialog from '@/components/thread/ThreadTypeSuppliersDi
 
 // Composables
 const snackbar = useSnackbar()
-const $q = useQuasar()
 const {
   threadTypes,
   loading,
@@ -744,14 +710,14 @@ const columns: QTableColumn[] = [
   {
     name: 'color',
     label: 'Màu Sắc',
-    field: (row: ThreadType) => row.color_data?.name || row.color,
+    field: (row: ThreadType) => row.color_data?.name,
     align: 'left',
     sortable: true,
   },
   {
     name: 'supplier',
     label: 'Nhà Cung Cấp',
-    field: (row: ThreadType) => row.supplier_data?.name || row.supplier,
+    field: (row: ThreadType) => row.supplier_data?.name,
     align: 'left',
     sortable: true,
   },
@@ -801,8 +767,6 @@ const filteredThreadTypes = computed(() => {
     result = result.filter((type) =>
       type.code.toLowerCase().includes(query) ||
       type.name.toLowerCase().includes(query) ||
-      type.supplier?.toLowerCase().includes(query) ||
-      type.color?.toLowerCase().includes(query) ||
       type.color_data?.name.toLowerCase().includes(query) ||
       type.supplier_data?.name.toLowerCase().includes(query)
     )
@@ -843,13 +807,12 @@ const suppliersDialog = reactive({
 const formData = reactive<ThreadTypeFormData>({
   code: '',
   name: '',
-  color: '',
-  color_code: '',
+  color_id: null,
+  supplier_id: null,
   material: ThreadMaterial.POLYESTER,
   tex_number: undefined,
   density_grams_per_meter: 0,
   meters_per_cone: undefined,
-  supplier: '',
   reorder_level_meters: 1000,
   lead_time_days: 7,
   is_active: true,
@@ -874,13 +837,12 @@ const openEditDialog = (type: ThreadType) => {
   Object.assign(formData, {
     code: type.code,
     name: type.name,
-    color: type.color || '',
-    color_code: type.color_code || '',
+    color_id: type.color_id,
+    supplier_id: type.supplier_id,
     material: type.material,
     tex_number: type.tex_number,
     density_grams_per_meter: type.density_grams_per_meter,
     meters_per_cone: type.meters_per_cone,
-    supplier: type.supplier || '',
     reorder_level_meters: type.reorder_level_meters,
     lead_time_days: type.lead_time_days,
     is_active: type.is_active,
@@ -892,13 +854,12 @@ const resetFormData = () => {
   Object.assign(formData, {
     code: '',
     name: '',
-    color: '',
-    color_code: '',
+    color_id: null,
+    supplier_id: null,
     material: ThreadMaterial.POLYESTER,
     tex_number: undefined,
     density_grams_per_meter: 0,
     meters_per_cone: undefined,
-    supplier: '',
     reorder_level_meters: 1000,
     lead_time_days: 7,
     is_active: true,
@@ -935,17 +896,15 @@ const handleInlineUpdate = async (row: ThreadType, field: keyof ThreadTypeFormDa
   // Create a copy of the row with the updated value for calculation/payload
   const updatedData = { ...row, [field]: val }
   
-  // Prepare payload based on ThreadTypeFormData
   const payload: ThreadTypeFormData = {
     code: updatedData.code,
     name: updatedData.name,
-    color: updatedData.color || undefined,
-    color_code: updatedData.color_code || undefined,
+    color_id: updatedData.color_id,
+    supplier_id: updatedData.supplier_id,
     material: updatedData.material,
     tex_number: updatedData.tex_number || undefined,
     density_grams_per_meter: updatedData.density_grams_per_meter,
     meters_per_cone: updatedData.meters_per_cone || undefined,
-    supplier: updatedData.supplier || undefined,
     reorder_level_meters: updatedData.reorder_level_meters,
     lead_time_days: updatedData.lead_time_days,
     is_active: updatedData.is_active,

@@ -14,6 +14,7 @@ styles.get('/', async (c) => {
     let dbQuery = supabase
       .from('styles')
       .select('*')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
     // Apply filters
@@ -163,10 +164,12 @@ styles.delete('/:id', async (c) => {
       return c.json({ data: null, error: 'ID khong hop le' }, 400)
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('styles')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)
+      .select()
+      .single()
 
     if (error) {
       if (error.code === 'PGRST116') {
@@ -175,7 +178,7 @@ styles.delete('/:id', async (c) => {
       throw error
     }
 
-    return c.json({ data: null, error: null, message: 'Xoa ma hang thanh cong' })
+    return c.json({ data, error: null, message: 'Xoa ma hang thanh cong' })
   } catch (err) {
     console.error('Error deleting style:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -237,7 +240,7 @@ styles.get('/:id/thread-specs', async (c) => {
       .from('style_thread_specs')
       .select(`
         *,
-        suppliers:s supplier_id (id, name),
+        suppliers:supplier_id (id, name),
         thread_types:tex_id (id, tex_number, name)
       `)
       .eq('style_id', id)

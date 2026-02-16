@@ -43,7 +43,7 @@
         <div class="row items-center q-gutter-sm">
           <div
             class="color-dot"
-            :style="{ backgroundColor: selectedThreadType.color_code || '#ccc' }"
+            :style="{ backgroundColor: selectedThreadType.color_data?.hex_code || '#ccc' }"
           />
           <div>
             <div class="text-weight-medium">

@@ -85,3 +85,29 @@ export enum ThreadMaterial {
   RAYON = 'rayon',
   MIXED = 'mixed'
 }
+
+export enum POStatus {
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+  IN_PRODUCTION = 'IN_PRODUCTION',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum OrderWeekStatus {
+  DRAFT = 'DRAFT',
+  CONFIRMED = 'CONFIRMED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum DeliveryStatus {
+  PENDING = 'PENDING',
+  DELIVERED = 'DELIVERED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum InventoryReceiptStatus {
+  PENDING = 'PENDING',
+  PARTIAL = 'PARTIAL',
+  RECEIVED = 'RECEIVED'
+}

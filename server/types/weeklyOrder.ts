@@ -1,4 +1,4 @@
-export type WeeklyOrderStatus = 'draft' | 'confirmed' | 'cancelled'
+export type WeeklyOrderStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED'
 
 export interface ThreadOrderWeek {
   id: number

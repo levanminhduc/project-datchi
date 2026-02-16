@@ -477,9 +477,9 @@ onMounted(async () => {
               <q-item v-bind="itemProps">
                 <q-item-section avatar>
                   <q-avatar
-                    v-if="opt.color_code"
+                    v-if="opt.color_data?.hex_code"
                     size="24px"
-                    :style="{ backgroundColor: opt.color_code }"
+                    :style="{ backgroundColor: opt.color_data.hex_code }"
                   />
                   <q-icon
                     v-else

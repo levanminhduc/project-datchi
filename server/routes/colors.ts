@@ -22,6 +22,7 @@ colors.get('/', async (c) => {
     let query = supabase
       .from('colors')
       .select('*')
+      .is('deleted_at', null)
       .order('name', { ascending: true })
 
     // Filter by is_active (default: only active)
@@ -284,10 +285,9 @@ colors.delete('/:id', async (c) => {
       .limit(1)
 
     if (usedBy && usedBy.length > 0) {
-      // Soft delete instead of hard delete
       const { data, error } = await supabase
         .from('colors')
-        .update({ is_active: false })
+        .update({ is_active: false, deleted_at: new Date().toISOString() })
         .eq('id', id)
         .select()
         .single()
@@ -313,11 +313,12 @@ colors.delete('/:id', async (c) => {
       })
     }
 
-    // Hard delete if not in use
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('colors')
-      .delete()
+      .update({ is_active: false, deleted_at: new Date().toISOString() })
       .eq('id', id)
+      .select()
+      .single()
 
     if (error) {
       if (error.code === 'PGRST116') {
@@ -333,8 +334,8 @@ colors.delete('/:id', async (c) => {
       }, 500)
     }
 
-    return c.json<ColorApiResponse<null>>({
-      data: null,
+    return c.json<ColorApiResponse<ColorRow>>({
+      data: data as ColorRow,
       error: null,
       message: 'Đã xóa màu'
     })

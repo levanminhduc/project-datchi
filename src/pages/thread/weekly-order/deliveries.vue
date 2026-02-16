@@ -92,7 +92,7 @@
             <q-td :props="props">
               <q-badge
                 :color="getDaysColor(props.row.days_remaining, props.row.status)"
-                :label="props.row.status === 'delivered' ? '✓' : `${props.row.days_remaining} ngày`"
+                :label="props.row.status === DeliveryStatus.DELIVERED ? '✓' : `${props.row.days_remaining} ngày`"
               />
             </q-td>
           </template>
@@ -101,8 +101,8 @@
           <template #body-cell-status="props">
             <q-td :props="props">
               <q-badge
-                :color="props.row.status === 'delivered' ? 'green' : 'orange'"
-                :label="props.row.status === 'delivered' ? 'Đã giao' : 'Chờ giao'"
+                :color="props.row.status === DeliveryStatus.DELIVERED ? 'green' : 'orange'"
+                :label="props.row.status === DeliveryStatus.DELIVERED ? 'Đã giao' : 'Chờ giao'"
               />
             </q-td>
           </template>
@@ -110,14 +110,14 @@
           <!-- inventory_status badge (tracking tab) -->
           <template #body-cell-inventory_status="props">
             <q-td :props="props">
-              <template v-if="props.row.status === 'delivered'">
+              <template v-if="props.row.status === DeliveryStatus.DELIVERED">
                 <q-badge
-                  v-if="props.row.inventory_status === 'received'"
+                  v-if="props.row.inventory_status === InventoryReceiptStatus.RECEIVED"
                   color="green"
                   label="Đã nhập đủ"
                 />
                 <q-badge
-                  v-else-if="props.row.inventory_status === 'partial'"
+                  v-else-if="props.row.inventory_status === InventoryReceiptStatus.PARTIAL"
                   color="orange"
                   :label="`Chờ nhập (${getPendingQuantity(props.row)}/${props.row.total_cones || 0})`"
                 />
@@ -138,7 +138,7 @@
           <template #body-cell-actions="props">
             <q-td :props="props">
               <q-btn
-                v-if="props.row.status === 'pending'"
+                v-if="props.row.status === DeliveryStatus.PENDING"
                 size="sm"
                 color="green"
                 label="Đã giao"
@@ -341,6 +341,7 @@ import { warehouseService, type Warehouse } from '@/services/warehouseService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useAuth } from '@/composables/useAuth'
 import type { DeliveryRecord } from '@/types/thread'
+import { DeliveryStatus, InventoryReceiptStatus } from '@/types/thread/enums'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
@@ -357,8 +358,8 @@ const deliveries = ref<DeliveryRecord[]>([])
 const statusFilter = ref<string | null>(null)
 const statusOptions = [
   { label: 'Tất cả', value: null },
-  { label: 'Chờ giao', value: 'pending' },
-  { label: 'Đã giao', value: 'delivered' },
+  { label: 'Chờ giao', value: DeliveryStatus.PENDING },
+  { label: 'Đã giao', value: DeliveryStatus.DELIVERED },
 ]
 
 // Delivered dialog state
@@ -419,7 +420,7 @@ function formatDate(dateStr: string): string {
 }
 
 function getDaysColor(days: number | undefined, status: string): string {
-  if (status === 'delivered') return 'green'
+  if (status === DeliveryStatus.DELIVERED) return 'green'
   if (days === undefined) return 'grey'
   if (days <= 0) return 'red'
   if (days <= 3) return 'orange'
@@ -446,16 +447,16 @@ function getPendingQuantity(delivery: DeliveryRecord): number {
 
 function getInventoryStatusColor(status: string): string {
   switch (status) {
-    case 'received': return 'green'
-    case 'partial': return 'orange'
+    case InventoryReceiptStatus.RECEIVED: return 'green'
+    case InventoryReceiptStatus.PARTIAL: return 'orange'
     default: return 'grey'
   }
 }
 
 function getInventoryStatusLabel(status: string): string {
   switch (status) {
-    case 'received': return 'Đã nhập đủ'
-    case 'partial': return 'Nhập một phần'
+    case InventoryReceiptStatus.RECEIVED: return 'Đã nhập đủ'
+    case InventoryReceiptStatus.PARTIAL: return 'Nhập một phần'
     default: return 'Chưa nhập'
   }
 }
@@ -469,8 +470,8 @@ async function handleDeliveryDateChange(deliveryId: number, val: string | null) 
 async function loadTrackingData() {
   loading.value = true
   try {
-    const filters: { status?: 'pending' | 'delivered' } = {}
-    if (statusFilter.value) filters.status = statusFilter.value as 'pending' | 'delivered'
+    const filters: { status?: DeliveryStatus } = {}
+    if (statusFilter.value) filters.status = statusFilter.value as DeliveryStatus
     deliveries.value = await deliveryService.getOverview(filters)
   } catch (err) {
     snackbar.error('Lỗi tải dữ liệu: ' + (err instanceof Error ? err.message : 'Unknown'))
@@ -483,8 +484,8 @@ async function loadReceiveData() {
   loadingReceive.value = true
   try {
     // Get delivered items that are not fully received
-    const allDeliveries = await deliveryService.getOverview({ status: 'delivered' })
-    pendingReceiveItems.value = allDeliveries.filter(d => d.inventory_status !== 'received')
+    const allDeliveries = await deliveryService.getOverview({ status: DeliveryStatus.DELIVERED })
+    pendingReceiveItems.value = allDeliveries.filter(d => d.inventory_status !== InventoryReceiptStatus.RECEIVED)
   } catch (err) {
     snackbar.error('Lỗi tải dữ liệu: ' + (err instanceof Error ? err.message : 'Unknown'))
   } finally {
@@ -526,7 +527,7 @@ async function confirmDelivered() {
   try {
     const isoDate = fromDatePickerFormat(actualDeliveryDate.value)
     await deliveryService.update(selectedDelivery.value.id, {
-      status: 'delivered',
+      status: DeliveryStatus.DELIVERED,
       actual_delivery_date: isoDate,
     })
     snackbar.success('Đã xác nhận giao hàng')

@@ -46,7 +46,7 @@ export interface Lot {
     id: number
     code: string
     name: string
-    color_code: string | null
+    color_data?: { name: string; hex_code: string } | null
   }
   warehouse?: {
     id: number
@@ -128,7 +128,8 @@ export interface UnassignedThreadGroup {
   thread_type_id: number
   thread_type_name: string
   thread_type_code: string
-  color_code: string | null
+  color_name: string | null
+  color_hex: string | null
   cone_count: number
   cone_ids: number[]
 }

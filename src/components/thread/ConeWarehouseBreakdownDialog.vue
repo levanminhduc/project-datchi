@@ -12,8 +12,8 @@
           </div>
           <div class="text-caption text-grey">
             {{ threadType?.thread_code }}
-            <template v-if="threadType?.color">
-              • {{ threadType.color }}
+            <template v-if="threadType?.color_data?.name">
+              • {{ threadType.color_data.name }}
             </template>
             <template v-if="threadType?.tex_number">
               • Tex {{ threadType.tex_number }}

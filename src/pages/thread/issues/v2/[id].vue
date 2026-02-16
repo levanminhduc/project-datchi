@@ -20,7 +20,7 @@ const { currentIssue, isLoading, fetchIssue } = useIssueV2()
 
 const notFound = ref(false)
 
-const issueId = computed(() => Number(route.params.id))
+const issueId = computed(() => Number((route.params as { id?: string }).id || '0'))
 
 const columns: QTableColumn[] = [
   { name: 'thread_name', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },

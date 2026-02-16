@@ -206,14 +206,14 @@
           color="positive"
           icon="check_circle"
           label="Xác nhận tuần"
-          :disable="!selectedWeek || selectedWeek.status === 'confirmed' || !resultsSaved"
+          :disable="!selectedWeek || selectedWeek.status === OrderWeekStatus.CONFIRMED || !resultsSaved"
           :loading="confirmingWeek"
           @click="handleConfirmWeek"
         >
           <AppTooltip v-if="!resultsSaved">
             Cần lưu kết quả tính toán trước
           </AppTooltip>
-          <AppTooltip v-else-if="selectedWeek?.status === 'confirmed'">
+          <AppTooltip v-else-if="selectedWeek?.status === OrderWeekStatus.CONFIRMED">
             Tuần này đã được xác nhận
           </AppTooltip>
         </AppButton>
@@ -247,6 +247,7 @@ import {
 import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import type { PurchaseOrderWithItems, CalculationResult } from '@/types/thread'
+import { OrderWeekStatus } from '@/types/thread/enums'
 import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
 
 definePage({
@@ -515,15 +516,15 @@ const handleConfirmWeek = async () => {
     return
   }
 
-  if (selectedWeek.value.status === 'confirmed') {
+  if (selectedWeek.value.status === OrderWeekStatus.CONFIRMED) {
     snackbar.info('Tuần này đã được xác nhận')
     return
   }
 
   confirmingWeek.value = true
   try {
-    await weeklyOrderService.updateStatus(selectedWeek.value.id, 'confirmed')
-    selectedWeek.value.status = 'confirmed'
+    await weeklyOrderService.updateStatus(selectedWeek.value.id, OrderWeekStatus.CONFIRMED)
+    selectedWeek.value.status = OrderWeekStatus.CONFIRMED
     snackbar.success('Đã xác nhận tuần đặt hàng thành công')
     // Refresh weeks list to update status
     await fetchWeeks()

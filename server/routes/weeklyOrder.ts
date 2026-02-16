@@ -22,9 +22,9 @@ function formatZodError(err: ZodError): string {
 }
 
 const VALID_STATUS_TRANSITIONS: Record<WeeklyOrderStatus, WeeklyOrderStatus[]> = {
-  draft: ['confirmed'],
-  confirmed: ['cancelled'],
-  cancelled: [],
+  DRAFT: ['CONFIRMED'],
+  CONFIRMED: ['CANCELLED'],
+  CANCELLED: [],
 }
 
 /**
@@ -322,7 +322,7 @@ weeklyOrder.get('/deliveries/overview', async (c) => {
           tex_number: row.thread_type?.tex_number || '',
           week_name: row.week?.week_name || '',
           days_remaining,
-          is_overdue: days_remaining < 0 && row.status === 'pending',
+          is_overdue: days_remaining < 0 && row.status === 'PENDING',
           total_cones,
         }
       })
@@ -443,7 +443,7 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', async (c) => {
     }
 
     // 2. Validate delivery status
-    if (delivery.status !== 'delivered') {
+    if (delivery.status !== 'DELIVERED') {
       return c.json({ data: null, error: 'Chỉ có thể nhập kho cho đơn đã giao' }, 400)
     }
 
@@ -508,14 +508,13 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', async (c) => {
     }
 
     // Calculate inventory_status
-    let inventoryStatus: 'pending' | 'partial' | 'received' = 'pending'
+    let inventoryStatus: 'PENDING' | 'PARTIAL' | 'RECEIVED' = 'PENDING'
     if (newReceivedQuantity > 0 && newReceivedQuantity < totalFinal) {
-      inventoryStatus = 'partial'
+      inventoryStatus = 'PARTIAL'
     } else if (newReceivedQuantity >= totalFinal && totalFinal > 0) {
-      inventoryStatus = 'received'
+      inventoryStatus = 'RECEIVED'
     } else if (newReceivedQuantity > 0) {
-      // If we can't determine total_final, just mark as partial if any received
-      inventoryStatus = 'partial'
+      inventoryStatus = 'PARTIAL'
     }
 
     const { data: updatedDelivery, error: updateError } = await supabase
@@ -584,7 +583,7 @@ weeklyOrder.get('/:id/deliveries', async (c) => {
         thread_type_name: row.thread_type?.name || '',
         tex_number: row.thread_type?.tex_number || '',
         days_remaining,
-        is_overdue: days_remaining < 0 && row.status === 'pending',
+        is_overdue: days_remaining < 0 && row.status === 'PENDING',
       }
     })
 
@@ -667,7 +666,7 @@ weeklyOrder.post('/', async (c) => {
           week_name: validated.week_name,
           start_date: validated.start_date || null,
           end_date: validated.end_date || null,
-          status: 'draft',
+          status: 'DRAFT',
           notes: validated.notes || null,
         },
       ])
@@ -745,9 +744,9 @@ weeklyOrder.put('/:id', async (c) => {
       throw fetchError
     }
 
-    if (existing.status !== 'draft') {
+    if (existing.status !== 'DRAFT') {
       return c.json(
-        { data: null, error: 'Chỉ có thể cập nhật tuần ở trạng thái nháp (draft)' },
+        { data: null, error: 'Chỉ có thể cập nhật tuần ở trạng thái nháp (DRAFT)' },
         400,
       )
     }
@@ -867,9 +866,9 @@ weeklyOrder.delete('/:id', async (c) => {
       throw fetchError
     }
 
-    if (existing.status !== 'draft') {
+    if (existing.status !== 'DRAFT') {
       return c.json(
-        { data: null, error: 'Chỉ có thể xóa tuần ở trạng thái nháp (draft)' },
+        { data: null, error: 'Chỉ có thể xóa tuần ở trạng thái nháp (DRAFT)' },
         400,
       )
     }
@@ -978,8 +977,8 @@ weeklyOrder.patch('/:id/status', async (c) => {
     if (error) throw error
 
     const statusLabels: Record<string, string> = {
-      confirmed: 'xác nhận',
-      cancelled: 'hủy',
+      CONFIRMED: 'xác nhận',
+      CANCELLED: 'hủy',
     }
     const warehouseIds = await getWarehouseEmployeeIds()
     broadcastNotification({
@@ -1136,7 +1135,7 @@ weeklyOrder.post('/:id/results', async (c) => {
             thread_type_id: row.thread_type_id,
             supplier_id: row.supplier_id!,
             delivery_date: deliveryDate,
-            status: 'pending',
+            status: 'PENDING',
           }
         })
 

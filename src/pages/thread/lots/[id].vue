@@ -66,9 +66,9 @@
                   </div>
                   <div class="text-body1 row items-center no-wrap q-gutter-xs">
                     <div
-                      v-if="lot.thread_type?.color_code"
+                      v-if="lot.thread_type?.color_data?.hex_code"
                       class="color-swatch"
-                      :style="{ backgroundColor: lot.thread_type.color_code }"
+                      :style="{ backgroundColor: lot.thread_type.color_data.hex_code }"
                     />
                     <span>{{ lot.thread_type?.name || '-' }}</span>
                   </div>

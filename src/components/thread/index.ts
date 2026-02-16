@@ -49,11 +49,7 @@ export { default as ReconciliationTable } from './ReconciliationTable.vue'
 // ============================================================
 // ISSUE & QUOTA
 // ============================================================
-export { default as QuotaWarning } from './QuotaWarning.vue'
 export { default as PercentageSelector } from './PercentageSelector.vue'
-export { default as IssueRequestForm } from './IssueRequestForm.vue'
-export { default as IssueItemList } from './IssueItemList.vue'
-export { default as ReturnForm } from './ReturnForm.vue'
 
 // ============================================================
 // TIMELINES & PANELS

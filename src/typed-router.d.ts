@@ -42,9 +42,6 @@ declare module 'vue-router/auto-routes' {
     '/thread/colors': RouteRecordInfo<'/thread/colors', '/thread/colors', Record<never, never>, Record<never, never>>,
     '/thread/dashboard': RouteRecordInfo<'/thread/dashboard', '/thread/dashboard', Record<never, never>, Record<never, never>>,
     '/thread/inventory': RouteRecordInfo<'/thread/inventory', '/thread/inventory', Record<never, never>, Record<never, never>>,
-    '/thread/issues/': RouteRecordInfo<'/thread/issues/', '/thread/issues', Record<never, never>, Record<never, never>>,
-    '/thread/issues/[id]': RouteRecordInfo<'/thread/issues/[id]', '/thread/issues/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
-    '/thread/issues/new': RouteRecordInfo<'/thread/issues/new', '/thread/issues/new', Record<never, never>, Record<never, never>>,
     '/thread/issues/reconciliation': RouteRecordInfo<'/thread/issues/reconciliation', '/thread/issues/reconciliation', Record<never, never>, Record<never, never>>,
     '/thread/issues/v2/': RouteRecordInfo<'/thread/issues/v2/', '/thread/issues/v2', Record<never, never>, Record<never, never>>,
     '/thread/issues/v2/[id]': RouteRecordInfo<'/thread/issues/v2/[id]', '/thread/issues/v2/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
@@ -52,10 +49,8 @@ declare module 'vue-router/auto-routes' {
     '/thread/lots/': RouteRecordInfo<'/thread/lots/', '/thread/lots', Record<never, never>, Record<never, never>>,
     '/thread/lots/[id]': RouteRecordInfo<'/thread/lots/[id]', '/thread/lots/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     '/thread/mobile/issue': RouteRecordInfo<'/thread/mobile/issue', '/thread/mobile/issue', Record<never, never>, Record<never, never>>,
-    '/thread/mobile/issue-scan/[id]': RouteRecordInfo<'/thread/mobile/issue-scan/[id]', '/thread/mobile/issue-scan/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     '/thread/mobile/receive': RouteRecordInfo<'/thread/mobile/receive', '/thread/mobile/receive', Record<never, never>, Record<never, never>>,
     '/thread/mobile/recovery': RouteRecordInfo<'/thread/mobile/recovery', '/thread/mobile/recovery', Record<never, never>, Record<never, never>>,
-    '/thread/mobile/return': RouteRecordInfo<'/thread/mobile/return', '/thread/mobile/return', Record<never, never>, Record<never, never>>,
     '/thread/recovery': RouteRecordInfo<'/thread/recovery', '/thread/recovery', Record<never, never>, Record<never, never>>,
     '/thread/requests': RouteRecordInfo<'/thread/requests', '/thread/requests', Record<never, never>, Record<never, never>>,
     '/thread/stocktake': RouteRecordInfo<'/thread/stocktake', '/thread/stocktake', Record<never, never>, Record<never, never>>,
@@ -173,18 +168,6 @@ declare module 'vue-router/auto-routes' {
       routes: '/thread/inventory'
       views: never
     }
-    'src/pages/thread/issues/index.vue': {
-      routes: '/thread/issues/'
-      views: never
-    }
-    'src/pages/thread/issues/[id].vue': {
-      routes: '/thread/issues/[id]'
-      views: never
-    }
-    'src/pages/thread/issues/new.vue': {
-      routes: '/thread/issues/new'
-      views: never
-    }
     'src/pages/thread/issues/reconciliation.vue': {
       routes: '/thread/issues/reconciliation'
       views: never
@@ -213,20 +196,12 @@ declare module 'vue-router/auto-routes' {
       routes: '/thread/mobile/issue'
       views: never
     }
-    'src/pages/thread/mobile/issue-scan/[id].vue': {
-      routes: '/thread/mobile/issue-scan/[id]'
-      views: never
-    }
     'src/pages/thread/mobile/receive.vue': {
       routes: '/thread/mobile/receive'
       views: never
     }
     'src/pages/thread/mobile/recovery.vue': {
       routes: '/thread/mobile/recovery'
-      views: never
-    }
-    'src/pages/thread/mobile/return.vue': {
-      routes: '/thread/mobile/return'
       views: never
     }
     'src/pages/thread/recovery.vue': {

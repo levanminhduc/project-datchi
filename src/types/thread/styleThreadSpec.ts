@@ -41,7 +41,7 @@ export interface StyleColorThreadSpec {
     id: number
     name: string
     tex_number: string
-    color?: string | null
+    color_data?: { name: string; hex_code: string } | null
     supplier_id?: number | null
     meters_per_cone?: number | null
   }

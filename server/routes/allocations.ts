@@ -43,8 +43,6 @@ interface AllocationWithRelations extends AllocationRow {
     id: number
     code: string
     name: string
-    color: string | null
-    color_code: string | null
   }
   requesting_warehouse?: {
     id: number
@@ -115,7 +113,7 @@ allocations.get('/', async (c) => {
       .from('thread_allocations')
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
@@ -240,7 +238,7 @@ allocations.get('/:id', async (c) => {
       .from('thread_allocations')
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name),
         thread_allocation_cones(
@@ -396,7 +394,7 @@ allocations.post('/', async (c) => {
       .insert(insertData)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
@@ -462,7 +460,7 @@ allocations.post('/:id/execute', async (c) => {
 
     // Call RPC to allocate thread
     const { data: result, error: rpcError } = await supabase
-      .rpc('allocate_thread', {
+      .rpc('fn_allocate_thread', {
         p_allocation_id: id,
       })
 
@@ -488,7 +486,7 @@ allocations.post('/:id/execute', async (c) => {
       .from('thread_allocations')
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name),
         thread_allocation_cones(
@@ -582,7 +580,7 @@ allocations.post('/:id/approve', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
@@ -686,7 +684,7 @@ allocations.post('/:id/reject', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
@@ -772,7 +770,7 @@ allocations.post('/:id/ready', async (c) => {
 
     // Execute soft allocation
     const { data: result, error: rpcError } = await supabase
-      .rpc('allocate_thread', {
+      .rpc('fn_allocate_thread', {
         p_allocation_id: id,
       })
 
@@ -803,7 +801,7 @@ allocations.post('/:id/ready', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name),
         thread_allocation_cones(
@@ -892,7 +890,7 @@ allocations.post('/:id/receive', async (c) => {
     let hasError = false
     for (const cone of allocatedCones) {
       const { error: rpcError } = await supabase
-        .rpc('issue_cone', {
+        .rpc('fn_issue_cone', {
           p_cone_id: cone.cone_id,
           p_allocation_id: id,
           p_confirmed_by: body.received_by,
@@ -916,7 +914,7 @@ allocations.post('/:id/receive', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name),
         thread_allocation_cones(
@@ -1006,7 +1004,7 @@ allocations.post('/:id/issue', async (c) => {
 
     for (const cone of allocatedCones) {
       const { data: result, error: rpcError } = await supabase
-        .rpc('issue_cone', {
+        .rpc('fn_issue_cone', {
           p_cone_id: cone.cone_id,
           p_allocation_id: id,
           p_confirmed_by: body.confirmed_by || null,
@@ -1043,7 +1041,7 @@ allocations.post('/:id/issue', async (c) => {
       .from('thread_allocations')
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name),
         thread_allocation_cones(
@@ -1169,7 +1167,7 @@ allocations.post('/:id/cancel', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
@@ -1250,7 +1248,7 @@ allocations.post('/:id/resolve', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
@@ -1410,7 +1408,7 @@ allocations.post('/:id/split', async (c) => {
 
     // Call RPC to split allocation
     const { data: result, error: rpcError } = await supabase
-      .rpc('split_allocation', {
+      .rpc('fn_split_allocation', {
         p_allocation_id: id,
         p_split_meters: body.split_meters,
         p_split_reason: body.reason || null,
@@ -1445,7 +1443,7 @@ allocations.post('/:id/split', async (c) => {
       .from('thread_allocations')
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
@@ -1545,7 +1543,7 @@ allocations.put('/:id', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_types(id, code, name, color, color_code),
+        thread_types(id, code, name),
         requesting_warehouse:warehouses!thread_allocations_requesting_warehouse_id_fkey(id, code, name),
         source_warehouse:warehouses!thread_allocations_source_warehouse_id_fkey(id, code, name)
       `)
