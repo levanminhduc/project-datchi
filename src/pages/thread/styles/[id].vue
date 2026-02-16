@@ -257,7 +257,7 @@
                   class="cursor-pointer editable-cell"
                 >
                   <q-spinner-dots
-                    v-if="inlineEditLoading[getCellKey(props.row.id, 'tex_id')]"
+                    v-if="inlineEditLoading[getCellKey(props.row.id, 'thread_type_id')]"
                     size="sm"
                     color="primary"
                   />
@@ -270,11 +270,11 @@
                     />
                     <q-popup-edit
                       v-slot="scope"
-                      v-model="props.row.tex_id"
+                      v-model="props.row.thread_type_id"
                       buttons
                       label-set="Lưu"
                       label-cancel="Hủy"
-                      @save="(val: number | null, initialVal: number | null) => handleInlineEdit(props.row.id, 'tex_id', val, initialVal)"
+                      @save="(val: number | null, initialVal: number | null) => handleInlineEdit(props.row.id, 'thread_type_id', val, initialVal)"
                     >
                       <q-select
                         v-model="scope.value"
@@ -445,7 +445,7 @@ const getCellKey = (id: number, field: string): string => `${id}-${field}`
  */
 const handleInlineEdit = async (
   specId: number,
-  field: 'process_name' | 'supplier_id' | 'tex_id' | 'meters_per_unit',
+  field: 'process_name' | 'supplier_id' | 'thread_type_id' | 'meters_per_unit',
   newValue: string | number | null,
   originalValue: string | number | null
 ): Promise<void> => {

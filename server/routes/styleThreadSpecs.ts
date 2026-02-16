@@ -17,7 +17,7 @@ styleThreadSpecs.get('/', async (c) => {
         *,
         styles:style_id (id, style_code, style_name),
         suppliers:supplier_id (id, name),
-        thread_types:tex_id (id, tex_number, name, color_data:colors!color_id(name, hex_code))
+        thread_types:thread_type_id (id, tex_number, name, color_data:colors!color_id(name, hex_code))
       `)
       .order('display_order', { ascending: true })
 
@@ -57,7 +57,7 @@ styleThreadSpecs.get('/:id', async (c) => {
         *,
         styles:style_id (id, style_code, style_name),
         suppliers:supplier_id (id, name),
-        thread_types:tex_id (id, tex_number, name, color_data:colors!color_id(name, hex_code))
+        thread_types:thread_type_id (id, tex_number, name, color_data:colors!color_id(name, hex_code))
       `)
       .eq('id', id)
       .single()
@@ -140,7 +140,7 @@ styleThreadSpecs.post('/', async (c) => {
         style_id: body.style_id,
         supplier_id: body.supplier_id,
         process_name: body.process_name,
-        tex_id: body.tex_id,
+        thread_type_id: body.thread_type_id,
         meters_per_unit: body.meters_per_unit || 0,
         notes: body.notes,
         display_order: displayOrder,
@@ -176,7 +176,7 @@ styleThreadSpecs.put('/:id', async (c) => {
         style_id: body.style_id,
         supplier_id: body.supplier_id,
         process_name: body.process_name,
-        tex_id: body.tex_id,
+        thread_type_id: body.thread_type_id,
         meters_per_unit: body.meters_per_unit,
         notes: body.notes,
         updated_at: new Date().toISOString(),

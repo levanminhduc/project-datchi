@@ -5,7 +5,7 @@ export interface StyleThreadSpec {
   style_id: number
   supplier_id: number
   process_name: string
-  tex_id: number | null
+  thread_type_id: number | null
   meters_per_unit: number
   notes: string | null
   display_order: number
@@ -51,7 +51,7 @@ export interface CreateStyleThreadSpecDTO {
   style_id: number
   supplier_id: number
   process_name: string
-  tex_id?: number
+  thread_type_id?: number
   meters_per_unit: number
   notes?: string
   /** Whether to add new row at top (true) or bottom (false) of the list */
@@ -62,7 +62,7 @@ export interface UpdateStyleThreadSpecDTO {
   style_id?: number
   supplier_id?: number
   process_name?: string
-  tex_id?: number
+  thread_type_id?: number
   meters_per_unit?: number
   notes?: string
 }

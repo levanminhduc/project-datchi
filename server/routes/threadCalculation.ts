@@ -35,7 +35,7 @@ interface SpecRow {
   style_id: number
   process_name: string
   meters_per_unit: number
-  tex_id: number
+  thread_type_id: number
   suppliers: SupplierJoin | null
   thread_types: ThreadTypeJoin | null
 }
@@ -130,9 +130,9 @@ const SPEC_SELECT = `
   style_id,
   process_name,
   meters_per_unit,
-  tex_id,
+  thread_type_id,
   suppliers:supplier_id (id, name, lead_time_days),
-  thread_types:tex_id (id, tex_number, name, meters_per_cone, color_id, color_data:colors(name, hex_code))
+  thread_types:thread_type_id (id, tex_number, name, meters_per_cone, color_id, color_data:colors(name, hex_code))
 ` as const
 
 const COLOR_SPEC_SELECT = `
@@ -284,7 +284,7 @@ function buildCalculation(
         color_id: cb.color_id,
         color_name: colorSpec?.colors?.name || '',
         quantity: cb.quantity,
-        thread_type_id: colorSpec?.thread_type_id || spec.tex_id,
+        thread_type_id: colorSpec?.thread_type_id || spec.thread_type_id,
         thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
         total_meters: spec.meters_per_unit * cb.quantity,
       }
@@ -636,7 +636,7 @@ threadCalculation.post('/calculate-by-po', async (c) => {
             color_id: sku.color_id,
             color_name: sku.colors?.name || '',
             quantity: sku.quantity,
-            thread_type_id: colorSpec?.thread_type_id || spec.tex_id,
+            thread_type_id: colorSpec?.thread_type_id || spec.thread_type_id,
             thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
             total_meters: spec.meters_per_unit * sku.quantity,
           }

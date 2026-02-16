@@ -241,7 +241,7 @@ styles.get('/:id/thread-specs', async (c) => {
       .select(`
         *,
         suppliers:supplier_id (id, name),
-        thread_types:tex_id (id, tex_number, name)
+        thread_types:thread_type_id (id, tex_number, name)
       `)
       .eq('style_id', id)
       .order('created_at', { ascending: false })
