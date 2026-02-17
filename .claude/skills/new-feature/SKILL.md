@@ -1,91 +1,201 @@
 # Skill: /new-feature
 
-Hướng dẫn tạo tính năng mới cho dự án Đạt Chi - Thread Inventory Management System.
+Tao tinh nang moi cho du an Dat Chi - Thread Inventory Management System.
 
-Khi user gọi `/new-feature [mô tả tính năng]`, hãy tuân thủ TOÀN BỘ hướng dẫn bên dưới.
-
----
-
-## BƯỚC 0: PHÂN TÍCH YÊU CẦU
-
-Trước khi code, hãy:
-1. Diễn giải lại yêu cầu bằng tiếng Việt
-2. Xác định scope: Database / Backend / Frontend / Tất cả
-3. Hỏi user xác nhận trước khi bắt tay vào làm
-4. Nếu tính năng có nhiều sub-features → đề xuất dùng **Tab layout**
+Khi user goi `/new-feature [mo ta tinh nang]`, tuan thu TOAN BO huong dan ben duoi.
 
 ---
 
-## BƯỚC 1: DATABASE (Migration)
+## BUOC 0: PHAN TICH YEU CAU
+
+Truoc khi code:
+1. Dien giai lai yeu cau bang tieng Viet
+2. Xac dinh scope: Database / Backend / Frontend / Tat ca
+3. Xac dinh complexity level:
+   - **Level 1: Simple CRUD** (master data: colors, suppliers, positions)
+   - **Level 2: CRUD + Workflow** (allocations, issues - co status transitions)
+   - **Level 3: Batch Operations** (stock, batch - xu ly array items)
+4. Hoi user xac nhan truoc khi bat tay vao lam
+5. Neu tinh nang co nhieu sub-features → de xuat **Tab layout**
+
+---
+
+## BUOC 1: DATABASE (Migration)
 
 ### File location
 ```
 supabase/migrations/YYYYMMDD_ten_tinh_nang.sql
 ```
 
-### Quy tắc
+### Quy tac
 - Table name: `snake_case`
-- LUÔN có `created_at TIMESTAMPTZ DEFAULT NOW()`, `updated_at TIMESTAMPTZ DEFAULT NOW()`
-- Soft delete: thêm `deleted_at TIMESTAMPTZ DEFAULT NULL` nếu cần
-- View: prefix `v_` (ví dụ: `v_inventory_summary`)
-- Function: prefix `fn_` (ví dụ: `fn_calculate_stock`)
+- LUON co `created_at TIMESTAMPTZ DEFAULT NOW()`, `updated_at TIMESTAMPTZ DEFAULT NOW()`
+- Soft delete: `deleted_at TIMESTAMPTZ DEFAULT NULL`
+- View: prefix `v_` (vi du: `v_inventory_summary`)
+- Function: prefix `fn_` (vi du: `fn_calculate_stock`)
 - Trigger: `trigger_[table]_updated_at` cho auto-update `updated_at`
-- ENUM type nên dùng VARCHAR với CHECK constraint hoặc PostgreSQL ENUM
+- ENUM: dung `CREATE TYPE` voi values UPPERCASE, type name lowercase
+- Primary key: `SERIAL` (KHONG phai UUID)
+- FK: inline `REFERENCES table(id)` voi ON DELETE phu hop
+- Index: `idx_[table]_[column]`
+- Comment: `COMMENT ON TABLE/COLUMN` bang tieng Viet
+- Cuoi migration: `NOTIFY pgrst, 'reload schema';`
 
-### Template migration
+### Template migration - Basic Table
 ```sql
--- ============================================================================
--- Migration: YYYYMMDD_ten_tinh_nang.sql
--- Description: Mô tả tính năng
--- Dependencies: Các table phụ thuộc
--- ============================================================================
+CREATE TYPE ten_status AS ENUM ('DRAFT', 'CONFIRMED', 'CANCELLED');
 
--- TABLE
 CREATE TABLE IF NOT EXISTS ten_bang (
     id SERIAL PRIMARY KEY,
-    -- ... columns ...
+    code VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    status ten_status NOT NULL DEFAULT 'DRAFT',
+    notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     deleted_at TIMESTAMPTZ DEFAULT NULL
 );
 
--- Trigger updated_at
-CREATE OR REPLACE FUNCTION fn_update_ten_bang_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+COMMENT ON TABLE ten_bang IS 'Mo ta bang bang tieng Viet';
 
 CREATE TRIGGER trigger_ten_bang_updated_at
     BEFORE UPDATE ON ten_bang
     FOR EACH ROW
-    EXECUTE FUNCTION fn_update_ten_bang_timestamp();
+    EXECUTE FUNCTION fn_update_updated_at_column();
 
--- INDEX (nếu cần)
-CREATE INDEX IF NOT EXISTS idx_ten_bang_field ON ten_bang(field);
+CREATE INDEX idx_ten_bang_status ON ten_bang(status) WHERE deleted_at IS NULL;
+CREATE INDEX idx_ten_bang_code ON ten_bang(code);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE ten_bang;
+
+NOTIFY pgrst, 'reload schema';
+```
+
+### Template - ENUM
+```sql
+DO $$ BEGIN
+    CREATE TYPE ten_status AS ENUM ('DRAFT', 'CONFIRMED', 'CANCELLED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+```
+
+Them value sau:
+```sql
+ALTER TYPE ten_status ADD VALUE IF NOT EXISTS 'NEW_VALUE';
+```
+
+### Template - RPC Function
+```sql
+CREATE OR REPLACE FUNCTION fn_verb_noun(
+    p_param1 INTEGER,
+    p_param2 TEXT DEFAULT NULL
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_result RECORD;
+    v_count INTEGER;
+BEGIN
+    SELECT * INTO v_result
+    FROM ten_bang
+    WHERE id = p_param1
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN json_build_object('success', false, 'message', 'Khong tim thay');
+    END IF;
+
+    UPDATE ten_bang SET status = 'CONFIRMED' WHERE id = p_param1;
+
+    RETURN json_build_object('success', true, 'data', row_to_json(v_result), 'message', 'Thanh cong');
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN json_build_object('success', false, 'message', 'Loi: ' || SQLERRM);
+END;
+$$;
+```
+
+### Template - View
+```sql
+CREATE OR REPLACE VIEW v_ten_summary AS
+WITH base AS (
+    SELECT t.*, tt.name AS type_name
+    FROM ten_bang t
+    LEFT JOIN thread_types tt ON t.thread_type_id = tt.id
+    WHERE t.deleted_at IS NULL
+)
+SELECT * FROM base;
+
+COMMENT ON VIEW v_ten_summary IS 'View tong hop';
+```
+
+### Template - Audit Trigger
+```sql
+CREATE TRIGGER trigger_ten_bang_audit
+    AFTER INSERT OR UPDATE OR DELETE ON ten_bang
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_thread_audit_trigger_func();
 ```
 
 ---
 
-## BƯỚC 2: TYPES (Shared Types)
+## BUOC 2: TYPES (Shared Types)
 
 ### Backend types
 ```
 server/types/ten-tinh-nang.ts
 ```
 
-Pattern:
 ```typescript
-export type TenStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED'
-
 export interface TenBangRow {
   id: number
-  // ... columns match DB schema
+  code: string
+  name: string
+  status: 'DRAFT' | 'CONFIRMED' | 'CANCELLED'
+  notes: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null
+}
+
+export interface CreateTenBangDTO {
+  code: string
+  name: string
+  notes?: string
+}
+
+export interface UpdateTenBangDTO extends Partial<CreateTenBangDTO> {
+  is_active?: boolean
+}
+
+export interface TenBangFilters {
+  search?: string
+  status?: string
+  is_active?: boolean
+}
+```
+
+**KHONG tao ApiResponse rieng cho moi file.** Dung shared type:
+```typescript
+import type { ApiResponse } from '../types/api'
+```
+
+Shared type (`server/types/api.ts`):
+```typescript
+export interface ApiResponse<T> {
+  data: T | null
+  error: string | null
+  message?: string
+}
+
+export interface PaginatedData<T> {
+  data: T[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
 }
 ```
 
@@ -94,7 +204,6 @@ export interface TenBangRow {
 src/types/thread/tenTinhNang.ts
 ```
 
-Pattern:
 ```typescript
 export enum TenStatus {
   DRAFT = 'DRAFT',
@@ -104,18 +213,24 @@ export enum TenStatus {
 
 export interface TenBang {
   id: number
-  // ... columns
+  code: string
+  name: string
+  status: TenStatus
+  notes: string | null
   created_at: string
   updated_at: string
 }
 
 export interface CreateTenBangDTO {
-  // ... fields for creation
+  code: string
+  name: string
+  notes?: string
 }
 
 export interface TenBangFilters {
   page?: number
   limit?: number
+  search?: string
   status?: string
   from?: string
   to?: string
@@ -130,76 +245,124 @@ export interface TenBangListResponse {
 }
 ```
 
-Export từ `src/types/thread/index.ts`:
+Export tu `src/types/thread/index.ts`:
 ```typescript
 export * from './tenTinhNang'
 ```
 
 ---
 
-## BƯỚC 3: VALIDATION (Zod Schemas)
+## BUOC 3: VALIDATION (Zod Schemas)
 
 ### File location
 ```
 server/validation/tenTinhNang.ts
 ```
 
-### Pattern
+### Pattern - Dung .safeParse() (KHONG phai .parse())
 ```typescript
 import { z } from 'zod'
 
 export const CreateTenBangSchema = z.object({
-  field1: z.string().min(1, 'Truong nay khong duoc de trong').trim(),
-  field2: z.number().int().positive('Phai la so nguyen duong'),
-  optional_field: z.string().optional().nullable(),
+  code: z.string().min(1, 'Ma khong duoc de trong').trim(),
+  name: z.string().min(1, 'Ten khong duoc de trong').trim(),
+  notes: z.string().optional().nullable(),
 })
 
-export type CreateTenBangDTO = z.infer<typeof CreateTenBangSchema>
+export const UpdateTenBangSchema = CreateTenBangSchema.partial()
 
 export const TenBangFiltersSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().optional(),
   status: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
 })
+
+export type CreateTenBangInput = z.infer<typeof CreateTenBangSchema>
+export type TenBangFiltersInput = z.infer<typeof TenBangFiltersSchema>
+```
+
+### Validation helper (dung chung)
+```typescript
+function handleValidation<T>(schema: z.ZodSchema<T>, data: unknown, c: Context) {
+  const result = schema.safeParse(data)
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error.errors.map(e => e.message).join(', '),
+    }
+  }
+  return { success: true, data: result.data }
+}
+```
+
+### Zod patterns nang cao
+```typescript
+z.coerce.number()
+z.coerce.boolean()
+
+const FormSchema = z.object({
+  password: z.string().min(8),
+  confirmPassword: z.string(),
+}).refine(
+  (data) => data.password === data.confirmPassword,
+  { message: 'Mat khau khong khop', path: ['confirmPassword'] }
+)
+
+z.string()
+  .transform((val) => val.trim().toUpperCase())
+  .pipe(z.string().min(1))
 ```
 
 ---
 
-## BƯỚC 4: BACKEND (Hono Routes)
+## BUOC 4: BACKEND (Hono Routes)
 
 ### File location
 ```
 server/routes/tenTinhNang.ts
 ```
 
-### Đăng ký route trong `server/index.ts`
+### Dang ky route trong `server/index.ts`
 ```typescript
 import tenTinhNangRouter from './routes/tenTinhNang'
 app.route('/api/ten-tinh-nang', tenTinhNangRouter)
 ```
 
-### Route pattern
+### THU TU ROUTE (CRITICAL - Hono match theo thu tu dang ky)
+```
+1. Static helper endpoints: /options, /count, /form-data
+2. GET /           (list)
+3. POST /          (create)
+4. Nested static:  /conflicts, /summary
+5. GET /:id        (get single)
+6. PUT /:id        (update)
+7. DELETE /:id     (soft delete)
+8. POST /:id/action (workflow: /:id/confirm, /:id/approve, /:id/cancel)
+```
+
+### Route template - Level 1: Simple CRUD
 ```typescript
 import { Hono } from 'hono'
-import { ZodError } from 'zod'
 import { supabaseAdmin as supabase } from '../db/supabase'
-import { getErrorMessage } from '../utils/errorHelper'
+import type { ApiResponse } from '../types/api'
 import { CreateTenBangSchema, TenBangFiltersSchema } from '../validation/tenTinhNang'
-import type { ThreadApiResponse } from '../types/thread'
 
 const tenTinhNang = new Hono()
 
-function formatZodError(err: ZodError): string {
-  return err.issues.map((e) => e.message).join('; ')
-}
-
-// GET / - Danh sách
 tenTinhNang.get('/', async (c) => {
   try {
     const query = c.req.query()
-    const filters = TenBangFiltersSchema.parse(query)
+    const result = TenBangFiltersSchema.safeParse(query)
+    if (!result.success) {
+      return c.json<ApiResponse<null>>({
+        data: null,
+        error: result.error.errors.map(e => e.message).join(', '),
+      }, 400)
+    }
+    const filters = result.data
 
     let queryBuilder = supabase
       .from('ten_bang')
@@ -207,12 +370,15 @@ tenTinhNang.get('/', async (c) => {
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
-    // Apply filters...
+    if (filters.search) {
+      queryBuilder = queryBuilder.or(
+        `code.ilike.%${filters.search}%,name.ilike.%${filters.search}%`
+      )
+    }
     if (filters.status) {
       queryBuilder = queryBuilder.eq('status', filters.status)
     }
 
-    // Pagination
     const offset = (filters.page - 1) * filters.limit
     queryBuilder = queryBuilder.range(offset, offset + filters.limit - 1)
 
@@ -220,8 +386,7 @@ tenTinhNang.get('/', async (c) => {
 
     if (error) throw error
 
-    return c.json({
-      success: true,
+    return c.json<ApiResponse<any>>({
       data: {
         data: data || [],
         total: count || 0,
@@ -229,21 +394,56 @@ tenTinhNang.get('/', async (c) => {
         limit: filters.limit,
         totalPages: Math.ceil((count || 0) / filters.limit),
       },
+      error: null,
     })
   } catch (err) {
-    if (err instanceof ZodError) {
-      return c.json({ success: false, error: formatZodError(err) }, 400)
-    }
-    return c.json({ success: false, error: getErrorMessage(err) }, 500)
+    console.error('Loi lay danh sach:', err)
+    return c.json<ApiResponse<null>>({ data: null, error: 'Loi he thong' }, 500)
   }
 })
 
-// GET /:id - Chi tiết
+tenTinhNang.post('/', async (c) => {
+  try {
+    const body = await c.req.json()
+    const result = CreateTenBangSchema.safeParse(body)
+    if (!result.success) {
+      return c.json<ApiResponse<null>>({
+        data: null,
+        error: result.error.errors.map(e => e.message).join(', '),
+      }, 400)
+    }
+
+    const { data: existing } = await supabase
+      .from('ten_bang')
+      .select('id')
+      .eq('code', result.data.code)
+      .is('deleted_at', null)
+      .single()
+
+    if (existing) {
+      return c.json<ApiResponse<null>>({ data: null, error: 'Ma da ton tai' }, 409)
+    }
+
+    const { data, error } = await supabase
+      .from('ten_bang')
+      .insert(result.data)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return c.json<ApiResponse<any>>({ data, error: null }, 201)
+  } catch (err) {
+    console.error('Loi tao moi:', err)
+    return c.json<ApiResponse<null>>({ data: null, error: 'Loi he thong' }, 500)
+  }
+})
+
 tenTinhNang.get('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     if (isNaN(id)) {
-      return c.json({ success: false, error: 'ID không hợp lệ' }, 400)
+      return c.json<ApiResponse<null>>({ data: null, error: 'ID khong hop le' }, 400)
     }
 
     const { data, error } = await supabase
@@ -253,100 +453,195 @@ tenTinhNang.get('/:id', async (c) => {
       .is('deleted_at', null)
       .single()
 
-    if (error || !data) {
-      return c.json({ success: false, error: 'Không tìm thấy' }, 404)
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return c.json<ApiResponse<null>>({ data: null, error: 'Khong tim thay' }, 404)
+      }
+      throw error
     }
 
-    return c.json({ success: true, data })
+    return c.json<ApiResponse<any>>({ data, error: null })
   } catch (err) {
-    return c.json({ success: false, error: getErrorMessage(err) }, 500)
+    console.error('Loi lay chi tiet:', err)
+    return c.json<ApiResponse<null>>({ data: null, error: 'Loi he thong' }, 500)
   }
 })
 
-// POST / - Tạo mới
-tenTinhNang.post('/', async (c) => {
-  try {
-    const body = await c.req.json()
-    const validated = CreateTenBangSchema.parse(body)
-
-    const { data, error } = await supabase
-      .from('ten_bang')
-      .insert(validated)
-      .select()
-      .single()
-
-    if (error) throw error
-
-    return c.json({ success: true, data }, 201)
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return c.json({ success: false, error: formatZodError(err) }, 400)
-    }
-    return c.json({ success: false, error: getErrorMessage(err) }, 500)
-  }
-})
-
-// PATCH /:id - Cập nhật
-tenTinhNang.patch('/:id', async (c) => {
+tenTinhNang.put('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     if (isNaN(id)) {
-      return c.json({ success: false, error: 'ID không hợp lệ' }, 400)
+      return c.json<ApiResponse<null>>({ data: null, error: 'ID khong hop le' }, 400)
     }
 
     const body = await c.req.json()
-    // Validate partial update...
+
+    const { data: existing } = await supabase
+      .from('ten_bang')
+      .select('id')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single()
+
+    if (!existing) {
+      return c.json<ApiResponse<null>>({ data: null, error: 'Khong tim thay' }, 404)
+    }
 
     const { data, error } = await supabase
       .from('ten_bang')
       .update(body)
       .eq('id', id)
-      .is('deleted_at', null)
       .select()
       .single()
 
     if (error) throw error
 
-    return c.json({ success: true, data })
+    return c.json<ApiResponse<any>>({ data, error: null })
   } catch (err) {
-    return c.json({ success: false, error: getErrorMessage(err) }, 500)
+    console.error('Loi cap nhat:', err)
+    return c.json<ApiResponse<null>>({ data: null, error: 'Loi he thong' }, 500)
   }
 })
 
-// DELETE /:id - Xóa mềm
 tenTinhNang.delete('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     if (isNaN(id)) {
-      return c.json({ success: false, error: 'ID không hợp lệ' }, 400)
+      return c.json<ApiResponse<null>>({ data: null, error: 'ID khong hop le' }, 400)
     }
 
     const { error } = await supabase
       .from('ten_bang')
-      .update({ deleted_at: new Date().toISOString() })
+      .update({ deleted_at: new Date().toISOString(), is_active: false })
       .eq('id', id)
       .is('deleted_at', null)
 
     if (error) throw error
 
-    return c.json({ success: true, message: 'Đã xóa thành công' })
+    return c.json<ApiResponse<null>>({ data: null, error: null, message: 'Da xoa thanh cong' })
   } catch (err) {
-    return c.json({ success: false, error: getErrorMessage(err) }, 500)
+    console.error('Loi xoa:', err)
+    return c.json<ApiResponse<null>>({ data: null, error: 'Loi he thong' }, 500)
   }
 })
 
 export default tenTinhNang
 ```
 
-### Response format LUÔN là:
-```json
-{ "success": true, "data": {...} }
-{ "success": false, "error": "Thông báo lỗi" }
+### Route template - Level 2: Workflow (status transitions)
+```typescript
+tenTinhNang.post('/:id/confirm', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json<ApiResponse<null>>({ data: null, error: 'ID khong hop le' }, 400)
+    }
+
+    const { data: item } = await supabase
+      .from('ten_bang')
+      .select('*')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single()
+
+    if (!item) {
+      return c.json<ApiResponse<null>>({ data: null, error: 'Khong tim thay' }, 404)
+    }
+
+    if (item.status !== 'DRAFT') {
+      return c.json<ApiResponse<null>>({ data: null, error: 'Chi co the xac nhan tu trang thai Nhap' }, 400)
+    }
+
+    const { data, error } = await supabase
+      .from('ten_bang')
+      .update({ status: 'CONFIRMED' })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return c.json<ApiResponse<any>>({ data, error: null })
+  } catch (err) {
+    console.error('Loi xac nhan:', err)
+    return c.json<ApiResponse<null>>({ data: null, error: 'Loi he thong' }, 500)
+  }
+})
 ```
+
+### Route template - RPC call
+```typescript
+tenTinhNang.post('/:id/execute', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    const { data: result, error: rpcError } = await supabase.rpc('fn_execute_action', {
+      p_id: id,
+    })
+
+    if (rpcError) throw rpcError
+
+    if (!result.success) {
+      return c.json<ApiResponse<null>>({ data: null, error: result.message }, 400)
+    }
+
+    return c.json<ApiResponse<any>>({ data: result.data || result, error: null })
+  } catch (err) {
+    console.error('Loi thuc hien:', err)
+    return c.json<ApiResponse<null>>({ data: null, error: 'Loi he thong' }, 500)
+  }
+})
+```
+
+### Route template - Cascading select options
+```typescript
+tenTinhNang.get('/options', async (c) => {
+  try {
+    const parentId = c.req.query('parent_id')
+
+    let queryBuilder = supabase
+      .from('child_table')
+      .select('id, name')
+      .is('deleted_at', null)
+      .order('name')
+
+    if (parentId) {
+      queryBuilder = queryBuilder.eq('parent_id', parseInt(parentId))
+    }
+
+    const { data, error } = await queryBuilder
+    if (error) throw error
+
+    return c.json<ApiResponse<any>>({ data: data || [], error: null })
+  } catch (err) {
+    console.error('Loi lay options:', err)
+    return c.json<ApiResponse<null>>({ data: null, error: 'Loi he thong' }, 500)
+  }
+})
+```
+
+### Notification integration (khi can)
+```typescript
+import { createNotification, broadcastNotification, getWarehouseEmployeeIds } from '../utils/notificationService'
+
+createNotification({
+  employeeId: item.created_by,
+  type: 'TEN_TYPE',
+  title: `Yeu cau #${id} da duoc duyet`,
+  actionUrl: '/thread/ten-tinh-nang',
+}).catch(() => {})
+```
+
+### Response format LUON la:
+```json
+{ "data": {...}, "error": null }
+{ "data": null, "error": "Thong bao loi" }
+```
+
+**KHONG dung `{ success, data, error }`.** Truong `success` chi ton tai trong stock.ts (ngoai le).
 
 ---
 
-## BƯỚC 5: SERVICE (Frontend API Client)
+## BUOC 5: SERVICE (Frontend API Client)
 
 ### File location
 ```
@@ -356,7 +651,6 @@ src/services/tenTinhNangService.ts
 ### Pattern
 ```typescript
 import { fetchApi } from './api'
-import type { ApiResponse } from '@/types'
 import type {
   TenBang,
   CreateTenBangDTO,
@@ -364,11 +658,18 @@ import type {
   TenBangListResponse,
 } from '@/types/thread/tenTinhNang'
 
+interface ApiResponse<T> {
+  data: T | null
+  error: string | null
+  message?: string
+}
+
 const BASE = '/api/ten-tinh-nang'
 
 function buildQueryString(filters?: TenBangFilters): string {
   if (!filters) return ''
   const params = new URLSearchParams()
+  if (filters.search) params.append('search', filters.search)
   if (filters.status) params.append('status', filters.status)
   if (filters.from) params.append('from', filters.from)
   if (filters.to) params.append('to', filters.to)
@@ -389,7 +690,7 @@ export const tenTinhNangService = {
 
   async getById(id: number): Promise<TenBang> {
     const response = await fetchApi<ApiResponse<TenBang>>(`${BASE}/${id}`)
-    if (response.error || !response.data) throw new Error(response.error || 'Không tìm thấy')
+    if (response.error || !response.data) throw new Error(response.error || 'Khong tim thay')
     return response.data
   },
 
@@ -398,16 +699,16 @@ export const tenTinhNangService = {
       method: 'POST',
       body: JSON.stringify(data),
     })
-    if (response.error || !response.data) throw new Error(response.error || 'Không thể tạo')
+    if (response.error || !response.data) throw new Error(response.error || 'Khong the tao')
     return response.data
   },
 
   async update(id: number, data: Partial<TenBang>): Promise<TenBang> {
     const response = await fetchApi<ApiResponse<TenBang>>(`${BASE}/${id}`, {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify(data),
     })
-    if (response.error || !response.data) throw new Error(response.error || 'Không thể cập nhật')
+    if (response.error || !response.data) throw new Error(response.error || 'Khong the cap nhat')
     return response.data
   },
 
@@ -417,19 +718,34 @@ export const tenTinhNangService = {
     })
     if (response.error) throw new Error(response.error)
   },
+
+  async confirm(id: number): Promise<TenBang> {
+    const response = await fetchApi<ApiResponse<TenBang>>(`${BASE}/${id}/confirm`, {
+      method: 'POST',
+    })
+    if (response.error || !response.data) throw new Error(response.error || 'Khong the xac nhan')
+    return response.data
+  },
+
+  async getOptions(parentId?: number): Promise<{ id: number; name: string }[]> {
+    const qs = parentId ? `?parent_id=${parentId}` : ''
+    const response = await fetchApi<ApiResponse<any[]>>(`${BASE}/options${qs}`)
+    if (response.error) throw new Error(response.error)
+    return response.data || []
+  },
 }
 ```
 
 ---
 
-## BƯỚC 6: COMPOSABLE (State Management)
+## BUOC 6: COMPOSABLE (State Management)
 
 ### File location
 ```
 src/composables/[module]/useTenTinhNang.ts
 ```
 
-### Pattern
+### Pattern - Instance-level state (default)
 ```typescript
 import { ref, computed } from 'vue'
 import { tenTinhNangService } from '@/services/tenTinhNangService'
@@ -446,15 +762,14 @@ export function useTenTinhNang() {
   const items = ref<TenBang[]>([])
   const currentItem = ref<TenBang | null>(null)
   const total = ref(0)
-  const filters = ref<TenBangFilters>({})
-  const error = ref<string | null>(null)
+  const filters = ref<TenBangFilters>({ page: 1, limit: 20 })
 
   const snackbar = useSnackbar()
   const loading = useLoading()
 
   const isLoading = computed(() => loading.isLoading.value)
 
-  const fetchList = async (newFilters?: TenBangFilters) => {
+  const fetchList = async (newFilters?: Partial<TenBangFilters>) => {
     try {
       if (newFilters) filters.value = { ...filters.value, ...newFilters }
       const result = await loading.withLoading(() =>
@@ -482,7 +797,7 @@ export function useTenTinhNang() {
       const result = await loading.withLoading(() =>
         tenTinhNangService.create(data)
       )
-      snackbar.success('Tạo thành công')
+      snackbar.success('Tao thanh cong')
       return result
     } catch (err) {
       snackbar.error(getErrorMessage(err))
@@ -495,7 +810,7 @@ export function useTenTinhNang() {
       const result = await loading.withLoading(() =>
         tenTinhNangService.update(id, data)
       )
-      snackbar.success('Cập nhật thành công')
+      snackbar.success('Cap nhat thanh cong')
       return result
     } catch (err) {
       snackbar.error(getErrorMessage(err))
@@ -506,10 +821,23 @@ export function useTenTinhNang() {
   const remove = async (id: number) => {
     try {
       await loading.withLoading(() => tenTinhNangService.delete(id))
-      snackbar.success('Xóa thành công')
+      snackbar.success('Xoa thanh cong')
       await fetchList()
     } catch (err) {
       snackbar.error(getErrorMessage(err))
+    }
+  }
+
+  const confirm = async (id: number) => {
+    try {
+      const result = await loading.withLoading(() =>
+        tenTinhNangService.confirm(id)
+      )
+      snackbar.success('Xac nhan thanh cong')
+      return result
+    } catch (err) {
+      snackbar.error(getErrorMessage(err))
+      return null
     }
   }
 
@@ -519,47 +847,77 @@ export function useTenTinhNang() {
     total,
     filters,
     isLoading,
-    error,
     fetchList,
     fetchById,
     create,
     update,
     remove,
+    confirm,
+  }
+}
+```
+
+### Pattern - Module-level shared state (cho global state nhu auth, notifications)
+```typescript
+const state = ref<GlobalState>({ items: [] })
+let initialized = false
+
+export function useSharedState() {
+  const init = async () => {
+    if (initialized) return
+    initialized = true
+    // load data once
+  }
+
+  return {
+    state: computed(() => state.value),
+    init,
   }
 }
 ```
 
 ---
 
-## BƯỚC 7: FRONTEND PAGE
+## BUOC 7: FRONTEND PAGE
 
-### File location (file-based routing với unplugin-vue-router)
+### File location (file-based routing voi unplugin-vue-router)
 ```
-src/pages/[module]/ten-tinh-nang.vue        → Route: /[module]/ten-tinh-nang
-src/pages/[module]/ten-tinh-nang/index.vue  → Route: /[module]/ten-tinh-nang
-src/pages/[module]/ten-tinh-nang/[id].vue   → Route: /[module]/ten-tinh-nang/:id
+src/pages/[module]/ten-tinh-nang.vue        -> Route: /[module]/ten-tinh-nang
+src/pages/[module]/ten-tinh-nang/index.vue  -> Route: /[module]/ten-tinh-nang
+src/pages/[module]/ten-tinh-nang/[id].vue   -> Route: /[module]/ten-tinh-nang/:id
 ```
 
-### Page Structure Template
+### Template - List Page (index.vue)
 
 ```vue
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, watch } from 'vue'
+import { useDebounceFn } from '@vueuse/core'
 import { useTenTinhNang } from '@/composables/[module]/useTenTinhNang'
-import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirm } from '@/composables/useConfirm'
+import { usePermission } from '@/composables/usePermission'
 import { PageHeader } from '@/components/ui/layout'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
-import type { QTableColumn } from 'quasar'
+import type { QTableColumn, QTableProps } from 'quasar'
+import { date } from 'quasar'
 
-const router = useRouter()
-const snackbar = useSnackbar()
+definePage({
+  meta: {
+    requiresAuth: true,
+    permissions: ['ten_tinh_nang.view'],
+    title: 'Tieu De Trang',
+  }
+})
+
 const { confirmDelete } = useConfirm()
+const { can } = usePermission()
+const canCreate = can('ten_tinh_nang.create')
+const canEdit = can('ten_tinh_nang.edit')
+const canDelete = can('ten_tinh_nang.delete')
 
 const {
   items,
@@ -572,30 +930,59 @@ const {
   remove,
 } = useTenTinhNang()
 
-// === TAB (nếu có nhiều tính năng con) ===
-const activeTab = ref('main') // 'main' | 'history' | 'settings' ...
+const searchQuery = ref('')
+const activeTab = ref('main')
 
-// === COLUMNS ===
-const columns: QTableColumn[] = [
-  { name: 'id', label: 'ID', field: 'id', align: 'left', sortable: true },
-  { name: 'name', label: 'Tên', field: 'name', align: 'left', sortable: true },
-  { name: 'status', label: 'Trạng thái', field: 'status', align: 'center' },
-  { name: 'created_at', label: 'Ngày tạo', field: 'created_at', align: 'center' },
-  { name: 'actions', label: 'Thao tác', field: 'actions', align: 'center' },
+const debouncedSearch = useDebounceFn(() => {
+  fetchList({ search: searchQuery.value, page: 1 })
+}, 300)
+
+watch(searchQuery, () => debouncedSearch())
+
+const statusOptions = [
+  { value: 'DRAFT', label: 'Nhap' },
+  { value: 'CONFIRMED', label: 'Da xac nhan' },
+  { value: 'CANCELLED', label: 'Da huy' },
 ]
 
-// === DIALOG STATE ===
-const showFormDialog = ref(false)
-const formMode = ref<'create' | 'edit'>('create')
-const formData = ref({
-  name: '',
-  // ... other fields
+const statusColors: Record<string, string> = {
+  DRAFT: 'grey',
+  CONFIRMED: 'positive',
+  CANCELLED: 'negative',
+}
+
+const statusLabels: Record<string, string> = {
+  DRAFT: 'Nhap',
+  CONFIRMED: 'Da xac nhan',
+  CANCELLED: 'Da huy',
+}
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '-'
+  return date.formatDate(dateStr, 'DD/MM/YYYY')
+}
+
+const columns: QTableColumn[] = [
+  { name: 'code', label: 'Ma', field: 'code', align: 'left', sortable: true },
+  { name: 'name', label: 'Ten', field: 'name', align: 'left', sortable: true },
+  { name: 'status', label: 'Trang thai', field: 'status', align: 'center' },
+  { name: 'created_at', label: 'Ngay tao', field: 'created_at', align: 'center' },
+  { name: 'actions', label: 'Thao tac', field: 'actions', align: 'center' },
+]
+
+const pagination = ref({
+  page: 1,
+  rowsPerPage: 20,
+  rowsNumber: 0,
 })
 
-// === METHODS ===
+const showFormDialog = ref(false)
+const formMode = ref<'create' | 'edit'>('create')
+const formData = ref({ id: 0, code: '', name: '', notes: '' })
+
 const openCreateDialog = () => {
   formMode.value = 'create'
-  formData.value = { name: '' }
+  formData.value = { id: 0, code: '', name: '', notes: '' }
   showFormDialog.value = true
 }
 
@@ -622,17 +1009,18 @@ const handleSubmit = async () => {
 }
 
 const handleDelete = async (item: any) => {
-  const confirmed = await confirmDelete(
-    `Bạn có chắc muốn xóa "${item.name}"?`
-  )
+  const confirmed = await confirmDelete(item.name)
   if (confirmed) {
     await remove(item.id)
   }
 }
 
-const handleRequest = (props: any) => {
+const handleRequest = async (props: Parameters<NonNullable<QTableProps['onRequest']>>[0]) => {
   const { page, rowsPerPage } = props.pagination
-  fetchList({ page, limit: rowsPerPage })
+  await fetchList({ page, limit: rowsPerPage })
+  pagination.value.page = page
+  pagination.value.rowsPerPage = rowsPerPage
+  pagination.value.rowsNumber = total.value
 }
 
 onMounted(() => {
@@ -642,26 +1030,22 @@ onMounted(() => {
 
 <template>
   <q-page padding>
-    <!-- ==================== HEADER ==================== -->
     <PageHeader
-      title="Tiêu Đề Trang"
-      subtitle="Mô tả ngắn gọn"
+      title="Tieu De Trang"
+      subtitle="Mo ta ngan gon"
     >
       <template #actions>
         <AppButton
+          v-if="canCreate.value"
           color="primary"
           icon="add"
-          label="Thêm Mới"
-          unelevated
+          label="Them Moi"
           @click="openCreateDialog"
         />
       </template>
     </PageHeader>
 
-    <!-- ==================== MAIN CONTENT ==================== -->
     <q-card flat bordered>
-
-      <!-- TAB HEADER (nếu có nhiều tính năng) -->
       <q-tabs
         v-model="activeTab"
         dense
@@ -671,69 +1055,66 @@ onMounted(() => {
         align="left"
         narrow-indicator
       >
-        <q-tab name="main" label="Chính" icon="list" />
-        <q-tab name="history" label="Lịch Sử" icon="history" />
+        <q-tab name="main" label="Danh sach" icon="list" />
+        <q-tab name="history" label="Lich su" icon="history" />
       </q-tabs>
 
       <q-separator />
 
-      <!-- TAB PANELS -->
       <q-tab-panels v-model="activeTab" animated>
-        <!-- Panel: Main -->
         <q-tab-panel name="main">
-
-          <!-- FILTERS -->
           <div class="row q-col-gutter-sm q-mb-md">
             <div class="col-12 col-sm-4 col-md-3">
               <AppInput
-                v-model="filters.search"
-                label="Tìm kiếm"
+                v-model="searchQuery"
+                label="Tim kiem"
                 dense
                 clearable
-                @update:model-value="fetchList"
               />
             </div>
             <div class="col-12 col-sm-4 col-md-3">
               <AppSelect
                 v-model="filters.status"
-                label="Trạng thái"
+                label="Trang thai"
                 :options="statusOptions"
                 dense
                 clearable
-                emit-value
-                map-options
-                @update:model-value="fetchList"
+                @update:model-value="() => fetchList({ page: 1 })"
               />
             </div>
             <div class="col-12 col-sm-4 col-md-3">
-              <DatePicker
-                v-model="filters.from"
-                label="Từ ngày"
-                dense
-              />
+              <AppInput v-model="filters.from" label="Tu ngay" dense readonly>
+                <template #append>
+                  <q-icon name="event" class="cursor-pointer">
+                    <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                      <DatePicker v-model="filters.from" />
+                    </q-popup-proxy>
+                  </q-icon>
+                </template>
+              </AppInput>
             </div>
           </div>
 
-          <!-- DATA TABLE -->
           <DataTable
+            v-model:pagination="pagination"
             :rows="items"
             :columns="columns"
             row-key="id"
             :loading="isLoading"
-            :pagination="{
-              page: filters.page || 1,
-              rowsPerPage: filters.limit || 20,
-              rowsNumber: total,
-            }"
             @request="handleRequest"
           >
-            <!-- Custom column slots -->
             <template #body-cell-status="props">
               <q-td :props="props">
                 <q-badge
-                  :color="props.row.status === 'CONFIRMED' ? 'positive' : 'warning'"
-                  :label="props.row.status"
+                  :color="statusColors[props.row.status] || 'grey'"
+                  :label="statusLabels[props.row.status] || props.row.status"
                 />
+              </q-td>
+            </template>
+
+            <template #body-cell-created_at="props">
+              <q-td :props="props">
+                {{ formatDate(props.row.created_at) }}
               </q-td>
             </template>
 
@@ -741,60 +1122,82 @@ onMounted(() => {
               <q-td :props="props">
                 <div class="row no-wrap justify-center q-gutter-xs">
                   <q-btn
+                    v-if="canEdit.value"
                     flat round dense size="sm"
                     icon="edit" color="primary"
                     @click.stop="openEditDialog(props.row)"
                   >
-                    <q-tooltip>Sửa</q-tooltip>
+                    <q-tooltip>Sua</q-tooltip>
                   </q-btn>
                   <q-btn
+                    v-if="canDelete.value"
                     flat round dense size="sm"
                     icon="delete" color="negative"
                     @click.stop="handleDelete(props.row)"
                   >
-                    <q-tooltip>Xóa</q-tooltip>
+                    <q-tooltip>Xoa</q-tooltip>
                   </q-btn>
                 </div>
               </q-td>
             </template>
+
+            <template #empty-action>
+              <AppButton
+                v-if="canCreate.value"
+                color="primary"
+                label="Tao Moi"
+                icon="add"
+                @click="openCreateDialog"
+              />
+            </template>
           </DataTable>
         </q-tab-panel>
 
-        <!-- Panel: History -->
         <q-tab-panel name="history">
-          <!-- Nội dung tab lịch sử -->
+          <!-- Noi dung tab lich su -->
         </q-tab-panel>
       </q-tab-panels>
     </q-card>
 
-    <!-- ==================== FORM DIALOG ==================== -->
     <q-dialog v-model="showFormDialog" persistent>
       <q-card style="min-width: 500px">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">
-            {{ formMode === 'create' ? 'Thêm Mới' : 'Chỉnh Sửa' }}
+            {{ formMode === 'create' ? 'Them Moi' : 'Chinh Sua' }}
           </div>
           <q-space />
           <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
 
         <q-card-section>
-          <div class="q-gutter-md">
-            <AppInput
-              v-model="formData.name"
-              label="Tên *"
-              :rules="[(v: string) => !!v || 'Không được để trống']"
-            />
-            <!-- ... thêm fields ... -->
-          </div>
+          <q-form @submit.prevent="handleSubmit">
+            <div class="q-gutter-md">
+              <AppInput
+                v-model="formData.code"
+                label="Ma *"
+                :rules="[(v: string) => !!v || 'Khong duoc de trong']"
+                :disable="formMode === 'edit'"
+              />
+              <AppInput
+                v-model="formData.name"
+                label="Ten *"
+                :rules="[(v: string) => !!v || 'Khong duoc de trong']"
+              />
+              <AppInput
+                v-model="formData.notes"
+                label="Ghi chu"
+                type="textarea"
+                autogrow
+              />
+            </div>
+          </q-form>
         </q-card-section>
 
         <q-card-actions align="right" class="q-pa-md">
-          <q-btn flat label="Hủy" v-close-popup />
+          <q-btn flat label="Huy" v-close-popup />
           <AppButton
             color="primary"
-            :label="formMode === 'create' ? 'Tạo' : 'Cập Nhật'"
-            unelevated
+            :label="formMode === 'create' ? 'Tao' : 'Cap Nhat'"
             :loading="isLoading"
             @click="handleSubmit"
           />
@@ -805,161 +1208,103 @@ onMounted(() => {
 </template>
 ```
 
----
+### Template - Detail Page ([id].vue)
 
-## QUY TẮC BẮT BUỘC
-
-### UI Components - PHẢI dùng
-| Component | Thay cho | Import |
-|-----------|----------|--------|
-| `AppInput` | `q-input` | `@/components/ui/inputs/AppInput.vue` |
-| `AppSelect` | `q-select` | `@/components/ui/inputs/AppSelect.vue` |
-| `AppButton` | `q-btn` (chính) | `@/components/ui/buttons/AppButton.vue` |
-| `DataTable` | `q-table` | `@/components/ui/tables/DataTable.vue` |
-| `DatePicker` | `input[type=date]` | `@/components/ui/pickers/DatePicker.vue` |
-| `PageHeader` | Custom header | `@/components/ui/layout` |
-| `AppCard` | `q-card` (tùy case) | `@/components/ui/cards` |
-
-> **Ngoại lệ**: `q-btn` flat/round/dense cho action icons trong table rows thì dùng trực tiếp (vì AppButton dành cho buttons chính có label).
-
-### Header Pattern
-MỌI trang PHẢI có `PageHeader` với:
-- `title`: Tiêu đề trang (bắt buộc)
-- `subtitle`: Mô tả ngắn (tùy chọn)
-- `showBack` + `backTo`: Nút quay lại cho trang chi tiết/con
-- Slot `#actions`: Nút hành động chính (Thêm mới, Export...)
-
-### Tab Layout Pattern
-Khi trang có **≥2 tính năng con** (ví dụ: Tạo + Lịch sử):
 ```vue
-<q-tabs v-model="activeTab" dense align="left" narrow-indicator>
-  <q-tab name="tab1" label="Tab 1" icon="icon1" />
-  <q-tab name="tab2" label="Tab 2" icon="icon2" />
-</q-tabs>
-<q-separator />
-<q-tab-panels v-model="activeTab" animated>
-  <q-tab-panel name="tab1">...</q-tab-panel>
-  <q-tab-panel name="tab2">...</q-tab-panel>
-</q-tab-panels>
-```
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useTenTinhNang } from '@/composables/[module]/useTenTinhNang'
+import { PageHeader } from '@/components/ui/layout'
+import { date } from 'quasar'
 
-Hỗ trợ tab từ URL query:
-```typescript
+definePage({
+  meta: {
+    requiresAuth: true,
+    permissions: ['ten_tinh_nang.view'],
+    title: 'Chi Tiet',
+  }
+})
+
 const route = useRoute()
-const activeTab = ref(route.query.tab === 'history' ? 'history' : 'main')
-```
+const router = useRouter()
+const itemId = computed(() => Number(route.params.id))
 
-### Nút Thao Tác Pattern
-Trong table rows, luôn dùng pattern:
-```vue
-<template #body-cell-actions="props">
-  <q-td :props="props">
-    <div class="row no-wrap justify-center q-gutter-xs">
-      <q-btn flat round dense size="sm" icon="visibility" color="info"
-        @click.stop="handleView(props.row)">
-        <q-tooltip>Xem</q-tooltip>
-      </q-btn>
-      <q-btn flat round dense size="sm" icon="edit" color="primary"
-        @click.stop="handleEdit(props.row)">
-        <q-tooltip>Sửa</q-tooltip>
-      </q-btn>
-      <q-btn flat round dense size="sm" icon="delete" color="negative"
-        @click.stop="handleDelete(props.row)">
-        <q-tooltip>Xóa</q-tooltip>
-      </q-btn>
-    </div>
-  </q-td>
-</template>
-```
+const { currentItem, isLoading, fetchById } = useTenTinhNang()
 
-### Định dạng ngày tháng - LUÔN DD/MM/YYYY
-Mọi ngày tháng hiển thị trên UI PHẢI theo format **DD/MM/YYYY** (chuẩn Việt Nam).
+const activeTab = ref('info')
 
-**Helper function** — define trong mỗi page (hoặc utils nếu dùng nhiều):
-```typescript
 function formatDate(dateStr: string): string {
   if (!dateStr) return '-'
-  const d = new Date(dateStr)
-  const day = String(d.getDate()).padStart(2, '0')
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const year = d.getFullYear()
-  return `${day}/${month}/${year}`
+  return date.formatDate(dateStr, 'DD/MM/YYYY HH:mm')
 }
-```
 
-**Hoặc dùng Quasar date util:**
-```typescript
-import { date } from 'quasar'
-const formatted = date.formatDate(dateStr, 'DD/MM/YYYY')
-const formattedWithTime = date.formatDate(dateStr, 'DD/MM/YYYY HH:mm')
-```
+onMounted(() => {
+  fetchById(itemId.value)
+})
+</script>
 
-**Áp dụng trong table column:**
-```vue
-<template #body-cell-created_at="props">
-  <q-td :props="props">
-    {{ formatDate(props.row.created_at) }}
-  </q-td>
+<template>
+  <q-page padding>
+    <PageHeader
+      :title="`Chi tiet: ${currentItem?.name || ''}`"
+      showBack
+      backTo="/[module]/ten-tinh-nang"
+    >
+      <template #actions>
+        <q-badge
+          v-if="currentItem"
+          :color="statusColors[currentItem.status]"
+          :label="statusLabels[currentItem.status]"
+          class="text-body2 q-pa-sm"
+        />
+      </template>
+    </PageHeader>
+
+    <q-card flat bordered v-if="currentItem">
+      <q-tabs v-model="activeTab" align="left" active-color="primary" narrow-indicator dense>
+        <q-tab name="info" label="Thong tin" icon="info" />
+        <q-tab name="history" label="Lich su" icon="history" />
+      </q-tabs>
+
+      <q-separator />
+
+      <q-tab-panels v-model="activeTab" animated>
+        <q-tab-panel name="info">
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-sm-6 col-md-4">
+              <div class="text-caption text-grey">Ma</div>
+              <div class="text-body1">{{ currentItem.code }}</div>
+            </div>
+            <div class="col-12 col-sm-6 col-md-4">
+              <div class="text-caption text-grey">Ten</div>
+              <div class="text-body1">{{ currentItem.name }}</div>
+            </div>
+            <div class="col-12 col-sm-6 col-md-4">
+              <div class="text-caption text-grey">Ngay tao</div>
+              <div class="text-body1">{{ formatDate(currentItem.created_at) }}</div>
+            </div>
+          </div>
+        </q-tab-panel>
+
+        <q-tab-panel name="history">
+          <!-- Audit log / change history -->
+        </q-tab-panel>
+      </q-tab-panels>
+    </q-card>
+
+    <q-inner-loading :showing="isLoading" />
+  </q-page>
 </template>
 ```
 
-**KHÔNG dùng:**
-- `toLocaleDateString()` (output không nhất quán giữa các browser)
-- `YYYY-MM-DD` (format ISO, chỉ dùng cho API/DB)
-- `MM/DD/YYYY` (format Mỹ, không phải chuẩn VN)
-- `input[type="date"]` → dùng `DatePicker` component (đã format DD/MM/YYYY sẵn)
+---
 
-### Thông báo - PHẢI tiếng Việt
-```typescript
-snackbar.success('Tạo thành công')
-snackbar.error('Không thể tạo. Vui lòng thử lại')
-snackbar.warning('Vui lòng điền đầy đủ thông tin')
-```
+## BUOC 8: REALTIME (neu can)
 
-### API - KHÔNG BAO GIỜ gọi Supabase trực tiếp từ Frontend
-```
-Frontend → fetchApi() → Hono API → supabaseAdmin → PostgreSQL
-```
-
-### Không thêm comment trong code
-Code phải tự giải thích. Không thêm `//`, `/* */` hay docstring trừ khi thực sự cần thiết.
-
-### Error Handling - dùng getErrorMessage()
-LUÔN dùng utility có sẵn thay vì xử lý error thủ công:
-```typescript
-import { getErrorMessage } from '@/utils/errorMessages'
-
-try {
-  await someOperation()
-} catch (err) {
-  snackbar.error(getErrorMessage(err))
-}
-```
-
-### Confirmation Dialogs - dùng useConfirm()
-Khi cần xác nhận từ user (xóa, hành động nguy hiểm):
-```typescript
-import { useConfirm } from '@/composables/useConfirm'
-
-const { confirmDelete, confirmWarning } = useConfirm()
-
-const handleDelete = async (item: TenBang) => {
-  const confirmed = await confirmDelete(item.name)
-  if (!confirmed) return
-  await remove(item.id)
-}
-
-const handleDangerAction = async () => {
-  const confirmed = await confirmWarning('Hành động này không thể hoàn tác')
-  if (!confirmed) return
-  // ...
-}
-```
-
-### Real-time Subscriptions - useRealtime()
-Nếu tính năng cần cập nhật real-time (dashboard, danh sách live):
 ```typescript
 import { useRealtime } from '@/composables/useRealtime'
+import { onMounted, onUnmounted } from 'vue'
 
 const { subscribe, unsubscribeAll } = useRealtime()
 
@@ -978,89 +1323,33 @@ onUnmounted(() => {
 })
 ```
 
-### Route Guards - definePage meta
-MỌI trang PHẢI có `definePage` để khai báo permissions:
-```typescript
-definePage({
-  meta: {
-    title: 'Tên Trang',
-    permissions: ['module.action'],
-  }
-})
-```
+---
 
-Các meta options:
-```typescript
-{
-  public: true,                     // Không cần đăng nhập
-  requiresAuth: true,               // Cần đăng nhập (default)
-  requiresAdmin: true,              // Chỉ admin/root
-  permissions: ['perm1', 'perm2'],  // OR logic (có 1 trong các quyền)
-  allPermissions: ['p1', 'p2'],     // AND logic (phải có TẤT CẢ quyền)
-  title: 'Tên hiển thị',
-}
-```
+## BUOC 9: EXCEL EXPORT (neu can)
 
-### Server-Side Pagination - @request handler
-Khi dùng DataTable với dữ liệu lớn, PHẢI dùng server-side pagination:
-```typescript
-import type { QTableProps } from 'quasar'
-
-const pagination = ref({
-  page: 1,
-  rowsPerPage: 20,
-  rowsNumber: 0,
-})
-
-const handleRequest = async (props: Parameters<NonNullable<QTableProps['onRequest']>>[0]) => {
-  const { page, rowsPerPage } = props.pagination
-  await fetchList({ page, limit: rowsPerPage })
-  pagination.value.page = page
-  pagination.value.rowsPerPage = rowsPerPage
-  pagination.value.rowsNumber = total.value
-}
-```
-
-Template:
-```vue
-<DataTable
-  v-model:pagination="pagination"
-  :rows="items"
-  :columns="columns"
-  :loading="isLoading"
-  row-key="id"
-  @request="handleRequest"
-/>
-```
-
-### Debounced Search - useDebounceFn
-Khi có ô tìm kiếm, LUÔN debounce để tránh spam API:
-```typescript
-import { useDebounceFn } from '@vueuse/core'
-
-const searchQuery = ref('')
-
-const debouncedSearch = useDebounceFn(() => {
-  fetchList({ search: searchQuery.value, page: 1 })
-}, 300)
-
-watch(searchQuery, () => debouncedSearch())
-```
-
-### Excel Export - ExcelJS
-Khi tính năng cần xuất Excel, dùng dynamic import:
 ```typescript
 const exportExcel = async () => {
   const ExcelJS = (await import('exceljs')).default
   const workbook = new ExcelJS.Workbook()
-  const sheet = workbook.addWorksheet('Tên Sheet')
+  const sheet = workbook.addWorksheet('Ten Sheet')
 
   sheet.columns = [
-    { header: 'ID', key: 'id', width: 10 },
-    { header: 'Tên', key: 'name', width: 30 },
+    { header: 'Ma', key: 'code', width: 15 },
+    { header: 'Ten', key: 'name', width: 30 },
+    { header: 'Trang thai', key: 'status', width: 15 },
+    { header: 'Ngay tao', key: 'created_at', width: 15 },
   ]
 
-  items.value.forEach((item) => sheet.addRow(item))
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1976D2' } }
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+
+  items.value.forEach((item) => {
+    sheet.addRow({
+      ...item,
+      status: statusLabels[item.status] || item.status,
+      created_at: formatDate(item.created_at),
+    })
+  })
 
   const buffer = await workbook.xlsx.writeBuffer()
   const blob = new Blob([buffer], {
@@ -1075,188 +1364,214 @@ const exportExcel = async () => {
 }
 ```
 
-Nút export trong PageHeader:
+Nut export trong PageHeader:
 ```vue
 <template #actions>
-  <AppButton outline color="positive" icon="file_download" label="Xuất Excel" @click="exportExcel" />
-  <AppButton color="primary" icon="add" label="Thêm Mới" @click="openCreateDialog" />
+  <AppButton variant="outlined" color="positive" icon="file_download" label="Xuat Excel" @click="exportExcel" />
+  <AppButton color="primary" icon="add" label="Them Moi" @click="openCreateDialog" />
 </template>
-```
-
-### DatePicker Popup Pattern
-Khi dùng DatePicker kết hợp input, dùng popup pattern:
-```vue
-<AppInput v-model="filters.from" label="Từ ngày" dense readonly>
-  <template #append>
-    <q-icon name="event" class="cursor-pointer">
-      <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-        <DatePicker v-model="filters.from" />
-      </q-popup-proxy>
-    </q-icon>
-  </template>
-</AppInput>
-```
-
-### Empty State - DataTable
-DataTable hỗ trợ slot `#empty-action` cho trạng thái rỗng:
-```vue
-<DataTable ...>
-  <template #empty-action>
-    <AppButton color="primary" label="Tạo Mới" icon="add" @click="openCreateDialog" />
-  </template>
-</DataTable>
-```
-
-### Responsive Grid
-LUÔN dùng responsive breakpoints:
-```vue
-<div class="row q-col-gutter-md">
-  <!-- Full → Half → Third → Quarter -->
-  <div class="col-12 col-sm-6 col-md-4 col-lg-3">...</div>
-</div>
-```
-
-Filters toolbar pattern:
-```vue
-<div class="row q-col-gutter-sm q-mb-md">
-  <div class="col-12 col-sm-4 col-md-3">
-    <AppInput v-model="searchQuery" label="Tìm kiếm" dense clearable />
-  </div>
-  <div class="col-12 col-sm-4 col-md-3">
-    <AppSelect v-model="filters.status" label="Trạng thái" dense clearable emit-value map-options :options="statusOptions" />
-  </div>
-  <div class="col-12 col-sm-4 col-md-3">
-    <AppInput v-model="filters.from" label="Từ ngày" dense readonly>
-      <template #append>
-        <q-icon name="event" class="cursor-pointer">
-          <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-            <DatePicker v-model="filters.from" />
-          </q-popup-proxy>
-        </q-icon>
-      </template>
-    </AppInput>
-  </div>
-</div>
-```
-
-### Status Badge Pattern
-Khi hiển thị trạng thái trong table, dùng color mapping:
-```typescript
-const statusColors: Record<string, string> = {
-  DRAFT: 'grey',
-  CONFIRMED: 'positive',
-  CANCELLED: 'negative',
-  PENDING: 'warning',
-}
-
-const statusLabels: Record<string, string> = {
-  DRAFT: 'Nháp',
-  CONFIRMED: 'Đã xác nhận',
-  CANCELLED: 'Đã hủy',
-  PENDING: 'Chờ xử lý',
-}
-```
-
-```vue
-<template #body-cell-status="props">
-  <q-td :props="props">
-    <q-badge
-      :color="statusColors[props.row.status] || 'grey'"
-      :label="statusLabels[props.row.status] || props.row.status"
-    />
-  </q-td>
-</template>
-```
-
-### Form Validation Rules
-Dùng `:rules` prop cho AppInput/AppSelect:
-```vue
-<AppInput
-  v-model="formData.name"
-  label="Tên *"
-  :rules="[
-    (v: string) => !!v || 'Không được để trống',
-    (v: string) => v.length >= 2 || 'Tối thiểu 2 ký tự',
-  ]"
-/>
-
-<AppInput
-  v-model="formData.quantity"
-  label="Số lượng *"
-  type="number"
-  :rules="[
-    (v: number) => v > 0 || 'Phải lớn hơn 0',
-  ]"
-/>
-```
-
-### Number Formatting - chuẩn VN
-Số lượng và tiền tệ hiển thị theo format Việt Nam:
-```typescript
-function formatNumber(value: number): string {
-  return value.toLocaleString('vi-VN')
-}
-
-function formatCurrency(value: number): string {
-  return value.toLocaleString('vi-VN') + ' đ'
-}
 ```
 
 ---
 
-## BƯỚC 8: CHECKLIST TRƯỚC KHI HOÀN THÀNH
+## QUY TAC BAT BUOC
 
-### Database & Backend
-- [ ] Migration có `created_at`, `updated_at`, trigger
-- [ ] Types frontend + backend khớp nhau
-- [ ] Zod validation cho mọi input từ client
-- [ ] Route đã đăng ký trong `server/index.ts`
-- [ ] Service dùng `fetchApi()`, không dùng `fetch()` trực tiếp
+### UI Components - PHAI dung
+| Component | Thay cho | Import |
+|-----------|----------|--------|
+| `AppInput` | `q-input` | `@/components/ui/inputs/AppInput.vue` |
+| `AppSelect` | `q-select` | `@/components/ui/inputs/AppSelect.vue` |
+| `AppButton` | `q-btn` (chinh) | `@/components/ui/buttons/AppButton.vue` |
+| `DataTable` | `q-table` | `@/components/ui/tables/DataTable.vue` |
+| `DatePicker` | `input[type=date]` | `@/components/ui/pickers/DatePicker.vue` |
+| `PageHeader` | Custom header | `@/components/ui/layout` |
+| `FormDialog` | `q-dialog` (form) | `@/components/ui/dialogs/FormDialog.vue` |
+
+> **Ngoai le**: `q-btn` flat/round/dense cho action icons trong table rows thi dung truc tiep (vi AppButton danh cho buttons chinh co label).
+
+### AppInput props chinh
+`modelValue, type, label, placeholder, outlined=true, dense, disable, readonly, required, clearable, debounce, autofocus, autogrow, maxlength, mask, loading, rules, errorMessage`
+- `required=true` tu dong them rule "Truong nay la bat buoc"
+- Slots: `append`, `prepend`, `before`, `after`
+
+### AppSelect props chinh
+`modelValue, options, optionValue='value', optionLabel='label', multiple, outlined=true, dense, disable, clearable, useInput, useChips, emitValue=true, mapOptions=true, loading, required, rules`
+- `required=true` tu dong them rule "Vui long chon mot muc"
+- Built-in filtering khi co `useInput`
+
+### AppButton props chinh
+`color='primary', size='md', variant='filled'|'flat'|'outlined'|'text', loading, disable, icon, iconRight, label, type='button', round, dense, block, noCaps=true`
+
+### DataTable props chinh
+`rows, columns, rowKey='id', loading, filter, pagination, selected, selection='none', rowsPerPageOptions=[10,25,50,100], emptyIcon='inbox', emptyTitle='Khong co du lieu'`
+- Emits: `update:pagination`, `update:selected`, `request`, `rowClick`
+- Slots: tat ca q-table slots + `#empty-action`
+
+### Cascading Selects Pattern
+```typescript
+watch(selectedParentId, async (newId) => {
+  selectedChildId.value = null
+  childOptions.value = []
+  if (!newId) return
+  const data = await service.getOptions(newId)
+  childOptions.value = data.map(d => ({ value: d.id, label: d.name }))
+})
+```
+
+### Thong bao - PHAI tieng Viet
+```typescript
+snackbar.success('Tao thanh cong')
+snackbar.error('Khong the tao. Vui long thu lai')
+snackbar.warning('Vui long dien day du thong tin')
+```
+
+### Dinh dang ngay thang - LUON DD/MM/YYYY
+```typescript
+import { date } from 'quasar'
+const formatted = date.formatDate(dateStr, 'DD/MM/YYYY')
+const formattedWithTime = date.formatDate(dateStr, 'DD/MM/YYYY HH:mm')
+```
+
+### So luong format - chuan VN
+```typescript
+value.toLocaleString('vi-VN')
+value.toLocaleString('vi-VN') + ' d'
+```
+
+### Error Handling - dung getErrorMessage()
+```typescript
+import { getErrorMessage } from '@/utils/errorMessages'
+snackbar.error(getErrorMessage(err))
+```
+
+### Confirmation - dung useConfirm()
+```typescript
+const { confirmDelete, confirmWarning } = useConfirm()
+const confirmed = await confirmDelete(item.name)
+```
+
+### Permissions - dung usePermission()
+```typescript
+const { can, canAny, isAdmin } = usePermission()
+const canEdit = can('resource.edit')
+```
+
+### API - KHONG BAO GIO goi Supabase truc tiep tu Frontend
+```
+Frontend -> fetchApi() -> Hono API -> supabaseAdmin -> PostgreSQL
+```
+
+### File structure conventions
+```
+src/composables/
+  useXxx.ts              # generic composables
+  thread/useXxx.ts       # domain composables
+  index.ts               # barrel export
+
+src/services/
+  api.ts                 # fetchApi base
+  xxxService.ts          # domain services
+  index.ts               # barrel export
+
+src/types/
+  ui/                    # component prop types
+  thread/                # domain types
+  auth/                  # auth types
+  index.ts               # barrel export
+
+src/pages/
+  [module]/              # domain pages
+    ten-tinh-nang/
+      index.vue          # list page
+      [id].vue           # detail page
+
+src/components/
+  ui/                    # reusable UI components
+    inputs/              # AppInput, AppSelect, SearchInput
+    buttons/             # AppButton
+    tables/              # DataTable
+    dialogs/             # FormDialog, ConfirmDialog
+    feedback/            # EmptyState
+    layout/              # PageHeader
+    pickers/             # DatePicker
+    navigation/          # AppTabs, AppBreadcrumbs
+  thread/                # domain-specific components
+```
+
+---
+
+## CHECKLIST TRUOC KHI HOAN THANH
+
+### Database
+- [ ] Migration co `created_at`, `updated_at`, trigger `fn_update_updated_at_column()`
+- [ ] ENUM dung `CREATE TYPE` voi values UPPERCASE
+- [ ] Soft delete co `deleted_at TIMESTAMPTZ`
+- [ ] Index cho cac cot filter thuong dung
+- [ ] `NOTIFY pgrst, 'reload schema'` cuoi migration
+- [ ] `ALTER PUBLICATION supabase_realtime ADD TABLE` (neu can realtime)
+- [ ] RPC functions co prefix `fn_`, params prefix `p_`, vars prefix `v_`
+- [ ] COMMENT ON TABLE/COLUMN bang tieng Viet
+
+### Backend
+- [ ] Route order: static truoc dynamic, `/:id` cuoi
+- [ ] Response format: `{ data, error }` (KHONG phai `{ success, data, error }`)
+- [ ] Zod validation dung `.safeParse()` (KHONG `.parse()`)
+- [ ] Duplicate check truoc insert (409)
+- [ ] Exists check truoc update/delete (404)
+- [ ] PGRST116 error code cho not found
+- [ ] Route da dang ky trong `server/index.ts`
+- [ ] Types dung shared `ApiResponse<T>`, KHONG tao rieng
+- [ ] Soft delete: `update({ deleted_at, is_active: false })`
 
 ### Frontend - State
-- [ ] Composable có `useSnackbar()`, `useLoading()`
-- [ ] Error handling dùng `getErrorMessage()` utility
-- [ ] Xóa/hành động nguy hiểm dùng `useConfirm()`
-- [ ] Search input có debounce (300ms)
-- [ ] Real-time nếu cần (useRealtime)
+- [ ] Composable dung `useLoading().withLoading()` (KHONG manual loading)
+- [ ] Error handling dung `getErrorMessage()` utility
+- [ ] Xoa/hanh dong nguy hiem dung `useConfirm()`
+- [ ] Search input co debounce (300ms) voi `useDebounceFn`
+- [ ] Service dung `fetchApi()`, method `PUT` cho update
+- [ ] Service dung `buildQueryString()` helper
 
 ### Frontend - UI
-- [ ] Page có `PageHeader` với title + actions
-- [ ] Dùng `AppInput`, `AppSelect`, `AppButton`, `DatePicker`
-- [ ] Tab layout nếu có ≥2 tính năng con
-- [ ] Action buttons trong table theo pattern chuẩn (flat round dense)
-- [ ] Status badge với color mapping nếu có trạng thái
-- [ ] DataTable có `#empty-action` slot
-- [ ] Server-side pagination với `@request` handler
+- [ ] `definePage` meta co permissions phu hop
+- [ ] Page co `PageHeader` voi title + actions
+- [ ] Dung `AppInput`, `AppSelect`, `AppButton`, `DatePicker`
+- [ ] Tab layout neu co >=2 tinh nang con
+- [ ] Action buttons trong table: `q-btn flat round dense size="sm"` + `q-tooltip`
+- [ ] Status badge voi color mapping
+- [ ] DataTable co `#empty-action` slot
+- [ ] Server-side pagination voi `@request` handler + `v-model:pagination`
 - [ ] Responsive grid (`col-12 col-sm-6 col-md-4`)
-- [ ] DatePicker dùng popup pattern (icon + q-popup-proxy)
-- [ ] Form validation dùng `:rules` prop
+- [ ] DatePicker dung popup pattern (icon + q-popup-proxy)
+- [ ] Form validation dung `:rules` prop
+- [ ] Permission checks: `v-if="canEdit.value"` cho action buttons
+- [ ] Detail page co back button (`showBack` + `backTo`)
 
-### Quy tắc chung
-- [ ] Mọi thông báo bằng tiếng Việt
-- [ ] Ngày tháng hiển thị đúng DD/MM/YYYY (không dùng toLocaleDateString)
-- [ ] Số lượng format theo chuẩn VN (toLocaleString('vi-VN'))
-- [ ] `definePage` meta có permissions phù hợp
-- [ ] Không có comment thừa trong code
-- [ ] File-based routing đúng (unplugin-vue-router)
-- [ ] Excel export dùng ExcelJS (nếu cần xuất dữ liệu)
+### Quy tac chung
+- [ ] Moi thong bao bang tieng Viet
+- [ ] Ngay thang DD/MM/YYYY (dung `date.formatDate` tu quasar)
+- [ ] So luong format `toLocaleString('vi-VN')`
+- [ ] Khong co comment thua trong code
+- [ ] File-based routing dung (unplugin-vue-router)
+- [ ] Excel export dung ExcelJS (neu can xuat du lieu)
 
 ---
 
-## THỨ TỰ THỰC HIỆN
+## THU TU THUC HIEN
 
 ```
-1. Migration SQL        → Database schema
-2. Types                → Shared type definitions
-3. Validation           → Zod schemas
-4. Backend Route        → Hono API + đăng ký trong index.ts
-5. Service              → Frontend API client
-6. Composable           → State management
-7. Page                 → Vue page với đầy đủ UI
-8. Test thủ công        → Verify full flow
+1. Migration SQL        -> Database schema + enum + trigger + index
+2. Types                -> Backend types + Frontend types
+3. Validation           -> Zod schemas (.safeParse pattern)
+4. Backend Route        -> Hono API (dung thu tu route) + dang ky trong index.ts
+5. Service              -> Frontend API client (fetchApi + buildQueryString)
+6. Composable           -> State management (useLoading.withLoading)
+7. List Page            -> Vue page voi day du UI
+8. Detail Page          -> [id].vue (neu can)
+9. Realtime             -> useRealtime (neu can)
+10. Excel Export        -> ExcelJS (neu can)
 ```
 
-Khi dùng multi-agent (task ảnh hưởng ≥3 layers):
-- **db-agent**: Bước 1
-- **backend-agent**: Bước 2, 3, 4
-- **frontend-agent**: Bước 5, 6, 7
+Khi dung multi-agent (task anh huong >=3 layers):
+- **db-agent**: Buoc 1
+- **backend-agent**: Buoc 2, 3, 4
+- **frontend-agent**: Buoc 5, 6, 7, 8, 9, 10
