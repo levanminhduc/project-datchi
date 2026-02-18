@@ -10,7 +10,6 @@ import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import { useThreadTypes } from '@/composables'
 import { useLots } from '@/composables/useLots'
 import type { Lot, CreateLotRequest, UpdateLotRequest } from '@/types/thread/lot'
-import type { Supplier } from '@/types/thread/supplier'
 
 interface Props {
   modelValue: boolean
@@ -32,14 +31,12 @@ const { createLot, updateLot, loading } = useLots()
 const isEdit = computed(() => !!props.lot)
 const title = computed(() => isEdit.value ? 'Chỉnh sửa lô' : 'Tạo lô mới')
 
-// Form data - includes both supplier text and supplier_id for dual-write
 const form = ref<{
   lot_number: string
   thread_type_id: number | null
   warehouse_id: number | null
   production_date: string | null
   expiry_date: string | null
-  supplier: string
   supplier_id: number | null
   notes: string
 }>({
@@ -48,7 +45,6 @@ const form = ref<{
   warehouse_id: null,
   production_date: null,
   expiry_date: null,
-  supplier: '',
   supplier_id: null,
   notes: ''
 })
@@ -61,17 +57,6 @@ const threadTypeOptions = computed(() =>
   }))
 )
 
-/**
- * Handle supplier selection - update both ID and legacy text field
- */
-function handleSupplierChange(supplierData: Supplier | null) {
-  if (supplierData) {
-    form.value.supplier = supplierData.name
-  } else {
-    form.value.supplier = ''
-  }
-}
-
 // Reset form when dialog opens
 function resetForm() {
   if (props.lot) {
@@ -81,7 +66,6 @@ function resetForm() {
       warehouse_id: props.lot.warehouse_id,
       production_date: props.lot.production_date,
       expiry_date: props.lot.expiry_date,
-      supplier: props.lot.supplier || '',
       supplier_id: props.lot.supplier_id,
       notes: props.lot.notes || ''
     }
@@ -92,7 +76,6 @@ function resetForm() {
       warehouse_id: null,
       production_date: null,
       expiry_date: null,
-      supplier: '',
       supplier_id: null,
       notes: ''
     }
@@ -116,11 +99,9 @@ watch(() => props.lot, () => {
 
 async function onSubmit() {
   if (isEdit.value && props.lot) {
-    // Update existing lot - include supplier_id for dual-write
     const updateData: UpdateLotRequest = {
       production_date: form.value.production_date,
       expiry_date: form.value.expiry_date,
-      supplier: form.value.supplier || null,
       supplier_id: form.value.supplier_id,
       notes: form.value.notes || null
     }
@@ -140,7 +121,6 @@ async function onSubmit() {
       warehouse_id: form.value.warehouse_id,
       production_date: form.value.production_date || undefined,
       expiry_date: form.value.expiry_date || undefined,
-      supplier: form.value.supplier || undefined,
       supplier_id: form.value.supplier_id || undefined,
       notes: form.value.notes || undefined
     }
@@ -212,7 +192,6 @@ function onCancel() {
           v-model="form.supplier_id"
           label="Nhà cung cấp"
           clearable
-          @update:supplier-data="handleSupplierChange"
         />
       </div>
 

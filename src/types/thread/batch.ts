@@ -66,7 +66,7 @@ export interface BatchReceiveRequest {
   // Lot metadata (for new lot)
   production_date?: string
   expiry_date?: string
-  supplier?: string
+  supplier_id?: number
   notes?: string
 }
 

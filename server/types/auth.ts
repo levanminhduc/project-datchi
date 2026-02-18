@@ -63,7 +63,7 @@ export interface PermissionRow {
   description: string | null
   module: string
   resource: string
-  action: 'view' | 'create' | 'edit' | 'delete' | 'manage'
+  action: 'VIEW' | 'CREATE' | 'EDIT' | 'DELETE' | 'MANAGE'
   route_path: string | null
   is_page_access: boolean
   sort_order: number
@@ -76,7 +76,6 @@ export interface EmployeeRoleRow {
   employee_id: number
   role_id: number
   assigned_by: number | null
-  assigned_at: string
 }
 
 export interface EmployeePermissionRow {
@@ -85,7 +84,6 @@ export interface EmployeePermissionRow {
   permission_id: number
   granted: boolean
   assigned_by: number | null
-  assigned_at: string
   expires_at: string | null
 }
 

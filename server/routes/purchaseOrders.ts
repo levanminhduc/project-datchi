@@ -107,7 +107,7 @@ purchaseOrders.post('/', async (c) => {
         order_date: body.order_date,
         delivery_date: body.delivery_date,
         status: body.status || 'PENDING',
-        priority: body.priority || 'normal',
+        priority: body.priority || 'NORMAL',
         notes: body.notes,
       }])
       .select()

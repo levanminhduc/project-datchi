@@ -16,7 +16,7 @@ export const createPermissionSchema = z.object({
   description: z.string().optional(),
   module: z.string().min(1, 'Module là bắt buộc').max(50, 'Module tối đa 50 ký tự'),
   resource: z.string().min(1, 'Resource là bắt buộc').max(50, 'Resource tối đa 50 ký tự'),
-  action: z.enum(['view', 'create', 'edit', 'delete', 'manage'], {
+  action: z.enum(['VIEW', 'CREATE', 'EDIT', 'DELETE', 'MANAGE'], {
     errorMap: () => ({ message: 'Hành động không hợp lệ' }),
   }),
   routePath: z.string().optional(),

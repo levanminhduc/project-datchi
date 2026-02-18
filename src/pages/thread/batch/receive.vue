@@ -119,9 +119,11 @@
               />
             </div>
             <div class="col-12 col-sm-6">
-              <AppInput
-                v-model="formData.supplier"
+              <SupplierSelector
+                v-model="formData.supplier_id"
                 label="Nhà cung cấp"
+                clearable
+                @update:supplier-data="(s: Supplier | null) => selectedSupplier = s"
               />
             </div>
             <div class="col-12 col-sm-6">
@@ -404,12 +406,12 @@
                         <q-item-label>{{ selectedThreadTypeName }}</q-item-label>
                       </q-item-section>
                     </q-item>
-                    <q-item v-if="formData.supplier">
+                    <q-item v-if="formData.supplier_id">
                       <q-item-section>
                         <q-item-label caption>
                           Nhà cung cấp
                         </q-item-label>
-                        <q-item-label>{{ formData.supplier }}</q-item-label>
+                        <q-item-label>{{ selectedSupplierName }}</q-item-label>
                       </q-item-section>
                     </q-item>
                   </q-list>
@@ -548,12 +550,13 @@ import { useBatchOperations } from '@/composables/useBatchOperations'
 import { useThreadTypes, useWarehouses, useConfirm } from '@/composables'
 import { QrScannerStream } from '@/components/qr'
 import AppWarehouseSelect from '@/components/ui/inputs/AppWarehouseSelect.vue'
-import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import LotSelector from '@/components/thread/LotSelector.vue'
+import SupplierSelector from '@/components/ui/inputs/SupplierSelector.vue'
 import type { Lot } from '@/types/thread/lot'
+import type { Supplier } from '@/types/thread/supplier'
 
 const router = useRouter()
 const $q = useQuasar()
@@ -583,13 +586,16 @@ const isScanning = ref(false)
 const manualInput = ref('')
 const showSuccessDialog = ref(false)
 const selectedLot = ref<Lot | null>(null)
+const selectedSupplier = ref<Supplier | null>(null)
+
+const selectedSupplierName = computed(() => selectedSupplier.value?.name || '-')
 
 const formData = ref({
   warehouse_id: null as number | null,
   lot_id: null as number | null,
   lot_number: '',
   thread_type_id: null as number | null,
-  supplier: '',
+  supplier_id: null as number | null,
   production_date: null as string | null,
   expiry_date: null as string | null,
   notes: ''
@@ -687,7 +693,7 @@ async function handleConfirm() {
     request.lot_number = formData.value.lot_number
     if (formData.value.production_date) request.production_date = formData.value.production_date
     if (formData.value.expiry_date) request.expiry_date = formData.value.expiry_date
-    if (formData.value.supplier) request.supplier = formData.value.supplier
+    if (formData.value.supplier_id) request.supplier_id = formData.value.supplier_id
     if (formData.value.notes) request.notes = formData.value.notes
   }
 

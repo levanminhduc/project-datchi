@@ -196,7 +196,7 @@ reconciliation.get('/', async (c) => {
 
     // Build query from view
     let query = supabase
-      .from('v_issue_reconciliation_v2')
+      .from('v_issue_reconciliation')
       .select('*')
 
     // Apply filters
@@ -262,7 +262,7 @@ reconciliation.get('/export', async (c) => {
 
     // Build query from view
     let query = supabase
-      .from('v_issue_reconciliation_v2')
+      .from('v_issue_reconciliation')
       .select('*')
 
     // Apply filters
@@ -327,7 +327,7 @@ reconciliation.get('/export', async (c) => {
 reconciliation.get('/over-limit', async (c) => {
   try {
     const { data: items, error } = await supabase
-      .from('v_issue_reconciliation_v2')
+      .from('v_issue_reconciliation')
       .select('*')
       .eq('is_over_quota', true)
 

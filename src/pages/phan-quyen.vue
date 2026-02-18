@@ -221,13 +221,13 @@ const permForm = ref<CreatePermissionData>({
   description: '',
   module: '',
   resource: '',
-  action: 'view',
+  action: 'VIEW',
   routePath: '',
   isPageAccess: false,
   sortOrder: 0,
 })
 
-const actionOptions = ['view', 'create', 'edit', 'delete', 'manage']
+const actionOptions = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'MANAGE']
 
 const existingModules = computed(() => {
   const modules = new Set<string>()
@@ -261,7 +261,7 @@ function openCreatePermissionDialog() {
     description: '',
     module: '',
     resource: '',
-    action: 'view',
+    action: 'VIEW',
     routePath: '',
     isPageAccess: false,
     sortOrder: 0,
@@ -796,13 +796,13 @@ onMounted(async () => {
                   <q-td :props="props">
                     <q-chip
                       :color="
-                        props.row.action === 'view'
+                        props.row.action === 'VIEW'
                           ? 'blue'
-                          : props.row.action === 'create'
+                          : props.row.action === 'CREATE'
                             ? 'green'
-                            : props.row.action === 'edit'
+                            : props.row.action === 'EDIT'
                               ? 'orange'
-                              : props.row.action === 'delete'
+                              : props.row.action === 'DELETE'
                                 ? 'red'
                                 : 'grey'
                       "

@@ -11,20 +11,7 @@ import type {
 const lots = new Hono()
 
 /**
- * Helper: Lookup supplier name from supplier_id for dual-write
- */
-async function lookupSupplierName(supplierId: number): Promise<string | null> {
-  const { data } = await supabase
-    .from('suppliers')
-    .select('name')
-    .eq('id', supplierId)
-    .single()
-  return data?.name || null
-}
-
-/**
  * POST /api/lots - Create new lot
- * Implements dual-write: writes both supplier_id FK and legacy supplier text field
  */
 lots.post('/', async (c) => {
   try {
@@ -52,16 +39,6 @@ lots.post('/', async (c) => {
       }, 409)
     }
 
-    // Dual-write: If supplier_id provided, lookup supplier name for legacy field
-    let supplierName = body.supplier || null
-    if (body.supplier_id) {
-      const name = await lookupSupplierName(body.supplier_id)
-      if (name) {
-        supplierName = name
-      }
-    }
-
-    // Create lot with FK and legacy fields
     const { data, error } = await supabase
       .from('lots')
       .insert({
@@ -70,7 +47,6 @@ lots.post('/', async (c) => {
         warehouse_id: body.warehouse_id,
         production_date: body.production_date || null,
         expiry_date: body.expiry_date || null,
-        supplier: supplierName,
         supplier_id: body.supplier_id || null,
         notes: body.notes || null,
         status: 'ACTIVE',
@@ -250,7 +226,6 @@ lots.get('/:id', async (c) => {
 
 /**
  * PATCH /api/lots/:id - Update lot metadata and status
- * Implements dual-write: writes both supplier_id FK and legacy supplier text field
  */
 lots.patch('/:id', async (c) => {
   try {
@@ -264,22 +239,7 @@ lots.patch('/:id', async (c) => {
     if (body.status !== undefined) updateData.status = body.status
     if (body.notes !== undefined) updateData.notes = body.notes
 
-    // Dual-write: Handle supplier_id and supplier fields
-    if (body.supplier_id !== undefined) {
-      updateData.supplier_id = body.supplier_id
-      if (body.supplier_id) {
-        const supplierName = await lookupSupplierName(body.supplier_id)
-        if (supplierName) {
-          updateData.supplier = supplierName
-        }
-      } else {
-        // Clearing supplier_id, also clear legacy field if not explicitly set
-        if (body.supplier === undefined) updateData.supplier = null
-      }
-    } else {
-      // Legacy: update text field directly
-      if (body.supplier !== undefined) updateData.supplier = body.supplier
-    }
+    if (body.supplier_id !== undefined) updateData.supplier_id = body.supplier_id
 
     if (Object.keys(updateData).length === 0) {
       return c.json<BatchApiResponse<null>>({

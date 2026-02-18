@@ -24,14 +24,12 @@ export interface LotRow {
   warehouse_id: number
   production_date: string | null
   expiry_date: string | null
-  supplier: string | null
   total_cones: number
   available_cones: number
   status: LotStatus
   notes: string | null
   created_at: string
   updated_at: string
-  // Thread restructure FK field (nullable during migration)
   supplier_id: number | null
 }
 
@@ -73,9 +71,7 @@ export interface CreateLotRequest {
   warehouse_id: number
   production_date?: string
   expiry_date?: string
-  supplier?: string
   notes?: string
-  // Thread restructure FK field (dual-write)
   supplier_id?: number
 }
 
@@ -85,10 +81,8 @@ export interface CreateLotRequest {
 export interface UpdateLotRequest {
   production_date?: string | null
   expiry_date?: string | null
-  supplier?: string | null
   status?: LotStatus
   notes?: string | null
-  // Thread restructure FK field (dual-write)
   supplier_id?: number | null
 }
 
@@ -103,7 +97,7 @@ export interface BatchReceiveRequest {
   cone_ids: string[]
   production_date?: string
   expiry_date?: string
-  supplier?: string
+  supplier_id?: number
   notes?: string
   quantity_meters_per_cone?: number
   weight_per_cone_grams?: number

@@ -151,7 +151,7 @@
             </q-avatar>
             <span>{{ props.row.supplier_data.name }}</span>
           </div>
-          <span v-else>{{ props.row.supplier || '-' }}</span>
+          <span v-else>{{ '-' }}</span>
         </q-td>
       </template>
 
@@ -275,7 +275,7 @@ const columns = [
   { name: 'status', label: 'Trạng Thái', field: 'status', align: 'center' as const },
   { name: 'cones', label: 'Cuộn (Còn/Tổng)', field: 'available_cones', align: 'center' as const },
   { name: 'warehouse', label: 'Kho', field: 'warehouse', align: 'left' as const },
-  { name: 'supplier', label: 'Nhà Cung Cấp', field: (row: Lot) => row.supplier_data?.name || row.supplier, align: 'left' as const },
+  { name: 'supplier', label: 'Nhà Cung Cấp', field: (row: Lot) => row.supplier_data?.name || '-', align: 'left' as const },
   { name: 'expiry_date', label: 'Hết Hạn', field: 'expiry_date', align: 'center' as const },
   { name: 'actions', label: 'Thao Tác', field: 'actions', align: 'center' as const }
 ]

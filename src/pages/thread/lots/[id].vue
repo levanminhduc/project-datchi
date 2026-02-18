@@ -86,7 +86,7 @@
                     Nhà cung cấp
                   </div>
                   <div class="text-body1">
-                    {{ lot.supplier || '-' }}
+                    {{ lot.supplier_data?.name || '-' }}
                   </div>
                 </div>
                 <div class="col-6">

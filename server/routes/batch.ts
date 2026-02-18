@@ -87,7 +87,6 @@ batch.post('/receive', async (c) => {
           warehouse_id: body.warehouse_id,
           production_date: body.production_date || null,
           expiry_date: body.expiry_date || null,
-          supplier: body.supplier || null,
           notes: body.notes || null,
           status: 'ACTIVE',
           total_cones: 0,

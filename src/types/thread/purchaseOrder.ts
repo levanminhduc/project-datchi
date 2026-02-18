@@ -7,7 +7,7 @@ export interface PurchaseOrder {
   order_date: string | null
   delivery_date: string | null
   status: POStatus
-  priority: 'low' | 'normal' | 'high' | 'urgent'
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
   notes: string | null
   created_at: string
   updated_at: string
@@ -19,7 +19,7 @@ export interface CreatePurchaseOrderDTO {
   order_date?: string
   delivery_date?: string
   status?: POStatus
-  priority?: 'low' | 'normal' | 'high' | 'urgent'
+  priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
   notes?: string
 }
 
@@ -29,7 +29,7 @@ export interface UpdatePurchaseOrderDTO {
   order_date?: string
   delivery_date?: string
   status?: POStatus
-  priority?: 'low' | 'normal' | 'high' | 'urgent'
+  priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
   notes?: string
 }
 

@@ -4,7 +4,7 @@
 // ENUMS
 // ============================================
 
-export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'manage'
+export type PermissionAction = 'VIEW' | 'CREATE' | 'EDIT' | 'DELETE' | 'MANAGE'
 
 // ============================================
 // CORE TYPES
@@ -53,7 +53,6 @@ export interface EmployeeRole {
   employeeId: number
   roleId: number
   assignedBy?: number
-  assignedAt: string
 }
 
 export interface EmployeePermission {
@@ -62,7 +61,6 @@ export interface EmployeePermission {
   permissionId: number
   granted: boolean
   assignedBy?: number
-  assignedAt: string
   expiresAt?: string
 }
 
