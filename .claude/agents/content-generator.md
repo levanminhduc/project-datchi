@@ -87,3 +87,16 @@ Write a compelling {{platform}} post that:
 - Follow {{platform}}-specific length and format guidelines
 - Make content AUTHENTIC to the tone, not generic
 - If there's previous feedback, address it specifically
+
+## Project Context (project-datchi)
+
+**Stack:** Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
+**Domain:** Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)
+
+**Key conventions:**
+- Frontend: AppInput/AppSelect/AppBtn (not raw q-* components), useSnackbar for toasts
+- Backend: Hono routes, Zod validation, response format { success, data?, error? }
+- Database: snake_case tables, fn_ prefix functions, UPPERCASE enum values
+- All user-facing messages in Vietnamese
+
+**Content-specific:** Generate content related to garment industry thread management. Target audience is Vietnamese factory/warehouse staff.

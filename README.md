@@ -26,33 +26,35 @@ Hệ thống quản lý toàn diện cho:
 ```
 project-datchi/
 ├── server/                    # Hono API backend (port 3000)
-│   ├── routes/               # 14 API route handlers
+│   ├── routes/               # 25 API route handlers
 │   ├── db/                   # Supabase clients (anon + admin)
 │   ├── middleware/           # Auth JWT verification
 │   └── types/                # Backend-specific types
 ├── src/
 │   ├── components/
-│   │   ├── ui/               # 66 Quasar wrapper components (12 categories)
+│   │   ├── ui/               # 121 UI components (12 categories)
 │   │   ├── thread/           # 30 domain-specific components
 │   │   ├── qr/               # QR scanning components
 │   │   └── hardware/         # Scanner/scale integration
-│   ├── composables/          # 32 composables
+│   ├── composables/          # 23 composables
 │   │   ├── thread/           # Domain: inventory, allocations, recovery
 │   │   └── hardware/         # Scanner, scale, audio feedback
-│   ├── services/             # 14 API clients (fetchApi pattern)
-│   ├── pages/                # 31 pages (file-based routing)
+│   ├── services/             # 28 API clients (fetchApi pattern)
+│   ├── pages/                # 41 pages (file-based routing)
 │   │   ├── thread/           # Thread management module
 │   │   │   ├── batch/        # Batch operations
 │   │   │   └── mobile/       # Mobile-optimized pages
 │   │   ├── nhan-su/          # HR module
 │   │   └── reports/          # Reporting module
-│   ├── types/                # TypeScript definitions
+│   ├── types/                # 40 TypeScript definitions
 │   │   ├── ui/               # UI component interfaces
 │   │   ├── thread/           # Thread domain types
 │   │   └── auth/             # Authentication types
 │   ├── stores/               # Pinia stores
 │   └── utils/                # Shared utilities
-└── supabase/                 # 28 migrations + seed data
+├── .claude/
+│   └── agents/               # 8 AI agent definitions
+└── supabase/                 # 54 migrations + seed data
 ```
 
 ## 💻 Cài đặt

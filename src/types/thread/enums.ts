@@ -78,12 +78,12 @@ export enum RecoveryStatus {
  * Thread material types
  */
 export enum ThreadMaterial {
-  POLYESTER = 'polyester',
-  COTTON = 'cotton',
-  NYLON = 'nylon',
-  SILK = 'silk',
-  RAYON = 'rayon',
-  MIXED = 'mixed'
+  POLYESTER = 'POLYESTER',
+  COTTON = 'COTTON',
+  NYLON = 'NYLON',
+  SILK = 'SILK',
+  RAYON = 'RAYON',
+  MIXED = 'MIXED'
 }
 
 export enum POStatus {

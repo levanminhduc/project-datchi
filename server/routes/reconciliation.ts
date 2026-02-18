@@ -36,18 +36,19 @@ interface ReconciliationRow {
 }
 
 interface ReconciliationSummary {
-  total_rows: number
-  total_quota_meters: number
-  total_issued_meters: number
-  total_returned_meters: number
-  total_consumed_meters: number
-  avg_consumption_percentage: number
+  total_quota: number
+  total_issued: number
+  total_returned: number
+  total_consumed: number
+  overall_consumption_percentage: number
   total_over_limit_count: number
 }
 
 interface ReconciliationData {
+  filters: z.infer<typeof reconciliationFiltersSchema>
   summary: ReconciliationSummary
   rows: ReconciliationRow[]
+  generated_at: string
 }
 
 interface OverQuotaItem {
@@ -66,8 +67,73 @@ interface OverQuotaItem {
 /**
  * Calculate summary totals from reconciliation rows
  */
+function toNumber(value: unknown, fallback = 0): number {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : fallback
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+/**
+ * Normalize rows from different reconciliation view versions.
+ * Supports both:
+ * - V1 (meter-based): quota_meters, total_issued_meters, total_returned_meters, consumed_meters, over_limit_count
+ * - V2 (cone-based): quota_cones, issued_full/partial, returned_full/partial, consumed_equivalent_cones, is_over_quota
+ */
+function normalizeRow(raw: Record<string, unknown>): ReconciliationRow {
+  const ratio = toNumber(raw.partial_cone_ratio, 0.3)
+
+  const quota = raw.quota_meters !== undefined
+    ? toNumber(raw.quota_meters)
+    : toNumber(raw.quota_cones)
+
+  const issued = raw.total_issued_meters !== undefined
+    ? toNumber(raw.total_issued_meters)
+    : toNumber(raw.issued_full) + toNumber(raw.issued_partial) * ratio
+
+  const returned = raw.total_returned_meters !== undefined
+    ? toNumber(raw.total_returned_meters)
+    : toNumber(raw.returned_full) + toNumber(raw.returned_partial) * ratio
+
+  const consumed = raw.consumed_meters !== undefined
+    ? toNumber(raw.consumed_meters)
+    : raw.consumed_equivalent_cones !== undefined
+      ? toNumber(raw.consumed_equivalent_cones)
+      : issued - returned
+
+  const consumptionPercentage = raw.consumption_percentage !== undefined
+    ? toNumber(raw.consumption_percentage)
+    : quota > 0
+      ? (consumed / quota) * 100
+      : 0
+
+  const overLimitCount = raw.over_limit_count !== undefined
+    ? toNumber(raw.over_limit_count)
+    : raw.is_over_quota
+      ? 1
+      : 0
+
+  return {
+    po_id: (raw.po_id as number | null) ?? null,
+    po_number: (raw.po_number as string | null) ?? null,
+    style_id: (raw.style_id as number | null) ?? null,
+    style_code: (raw.style_code as string | null) ?? null,
+    color_id: (raw.color_id as number | null) ?? null,
+    color_name: (raw.color_name as string | null) ?? null,
+    thread_type_id: (raw.thread_type_id as number | null) ?? null,
+    thread_name: (raw.thread_name as string | null) ?? null,
+    quota_meters: round2(quota),
+    total_issued_meters: round2(issued),
+    total_returned_meters: round2(returned),
+    consumed_meters: round2(consumed),
+    consumption_percentage: round2(consumptionPercentage),
+    over_limit_count: Math.max(0, Math.floor(overLimitCount)),
+  }
+}
+
 function calculateSummary(rows: ReconciliationRow[]): ReconciliationSummary {
-  const totalRows = rows.length
   let totalQuota = 0
   let totalIssued = 0
   let totalReturned = 0
@@ -82,17 +148,16 @@ function calculateSummary(rows: ReconciliationRow[]): ReconciliationSummary {
     totalOverLimit += Number(row.over_limit_count) || 0
   })
 
-  const avgPercentage = totalQuota > 0
+  const overallPercentage = totalQuota > 0
     ? Math.round((totalConsumed / totalQuota) * 10000) / 100
     : 0
 
   return {
-    total_rows: totalRows,
-    total_quota_meters: Math.round(totalQuota * 100) / 100,
-    total_issued_meters: Math.round(totalIssued * 100) / 100,
-    total_returned_meters: Math.round(totalReturned * 100) / 100,
-    total_consumed_meters: Math.round(totalConsumed * 100) / 100,
-    avg_consumption_percentage: avgPercentage,
+    total_quota: round2(totalQuota),
+    total_issued: round2(totalIssued),
+    total_returned: round2(totalReturned),
+    total_consumed: round2(totalConsumed),
+    overall_consumption_percentage: overallPercentage,
     total_over_limit_count: totalOverLimit,
   }
 }
@@ -150,18 +215,18 @@ async function createReconciliationExcel(
   sheet.addRow({})
 
   // Summary row
-  const summaryRow = sheet.addRow({
-    po_number: 'TỔNG CỘNG',
-    style_code: '',
-    color_name: '',
-    thread_name: `${summary.total_rows} dòng`,
-    quota_meters: summary.total_quota_meters,
-    total_issued_meters: summary.total_issued_meters,
-    total_returned_meters: summary.total_returned_meters,
-    consumed_meters: summary.total_consumed_meters,
-    consumption_percentage: summary.avg_consumption_percentage,
-    over_limit_count: summary.total_over_limit_count,
-  })
+    const summaryRow = sheet.addRow({
+      po_number: 'TỔNG CỘNG',
+      style_code: '',
+      color_name: '',
+      thread_name: `${rows.length} dòng`,
+      quota_meters: summary.total_quota,
+      total_issued_meters: summary.total_issued,
+      total_returned_meters: summary.total_returned,
+      consumed_meters: summary.total_consumed,
+      consumption_percentage: summary.overall_consumption_percentage,
+      over_limit_count: summary.total_over_limit_count,
+    })
   summaryRow.font = { bold: true }
   summaryRow.fill = {
     type: 'pattern',
@@ -220,12 +285,16 @@ reconciliation.get('/', async (c) => {
       }, 500)
     }
 
-    const reconciliationRows = (rows || []) as ReconciliationRow[]
+    const reconciliationRows = (rows || []).map((row) =>
+      normalizeRow(row as Record<string, unknown>)
+    )
     const summary = calculateSummary(reconciliationRows)
 
     const result: ReconciliationData = {
+      filters,
       summary,
       rows: reconciliationRows,
+      generated_at: new Date().toISOString(),
     }
 
     return c.json<ThreadApiResponse<ReconciliationData>>({
@@ -286,7 +355,9 @@ reconciliation.get('/export', async (c) => {
       }, 500)
     }
 
-    const reconciliationRows = (rows || []) as ReconciliationRow[]
+    const reconciliationRows = (rows || []).map((row) =>
+      normalizeRow(row as Record<string, unknown>)
+    )
 
     if (reconciliationRows.length === 0) {
       return c.json<ThreadApiResponse<null>>({
@@ -329,7 +400,6 @@ reconciliation.get('/over-limit', async (c) => {
     const { data: items, error } = await supabase
       .from('v_issue_reconciliation')
       .select('*')
-      .eq('is_over_quota', true)
 
     if (error) {
       console.error('Over limit query error:', error)
@@ -339,16 +409,19 @@ reconciliation.get('/over-limit', async (c) => {
       }, 500)
     }
 
-    const overQuotaItems: OverQuotaItem[] = (items || []).map((item: any) => ({
-      po_number: item.po_number || null,
-      style_code: item.style_code || null,
-      color_name: item.color_name || null,
-      thread_name: item.thread_name || null,
-      quota_meters: Number(item.quota_meters) || 0,
-      total_issued_meters: Number(item.total_issued_meters) || 0,
-      consumed_meters: Number(item.consumed_meters) || 0,
-      consumption_percentage: Number(item.consumption_percentage) || 0,
-    }))
+    const overQuotaItems: OverQuotaItem[] = (items || [])
+      .map((item) => normalizeRow(item as Record<string, unknown>))
+      .filter((row) => row.over_limit_count > 0)
+      .map((row) => ({
+        po_number: row.po_number || null,
+        style_code: row.style_code || null,
+        color_name: row.color_name || null,
+        thread_name: row.thread_name || null,
+        quota_meters: row.quota_meters,
+        total_issued_meters: row.total_issued_meters,
+        consumed_meters: row.consumed_meters,
+        consumption_percentage: row.consumption_percentage,
+      }))
 
     return c.json<ThreadApiResponse<OverQuotaItem[]>>({
       data: overQuotaItems,

@@ -12,16 +12,28 @@ withDefaults(defineProps<Props>(), {
   loading: false
 })
 
+const formatNumber = (value: unknown): string => {
+  const numberValue = Number(value ?? 0)
+  if (!Number.isFinite(numberValue)) return '0'
+  return numberValue.toLocaleString()
+}
+
+const formatPercent = (value: unknown): string => {
+  const numberValue = Number(value ?? 0)
+  if (!Number.isFinite(numberValue)) return '0.0%'
+  return `${numberValue.toFixed(1)}%`
+}
+
 const columns: QTableColumn[] = [
   { name: 'po_number', label: 'PO', field: 'po_number', align: 'left', sortable: true },
   { name: 'style_code', label: 'Mã Hàng', field: 'style_code', align: 'left', sortable: true },
   { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left', sortable: true },
   { name: 'thread_name', label: 'Loại Chỉ', field: 'thread_name', align: 'left', sortable: true },
-  { name: 'quota_meters', label: 'Định Mức (m)', field: 'quota_meters', align: 'right', sortable: true, format: (v: number) => v.toLocaleString() },
-  { name: 'total_issued_meters', label: 'Đã Xuất (m)', field: 'total_issued_meters', align: 'right', sortable: true, format: (v: number) => v.toLocaleString() },
-  { name: 'total_returned_meters', label: 'Đã Nhập (m)', field: 'total_returned_meters', align: 'right', sortable: true, format: (v: number) => v.toLocaleString() },
-  { name: 'consumed_meters', label: 'Tiêu Thụ (m)', field: 'consumed_meters', align: 'right', sortable: true, format: (v: number) => v.toLocaleString() },
-  { name: 'consumption_percentage', label: '%', field: 'consumption_percentage', align: 'right', sortable: true, format: (v: number) => `${v.toFixed(1)}%` },
+  { name: 'quota_meters', label: 'Định Mức', field: 'quota_meters', align: 'right', sortable: true, format: formatNumber },
+  { name: 'total_issued_meters', label: 'Đã Xuất', field: 'total_issued_meters', align: 'right', sortable: true, format: formatNumber },
+  { name: 'total_returned_meters', label: 'Đã Nhập', field: 'total_returned_meters', align: 'right', sortable: true, format: formatNumber },
+  { name: 'consumed_meters', label: 'Tiêu Thụ', field: 'consumed_meters', align: 'right', sortable: true, format: formatNumber },
+  { name: 'consumption_percentage', label: '%', field: 'consumption_percentage', align: 'right', sortable: true, format: formatPercent },
   { name: 'over_limit_count', label: 'Vượt ĐM', field: 'over_limit_count', align: 'center', sortable: true },
 ]
 
@@ -73,19 +85,19 @@ const varianceColor = (row: ReconciliationRow) => {
             TỔNG CỘNG
           </q-td>
           <q-td class="text-right">
-            {{ summary.total_quota?.toLocaleString() }}
+            {{ formatNumber(summary.total_quota) }}
           </q-td>
           <q-td class="text-right">
-            {{ summary.total_issued?.toLocaleString() }}
+            {{ formatNumber(summary.total_issued) }}
           </q-td>
           <q-td class="text-right">
-            {{ summary.total_returned?.toLocaleString() }}
+            {{ formatNumber(summary.total_returned) }}
           </q-td>
           <q-td class="text-right">
-            {{ summary.total_consumed?.toLocaleString() }}
+            {{ formatNumber(summary.total_consumed) }}
           </q-td>
           <q-td class="text-right">
-            {{ summary.overall_consumption_percentage?.toFixed(1) }}%
+            {{ formatPercent(summary.overall_consumption_percentage) }}
           </q-td>
           <q-td class="text-center">
             {{ summary.total_over_limit_count }}

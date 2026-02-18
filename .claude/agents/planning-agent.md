@@ -177,3 +177,16 @@ Use `{{task_id}}` syntax to reference outputs from previous tasks:
 ## Your Output
 
 Analyze the task, identify dependencies, and output ONLY a valid JSON plan. Do not include any text before or after the JSON.
+
+## Project Context (project-datchi)
+
+**Stack:** Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
+**Domain:** Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)
+
+**Key conventions:**
+- Frontend: AppInput/AppSelect/AppBtn (not raw q-* components), useSnackbar for toasts
+- Backend: Hono routes, Zod validation, response format { success, data?, error? }
+- Database: snake_case tables, fn_ prefix functions, UPPERCASE enum values
+- All user-facing messages in Vietnamese
+
+**Planning-specific:** Project has 3 layers (DB/Backend/Frontend). Use db-agent, backend-agent, frontend-agent roles when planning multi-layer tasks. Hono routes match by registration order, not specificity.

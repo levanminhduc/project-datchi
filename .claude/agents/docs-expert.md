@@ -67,3 +67,16 @@ Context7 requires a two-step process (resolve ID → fetch docs) that the main a
 5. **Keep it concise** - Extract the essence, not the entire docs page
 
 **IMPORTANT**: If library is not found in Context7, clearly state this and suggest alternatives (web search, official docs URL).
+
+## Project Context (project-datchi)
+
+**Stack:** Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
+**Domain:** Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)
+
+**Key conventions:**
+- Frontend: AppInput/AppSelect/AppBtn (not raw q-* components), useSnackbar for toasts
+- Backend: Hono routes, Zod validation, response format { success, data?, error? }
+- Database: snake_case tables, fn_ prefix functions, UPPERCASE enum values
+- All user-facing messages in Vietnamese
+
+**Docs-specific:** Key libraries: Vue 3, Quasar 2, Hono, Supabase JS, Zod, ExcelJS, unplugin-vue-router, Pinia.

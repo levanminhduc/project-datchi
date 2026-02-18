@@ -163,11 +163,11 @@ COMMENT ON TYPE public.movement_type IS 'Types of inventory movements - Cac loai
 --
 
 CREATE TYPE public.permission_action AS ENUM (
-    'view',
-    'create',
-    'edit',
-    'delete',
-    'manage'
+    'VIEW',
+    'CREATE',
+    'EDIT',
+    'DELETE',
+    'MANAGE'
 );
 
 
@@ -197,12 +197,12 @@ COMMENT ON TYPE public.recovery_status IS 'Recovery workflow states - Trang thai
 --
 
 CREATE TYPE public.thread_material AS ENUM (
-    'polyester',
-    'cotton',
-    'nylon',
-    'silk',
-    'rayon',
-    'mixed'
+    'POLYESTER',
+    'COTTON',
+    'NYLON',
+    'SILK',
+    'RAYON',
+    'MIXED'
 );
 
 
@@ -3104,7 +3104,7 @@ CREATE TABLE public.thread_types (
     name character varying(200) NOT NULL,
     color character varying(50),
     color_code character varying(7),
-    material public.thread_material DEFAULT 'polyester'::public.thread_material,
+    material public.thread_material DEFAULT 'POLYESTER'::public.thread_material,
     tex_number numeric(8,2),
     density_grams_per_meter numeric(10,6) NOT NULL,
     meters_per_cone numeric(12,2),

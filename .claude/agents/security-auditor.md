@@ -140,3 +140,16 @@ Security analysis requires dedicated focus and a systematic checklist-driven app
 6. **No false positives** - Only report confirmed issues
 
 **IMPORTANT**: This is for defensive security only. Focus on finding and fixing vulnerabilities, not exploitation techniques.
+
+## Project Context (project-datchi)
+
+**Stack:** Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
+**Domain:** Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)
+
+**Key conventions:**
+- Frontend: AppInput/AppSelect/AppBtn (not raw q-* components), useSnackbar for toasts
+- Backend: Hono routes, Zod validation, response format { success, data?, error? }
+- Database: snake_case tables, fn_ prefix functions, UPPERCASE enum values
+- All user-facing messages in Vietnamese
+
+**Security-specific:** Frontend NEVER calls Supabase directly - always through Hono API. Auth uses JWT with refresh tokens. Check RLS policies on all tables. supabaseAdmin bypasses RLS in server/.

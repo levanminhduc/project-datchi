@@ -189,7 +189,7 @@ onMounted(() => {
               Tổng Định Mức
             </div>
             <div class="text-h6 text-primary">
-              {{ summary.total_quota?.toLocaleString() }} m
+              {{ summary.total_quota?.toLocaleString() }}
             </div>
           </q-card-section>
         </q-card>
@@ -204,7 +204,7 @@ onMounted(() => {
               Tổng Đã Xuất
             </div>
             <div class="text-h6">
-              {{ summary.total_issued?.toLocaleString() }} m
+              {{ summary.total_issued?.toLocaleString() }}
             </div>
           </q-card-section>
         </q-card>
@@ -219,7 +219,7 @@ onMounted(() => {
               Tổng Nhập Lại
             </div>
             <div class="text-h6">
-              {{ summary.total_returned?.toLocaleString() }} m
+              {{ summary.total_returned?.toLocaleString() }}
             </div>
           </q-card-section>
         </q-card>
@@ -234,7 +234,7 @@ onMounted(() => {
               Tổng Tiêu Thụ
             </div>
             <div class="text-h6 text-negative">
-              {{ summary.total_consumed?.toLocaleString() }} m
+              {{ summary.total_consumed?.toLocaleString() }}
             </div>
           </q-card-section>
         </q-card>

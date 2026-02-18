@@ -47,11 +47,11 @@ CREATE TYPE public.movement_type AS ENUM (
     'WRITE_OFF'
 );
 CREATE TYPE public.permission_action AS ENUM (
-    'view',
-    'create',
-    'edit',
-    'delete',
-    'manage'
+    'VIEW',
+    'CREATE',
+    'EDIT',
+    'DELETE',
+    'MANAGE'
 );
 CREATE TYPE public.recovery_status AS ENUM (
     'INITIATED',
@@ -62,10 +62,10 @@ CREATE TYPE public.recovery_status AS ENUM (
     'REJECTED'
 );
 CREATE TYPE public.thread_material AS ENUM (
-    'polyester',
-    'cotton',
-    'nylon',
-    'silk',
-    'rayon',
-    'mixed'
+    'POLYESTER',
+    'COTTON',
+    'NYLON',
+    'SILK',
+    'RAYON',
+    'MIXED'
 );

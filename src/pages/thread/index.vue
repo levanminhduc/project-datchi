@@ -665,12 +665,12 @@ const pagination = ref({
 
 // Options
 const materialOptions = [
-  { label: 'Polyester', value: 'polyester' },
-  { label: 'Cotton', value: 'cotton' },
-  { label: 'Nylon', value: 'nylon' },
-  { label: 'Silk', value: 'silk' },
-  { label: 'Rayon', value: 'rayon' },
-  { label: 'Hỗn hợp', value: 'mixed' },
+  { label: 'Polyester', value: ThreadMaterial.POLYESTER },
+  { label: 'Cotton', value: ThreadMaterial.COTTON },
+  { label: 'Nylon', value: ThreadMaterial.NYLON },
+  { label: 'Silk/Lụa', value: ThreadMaterial.SILK },
+  { label: 'Rayon', value: ThreadMaterial.RAYON },
+  { label: 'Hỗn hợp', value: ThreadMaterial.MIXED },
 ]
 
 const getMaterialLabel = (value: string) => {

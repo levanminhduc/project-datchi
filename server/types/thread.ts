@@ -46,12 +46,12 @@ export type RecoveryStatus =
   | 'REJECTED'
 
 export type ThreadMaterial =
-  | 'polyester'
-  | 'cotton'
-  | 'nylon'
-  | 'silk'
-  | 'rayon'
-  | 'mixed'
+  | 'POLYESTER'
+  | 'COTTON'
+  | 'NYLON'
+  | 'SILK'
+  | 'RAYON'
+  | 'MIXED'
 
 export type WarehouseType = 'LOCATION' | 'STORAGE'
 

@@ -55,3 +55,16 @@ Return your findings in a structured format that can be easily merged:
 ```
 
 **IMPORTANT**: Keep output concise and actionable. Focus on quality over quantity.
+
+## Project Context (project-datchi)
+
+**Stack:** Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
+**Domain:** Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)
+
+**Key conventions:**
+- Frontend: AppInput/AppSelect/AppBtn (not raw q-* components), useSnackbar for toasts
+- Backend: Hono routes, Zod validation, response format { success, data?, error? }
+- Database: snake_case tables, fn_ prefix functions, UPPERCASE enum values
+- All user-facing messages in Vietnamese
+
+**Research-specific:** Focus on Vietnamese garment industry context, thread/yarn supply chain, and inventory management best practices.

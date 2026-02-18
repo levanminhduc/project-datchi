@@ -71,3 +71,16 @@ Return your findings in a structured format:
 ```
 
 **IMPORTANT**: Prioritize accuracy over speed. Verify claims before reporting.
+
+## Project Context (project-datchi)
+
+**Stack:** Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
+**Domain:** Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)
+
+**Key conventions:**
+- Frontend: AppInput/AppSelect/AppBtn (not raw q-* components), useSnackbar for toasts
+- Backend: Hono routes, Zod validation, response format { success, data?, error? }
+- Database: snake_case tables, fn_ prefix functions, UPPERCASE enum values
+- All user-facing messages in Vietnamese
+
+**Research-specific:** Domain expertise needed in garment manufacturing, thread/yarn inventory management, FEFO allocation strategies, and Vietnamese business practices.

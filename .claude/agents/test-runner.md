@@ -64,3 +64,16 @@ Test output can be extremely verbose (10k+ lines). This agent isolates that outp
 5. **Include test command** - So user can reproduce
 
 **IMPORTANT**: Your job is to FILTER noise, not pass it through. Main agent should receive <100 lines regardless of test suite size.
+
+## Project Context (project-datchi)
+
+**Stack:** Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
+**Domain:** Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)
+
+**Key conventions:**
+- Frontend: AppInput/AppSelect/AppBtn (not raw q-* components), useSnackbar for toasts
+- Backend: Hono routes, Zod validation, response format { success, data?, error? }
+- Database: snake_case tables, fn_ prefix functions, UPPERCASE enum values
+- All user-facing messages in Vietnamese
+
+**Test-specific:** Run: `npm run type-check` (vue-tsc), `npm run lint` (ESLint). Build check: `npm run build`.

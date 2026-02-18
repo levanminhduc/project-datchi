@@ -36,11 +36,17 @@ Pages/Components → Real-time via useRealtime
 
 **Key principle:** Frontend NEVER calls Supabase directly. Always through Hono API.
 
+## Schema Overview
+
+- **39 tables**, 2 views, 20 functions, 30 enums
+- **Key domains:** Thread Master Data, Inventory (dual UoM: kg + meters), Allocations (FEFO), Recovery, Batch operations, Weekly ordering, Reports, HR/Auth
+
 ## Conventions
 
 ### Database
 - Tables: `snake_case` with `created_at`, `updated_at`, `deleted_at` (soft delete)
 - Views: `v_` prefix, Functions: `fn_` prefix
+- Enums: ALL UPPERCASE values (e.g., 'PENDING', 'ACTIVE', not 'pending')
 - All migrations in `supabase/migrations/`
 
 ### API (Hono)

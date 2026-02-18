@@ -104,3 +104,16 @@ Debugging requires focused analysis without distraction from implementation cont
 5. **Explain the "why"** - Understanding prevents future bugs
 
 **IMPORTANT**: If you cannot determine root cause with available information, clearly state what additional info is needed (logs, reproduction steps, environment details).
+
+## Project Context (project-datchi)
+
+**Stack:** Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
+**Domain:** Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)
+
+**Key conventions:**
+- Frontend: AppInput/AppSelect/AppBtn (not raw q-* components), useSnackbar for toasts
+- Backend: Hono routes, Zod validation, response format { success, data?, error? }
+- Database: snake_case tables, fn_ prefix functions, UPPERCASE enum values
+- All user-facing messages in Vietnamese
+
+**Debug-specific:** Key files: server/routes/, src/composables/, supabase/migrations/. Frontend NEVER calls Supabase directly - always through Hono API.
