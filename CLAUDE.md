@@ -34,11 +34,11 @@ Composables (src/composables/) → state + logic + useSnackbar
 Pages/Components → Real-time via useRealtime
 ```
 
-**Key principle:** Frontend NEVER calls Supabase directly. Always through Hono API.
+**Key principle:** Frontend NEVER calls Supabase directly cho CRUD. Always through Hono API. Exception: Realtime subscriptions qua useRealtime composable.
 
 ## Schema Overview
 
-- **39 tables**, 2 views, 20 functions, 30 enums
+- **40 tables**, 1 view, 21 functions, 17 enums
 - **Key domains:** Thread Master Data, Inventory (dual UoM: kg + meters), Allocations (FEFO), Recovery, Batch operations, Weekly ordering, Reports, HR/Auth
 
 ## Conventions
@@ -55,7 +55,7 @@ Pages/Components → Real-time via useRealtime
 - Validation with Zod schemas
 
 ### Frontend
-- Use `AppInput`, `AppSelect`, `AppBtn` (not raw `q-*` components)
+- Use `AppInput`, `AppSelect`, `AppButton` (not raw `q-*` components)
 - Use `useSnackbar()` for toasts: `snackbar.success()`, `snackbar.error()`
 - DatePicker with `DD/MM/YYYY` format (not native date input)
 - Excel export with ExcelJS (not CSV)
@@ -66,7 +66,7 @@ Pages/Components → Real-time via useRealtime
 |-------|------------|
 | `<input type="date">` | `<DatePicker>` component |
 | CSV export | XLSX with ExcelJS |
-| `fetch()` directly | `fetchApi()` wrapper |
+| `fetch()` directly | `fetchApi()` wrapper (exception: authService, useOfflineSync) |
 | Supabase from frontend | API call through Hono |
 | `q-input`, `q-select` | `AppInput`, `AppSelect` |
 | Hardcode Vietnamese in logic | Use constants/i18n |

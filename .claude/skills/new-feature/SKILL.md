@@ -199,12 +199,11 @@ export interface ApiResponse<T> {
   message?: string
 }
 
-export interface PaginatedData<T> {
+export interface PaginatedResponse<T> {
   data: T[]
   total: number
   page: number
-  limit: number
-  totalPages: number
+  pageSize: number
 }
 ```
 
@@ -269,6 +268,9 @@ server/validation/tenTinhNang.ts
 ```
 
 ### Pattern - Dung .safeParse() (KHONG phai .parse())
+
+> **Note:** Simple CRUD routes cu co the dung inline validation. Routes moi NEN dung Zod file rieng theo pattern nay.
+
 ```typescript
 import { z } from 'zod'
 
@@ -1518,6 +1520,9 @@ Frontend -> fetchApi() -> Hono API -> supabaseAdmin -> PostgreSQL
 ```
 
 ### Auth Middleware - PHAI co trong moi route
+
+> **Note:** Routes cu (employees, threads) co the chua co auth middleware. Pattern nay la chuan cho features moi.
+
 ```typescript
 import { authMiddleware, requirePermission } from '../middleware/auth'
 
