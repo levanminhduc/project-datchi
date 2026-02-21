@@ -1,51 +1,23 @@
 <template>
   <q-page padding>
-    <!-- Page Header -->
-    <div class="row items-center justify-between q-mb-lg">
-      <div class="col-12 col-md-auto">
-        <h1 class="text-h4 text-weight-bold q-my-none">
-          Quản Lý Nhân Viên
-        </h1>
-      </div>
-      <div class="col-12 col-md-auto q-mt-md q-mt-md-none">
-        <div class="row q-gutter-sm items-center">
-          <!-- Search Input -->
-          <div class="col-12 col-sm-auto">
-            <q-input
-              v-model="searchQuery"
-              outlined
-              dense
-              placeholder="Tìm kiếm nhân viên..."
-              debounce="300"
-              class="search-input"
-            >
-              <template #prepend>
-                <q-icon name="search" />
-              </template>
-              <template #append>
-                <q-icon
-                  v-if="searchQuery"
-                  name="close"
-                  class="cursor-pointer"
-                  @click="searchQuery = ''"
-                />
-              </template>
-            </q-input>
-          </div>
-          <!-- Add Button -->
-          <div class="col-12 col-sm-auto">
-            <q-btn
-              color="primary"
-              icon="add"
-              label="Thêm Nhân Viên"
-              unelevated
-              class="full-width-xs"
-              @click="openAddDialog"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
+    <PageHeader title="Quản Lý Nhân Viên">
+      <template #actions>
+        <SearchInput
+          v-model="searchQuery"
+          placeholder="Tìm kiếm nhân viên..."
+          hide-bottom-space
+          class="search-input"
+        />
+        <q-btn
+          color="primary"
+          icon="add"
+          label="Thêm Nhân Viên"
+          unelevated
+          class="full-width-xs"
+          @click="openAddDialog"
+        />
+      </template>
+    </PageHeader>
 
     <!-- Employee Table with Pagination -->
     <q-table
@@ -59,35 +31,16 @@
       :rows-per-page-options="rowsPerPageOptions"
       class="employee-table"
     >
-      <!-- Loading Skeleton -->
       <template #loading>
-        <q-inner-loading showing>
-          <q-spinner-dots
-            size="50px"
-            color="primary"
-          />
-        </q-inner-loading>
+        <InnerLoading showing />
       </template>
 
-      <!-- Empty State -->
       <template #no-data>
-        <div class="full-width column items-center q-py-xl">
-          <q-icon
-            name="people"
-            size="64px"
-            color="grey-5"
-            class="q-mb-md"
-          />
-          <div class="text-h6 text-grey-6 q-mb-sm">
-            {{ searchQuery ? 'Không tìm thấy nhân viên phù hợp' : 'Chưa có nhân viên nào' }}
-          </div>
-          <div
-            v-if="!searchQuery"
-            class="text-body2 text-grey-5"
-          >
-            Nhấn "Thêm Nhân Viên" để bắt đầu
-          </div>
-        </div>
+        <EmptyState
+          icon="people"
+          :title="searchQuery ? 'Không tìm thấy nhân viên phù hợp' : 'Chưa có nhân viên nào'"
+          :subtitle="!searchQuery ? 'Nhấn &quot;Thêm Nhân Viên&quot; để bắt đầu' : undefined"
+        />
       </template>
 
       <!-- Inline Edit: Full Name Column -->
@@ -96,10 +49,9 @@
           :props="props"
           class="cursor-pointer editable-cell"
         >
-          <q-spinner-dots
+          <AppSpinner
             v-if="inlineEditLoading[getCellKey(props.row.id, 'full_name')]"
             size="sm"
-            color="primary"
           />
           <template v-else>
             <span class="cell-value">{{ props.row.full_name }}</span>
@@ -134,10 +86,9 @@
           :props="props"
           class="cursor-pointer editable-cell"
         >
-          <q-spinner-dots
+          <AppSpinner
             v-if="inlineEditLoading[getCellKey(props.row.id, 'department')]"
             size="sm"
-            color="primary"
           />
           <template v-else>
             <span class="cell-value">{{ props.row.department }}</span>
@@ -171,10 +122,9 @@
           :props="props"
           class="cursor-pointer editable-cell"
         >
-          <q-spinner-dots
+          <AppSpinner
             v-if="inlineEditLoading[getCellKey(props.row.id, 'chuc_vu')]"
             size="sm"
-            color="primary"
           />
           <template v-else>
             <span class="cell-value">{{ props.row.chuc_vu }}</span>
@@ -209,39 +159,29 @@
         </q-td>
       </template>
 
-      <!-- Actions Column -->
       <template #body-cell-actions="props">
         <q-td :props="props">
-          <q-btn
-            flat
-            round
-            dense
+          <IconButton
             icon="visibility"
             color="info"
             @click="openDetailDialog(props.row)"
           >
-            <q-tooltip>Xem chi tiết</q-tooltip>
-          </q-btn>
-          <q-btn
-            flat
-            round
-            dense
+            <AppTooltip text="Xem chi tiết" />
+          </IconButton>
+          <IconButton
             icon="edit"
             color="primary"
             @click="openEditDialog(props.row)"
           >
-            <q-tooltip>Sửa (Modal)</q-tooltip>
-          </q-btn>
-          <q-btn
-            flat
-            round
-            dense
+            <AppTooltip text="Sửa (Modal)" />
+          </IconButton>
+          <IconButton
             icon="delete"
             color="negative"
             @click="confirmDelete(props.row)"
           >
-            <q-tooltip>Xóa</q-tooltip>
-          </q-btn>
+            <AppTooltip text="Xóa" />
+          </IconButton>
         </q-td>
       </template>
     </q-table>
@@ -306,73 +246,21 @@
       </div>
     </FormDialog>
 
-    <!-- Delete Confirmation Dialog -->
-    <q-dialog
+    <DeleteDialog
       v-model="deleteDialog.isOpen"
-      persistent
-    >
-      <q-card style="min-width: 320px">
-        <q-card-section class="row items-center">
-          <q-avatar
-            icon="warning"
-            color="negative"
-            text-color="white"
-          />
-          <span class="q-ml-sm text-h6">Xác nhận xóa</span>
-        </q-card-section>
+      :item-name="deleteDialog.employee ? `${deleteDialog.employee.full_name} (${deleteDialog.employee.employee_id})` : ''"
+      :loading="loading"
+      @confirm="handleDelete"
+    />
 
-        <q-card-section class="q-pt-none">
-          Bạn có chắc muốn xóa nhân viên này?
-          <div
-            v-if="deleteDialog.employee"
-            class="q-mt-sm text-weight-medium"
-          >
-            {{ deleteDialog.employee.full_name }} ({{ deleteDialog.employee.employee_id }})
-          </div>
-        </q-card-section>
-
-        <q-card-actions align="right">
-          <q-btn
-            v-close-popup
-            flat
-            label="Hủy"
-            color="grey"
-            @click="deleteDialog.isOpen = false"
-          />
-          <q-btn
-            flat
-            label="Xóa"
-            color="negative"
-            :loading="loading"
-            @click="handleDelete"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <q-dialog
-      v-model="detailDialog.isOpen"
-      transition-show="slide-up"
-      transition-hide="slide-down"
-    >
-      <q-card style="width: 100%; max-width: 600px">
-        <q-card-section class="row items-center q-pb-none bg-primary text-white">
-          <q-avatar
-            icon="person"
-            color="white"
-            text-color="primary"
-            size="42px"
-          />
-          <div class="q-ml-md">
-            <div class="text-h6">
-              Chi Tiết Nhân Viên
-            </div>
-            <div
-              v-if="detailDialog.employee"
-              class="text-caption"
-            >
-              {{ detailDialog.employee.employee_id }}
-            </div>
+    <q-dialog v-model="detailDialog.isOpen">
+      <q-card
+        v-if="detailDialog.employee"
+        style="width: 500px; max-width: 90vw"
+      >
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">
+            Chi Tiết Nhân Viên
           </div>
           <q-space />
           <q-btn
@@ -381,151 +269,72 @@
             flat
             round
             dense
-            color="white"
           />
         </q-card-section>
 
-        <q-card-section
-          v-if="detailDialog.employee"
-          class="q-pt-lg"
-        >
-          <q-list separator>
-            <q-item>
-              <q-item-section avatar>
+        <q-card-section class="q-pa-md">
+          <div class="row q-col-gutter-sm">
+            <div class="col-12">
+              <div class="row items-center q-mb-md">
                 <q-avatar
-                  icon="badge"
+                  size="48px"
                   color="primary"
                   text-color="white"
-                  size="40px"
-                />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label caption>
-                  Mã Nhân Viên
-                </q-item-label>
-                <q-item-label class="text-weight-medium">
-                  {{ detailDialog.employee.employee_id }}
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item>
-              <q-item-section avatar>
-                <q-avatar
-                  icon="person"
-                  color="blue"
-                  text-color="white"
-                  size="40px"
-                />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label caption>
-                  Họ và Tên
-                </q-item-label>
-                <q-item-label class="text-weight-medium text-h6">
-                  {{ detailDialog.employee.full_name }}
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item>
-              <q-item-section avatar>
-                <q-avatar
-                  icon="business"
-                  color="orange"
-                  text-color="white"
-                  size="40px"
-                />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label caption>
-                  Phòng Ban
-                </q-item-label>
-                <q-item-label class="text-weight-medium">
-                  {{ detailDialog.employee.department || 'Chưa xác định' }}
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item>
-              <q-item-section avatar>
-                <q-avatar
-                  icon="work"
-                  color="purple"
-                  text-color="white"
-                  size="40px"
-                />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label caption>
-                  Chức Vụ
-                </q-item-label>
-                <q-item-label class="text-weight-medium">
-                  {{ detailDialog.employee.chuc_vu || 'Chưa xác định' }}
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item>
-              <q-item-section avatar>
-                <q-avatar
-                  :icon="detailDialog.employee.is_active ? 'check_circle' : 'cancel'"
+                  class="q-mr-md text-h6 text-weight-bold"
+                >
+                  {{ getInitials(detailDialog.employee.full_name) }}
+                </q-avatar>
+                <div>
+                  <div class="text-h6">
+                    {{ detailDialog.employee.full_name }}
+                  </div>
+                  <div class="text-caption text-grey-7">
+                    {{ detailDialog.employee.employee_id }}
+                  </div>
+                </div>
+                <q-space />
+                <q-badge
                   :color="detailDialog.employee.is_active ? 'positive' : 'negative'"
-                  text-color="white"
-                  size="40px"
-                />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label caption>
-                  Trạng Thái
-                </q-item-label>
-                <q-item-label class="text-weight-medium">
-                  <q-badge
-                    :color="detailDialog.employee.is_active ? 'positive' : 'negative'"
-                    :label="detailDialog.employee.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'"
-                  />
-                </q-item-label>
-              </q-item-section>
-            </q-item>
+                  class="q-ml-sm"
+                >
+                  {{ detailDialog.employee.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động' }}
+                </q-badge>
+              </div>
+            </div>
 
-            <q-item>
-              <q-item-section avatar>
-                <q-avatar
-                  icon="event"
-                  color="teal"
-                  text-color="white"
-                  size="40px"
-                />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label caption>
-                  Ngày Tạo
-                </q-item-label>
-                <q-item-label class="text-weight-medium">
-                  {{ formatDateTime(detailDialog.employee.created_at) }}
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item>
-              <q-item-section avatar>
-                <q-avatar
-                  icon="update"
-                  color="cyan"
-                  text-color="white"
-                  size="40px"
-                />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label caption>
-                  Cập Nhật Lần Cuối
-                </q-item-label>
-                <q-item-label class="text-weight-medium">
-                  {{ formatDateTime(detailDialog.employee.updated_at) }}
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-          </q-list>
+            <div class="col-12 col-sm-6">
+              <div class="text-caption text-grey-7">
+                Phòng Ban
+              </div>
+              <div class="text-subtitle1">
+                {{ detailDialog.employee.department || '-' }}
+              </div>
+            </div>
+            <div class="col-12 col-sm-6">
+              <div class="text-caption text-grey-7">
+                Chức Vụ
+              </div>
+              <div class="text-subtitle1">
+                {{ detailDialog.employee.chuc_vu || '-' }}
+              </div>
+            </div>
+            <div class="col-12 col-sm-6">
+              <div class="text-caption text-grey-7">
+                Ngày Tạo
+              </div>
+              <div class="text-subtitle1">
+                {{ formatDateTime(detailDialog.employee.created_at) }}
+              </div>
+            </div>
+            <div class="col-12 col-sm-6">
+              <div class="text-caption text-grey-7">
+                Cập Nhật Lần Cuối
+              </div>
+              <div class="text-subtitle1">
+                {{ formatDateTime(detailDialog.employee.updated_at) }}
+              </div>
+            </div>
+          </div>
         </q-card-section>
 
         <q-card-actions
@@ -870,6 +679,15 @@ const editFromDetail = () => {
     detailDialog.isOpen = false
     openEditDialog(detailDialog.employee)
   }
+}
+
+const getInitials = (name: string): string => {
+  if (!name) return '?'
+  const words = name.trim().split(/\s+/)
+  if (words.length >= 2 && words[0] && words[1]) {
+    return ((words[0][0] || '') + (words[1][0] || '')).toUpperCase()
+  }
+  return name.substring(0, 2).toUpperCase()
 }
 
 const formatDateTime = (dateString: string): string => {
