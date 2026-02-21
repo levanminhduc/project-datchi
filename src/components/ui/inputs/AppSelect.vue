@@ -109,9 +109,10 @@ const handleUpdateModelValue = (val: unknown) => {
 }
 
 const filteredOptions = ref<Array<any>>([])
+const isFiltering = ref(false)
 
 const computedOptions = computed(() => {
-  if (props.useInput && filteredOptions.value.length > 0) {
+  if (props.useInput && isFiltering.value) {
     return filteredOptions.value
   }
   return props.options ?? []
@@ -138,9 +139,11 @@ const handleFilter = (val: string, update: (fn: () => void) => void, abort: () =
   } else {
     update(() => {
       if (!val) {
+        isFiltering.value = false
         filteredOptions.value = props.options ?? []
         return
       }
+      isFiltering.value = true
       const needle = val.toLowerCase()
       const labelFn = typeof props.optionLabel === 'function'
         ? props.optionLabel

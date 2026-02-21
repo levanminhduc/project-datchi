@@ -27,7 +27,6 @@
       </template>
     </PageHeader>
 
-    <!-- Employee Table with Pagination -->
     <q-table
       v-model:pagination="pagination"
       flat
@@ -51,7 +50,6 @@
         />
       </template>
 
-      <!-- Inline Edit: Full Name Column -->
       <template #body-cell-full_name="props">
         <q-td
           :props="props"
@@ -88,7 +86,6 @@
         </q-td>
       </template>
 
-      <!-- Inline Edit: Department Column -->
       <template #body-cell-department="props">
         <q-td
           :props="props"
@@ -113,18 +110,21 @@
               label-cancel="Hủy"
               @save="(val: string, initialVal: string) => handleInlineEdit(props.row.id, 'department', val, initialVal)"
             >
-              <q-input
+              <AppSelect
                 v-model="scope.value"
+                :options="departmentOptions"
                 dense
-                autofocus
-                @keyup.enter="scope.set"
+                use-input
+                fill-input
+                hide-selected
+                popup-content-class="z-max"
+                class="inline-select"
               />
             </q-popup-edit>
           </template>
         </q-td>
       </template>
 
-      <!-- Inline Edit: Chức Vụ Column with Dropdown -->
       <template #body-cell-chuc_vu="props">
         <q-td
           :props="props"
@@ -149,18 +149,15 @@
               label-cancel="Hủy"
               @save="(val: string, initialVal: string) => handleInlineEdit(props.row.id, 'chuc_vu', val, initialVal)"
             >
-              <q-select
+              <AppSelect
                 v-model="scope.value"
                 :options="chucVuOptions"
-                option-value="value"
-                option-label="label"
-                emit-value
-                map-options
                 dense
-                autofocus
-                options-dense
+                use-input
+                fill-input
+                hide-selected
                 popup-content-class="z-max"
-                style="min-width: 150px"
+                class="inline-select"
               />
             </q-popup-edit>
           </template>
@@ -224,13 +221,12 @@
         <AppSelect
           v-model="formData.department"
           label="Phòng Ban"
-          :options="filteredDepartmentOptions"
+          :options="departmentOptions"
           use-input
           new-value-mode="add-unique"
           behavior="menu"
           clearable
           popup-content-class="z-max"
-          @filter="filterDepartments"
         >
           <template #prepend>
             <q-icon name="business" />
@@ -262,7 +258,7 @@
     />
 
     <q-dialog v-model="detailDialog.isOpen">
-      <q-card style="width: 500px; max-width: 90vw">
+      <q-card class="dialog-card">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">
             Chi Tiết Nhân Viên
@@ -356,7 +352,7 @@
     </q-dialog>
 
     <q-dialog v-model="configDialog.isOpen">
-      <q-card style="width: 500px; max-width: 90vw">
+      <q-card class="dialog-card">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">
             Cấu hình hiển thị chi tiết
@@ -438,10 +434,9 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { type QTableColumn } from 'quasar'
 import draggable from 'vuedraggable'
-import { useEmployees, useSnackbar, useSettings } from '@/composables'
+import { useEmployees, useSnackbar } from '@/composables'
 import { useAuth } from '@/composables/useAuth'
-import { employeeService } from '@/services/employeeService'
-import type { Employee, EmployeeDetail, EmployeeFormData } from '@/types'
+import type { Employee, EmployeeFormData } from '@/types'
 
 interface FormDialogState {
   isOpen: boolean
@@ -459,6 +454,13 @@ interface DetailDialogState {
   employee: Employee | null
 }
 
+interface DetailFieldConfig {
+  key: string
+  label: string
+  visible: boolean
+  required?: boolean
+}
+
 const snackbar = useSnackbar()
 const { isRoot } = useAuth()
 
@@ -471,8 +473,11 @@ const {
   deleteEmployee,
 } = useEmployees()
 
-// Local state
 const searchQuery = ref('')
+const inlineEditLoading = ref<Record<string, boolean>>({})
+const detailLoading = ref(false)
+const configSaving = ref(false)
+const rowsPerPageOptions = [10, 25, 50, 100]
 
 const pagination = ref({
   page: 1,
@@ -481,116 +486,12 @@ const pagination = ref({
   descending: true,
 })
 
-// Page size options for dropdown (AC8)
-const rowsPerPageOptions = [10, 25, 50, 100]
-
-// Reset pagination to page 1 when search/filter changes (AC9)
-watch(searchQuery, () => {
-  pagination.value.page = 1
-})
-
-// Inline edit loading state - tracks which cells are being saved
-const inlineEditLoading = ref<Record<string, boolean>>({})
-
-const departmentOptions = computed(() => {
-  const departments = [...new Set(employees.value.map(e => e.department).filter(Boolean))]
-  return departments.sort().map(dept => ({ label: dept, value: dept }))
-})
-
-// Chức vụ options - computed from unique values in employees (same pattern as departmentOptions)
-const chucVuOptions = computed(() => {
-  const positions = [...new Set(employees.value.map(e => e.chuc_vu).filter(Boolean))]
-  return positions.sort().map(pos => ({ label: pos, value: pos }))
-})
-
-// Filtered options for department dropdown with use-input
-const filteredDepartmentOptions = ref<{ label: string; value: string }[]>([])
-
-// Filter handler for department dropdown
-const filterDepartments = (val: string, update: (fn: () => void) => void) => {
-  update(() => {
-    if (!val) {
-      filteredDepartmentOptions.value = departmentOptions.value
-    } else {
-      const needle = val.toLowerCase()
-      filteredDepartmentOptions.value = departmentOptions.value.filter(
-        opt => opt.label.toLowerCase().includes(needle)
-      )
-    }
-  })
-}
-
-// Initialize filteredDepartmentOptions when departmentOptions changes
-watch(departmentOptions, (newOpts) => {
-  filteredDepartmentOptions.value = newOpts
-}, { immediate: true })
-
-/**
- * Generate unique key for tracking cell loading state
- */
-const getCellKey = (id: number, field: string): string => `${id}-${field}`
-
-/**
- * Handle inline field edits via q-popup-edit
- * @param id - Employee ID
- * @param field - Field name being edited (full_name, department, chuc_vu)
- * @param newValue - New value from popup edit
- * @param originalValue - Original value for rollback on error
- */
-const handleInlineEdit = async (
-  id: number,
-  field: 'full_name' | 'department' | 'chuc_vu',
-  newValue: string,
-  originalValue: string
-): Promise<void> => {
-  // Skip if no change
-  if (newValue === originalValue) return
-
-  // Validate non-empty for full_name (required field)
-  if (field === 'full_name' && !newValue?.trim()) {
-    snackbar.error('Tên nhân viên không được để trống')
-    // Revert the value
-    const emp = employees.value.find(e => e.id === id)
-    if (emp) {
-      emp[field] = originalValue
-    }
-    return
-  }
-
-  const cellKey = getCellKey(id, field)
-  inlineEditLoading.value[cellKey] = true
-
-  try {
-    // Optimistic update already applied by v-model
-    const result = await updateEmployee(id, { [field]: newValue })
-
-    if (!result) {
-      // Revert on error - find employee and restore original value
-      const emp = employees.value.find(e => e.id === id)
-      if (emp) {
-        emp[field] = originalValue
-      }
-    }
-    // Success notification is handled by useEmployees composable
-  } catch {
-    // Revert on error - composable already handles error notification
-    const emp = employees.value.find(e => e.id === id)
-    if (emp) {
-      emp[field] = originalValue
-    }
-  } finally {
-    inlineEditLoading.value[cellKey] = false
-  }
-}
-
-// Form dialog state
 const formDialog = reactive<FormDialogState>({
   isOpen: false,
   mode: 'create',
   employeeId: null,
 })
 
-// Form data
 const formData = reactive<EmployeeFormData>({
   employee_id: '',
   full_name: '',
@@ -598,9 +499,6 @@ const formData = reactive<EmployeeFormData>({
   chuc_vu: '',
 })
 
-
-
-// Delete dialog state
 const deleteDialog = reactive<DeleteDialogState>({
   isOpen: false,
   employee: null,
@@ -610,15 +508,6 @@ const detailDialog = reactive<DetailDialogState>({
   isOpen: false,
   employee: null,
 })
-
-const detailLoading = ref(false)
-
-interface DetailFieldConfig {
-  key: string
-  label: string
-  visible: boolean
-  required?: boolean
-}
 
 const defaultDetailFields: DetailFieldConfig[] = [
   { key: 'employee_id', label: 'Mã Nhân Viên', visible: true, required: true },
@@ -639,48 +528,6 @@ const configDialog = reactive<{ isOpen: boolean; fields: DetailFieldConfig[] }>(
   isOpen: false,
   fields: JSON.parse(JSON.stringify(defaultDetailFields)),
 })
-
-const configSaving = ref(false)
-
-const visibleDetailFields = computed(() =>
-  configDialog.fields.filter(f => f.visible)
-)
-
-const getFieldValue = (employee: Record<string, unknown>, key: string): unknown => {
-  return employee[key]
-}
-
-const getBooleanValue = (employee: Record<string, unknown>, key: string): boolean => {
-  return !!employee[key]
-}
-
-const getBooleanLabel = (employee: Record<string, unknown>, key: string): string => {
-  return employee[key] ? 'Có' : 'Không'
-}
-
-const isDatetimeField = (key: string): boolean => {
-  return ['created_at', 'updated_at', 'last_login_at', 'password_changed_at', 'locked_until'].includes(key)
-}
-
-const openConfigDialog = () => {
-  configDialog.isOpen = true
-}
-
-const saveConfig = async () => {
-  configSaving.value = true
-  try {
-    configSaving.value = false
-    configDialog.isOpen = false
-    snackbar.success('Đã lưu cấu hình')
-  } catch {
-    configSaving.value = false
-    snackbar.error('Lỗi khi lưu cấu hình')
-  }
-}
-
-const restoreDefaultConfig = () => {
-  configDialog.fields = JSON.parse(JSON.stringify(defaultDetailFields))
-}
 
 const columns: QTableColumn[] = [
   {
@@ -734,11 +581,20 @@ const columns: QTableColumn[] = [
   },
 ]
 
+const departmentOptions = computed(() => {
+  const departments = [...new Set(employees.value.map(e => e.department).filter(Boolean))]
+  return departments.sort((a, b) => a.localeCompare(b, 'vi')).map(dept => ({ label: dept, value: dept }))
+})
+
+const chucVuOptions = computed(() => {
+  const positions = [...new Set(employees.value.map(e => e.chuc_vu).filter(Boolean))]
+  return positions.sort((a, b) => a.localeCompare(b, 'vi')).map(pos => ({ label: pos, value: pos }))
+})
+
 const filteredEmployees = computed(() => {
   if (!searchQuery.value.trim()) {
     return employees.value
   }
-
   const query = searchQuery.value.toLowerCase().trim()
   return employees.value.filter((emp) =>
     emp.full_name?.toLowerCase().includes(query) ||
@@ -748,7 +604,91 @@ const filteredEmployees = computed(() => {
   )
 })
 
-// Form dialog methods
+const visibleDetailFields = computed(() =>
+  configDialog.fields.filter(f => f.visible)
+)
+
+watch(searchQuery, () => {
+  pagination.value.page = 1
+})
+
+const getCellKey = (id: number, field: string): string => `${id}-${field}`
+
+const getFieldValue = (employee: Record<string, unknown>, key: string): unknown => {
+  return employee[key]
+}
+
+const getBooleanValue = (employee: Record<string, unknown>, key: string): boolean => {
+  return !!employee[key]
+}
+
+const getBooleanLabel = (employee: Record<string, unknown>, key: string): string => {
+  return employee[key] ? 'Có' : 'Không'
+}
+
+const isDatetimeField = (key: string): boolean => {
+  return ['created_at', 'updated_at', 'last_login_at', 'password_changed_at', 'locked_until'].includes(key)
+}
+
+const getInitials = (name: string): string => {
+  if (!name) return '?'
+  const words = name.trim().split(/\s+/)
+  if (words.length >= 2 && words[0] && words[1]) {
+    return ((words[0][0] || '') + (words[1][0] || '')).toUpperCase()
+  }
+  return name.substring(0, 2).toUpperCase()
+}
+
+const formatDateTime = (dateString: string): string => {
+  if (!dateString) return 'Chưa xác định'
+  const date = new Date(dateString)
+  return new Intl.DateTimeFormat('vi-VN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+const handleInlineEdit = async (
+  id: number,
+  field: 'full_name' | 'department' | 'chuc_vu',
+  newValue: string,
+  originalValue: string
+): Promise<void> => {
+  if (newValue === originalValue) return
+
+  if (field === 'full_name' && !newValue?.trim()) {
+    snackbar.error('Tên nhân viên không được để trống')
+    const emp = employees.value.find(e => e.id === id)
+    if (emp) {
+      emp[field] = originalValue
+    }
+    return
+  }
+
+  const cellKey = getCellKey(id, field)
+  inlineEditLoading.value[cellKey] = true
+
+  try {
+    const result = await updateEmployee(id, { [field]: newValue })
+    if (!result) {
+      const emp = employees.value.find(e => e.id === id)
+      if (emp) {
+        emp[field] = originalValue
+      }
+    }
+  } catch {
+    const emp = employees.value.find(e => e.id === id)
+    if (emp) {
+      emp[field] = originalValue
+    }
+  } finally {
+    inlineEditLoading.value[cellKey] = false
+  }
+}
+
 const openAddDialog = () => {
   formDialog.mode = 'create'
   formDialog.employeeId = null
@@ -778,9 +718,7 @@ const resetFormData = () => {
   formData.chuc_vu = ''
 }
 
-// Submit handler for create/update
 const handleSubmit = async () => {
-  // Validate required fields
   if (!formData.employee_id.trim() || !formData.full_name.trim()) {
     snackbar.warning('Vui lòng điền đầy đủ thông tin bắt buộc')
     return
@@ -794,13 +732,11 @@ const handleSubmit = async () => {
     result = await updateEmployee(formDialog.employeeId, { ...formData })
   }
 
-  // Success notification is handled by useEmployees composable
   if (result) {
     closeFormDialog()
   }
 }
 
-// Delete confirmation
 const confirmDelete = (employee: Employee) => {
   deleteDialog.employee = employee
   deleteDialog.isOpen = true
@@ -829,29 +765,27 @@ const editFromDetail = () => {
   }
 }
 
-const getInitials = (name: string): string => {
-  if (!name) return '?'
-  const words = name.trim().split(/\s+/)
-  if (words.length >= 2 && words[0] && words[1]) {
-    return ((words[0][0] || '') + (words[1][0] || '')).toUpperCase()
-  }
-  return name.substring(0, 2).toUpperCase()
+const openConfigDialog = () => {
+  configDialog.isOpen = true
 }
 
-const formatDateTime = (dateString: string): string => {
-  if (!dateString) return 'Chưa xác định'
-  const date = new Date(dateString)
-  return new Intl.DateTimeFormat('vi-VN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
+const saveConfig = async () => {
+  configSaving.value = true
+  try {
+    configSaving.value = false
+    configDialog.isOpen = false
+    snackbar.success('Đã lưu cấu hình')
+  } catch {
+    configSaving.value = false
+    snackbar.error('Lỗi khi lưu cấu hình')
+  }
+}
+
+const restoreDefaultConfig = () => {
+  configDialog.fields = JSON.parse(JSON.stringify(defaultDetailFields))
 }
 
 onMounted(() => {
-  // Fetch employees - chucVuOptions computed from loaded employees
   fetchEmployees()
 })
 </script>
@@ -861,14 +795,13 @@ onMounted(() => {
   min-width: 250px;
 }
 
-@media (max-width: 599px) {
-  .search-input {
-    min-width: 100%;
-  }
+.inline-select {
+  min-width: 200px;
+}
 
-  .full-width-xs {
-    width: 100%;
-  }
+.dialog-card {
+  width: 500px;
+  max-width: 90vw;
 }
 
 .employee-table {
@@ -892,12 +825,10 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-/* Smooth transitions for dialogs */
 .q-dialog__inner--minimized > div {
   max-width: 95vw;
 }
 
-/* Editable cell styles */
 .editable-cell {
   transition: background-color 0.2s ease;
 }
@@ -918,10 +849,19 @@ onMounted(() => {
 .editable-cell .cell-value {
   display: inline-block;
 }
+
+@media (max-width: 599px) {
+  .search-input {
+    min-width: 100%;
+  }
+
+  .full-width-xs {
+    width: 100%;
+  }
+}
 </style>
 
 <style>
-/* Global style for z-index fix in popup-edit dropdowns */
 .z-max {
   z-index: 9999 !important;
 }
