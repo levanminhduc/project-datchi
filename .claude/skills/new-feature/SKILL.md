@@ -43,7 +43,12 @@ supabase/migrations/YYYYMMDD_ten_tinh_nang.sql
 
 ### Template migration - Basic Table
 ```sql
-CREATE TYPE ten_status AS ENUM ('DRAFT', 'CONFIRMED', 'CANCELLED');
+BEGIN;
+
+DO $$ BEGIN
+    CREATE TYPE ten_status AS ENUM ('DRAFT', 'CONFIRMED', 'CANCELLED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS ten_bang (
     id SERIAL PRIMARY KEY,
@@ -69,6 +74,8 @@ CREATE INDEX idx_ten_bang_code ON ten_bang(code);
 ALTER PUBLICATION supabase_realtime ADD TABLE ten_bang;
 
 NOTIFY pgrst, 'reload schema';
+
+COMMIT;
 ```
 
 ### Template - ENUM
@@ -93,6 +100,7 @@ CREATE OR REPLACE FUNCTION fn_verb_noun(
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
     v_result RECORD;
@@ -112,7 +120,8 @@ BEGIN
     RETURN json_build_object('success', true, 'data', row_to_json(v_result), 'message', 'Thanh cong');
 
 EXCEPTION WHEN OTHERS THEN
-    RETURN json_build_object('success', false, 'message', 'Loi: ' || SQLERRM);
+    RAISE WARNING 'fn_verb_noun error: %', SQLERRM;
+    RETURN json_build_object('success', false, 'message', 'Loi xu ly yeu cau');
 END;
 $$;
 ```
@@ -179,10 +188,10 @@ export interface TenBangFilters {
 
 **KHONG tao ApiResponse rieng cho moi file.** Dung shared type:
 ```typescript
-import type { ApiResponse } from '../types/api'
+import type { ApiResponse } from '../types/employee'
 ```
 
-Shared type (`server/types/api.ts`):
+Shared type (`server/types/employee.ts` - da co san):
 ```typescript
 export interface ApiResponse<T> {
   data: T | null
@@ -264,8 +273,8 @@ server/validation/tenTinhNang.ts
 import { z } from 'zod'
 
 export const CreateTenBangSchema = z.object({
-  code: z.string().min(1, 'Ma khong duoc de trong').trim(),
-  name: z.string().min(1, 'Ten khong duoc de trong').trim(),
+  code: z.string().trim().min(1, 'Ma khong duoc de trong'),
+  name: z.string().trim().min(1, 'Ten khong duoc de trong'),
   notes: z.string().optional().nullable(),
 })
 
@@ -347,10 +356,13 @@ app.route('/api/ten-tinh-nang', tenTinhNangRouter)
 ```typescript
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
-import type { ApiResponse } from '../types/api'
-import { CreateTenBangSchema, TenBangFiltersSchema } from '../validation/tenTinhNang'
+import { authMiddleware } from '../middleware/auth'
+import type { ApiResponse } from '../types/employee'
+import { CreateTenBangSchema, UpdateTenBangSchema, TenBangFiltersSchema } from '../validation/tenTinhNang'
 
 const tenTinhNang = new Hono()
+
+tenTinhNang.use('*', authMiddleware)
 
 tenTinhNang.get('/', async (c) => {
   try {
@@ -378,6 +390,12 @@ tenTinhNang.get('/', async (c) => {
     if (filters.status) {
       queryBuilder = queryBuilder.eq('status', filters.status)
     }
+    if (filters.from) {
+      queryBuilder = queryBuilder.gte('created_at', filters.from)
+    }
+    if (filters.to) {
+      queryBuilder = queryBuilder.lte('created_at', filters.to)
+    }
 
     const offset = (filters.page - 1) * filters.limit
     queryBuilder = queryBuilder.range(offset, offset + filters.limit - 1)
@@ -404,7 +422,12 @@ tenTinhNang.get('/', async (c) => {
 
 tenTinhNang.post('/', async (c) => {
   try {
-    const body = await c.req.json()
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json<ApiResponse<null>>({ data: null, error: 'Du lieu gui len khong hop le' }, 400)
+    }
     const result = CreateTenBangSchema.safeParse(body)
     if (!result.success) {
       return c.json<ApiResponse<null>>({
@@ -474,7 +497,20 @@ tenTinhNang.put('/:id', async (c) => {
       return c.json<ApiResponse<null>>({ data: null, error: 'ID khong hop le' }, 400)
     }
 
-    const body = await c.req.json()
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json<ApiResponse<null>>({ data: null, error: 'Du lieu gui len khong hop le' }, 400)
+    }
+
+    const result = UpdateTenBangSchema.safeParse(body)
+    if (!result.success) {
+      return c.json<ApiResponse<null>>({
+        data: null,
+        error: result.error.errors.map(e => e.message).join(', '),
+      }, 400)
+    }
 
     const { data: existing } = await supabase
       .from('ten_bang')
@@ -489,7 +525,7 @@ tenTinhNang.put('/:id', async (c) => {
 
     const { data, error } = await supabase
       .from('ten_bang')
-      .update(body)
+      .update(result.data)
       .eq('id', id)
       .select()
       .single()
@@ -510,11 +546,21 @@ tenTinhNang.delete('/:id', async (c) => {
       return c.json<ApiResponse<null>>({ data: null, error: 'ID khong hop le' }, 400)
     }
 
-    const { error } = await supabase
+    const { data: existing } = await supabase
       .from('ten_bang')
-      .update({ deleted_at: new Date().toISOString(), is_active: false })
+      .select('id')
       .eq('id', id)
       .is('deleted_at', null)
+      .single()
+
+    if (!existing) {
+      return c.json<ApiResponse<null>>({ data: null, error: 'Khong tim thay' }, 404)
+    }
+
+    const { error } = await supabase
+      .from('ten_bang')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
 
     if (error) throw error
 
@@ -633,7 +679,7 @@ createNotification({
 
 ### Response format LUON la:
 ```json
-{ "data": {...}, "error": null }
+{ "data": {...}, "error": null, "message": "Thong bao (optional)" }
 { "data": null, "error": "Thong bao loi" }
 ```
 
@@ -651,18 +697,13 @@ src/services/tenTinhNangService.ts
 ### Pattern
 ```typescript
 import { fetchApi } from './api'
+import type { ApiResponse } from '@/types'
 import type {
   TenBang,
   CreateTenBangDTO,
   TenBangFilters,
   TenBangListResponse,
 } from '@/types/thread/tenTinhNang'
-
-interface ApiResponse<T> {
-  data: T | null
-  error: string | null
-  message?: string
-}
 
 const BASE = '/api/ten-tinh-nang'
 
@@ -751,12 +792,24 @@ import { ref, computed } from 'vue'
 import { tenTinhNangService } from '@/services/tenTinhNangService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
-import { getErrorMessage } from '@/utils/errorMessages'
+import { createErrorHandler } from '@/utils/errorMessages'
 import type {
   TenBang,
   CreateTenBangDTO,
   TenBangFilters,
 } from '@/types/thread/tenTinhNang'
+
+const MESSAGES = {
+  CREATE_SUCCESS: 'Tao thanh cong',
+  UPDATE_SUCCESS: 'Cap nhat thanh cong',
+  DELETE_SUCCESS: 'Xoa thanh cong',
+  CONFIRM_SUCCESS: 'Xac nhan thanh cong',
+}
+
+const getErrorMessage = createErrorHandler({
+  duplicate: 'Ma da ton tai',
+  notFound: 'Khong tim thay',
+})
 
 export function useTenTinhNang() {
   const items = ref<TenBang[]>([])
@@ -797,7 +850,7 @@ export function useTenTinhNang() {
       const result = await loading.withLoading(() =>
         tenTinhNangService.create(data)
       )
-      snackbar.success('Tao thanh cong')
+      snackbar.success(MESSAGES.CREATE_SUCCESS)
       return result
     } catch (err) {
       snackbar.error(getErrorMessage(err))
@@ -810,7 +863,7 @@ export function useTenTinhNang() {
       const result = await loading.withLoading(() =>
         tenTinhNangService.update(id, data)
       )
-      snackbar.success('Cap nhat thanh cong')
+      snackbar.success(MESSAGES.UPDATE_SUCCESS)
       return result
     } catch (err) {
       snackbar.error(getErrorMessage(err))
@@ -821,7 +874,7 @@ export function useTenTinhNang() {
   const remove = async (id: number) => {
     try {
       await loading.withLoading(() => tenTinhNangService.delete(id))
-      snackbar.success('Xoa thanh cong')
+      snackbar.success(MESSAGES.DELETE_SUCCESS)
       await fetchList()
     } catch (err) {
       snackbar.error(getErrorMessage(err))
@@ -833,7 +886,7 @@ export function useTenTinhNang() {
       const result = await loading.withLoading(() =>
         tenTinhNangService.confirm(id)
       )
-      snackbar.success('Xac nhan thanh cong')
+      snackbar.success(MESSAGES.CONFIRM_SUCCESS)
       return result
     } catch (err) {
       snackbar.error(getErrorMessage(err))
@@ -882,7 +935,6 @@ export function useSharedState() {
 
 ### File location (file-based routing voi unplugin-vue-router)
 ```
-src/pages/[module]/ten-tinh-nang.vue        -> Route: /[module]/ten-tinh-nang
 src/pages/[module]/ten-tinh-nang/index.vue  -> Route: /[module]/ten-tinh-nang
 src/pages/[module]/ten-tinh-nang/[id].vue   -> Route: /[module]/ten-tinh-nang/:id
 ```
@@ -891,16 +943,18 @@ src/pages/[module]/ten-tinh-nang/[id].vue   -> Route: /[module]/ten-tinh-nang/:i
 
 ```vue
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { useDebounceFn } from '@vueuse/core'
+import { ref, onMounted } from 'vue'
 import { useTenTinhNang } from '@/composables/[module]/useTenTinhNang'
-import { useConfirm } from '@/composables/useConfirm'
 import { usePermission } from '@/composables/usePermission'
 import { PageHeader } from '@/components/ui/layout'
-import AppInput from '@/components/ui/inputs/AppInput.vue'
+import SearchInput from '@/components/ui/inputs/SearchInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
+import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
+import IconButton from '@/components/ui/buttons/IconButton.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
+import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
+import DeleteDialog from '@/components/ui/dialogs/DeleteDialog.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import type { QTableColumn, QTableProps } from 'quasar'
 import { date } from 'quasar'
@@ -913,7 +967,6 @@ definePage({
   }
 })
 
-const { confirmDelete } = useConfirm()
 const { can } = usePermission()
 const canCreate = can('ten_tinh_nang.create')
 const canEdit = can('ten_tinh_nang.edit')
@@ -932,12 +985,6 @@ const {
 
 const searchQuery = ref('')
 const activeTab = ref('main')
-
-const debouncedSearch = useDebounceFn(() => {
-  fetchList({ search: searchQuery.value, page: 1 })
-}, 300)
-
-watch(searchQuery, () => debouncedSearch())
 
 const statusOptions = [
   { value: 'DRAFT', label: 'Nhap' },
@@ -980,6 +1027,9 @@ const showFormDialog = ref(false)
 const formMode = ref<'create' | 'edit'>('create')
 const formData = ref({ id: 0, code: '', name: '', notes: '' })
 
+const showDeleteDialog = ref(false)
+const deleteTarget = ref<{ id: number; name: string } | null>(null)
+
 const openCreateDialog = () => {
   formMode.value = 'create'
   formData.value = { id: 0, code: '', name: '', notes: '' }
@@ -1008,11 +1058,16 @@ const handleSubmit = async () => {
   }
 }
 
-const handleDelete = async (item: any) => {
-  const confirmed = await confirmDelete(item.name)
-  if (confirmed) {
-    await remove(item.id)
-  }
+const openDeleteDialog = (item: any) => {
+  deleteTarget.value = { id: item.id, name: item.name }
+  showDeleteDialog.value = true
+}
+
+const handleDelete = async () => {
+  if (!deleteTarget.value) return
+  await remove(deleteTarget.value.id)
+  showDeleteDialog.value = false
+  deleteTarget.value = null
 }
 
 const handleRequest = async (props: Parameters<NonNullable<QTableProps['onRequest']>>[0]) => {
@@ -1065,11 +1120,9 @@ onMounted(() => {
         <q-tab-panel name="main">
           <div class="row q-col-gutter-sm q-mb-md">
             <div class="col-12 col-sm-4 col-md-3">
-              <AppInput
+              <SearchInput
                 v-model="searchQuery"
-                label="Tim kiem"
-                dense
-                clearable
+                @update:model-value="(v) => fetchList({ search: v, page: 1 })"
               />
             </div>
             <div class="col-12 col-sm-4 col-md-3">
@@ -1133,7 +1186,7 @@ onMounted(() => {
                     v-if="canDelete.value"
                     flat round dense size="sm"
                     icon="delete" color="negative"
-                    @click.stop="handleDelete(props.row)"
+                    @click.stop="openDeleteDialog(props.row)"
                   >
                     <q-tooltip>Xoa</q-tooltip>
                   </q-btn>
@@ -1159,51 +1212,40 @@ onMounted(() => {
       </q-tab-panels>
     </q-card>
 
-    <q-dialog v-model="showFormDialog" persistent>
-      <q-card style="min-width: 500px">
-        <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">
-            {{ formMode === 'create' ? 'Them Moi' : 'Chinh Sua' }}
-          </div>
-          <q-space />
-          <q-btn flat round dense icon="close" v-close-popup />
-        </q-card-section>
+    <FormDialog
+      v-model="showFormDialog"
+      :title="formMode === 'create' ? 'Them Moi' : 'Chinh Sua'"
+      :submit-text="formMode === 'create' ? 'Tao' : 'Cap Nhat'"
+      :loading="isLoading"
+      @submit="handleSubmit"
+    >
+      <div class="q-gutter-md">
+        <AppInput
+          v-model="formData.code"
+          label="Ma *"
+          :rules="[(v: string) => !!v || 'Khong duoc de trong']"
+          :disable="formMode === 'edit'"
+        />
+        <AppInput
+          v-model="formData.name"
+          label="Ten *"
+          :rules="[(v: string) => !!v || 'Khong duoc de trong']"
+        />
+        <AppInput
+          v-model="formData.notes"
+          label="Ghi chu"
+          type="textarea"
+          autogrow
+        />
+      </div>
+    </FormDialog>
 
-        <q-card-section>
-          <q-form @submit.prevent="handleSubmit">
-            <div class="q-gutter-md">
-              <AppInput
-                v-model="formData.code"
-                label="Ma *"
-                :rules="[(v: string) => !!v || 'Khong duoc de trong']"
-                :disable="formMode === 'edit'"
-              />
-              <AppInput
-                v-model="formData.name"
-                label="Ten *"
-                :rules="[(v: string) => !!v || 'Khong duoc de trong']"
-              />
-              <AppInput
-                v-model="formData.notes"
-                label="Ghi chu"
-                type="textarea"
-                autogrow
-              />
-            </div>
-          </q-form>
-        </q-card-section>
-
-        <q-card-actions align="right" class="q-pa-md">
-          <q-btn flat label="Huy" v-close-popup />
-          <AppButton
-            color="primary"
-            :label="formMode === 'create' ? 'Tao' : 'Cap Nhat'"
-            :loading="isLoading"
-            @click="handleSubmit"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <DeleteDialog
+      v-model="showDeleteDialog"
+      :item-name="deleteTarget?.name"
+      :loading="isLoading"
+      @confirm="handleDelete"
+    />
   </q-page>
 </template>
 ```
@@ -1213,7 +1255,7 @@ onMounted(() => {
 ```vue
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useTenTinhNang } from '@/composables/[module]/useTenTinhNang'
 import { PageHeader } from '@/components/ui/layout'
 import { date } from 'quasar'
@@ -1227,12 +1269,23 @@ definePage({
 })
 
 const route = useRoute()
-const router = useRouter()
 const itemId = computed(() => Number(route.params.id))
 
 const { currentItem, isLoading, fetchById } = useTenTinhNang()
 
 const activeTab = ref('info')
+
+const statusColors: Record<string, string> = {
+  DRAFT: 'grey',
+  CONFIRMED: 'positive',
+  CANCELLED: 'negative',
+}
+
+const statusLabels: Record<string, string> = {
+  DRAFT: 'Nhap',
+  CONFIRMED: 'Da xac nhan',
+  CANCELLED: 'Da huy',
+}
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '-'
@@ -1386,6 +1439,9 @@ Nut export trong PageHeader:
 | `DatePicker` | `input[type=date]` | `@/components/ui/pickers/DatePicker.vue` |
 | `PageHeader` | Custom header | `@/components/ui/layout` |
 | `FormDialog` | `q-dialog` (form) | `@/components/ui/dialogs/FormDialog.vue` |
+| `DeleteDialog` | `q-dialog` (xoa) | `@/components/ui/dialogs/DeleteDialog.vue` |
+| `SearchInput` | `AppInput` (tim kiem) | `@/components/ui/inputs/SearchInput.vue` |
+| `IconButton` | `q-btn` (icon only) | `@/components/ui/buttons/IconButton.vue` |
 
 > **Ngoai le**: `q-btn` flat/round/dense cho action icons trong table rows thi dung truc tiep (vi AppButton danh cho buttons chinh co label).
 
@@ -1461,6 +1517,18 @@ const canEdit = can('resource.edit')
 Frontend -> fetchApi() -> Hono API -> supabaseAdmin -> PostgreSQL
 ```
 
+### Auth Middleware - PHAI co trong moi route
+```typescript
+import { authMiddleware, requirePermission } from '../middleware/auth'
+
+app.use('*', authMiddleware)
+
+app.get('/', requirePermission('ten_tinh_nang.view'), async (c) => { ... })
+app.post('/', requirePermission('ten_tinh_nang.create'), async (c) => { ... })
+app.put('/:id', requirePermission('ten_tinh_nang.edit'), async (c) => { ... })
+app.delete('/:id', requirePermission('ten_tinh_nang.delete'), async (c) => { ... })
+```
+
 ### File structure conventions
 ```
 src/composables/
@@ -1503,6 +1571,7 @@ src/components/
 ## CHECKLIST TRUOC KHI HOAN THANH
 
 ### Database
+- [ ] Migration wrapped trong `BEGIN;`/`COMMIT;` block
 - [ ] Migration co `created_at`, `updated_at`, trigger `fn_update_updated_at_column()`
 - [ ] ENUM dung `CREATE TYPE` voi values UPPERCASE
 - [ ] Soft delete co `deleted_at TIMESTAMPTZ`
@@ -1514,20 +1583,22 @@ src/components/
 
 ### Backend
 - [ ] Route order: static truoc dynamic, `/:id` cuoi
-- [ ] Response format: `{ data, error }` (KHONG phai `{ success, data, error }`)
+- [ ] Response format: `{ data, error, message? }` (KHONG phai `{ success, data, error }`)
 - [ ] Zod validation dung `.safeParse()` (KHONG `.parse()`)
+- [ ] PUT endpoint dung `UpdateSchema.safeParse(body)` (KHONG validate raw body)
 - [ ] Duplicate check truoc insert (409)
 - [ ] Exists check truoc update/delete (404)
 - [ ] PGRST116 error code cho not found
 - [ ] Route da dang ky trong `server/index.ts`
+- [ ] Auth middleware: `authMiddleware` + `requirePermission()` cho moi route
 - [ ] Types dung shared `ApiResponse<T>`, KHONG tao rieng
-- [ ] Soft delete: `update({ deleted_at, is_active: false })`
+- [ ] Soft delete: `update({ deleted_at, is_active: false })` (kiem tra schema co cot `is_active` truoc khi dung)
 
 ### Frontend - State
 - [ ] Composable dung `useLoading().withLoading()` (KHONG manual loading)
 - [ ] Error handling dung `getErrorMessage()` utility
 - [ ] Xoa/hanh dong nguy hiem dung `useConfirm()`
-- [ ] Search input co debounce (300ms) voi `useDebounceFn`
+- [ ] Search dung `SearchInput` component (built-in debounce 300ms)
 - [ ] Service dung `fetchApi()`, method `PUT` cho update
 - [ ] Service dung `buildQueryString()` helper
 

@@ -50,7 +50,7 @@ Pages/Components → Real-time via useRealtime
 - All migrations in `supabase/migrations/`
 
 ### API (Hono)
-- Response format: `{ success, data?, error?, message? }`
+- Response format: `{ data: T|null, error: string|null, message?: string }`
 - Use `fetchApi()` wrapper, never raw `fetch()`
 - Validation with Zod schemas
 
