@@ -2,9 +2,11 @@ import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import {
   UpdateSettingSchema,
+  EmployeeDetailFieldsConfigSchema,
   type SystemSettingRow,
   type SettingsApiResponse,
 } from '../validation/settings'
+import { authMiddleware, requireRoot } from '../middleware/auth'
 
 const settings = new Hono()
 
@@ -112,7 +114,13 @@ settings.get('/:key', async (c) => {
  * Returns 404 if setting not found
  * Value can be any valid JSON (JSONB column)
  */
-settings.put('/:key', async (c) => {
+settings.put('/:key', authMiddleware, async (c, next) => {
+  const key = c.req.param('key')
+  if (key === 'employee_detail_fields') {
+    return requireRoot(c, next)
+  }
+  await next()
+}, async (c) => {
   try {
     const key = c.req.param('key')
 
@@ -126,7 +134,6 @@ settings.put('/:key', async (c) => {
       )
     }
 
-    // Parse and validate request body
     const body = await c.req.json()
     const parseResult = UpdateSettingSchema.safeParse(body)
 
@@ -140,7 +147,19 @@ settings.put('/:key', async (c) => {
       )
     }
 
-    // Check if setting exists
+    if (key === 'employee_detail_fields') {
+      const configResult = EmployeeDetailFieldsConfigSchema.safeParse(parseResult.data.value)
+      if (!configResult.success) {
+        return c.json<SettingsApiResponse<null>>(
+          {
+            data: null,
+            error: 'Cấu hình không hợp lệ: ' + configResult.error.issues.map((e) => e.message).join(', '),
+          },
+          400
+        )
+      }
+    }
+
     const { data: existing, error: findError } = await supabase
       .from('system_settings')
       .select('id')
@@ -177,7 +196,6 @@ settings.put('/:key', async (c) => {
       )
     }
 
-    // Update the setting
     const { data, error } = await supabase
       .from('system_settings')
       .update({

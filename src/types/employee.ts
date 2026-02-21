@@ -19,6 +19,14 @@ export interface Employee {
   updated_at: string      // ISO timestamp
 }
 
+export interface EmployeeDetail extends Employee {
+  last_login_at: string | null
+  must_change_password: boolean | null
+  password_changed_at: string | null
+  failed_login_attempts: number | null
+  locked_until: string | null
+}
+
 /**
  * Form data for create/update operations
  * Excludes id and timestamps which are managed by backend

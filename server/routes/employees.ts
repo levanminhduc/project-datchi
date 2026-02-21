@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import type {
   Employee,
+  EmployeeDetail,
   CreateEmployeeDTO,
   UpdateEmployeeDTO,
   ApiResponse,
@@ -277,7 +278,7 @@ employees.get('/:id', async (c) => {
 
     const { data, error } = await supabase
       .from('employees')
-      .select('id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at')
+      .select('id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at, last_login_at, must_change_password, password_changed_at, failed_login_attempts, locked_until')
       .eq('id', id)
       .single()
 
@@ -295,19 +296,8 @@ employees.get('/:id', async (c) => {
       )
     }
 
-    const safeData = {
-      id: data.id,
-      employee_id: data.employee_id,
-      full_name: data.full_name,
-      department: data.department,
-      chuc_vu: data.chuc_vu,
-      is_active: data.is_active,
-      created_at: data.created_at,
-      updated_at: data.updated_at,
-    }
-
-    return c.json<ApiResponse<Employee>>({
-      data: safeData,
+    return c.json<ApiResponse<EmployeeDetail>>({
+      data: data as EmployeeDetail,
       error: null,
     })
   } catch (err) {

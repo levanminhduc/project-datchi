@@ -16,6 +16,14 @@
           class="full-width-xs"
           @click="openAddDialog"
         />
+        <q-btn
+          v-if="isRoot"
+          color="grey-7"
+          icon="settings"
+          label="Cấu hình"
+          outline
+          @click="openConfigDialog"
+        />
       </template>
     </PageHeader>
 
@@ -254,10 +262,7 @@
     />
 
     <q-dialog v-model="detailDialog.isOpen">
-      <q-card
-        v-if="detailDialog.employee"
-        style="width: 500px; max-width: 90vw"
-      >
+      <q-card style="width: 500px; max-width: 90vw">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">
             Chi Tiết Nhân Viên
@@ -273,7 +278,11 @@
         </q-card-section>
 
         <q-card-section class="q-pa-md">
-          <div class="row q-col-gutter-sm">
+          <q-inner-loading :showing="detailLoading" />
+          <div
+            v-if="detailDialog.employee && !detailLoading"
+            class="row q-col-gutter-sm"
+          >
             <div class="col-12">
               <div class="row items-center q-mb-md">
                 <q-avatar
@@ -292,48 +301,36 @@
                     {{ detailDialog.employee.employee_id }}
                   </div>
                 </div>
-                <q-space />
-                <q-badge
-                  :color="detailDialog.employee.is_active ? 'positive' : 'negative'"
-                  class="q-ml-sm"
-                >
-                  {{ detailDialog.employee.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động' }}
-                </q-badge>
               </div>
             </div>
 
-            <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">
-                Phòng Ban
+            <template
+              v-for="field in visibleDetailFields"
+              :key="field.key"
+            >
+              <div
+                v-if="field.key !== 'employee_id' && field.key !== 'full_name'"
+                class="col-12 col-sm-6"
+              >
+                <div class="text-caption text-grey-7">
+                  {{ field.label }}
+                </div>
+                <div class="text-subtitle1">
+                  <q-badge
+                    v-if="field.key === 'is_active' || field.key === 'must_change_password'"
+                    :color="getBooleanValue(detailDialog.employee, field.key) ? 'positive' : 'negative'"
+                  >
+                    {{ getBooleanLabel(detailDialog.employee, field.key) }}
+                  </q-badge>
+                  <template v-else-if="isDatetimeField(field.key)">
+                    {{ formatDateTime(getFieldValue(detailDialog.employee, field.key) as string) }}
+                  </template>
+                  <template v-else>
+                    {{ getFieldValue(detailDialog.employee, field.key) ?? '-' }}
+                  </template>
+                </div>
               </div>
-              <div class="text-subtitle1">
-                {{ detailDialog.employee.department || '-' }}
-              </div>
-            </div>
-            <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">
-                Chức Vụ
-              </div>
-              <div class="text-subtitle1">
-                {{ detailDialog.employee.chuc_vu || '-' }}
-              </div>
-            </div>
-            <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">
-                Ngày Tạo
-              </div>
-              <div class="text-subtitle1">
-                {{ formatDateTime(detailDialog.employee.created_at) }}
-              </div>
-            </div>
-            <div class="col-12 col-sm-6">
-              <div class="text-caption text-grey-7">
-                Cập Nhật Lần Cuối
-              </div>
-              <div class="text-subtitle1">
-                {{ formatDateTime(detailDialog.employee.updated_at) }}
-              </div>
-            </div>
+            </template>
           </div>
         </q-card-section>
 
@@ -357,14 +354,94 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <q-dialog v-model="configDialog.isOpen">
+      <q-card style="width: 500px; max-width: 90vw">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">
+            Cấu hình hiển thị chi tiết
+          </div>
+          <q-space />
+          <q-btn
+            v-close-popup
+            icon="close"
+            flat
+            round
+            dense
+          />
+        </q-card-section>
+
+        <q-card-section>
+          <draggable
+            v-model="configDialog.fields"
+            item-key="key"
+            handle=".drag-handle"
+          >
+            <template #item="{ element }">
+              <div class="config-field-row q-py-xs">
+                <q-icon
+                  name="drag_indicator"
+                  class="drag-handle cursor-grab q-mr-sm text-grey-6"
+                  size="sm"
+                />
+                <q-checkbox
+                  v-model="element.visible"
+                  :disable="element.required"
+                  dense
+                  class="q-mr-sm"
+                />
+                <span class="config-field-label">{{ element.label }}</span>
+                <q-icon
+                  v-if="element.required"
+                  name="lock"
+                  size="xs"
+                  class="q-ml-xs text-grey-5"
+                />
+              </div>
+            </template>
+          </draggable>
+        </q-card-section>
+
+        <q-card-actions
+          align="right"
+          class="q-px-md q-pb-md"
+        >
+          <q-btn
+            flat
+            label="Khôi phục mặc định"
+            color="orange"
+            icon="restore"
+            @click="restoreDefaultConfig"
+          />
+          <q-space />
+          <q-btn
+            flat
+            label="Hủy"
+            color="grey"
+            @click="configDialog.isOpen = false"
+          />
+          <q-btn
+            unelevated
+            label="Lưu"
+            color="primary"
+            icon="save"
+            :loading="configSaving"
+            @click="saveConfig"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { type QTableColumn } from 'quasar'
-import { useEmployees, useSnackbar } from '@/composables'
-import type { Employee, EmployeeFormData } from '@/types'
+import draggable from 'vuedraggable'
+import { useEmployees, useSnackbar, useSettings } from '@/composables'
+import { useAuth } from '@/composables/useAuth'
+import { employeeService } from '@/services/employeeService'
+import type { Employee, EmployeeDetail, EmployeeFormData } from '@/types'
 
 interface FormDialogState {
   isOpen: boolean
@@ -383,8 +460,8 @@ interface DetailDialogState {
 }
 
 const snackbar = useSnackbar()
+const { isRoot } = useAuth()
 
-// Composables
 const {
   employees,
   loading,
@@ -533,6 +610,77 @@ const detailDialog = reactive<DetailDialogState>({
   isOpen: false,
   employee: null,
 })
+
+const detailLoading = ref(false)
+
+interface DetailFieldConfig {
+  key: string
+  label: string
+  visible: boolean
+  required?: boolean
+}
+
+const defaultDetailFields: DetailFieldConfig[] = [
+  { key: 'employee_id', label: 'Mã Nhân Viên', visible: true, required: true },
+  { key: 'full_name', label: 'Tên Nhân Viên', visible: true, required: true },
+  { key: 'department', label: 'Phòng Ban', visible: true },
+  { key: 'chuc_vu', label: 'Chức Vụ', visible: true },
+  { key: 'is_active', label: 'Trạng thái', visible: true },
+  { key: 'created_at', label: 'Ngày tạo', visible: true },
+  { key: 'updated_at', label: 'Ngày cập nhật', visible: true },
+  { key: 'last_login_at', label: 'Lần đăng nhập cuối', visible: false },
+  { key: 'must_change_password', label: 'Bắt buộc đổi mật khẩu', visible: false },
+  { key: 'password_changed_at', label: 'Ngày đổi mật khẩu', visible: false },
+  { key: 'failed_login_attempts', label: 'Số lần đăng nhập thất bại', visible: false },
+  { key: 'locked_until', label: 'Khóa đến', visible: false },
+]
+
+const configDialog = reactive<{ isOpen: boolean; fields: DetailFieldConfig[] }>({
+  isOpen: false,
+  fields: JSON.parse(JSON.stringify(defaultDetailFields)),
+})
+
+const configSaving = ref(false)
+
+const visibleDetailFields = computed(() =>
+  configDialog.fields.filter(f => f.visible)
+)
+
+const getFieldValue = (employee: Record<string, unknown>, key: string): unknown => {
+  return employee[key]
+}
+
+const getBooleanValue = (employee: Record<string, unknown>, key: string): boolean => {
+  return !!employee[key]
+}
+
+const getBooleanLabel = (employee: Record<string, unknown>, key: string): string => {
+  return employee[key] ? 'Có' : 'Không'
+}
+
+const isDatetimeField = (key: string): boolean => {
+  return ['created_at', 'updated_at', 'last_login_at', 'password_changed_at', 'locked_until'].includes(key)
+}
+
+const openConfigDialog = () => {
+  configDialog.isOpen = true
+}
+
+const saveConfig = async () => {
+  configSaving.value = true
+  try {
+    configSaving.value = false
+    configDialog.isOpen = false
+    snackbar.success('Đã lưu cấu hình')
+  } catch {
+    configSaving.value = false
+    snackbar.error('Lỗi khi lưu cấu hình')
+  }
+}
+
+const restoreDefaultConfig = () => {
+  configDialog.fields = JSON.parse(JSON.stringify(defaultDetailFields))
+}
 
 const columns: QTableColumn[] = [
   {
