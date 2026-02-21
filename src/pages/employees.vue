@@ -247,6 +247,15 @@
             <q-icon name="work" />
           </template>
         </AppSelect>
+
+        <AppInput
+          v-if="formDialog.mode === 'edit'"
+          v-model="newPassword"
+          label="Mật khẩu mới"
+          type="password"
+          prepend-icon="lock"
+          autocomplete="new-password"
+        />
       </div>
     </FormDialog>
 
@@ -436,6 +445,7 @@ import { type QTableColumn } from 'quasar'
 import draggable from 'vuedraggable'
 import { useEmployees, useSnackbar } from '@/composables'
 import { useAuth } from '@/composables/useAuth'
+import { employeeService } from '@/services/employeeService'
 import type { Employee, EmployeeFormData } from '@/types'
 
 interface FormDialogState {
@@ -474,6 +484,7 @@ const {
 } = useEmployees()
 
 const searchQuery = ref('')
+const newPassword = ref('')
 const inlineEditLoading = ref<Record<string, boolean>>({})
 const detailLoading = ref(false)
 const configSaving = ref(false)
@@ -693,6 +704,7 @@ const openAddDialog = () => {
   formDialog.mode = 'create'
   formDialog.employeeId = null
   resetFormData()
+  newPassword.value = ''
   formDialog.isOpen = true
 }
 
@@ -703,6 +715,7 @@ const openEditDialog = (employee: Employee) => {
   formData.full_name = employee.full_name
   formData.department = employee.department || ''
   formData.chuc_vu = employee.chuc_vu || ''
+  newPassword.value = ''
   formDialog.isOpen = true
 }
 
@@ -730,6 +743,14 @@ const handleSubmit = async () => {
     result = await createEmployee({ ...formData })
   } else if (formDialog.employeeId) {
     result = await updateEmployee(formDialog.employeeId, { ...formData })
+
+    if (result && newPassword.value.trim()) {
+      try {
+        await employeeService.resetPassword(formDialog.employeeId, newPassword.value.trim())
+      } catch {
+        snackbar.error('Cập nhật thông tin thành công nhưng đổi mật khẩu thất bại')
+      }
+    }
   }
 
   if (result) {

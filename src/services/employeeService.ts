@@ -88,4 +88,12 @@ export const employeeService = {
     const response = await fetchApi<ApiResponse<string[]>>('/api/employees/departments')
     return response.data || []
   },
+
+  async resetPassword(id: number, newPassword: string): Promise<boolean> {
+    const response = await fetchApi<ApiResponse<null>>(`/api/auth/reset-password/${id}`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    })
+    return !response.error
+  },
 }
