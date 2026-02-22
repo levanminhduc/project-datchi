@@ -1,3 +1,8 @@
+---
+name: new-db
+description: Create database migrations (tables, enums, triggers, indexes, RPC functions, views) for the Dat Chi Thread Inventory System. Use when adding or modifying database schema.
+---
+
 # Skill: /new-db
 
 Tao database migration cho du an Dat Chi - Thread Inventory Management System.

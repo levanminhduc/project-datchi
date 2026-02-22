@@ -1,3 +1,8 @@
+---
+name: new-be
+description: Create backend layer (Hono routes, TypeScript types, Zod validation schemas) for the Dat Chi Thread Inventory System. Use when adding new API endpoints or backend logic.
+---
+
 # Skill: /new-be
 
 Tao backend (Hono routes + types + validation) cho du an Dat Chi - Thread Inventory Management System.

@@ -1,3 +1,8 @@
+---
+name: new-feature
+description: Orchestrates full-stack feature creation (DB + Backend + Frontend) for the Dat Chi Thread Inventory System. Use when creating a new feature that spans multiple layers - coordinates /new-db, /new-be, /new-fe skills.
+---
+
 # Skill: /new-feature
 
 Tao tinh nang moi cho du an Dat Chi - Thread Inventory Management System.

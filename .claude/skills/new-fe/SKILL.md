@@ -1,3 +1,8 @@
+---
+name: new-fe
+description: Create frontend layer (Vue types, service, composable, list/detail pages, realtime, Excel export) for the Dat Chi Thread Inventory System. Use when adding new pages or frontend features.
+---
+
 # Skill: /new-fe
 
 Tao frontend (types + service + composable + pages) cho du an Dat Chi - Thread Inventory Management System.

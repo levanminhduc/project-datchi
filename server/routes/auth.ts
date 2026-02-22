@@ -200,15 +200,19 @@ auth.post('/login', async (c) => {
         )
     }
 
-    // Return response (exclude sensitive fields)
-    const { password_hash, failed_login_attempts, locked_until, ...safeEmployee } = employee
-
     return c.json({
       data: {
         accessToken,
         refreshToken,
         employee: {
-          ...safeEmployee,
+          id: employee.id,
+          employeeId: employee.employee_id,
+          fullName: employee.full_name,
+          department: employee.department,
+          chucVu: employee.chuc_vu,
+          isActive: employee.is_active,
+          mustChangePassword: employee.must_change_password,
+          lastLoginAt: employee.last_login_at,
           roles,
           isRoot,
         },
@@ -400,7 +404,15 @@ auth.get('/me', async (c) => {
 
     return c.json({
       data: {
-        ...employee,
+        id: employee.id,
+        employeeId: employee.employee_id,
+        fullName: employee.full_name,
+        department: employee.department,
+        chucVu: employee.chuc_vu,
+        isActive: employee.is_active,
+        mustChangePassword: employee.must_change_password,
+        lastLoginAt: employee.last_login_at,
+        createdAt: employee.created_at,
         roles,
         isRoot,
       },

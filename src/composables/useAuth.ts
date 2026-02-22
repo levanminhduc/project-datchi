@@ -68,10 +68,6 @@ export function useAuth() {
             error: null,
           }
 
-          // Force password change if required
-          if (emp.mustChangePassword) {
-            router.push('/change-password')
-          }
         } else {
           // Token invalid, clear state
           authService.clearTokens()
