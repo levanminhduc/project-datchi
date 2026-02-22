@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
+import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
   Employee,
   EmployeeDetail,
@@ -16,7 +18,7 @@ const employees = new Hono()
  * Returns position objects with value (internal name) and label (display name)
  * for proper matching with employees.chuc_vu column
  */
-employees.get('/unique-positions', async (c) => {
+employees.get('/unique-positions', requirePermission('employees.view'), async (c) => {
   try {
     // Fetch ALL positions from the positions table (no filtering by is_active)
     // This ensures the dropdown shows all available positions regardless of status
@@ -68,7 +70,7 @@ employees.get('/unique-positions', async (c) => {
  * GET /api/employees/count - Get count of active employees
  * Returns the total count of employees where is_active = true
  */
-employees.get('/count', async (c) => {
+employees.get('/count', requirePermission('employees.view'), async (c) => {
   try {
     const { count, error } = await supabase
       .from('employees')
@@ -101,7 +103,7 @@ employees.get('/count', async (c) => {
  * GET /api/employees/departments - Get unique departments
  * Returns distinct department values from employees table
  */
-employees.get('/departments', async (c) => {
+employees.get('/departments', requirePermission('employees.view'), async (c) => {
   try {
     const { data, error } = await supabase
       .from('employees')
@@ -138,7 +140,7 @@ employees.get('/departments', async (c) => {
   }
 })
 
-employees.get('/', async (c) => {
+employees.get('/', requirePermission('employees.view'), async (c) => {
   try {
     const page = parseInt(c.req.query('page') || '1', 10)
     const limitParam = c.req.query('limit') || '0'
@@ -152,8 +154,9 @@ employees.get('/', async (c) => {
       .order('created_at', { ascending: false })
 
     if (search) {
+      const s = sanitizeFilterValue(search)
       query = query.or(
-        `full_name.ilike.%${search}%,employee_id.ilike.%${search}%,department.ilike.%${search}%`
+        `full_name.ilike.%${s}%,employee_id.ilike.%${s}%,department.ilike.%${s}%`
       )
     }
 
@@ -205,8 +208,9 @@ employees.get('/', async (c) => {
         .range(offset, offset + BATCH_SIZE - 1)
 
       if (search) {
+        const s = sanitizeFilterValue(search)
         batchQuery = batchQuery.or(
-          `full_name.ilike.%${search}%,employee_id.ilike.%${search}%,department.ilike.%${search}%`
+          `full_name.ilike.%${s}%,employee_id.ilike.%${s}%,department.ilike.%${s}%`
         )
       }
 
@@ -257,7 +261,7 @@ employees.get('/', async (c) => {
   }
 })
 
-employees.get('/:id', async (c) => {
+employees.get('/:id', requirePermission('employees.view'), async (c) => {
   try {
     const id = c.req.param('id')
 
@@ -309,7 +313,7 @@ employees.get('/:id', async (c) => {
   }
 })
 
-employees.post('/', async (c) => {
+employees.post('/', requirePermission('employees.create'), async (c) => {
   try {
     const body = await c.req.json<CreateEmployeeDTO>()
 
@@ -370,7 +374,7 @@ employees.post('/', async (c) => {
   }
 })
 
-employees.put('/:id', async (c) => {
+employees.put('/:id', requirePermission('employees.edit'), async (c) => {
   try {
     const id = c.req.param('id')
 
@@ -449,7 +453,7 @@ employees.put('/:id', async (c) => {
   }
 })
 
-employees.delete('/:id', async (c) => {
+employees.delete('/:id', requirePermission('employees.delete'), async (c) => {
   try {
     const id = c.req.param('id')
 

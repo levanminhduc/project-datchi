@@ -12,6 +12,7 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 import {
   CreateIssueV2Schema,
@@ -27,6 +28,8 @@ import {
 import type { ThreadApiResponse } from '../types/thread'
 
 const issuesV2 = new Hono()
+
+issuesV2.use('*', requirePermission('thread.allocations.view'))
 
 // ============================================================================
 // Helper Functions

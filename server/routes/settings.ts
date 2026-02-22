@@ -6,7 +6,7 @@ import {
   type SystemSettingRow,
   type SettingsApiResponse,
 } from '../validation/settings'
-import { authMiddleware, requireRoot } from '../middleware/auth'
+import { requireRoot } from '../middleware/auth'
 
 const settings = new Hono()
 
@@ -114,7 +114,7 @@ settings.get('/:key', async (c) => {
  * Returns 404 if setting not found
  * Value can be any valid JSON (JSONB column)
  */
-settings.put('/:key', authMiddleware, async (c, next) => {
+settings.put('/:key', async (c, next) => {
   const key = c.req.param('key')
   if (key === 'employee_detail_fields') {
     return requireRoot(c, next)

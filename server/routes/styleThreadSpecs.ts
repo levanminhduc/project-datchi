@@ -1,8 +1,11 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 
 const styleThreadSpecs = new Hono()
+
+styleThreadSpecs.use('*', requirePermission('thread.types.view'))
 
 /**
  * GET /api/style-thread-specs - List all style thread specs with optional filtering

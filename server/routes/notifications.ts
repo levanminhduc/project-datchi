@@ -1,11 +1,9 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../db/supabase'
-import { authMiddleware, type AuthContext } from '../middleware/auth'
+import { type AuthContext } from '../middleware/auth'
 import { notificationQuerySchema, type NotificationRow } from '../types/notification'
 
 const notifications = new Hono()
-
-notifications.use('*', authMiddleware)
 
 notifications.get('/', async (c) => {
   const auth = c.get('auth') as AuthContext

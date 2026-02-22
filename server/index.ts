@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { secureHeaders } from 'hono/secure-headers'
+import { except } from 'hono/combine'
 import { serve } from '@hono/node-server'
 import dotenv from 'dotenv'
 
@@ -30,11 +32,14 @@ import settingsRouter from './routes/settings'
 import stockRouter from './routes/stock'
 import issuesV2Router from './routes/issuesV2'
 import notificationsRouter from './routes/notifications'
+import { authMiddleware } from './middleware/auth'
 
 const app = new Hono()
 
 const PORT = parseInt(process.env.PORT || '3000', 10)
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
+
+app.use('*', secureHeaders())
 
 app.use(
   '/api/*',
@@ -44,6 +49,14 @@ app.use(
     allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   })
+)
+
+app.use(
+  '/api/*',
+  except(
+    ['/api/auth/login', '/api/auth/refresh'],
+    authMiddleware
+  )
 )
 
 app.get('/health', (c) => {

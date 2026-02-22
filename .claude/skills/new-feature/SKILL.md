@@ -358,15 +358,13 @@ app.route('/api/ten-tinh-nang', tenTinhNangRouter)
 ```typescript
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
-import { authMiddleware } from '../middleware/auth'
+import { requirePermission } from '../middleware/auth'
 import type { ApiResponse } from '../types/employee'
 import { CreateTenBangSchema, UpdateTenBangSchema, TenBangFiltersSchema } from '../validation/tenTinhNang'
 
 const tenTinhNang = new Hono()
 
-tenTinhNang.use('*', authMiddleware)
-
-tenTinhNang.get('/', async (c) => {
+tenTinhNang.get('/', requirePermission('ten_tinh_nang.view'), async (c) => {
   try {
     const query = c.req.query()
     const result = TenBangFiltersSchema.safeParse(query)
@@ -1519,14 +1517,14 @@ const canEdit = can('resource.edit')
 Frontend -> fetchApi() -> Hono API -> supabaseAdmin -> PostgreSQL
 ```
 
-### Auth Middleware - PHAI co trong moi route
+### Auth Middleware - Global auth da duoc cau hinh
 
-> **Note:** Routes cu (employees, threads) co the chua co auth middleware. Pattern nay la chuan cho features moi.
+> **QUAN TRONG:** Du an da co global `authMiddleware` via `except()` trong `server/index.ts`. KHONG can them `app.use('*', authMiddleware)` trong route files. Chi can them `requirePermission()` cho tung endpoint.
+
+> **`fetchApi()` da tu dong gui token.** File `src/services/api.ts` tu dong doc `auth_access_token` tu localStorage va gui `Authorization: Bearer <token>`. KHONG can gui token thu cong trong service files.
 
 ```typescript
-import { authMiddleware, requirePermission } from '../middleware/auth'
-
-app.use('*', authMiddleware)
+import { requirePermission } from '../middleware/auth'
 
 app.get('/', requirePermission('ten_tinh_nang.view'), async (c) => { ... })
 app.post('/', requirePermission('ten_tinh_nang.create'), async (c) => { ... })
@@ -1595,7 +1593,7 @@ src/components/
 - [ ] Exists check truoc update/delete (404)
 - [ ] PGRST116 error code cho not found
 - [ ] Route da dang ky trong `server/index.ts`
-- [ ] Auth middleware: `authMiddleware` + `requirePermission()` cho moi route
+- [ ] Auth middleware: `requirePermission()` cho moi route (KHONG can `authMiddleware` - da co global)
 - [ ] Types dung shared `ApiResponse<T>`, KHONG tao rieng
 - [ ] Soft delete: `update({ deleted_at, is_active: false })` (kiem tra schema co cot `is_active` truoc khi dung)
 

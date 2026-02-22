@@ -6,6 +6,7 @@
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const ACCESS_TOKEN_KEY = 'auth_access_token'
 
 /**
  * Custom error class for API errors
@@ -40,9 +41,11 @@ export async function fetchApi<T>(
   const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 seconds
 
   try {
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY)
     const response = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
         ...options.headers,
       },
       ...options,

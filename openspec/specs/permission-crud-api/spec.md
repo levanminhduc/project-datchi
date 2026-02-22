@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Create permission endpoint
 The system SHALL provide a `POST /api/auth/permissions` endpoint that creates a new permission record.
@@ -14,7 +14,7 @@ Request body fields:
 - `isPageAccess` (boolean, optional, default false)
 - `sortOrder` (number, optional, default 0)
 
-The endpoint SHALL require ROOT role authorization.
+The endpoint SHALL require ROOT role authorization via `requireRoot` (authentication handled by global middleware).
 
 #### Scenario: Successfully create a permission
 - **WHEN** a ROOT user sends POST `/api/auth/permissions` with valid body `{ code: "thread.new-feature.view", name: "Xem Feature Mới", module: "thread", resource: "new-feature", action: "view" }`
@@ -92,3 +92,14 @@ The system SHALL export `CreatePermissionData` and `UpdatePermissionData` interf
 #### Scenario: Frontend can use typed permission data
 - **WHEN** the frontend imports `CreatePermissionData` from `@/types/auth`
 - **THEN** the type SHALL include fields: code, name, module, resource, action (required); description, routePath, isPageAccess, sortOrder (optional)
+
+### Requirement: Password reset removes default password fallback
+The `POST /api/auth/reset-password/:id` endpoint SHALL require `newPassword` as a mandatory field in the request body. The system SHALL NOT use any hardcoded default password when `newPassword` is omitted.
+
+#### Scenario: Reset password with explicit new password
+- **WHEN** an admin sends POST `/api/auth/reset-password/42` with `{ newPassword: "SecurePass123!" }`
+- **THEN** the system SHALL hash and set the new password for the target employee
+
+#### Scenario: Reset password without newPassword field
+- **WHEN** an admin sends POST `/api/auth/reset-password/42` with `{}` (no newPassword)
+- **THEN** the system SHALL return HTTP 400 with `{ error: true, message: "Mật khẩu mới là bắt buộc" }`

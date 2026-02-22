@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
+import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
   BatchReceiveRequest,
   BatchTransferRequest,
@@ -19,7 +21,7 @@ const BATCH_LIMIT = 500
 /**
  * POST /api/batch/receive - Batch receive cones into inventory
  */
-batch.post('/receive', async (c) => {
+batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
   try {
     const body = await c.req.json<BatchReceiveRequest>()
 
@@ -222,7 +224,7 @@ batch.post('/receive', async (c) => {
 /**
  * POST /api/batch/transfer - Batch transfer cones between warehouses
  */
-batch.post('/transfer', async (c) => {
+batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) => {
   try {
     const body = await c.req.json<BatchTransferRequest>()
 
@@ -361,7 +363,7 @@ batch.post('/transfer', async (c) => {
 /**
  * POST /api/batch/issue - Batch issue cones from inventory
  */
-batch.post('/issue', async (c) => {
+batch.post('/issue', requirePermission('thread.batch.issue'), async (c) => {
   try {
     const body = await c.req.json<BatchIssueRequest>()
 
@@ -499,7 +501,7 @@ batch.post('/issue', async (c) => {
 /**
  * POST /api/batch/return - Return issued cones back to inventory
  */
-batch.post('/return', async (c) => {
+batch.post('/return', requirePermission('thread.batch.issue'), async (c) => {
   try {
     const body = await c.req.json<BatchReturnRequest>()
 
@@ -576,7 +578,7 @@ batch.post('/return', async (c) => {
 /**
  * GET /api/batch/transactions - List all batch transactions
  */
-batch.get('/transactions', async (c) => {
+batch.get('/transactions', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const operationType = c.req.query('operation_type')
     const lotId = c.req.query('lot_id')
@@ -601,7 +603,7 @@ batch.get('/transactions', async (c) => {
     }
     if (warehouseId) {
       const whId = parseInt(warehouseId)
-      query = query.or(`from_warehouse_id.eq.${whId},to_warehouse_id.eq.${whId}`)
+      query = query.or(`from_warehouse_id.eq.${sanitizeFilterValue(String(whId))},to_warehouse_id.eq.${sanitizeFilterValue(String(whId))}`)
     }
     if (fromDate) {
       query = query.gte('performed_at', fromDate)
@@ -637,7 +639,7 @@ batch.get('/transactions', async (c) => {
 /**
  * GET /api/batch/transactions/:id - Get transaction details
  */
-batch.get('/transactions/:id', async (c) => {
+batch.get('/transactions/:id', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 

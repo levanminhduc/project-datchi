@@ -21,6 +21,7 @@
 
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import type {
   Position,
   CreatePositionDTO,
@@ -29,6 +30,8 @@ import type {
 import type { ApiResponse } from '../types/employee'
 
 const positions = new Hono()
+
+positions.use('*', requirePermission('employees.view'))
 
 /**
  * GET /api/positions - Fetch all positions

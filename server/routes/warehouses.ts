@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import type { WarehouseRow, WarehouseTreeNode, WarehouseType, ThreadApiResponse } from '../types/thread'
 
 interface Warehouse extends WarehouseRow {}
@@ -7,6 +8,8 @@ interface Warehouse extends WarehouseRow {}
 interface WarehouseTree extends WarehouseTreeNode {}
 
 const warehouses = new Hono()
+
+warehouses.use('*', requirePermission('thread.inventory.view'))
 
 /**
  * Build tree structure from flat warehouse list

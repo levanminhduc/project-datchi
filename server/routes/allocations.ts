@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import { createNotification, broadcastNotification, getWarehouseEmployeeIds } from '../utils/notificationService'
 import type {
   ThreadApiResponse,
@@ -98,7 +99,7 @@ interface ConflictRow {
  * - workflow_status: Filter by workflow stage (pending_approval, pending_preparation, pending_pickup, completed)
  * - is_request: If true, only return allocations with requesting_warehouse_id
  */
-allocations.get('/', async (c) => {
+allocations.get('/', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const orderId = c.req.query('order_id')
     const threadTypeId = c.req.query('thread_type_id')
@@ -180,7 +181,7 @@ allocations.get('/', async (c) => {
  * GET /api/allocations/conflicts - Get all active conflicts
  * Must be defined BEFORE /:id to avoid route conflicts
  */
-allocations.get('/conflicts', async (c) => {
+allocations.get('/conflicts', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const status = c.req.query('status') || 'PENDING'
 
@@ -217,7 +218,7 @@ allocations.get('/conflicts', async (c) => {
 /**
  * GET /api/allocations/:id - Get single allocation with allocated cones
  */
-allocations.get('/:id', async (c) => {
+allocations.get('/:id', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const id = c.req.param('id')
 
@@ -281,7 +282,7 @@ allocations.get('/:id', async (c) => {
 /**
  * POST /api/allocations - Create new allocation request
  */
-allocations.post('/', async (c) => {
+allocations.post('/', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const body = await c.req.json<CreateAllocationDTO>()
 
@@ -426,7 +427,7 @@ allocations.post('/', async (c) => {
  * POST /api/allocations/:id/execute - Execute soft allocation
  * Calls RPC allocate_thread to perform soft allocation
  */
-allocations.post('/:id/execute', async (c) => {
+allocations.post('/:id/execute', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -528,7 +529,7 @@ allocations.post('/:id/execute', async (c) => {
  * POST /api/allocations/:id/approve - Approve a pending request
  * Transitions: PENDING → APPROVED
  */
-allocations.post('/:id/approve', async (c) => {
+allocations.post('/:id/approve', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<ApproveRequestDTO>()
@@ -631,7 +632,7 @@ allocations.post('/:id/approve', async (c) => {
  * POST /api/allocations/:id/reject - Reject a pending request
  * Transitions: PENDING → REJECTED
  */
-allocations.post('/:id/reject', async (c) => {
+allocations.post('/:id/reject', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<RejectRequestDTO>()
@@ -734,7 +735,7 @@ allocations.post('/:id/reject', async (c) => {
  * Transitions: APPROVED → READY_FOR_PICKUP
  * Also executes soft allocation to reserve cones
  */
-allocations.post('/:id/ready', async (c) => {
+allocations.post('/:id/ready', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     // Parse body but don't use it for now (prepared_by is optional)
@@ -840,7 +841,7 @@ allocations.post('/:id/ready', async (c) => {
  * Transitions: READY_FOR_PICKUP → RECEIVED
  * Also issues the cones
  */
-allocations.post('/:id/receive', async (c) => {
+allocations.post('/:id/receive', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<ConfirmReceiptDTO>()
@@ -952,7 +953,7 @@ allocations.post('/:id/receive', async (c) => {
  * POST /api/allocations/:id/issue - Issue allocated cones
  * Calls RPC issue_cone for each allocated cone
  */
-allocations.post('/:id/issue', async (c) => {
+allocations.post('/:id/issue', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<{ confirmed_by?: string }>().catch(() => ({ confirmed_by: undefined }))
@@ -1073,7 +1074,7 @@ allocations.post('/:id/issue', async (c) => {
 /**
  * POST /api/allocations/:id/cancel - Cancel allocation and release cones
  */
-allocations.post('/:id/cancel', async (c) => {
+allocations.post('/:id/cancel', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<{ reason?: string }>().catch(() => ({ reason: undefined }))
@@ -1198,7 +1199,7 @@ allocations.post('/:id/cancel', async (c) => {
 /**
  * POST /api/allocations/:id/resolve - Resolve conflict by adjusting priority
  */
-allocations.post('/:id/resolve', async (c) => {
+allocations.post('/:id/resolve', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<{
@@ -1305,7 +1306,7 @@ allocations.post('/:id/resolve', async (c) => {
 /**
  * POST /api/allocations/conflicts/:id/escalate - Escalate a conflict
  */
-allocations.post('/conflicts/:id/escalate', async (c) => {
+allocations.post('/conflicts/:id/escalate', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     if (isNaN(id) || id <= 0) {
@@ -1387,7 +1388,7 @@ allocations.post('/conflicts/:id/escalate', async (c) => {
  * POST /api/allocations/:id/split - Split allocation into two
  * Calls RPC split_allocation to atomically split the allocation
  */
-allocations.post('/:id/split', async (c) => {
+allocations.post('/:id/split', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     if (isNaN(id) || id <= 0) {
@@ -1474,7 +1475,7 @@ allocations.post('/:id/split', async (c) => {
 /**
  * PUT /api/allocations/:id - Update allocation details
  */
-allocations.put('/:id', async (c) => {
+allocations.put('/:id', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<Partial<CreateAllocationDTO>>()
@@ -1574,7 +1575,7 @@ allocations.put('/:id', async (c) => {
 /**
  * DELETE /api/allocations/:id - Delete allocation (only if PENDING)
  */
-allocations.delete('/:id', async (c) => {
+allocations.delete('/:id', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 

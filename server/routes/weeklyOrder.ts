@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 import { broadcastNotification, getWarehouseEmployeeIds } from '../utils/notificationService'
 import {
@@ -35,7 +36,7 @@ const VALID_STATUS_TRANSITIONS: Record<WeeklyOrderStatus, WeeklyOrderStatus[]> =
  *   page    - page number (1-based), enables pagination
  *   limit   - items per page (default 20, max 100)
  */
-weeklyOrder.get('/', async (c) => {
+weeklyOrder.get('/', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const query = c.req.query()
 
@@ -98,7 +99,7 @@ weeklyOrder.get('/', async (c) => {
 /**
  * POST /api/weekly-orders/enrich-inventory - Enrich summary rows with inventory data
  */
-weeklyOrder.post('/enrich-inventory', async (c) => {
+weeklyOrder.post('/enrich-inventory', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const body = await c.req.json()
 
@@ -160,7 +161,7 @@ weeklyOrder.post('/enrich-inventory', async (c) => {
  * PUT /api/weekly-orders/items/:id/quota - Update quota_cones for a thread type in a week
  * Body: { thread_type_id: number, quota_cones: number }
  */
-weeklyOrder.put('/items/:id/quota', async (c) => {
+weeklyOrder.put('/items/:id/quota', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const weekId = parseInt(c.req.param('id'))
     if (isNaN(weekId)) {
@@ -254,7 +255,7 @@ weeklyOrder.put('/items/:id/quota', async (c) => {
 /**
  * GET /api/weekly-orders/deliveries/overview - List all deliveries across weeks
  */
-weeklyOrder.get('/deliveries/overview', async (c) => {
+weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const status = c.req.query('status')
     const weekId = c.req.query('week_id')
@@ -339,7 +340,7 @@ weeklyOrder.get('/deliveries/overview', async (c) => {
 /**
  * PATCH /api/weekly-orders/deliveries/:deliveryId - Update a delivery record
  */
-weeklyOrder.patch('/deliveries/:deliveryId', async (c) => {
+weeklyOrder.patch('/deliveries/:deliveryId', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const deliveryId = parseInt(c.req.param('deliveryId'))
     if (isNaN(deliveryId)) {
@@ -404,7 +405,7 @@ weeklyOrder.patch('/deliveries/:deliveryId', async (c) => {
  * POST /api/weekly-orders/deliveries/:deliveryId/receive - Receive delivery into stock
  * Creates ONE thread_stock record (not individual cones) and updates delivery receiving status
  */
-weeklyOrder.post('/deliveries/:deliveryId/receive', async (c) => {
+weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const deliveryId = parseInt(c.req.param('deliveryId'))
     if (isNaN(deliveryId)) {
@@ -552,7 +553,7 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', async (c) => {
 /**
  * GET /api/weekly-orders/:id/deliveries - List deliveries for a specific week
  */
-weeklyOrder.get('/:id/deliveries', async (c) => {
+weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     if (isNaN(id)) {
@@ -597,7 +598,7 @@ weeklyOrder.get('/:id/deliveries', async (c) => {
 /**
  * GET /api/weekly-orders/:id - Get single weekly order with items
  */
-weeklyOrder.get('/:id', async (c) => {
+weeklyOrder.get('/:id', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -644,7 +645,7 @@ weeklyOrder.get('/:id', async (c) => {
 /**
  * POST /api/weekly-orders - Create weekly order with items
  */
-weeklyOrder.post('/', async (c) => {
+weeklyOrder.post('/', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const body = await c.req.json()
 
@@ -722,7 +723,7 @@ weeklyOrder.post('/', async (c) => {
 /**
  * PUT /api/weekly-orders/:id - Update weekly order (draft only)
  */
-weeklyOrder.put('/:id', async (c) => {
+weeklyOrder.put('/:id', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -844,7 +845,7 @@ weeklyOrder.put('/:id', async (c) => {
 /**
  * DELETE /api/weekly-orders/:id - Delete weekly order (draft only, no results)
  */
-weeklyOrder.delete('/:id', async (c) => {
+weeklyOrder.delete('/:id', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -918,7 +919,7 @@ weeklyOrder.delete('/:id', async (c) => {
 /**
  * PATCH /api/weekly-orders/:id/status - Update status with transition validation
  */
-weeklyOrder.patch('/:id/status', async (c) => {
+weeklyOrder.patch('/:id/status', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -999,7 +1000,7 @@ weeklyOrder.patch('/:id/status', async (c) => {
 /**
  * POST /api/weekly-orders/:id/results - Save/replace calculation results (upsert)
  */
-weeklyOrder.post('/:id/results', async (c) => {
+weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -1243,7 +1244,7 @@ weeklyOrder.post('/:id/results', async (c) => {
 /**
  * GET /api/weekly-orders/:id/results - Get saved calculation results
  */
-weeklyOrder.get('/:id/results', async (c) => {
+weeklyOrder.get('/:id/results', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 

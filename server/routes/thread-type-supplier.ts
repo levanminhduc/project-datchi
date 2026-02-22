@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import type {
   ThreadTypeSupplierRow,
   ThreadTypeSupplierWithRelations,
@@ -10,6 +11,8 @@ import type {
 } from '../types/thread-type-supplier'
 
 const threadTypeSuppliers = new Hono()
+
+threadTypeSuppliers.use('*', requirePermission('thread.suppliers.view'))
 
 /**
  * GET /api/thread-type-suppliers - List all thread type-supplier links

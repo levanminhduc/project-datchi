@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
+import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
   LotRow,
   LotStatus,
@@ -13,7 +15,7 @@ const lots = new Hono()
 /**
  * POST /api/lots - Create new lot
  */
-lots.post('/', async (c) => {
+lots.post('/', requirePermission('thread.lots.manage'), async (c) => {
   try {
     const body = await c.req.json<CreateLotRequest>()
 
@@ -88,7 +90,7 @@ lots.post('/', async (c) => {
  * Query params: status, warehouse_id, thread_type_id, search, supplier_id
  * Returns joined supplier_data from FK relationship
  */
-lots.get('/', async (c) => {
+lots.get('/', requirePermission('thread.lots.view'), async (c) => {
   try {
     const status = c.req.query('status') as LotStatus | undefined
     const warehouseId = c.req.query('warehouse_id')
@@ -153,7 +155,7 @@ lots.get('/', async (c) => {
       query = query.eq('supplier_id', parseInt(supplierId))
     }
     if (search) {
-      query = query.ilike('lot_number', `%${search}%`)
+      query = query.ilike('lot_number', `%${sanitizeFilterValue(search)}%`)
     }
 
     const { data, error } = await query.order('created_at', { ascending: false })
@@ -183,7 +185,7 @@ lots.get('/', async (c) => {
 /**
  * GET /api/lots/:id - Get lot details with cone count
  */
-lots.get('/:id', async (c) => {
+lots.get('/:id', requirePermission('thread.lots.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -227,7 +229,7 @@ lots.get('/:id', async (c) => {
 /**
  * PATCH /api/lots/:id - Update lot metadata and status
  */
-lots.patch('/:id', async (c) => {
+lots.patch('/:id', requirePermission('thread.lots.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<UpdateLotRequest>()
@@ -291,7 +293,7 @@ lots.patch('/:id', async (c) => {
 /**
  * GET /api/lots/:id/cones - Get cones belonging to lot
  */
-lots.get('/:id/cones', async (c) => {
+lots.get('/:id/cones', requirePermission('thread.lots.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -330,7 +332,7 @@ lots.get('/:id/cones', async (c) => {
 /**
  * GET /api/lots/:id/transactions - Get transaction history for lot
  */
-lots.get('/:id/transactions', async (c) => {
+lots.get('/:id/transactions', requirePermission('thread.lots.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 

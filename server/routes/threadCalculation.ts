@@ -1,8 +1,11 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 
 const threadCalculation = new Hono()
+
+threadCalculation.use('*', requirePermission('thread.inventory.view'))
 
 // ============ Supabase Query Result Types ============
 

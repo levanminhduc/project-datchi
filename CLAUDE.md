@@ -52,6 +52,9 @@ Pages/Components → Real-time via useRealtime
 ### API (Hono)
 - Response format: `{ data: T|null, error: string|null, message?: string }`
 - Use `fetchApi()` wrapper, never raw `fetch()`
+- `fetchApi()` auto-attaches `Authorization: Bearer <token>` from `localStorage('auth_access_token')`
+- Global auth via `except()` in `server/index.ts` — whitelists `/api/auth/login` and `/api/auth/refresh`
+- Per-route authorization via `requirePermission()` — ROOT bypasses all checks
 - Validation with Zod schemas
 
 ### Frontend
@@ -70,6 +73,7 @@ Pages/Components → Real-time via useRealtime
 | Supabase from frontend | API call through Hono |
 | `q-input`, `q-select` | `AppInput`, `AppSelect` |
 | Hardcode Vietnamese in logic | Use constants/i18n |
+| Thêm auth middleware backend mà không check frontend | Kiểm tra `fetchApi()` có gửi `Authorization` header |
 
 ## Pattern References
 

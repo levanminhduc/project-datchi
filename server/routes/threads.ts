@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
+import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
   ThreadApiResponse,
   ThreadTypeWithRelations,
@@ -14,7 +16,7 @@ const threads = new Hono()
  * Supports search, color, material, supplier, and is_active filters
  * Returns joined color_data and supplier_data from FK relationships
  */
-threads.get('/', async (c) => {
+threads.get('/', requirePermission('thread.types.view'), async (c) => {
   try {
     const search = c.req.query('search') || ''
     const colorId = c.req.query('color_id')
@@ -37,7 +39,8 @@ threads.get('/', async (c) => {
 
     // Apply search filter - searches code and name
     if (search) {
-      query = query.or(`code.ilike.%${search}%,name.ilike.%${search}%`)
+      const s = sanitizeFilterValue(search)
+      query = query.or(`code.ilike.%${s}%,name.ilike.%${s}%`)
     }
 
     // Apply individual filters
@@ -85,7 +88,7 @@ threads.get('/', async (c) => {
  * GET /api/threads/:id - Get single thread type by ID
  * Returns joined color_data, supplier_data, and suppliers from junction table
  */
-threads.get('/:id', async (c) => {
+threads.get('/:id', requirePermission('thread.types.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -138,7 +141,7 @@ threads.get('/:id', async (c) => {
  * POST /api/threads - Create thread type
  * Checks for duplicate code before insert (returns 409)
  */
-threads.post('/', async (c) => {
+threads.post('/', requirePermission('thread.types.create'), async (c) => {
   try {
     const body = await c.req.json<CreateThreadTypeDTO>()
 
@@ -217,7 +220,7 @@ threads.post('/', async (c) => {
  * PUT /api/threads/:id - Update thread type
  * If updating code, checks for duplicates (excludes current record)
  */
-threads.put('/:id', async (c) => {
+threads.put('/:id', requirePermission('thread.types.edit'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<UpdateThreadTypeDTO>()
@@ -312,7 +315,7 @@ threads.put('/:id', async (c) => {
  * DELETE /api/threads/:id - Soft delete thread type
  * Sets is_active to false instead of hard delete
  */
-threads.delete('/:id', async (c) => {
+threads.delete('/:id', requirePermission('thread.types.delete'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 

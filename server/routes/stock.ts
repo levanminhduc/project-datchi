@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import {
   StockFiltersSchema,
   StockSummaryFiltersSchema,
@@ -40,7 +41,7 @@ const stock = new Hono()
 // ============================================================================
 // GET /api/stock - List stock records with optional filters
 // ============================================================================
-stock.get('/', async (c) => {
+stock.get('/', requirePermission('thread.inventory.view'), async (c) => {
   try {
     // Parse and validate query parameters
     const rawParams = {
@@ -107,7 +108,7 @@ stock.get('/', async (c) => {
 // ============================================================================
 // GET /api/stock/summary - Aggregate stock by thread type
 // ============================================================================
-stock.get('/summary', async (c) => {
+stock.get('/summary', requirePermission('thread.inventory.view'), async (c) => {
   try {
     // Parse and validate query parameters
     const rawParams = {
@@ -212,7 +213,7 @@ stock.get('/summary', async (c) => {
 // ============================================================================
 // POST /api/stock - Add stock (receiving/upsert)
 // ============================================================================
-stock.post('/', async (c) => {
+stock.post('/', requirePermission('thread.batch.receive'), async (c) => {
   try {
     const body = await c.req.json()
 
@@ -322,7 +323,7 @@ stock.post('/', async (c) => {
 // ============================================================================
 // POST /api/stock/deduct - Deduct stock with FEFO (First Expired First Out)
 // ============================================================================
-stock.post('/deduct', async (c) => {
+stock.post('/deduct', requirePermission('thread.batch.issue'), async (c) => {
   try {
     const body = await c.req.json()
 
@@ -468,7 +469,7 @@ stock.post('/deduct', async (c) => {
 // ============================================================================
 // POST /api/stock/return - Return stock (add back to inventory)
 // ============================================================================
-stock.post('/return', async (c) => {
+stock.post('/return', requirePermission('thread.batch.issue'), async (c) => {
   try {
     const body = await c.req.json()
 

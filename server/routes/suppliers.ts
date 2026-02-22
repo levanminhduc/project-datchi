@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
+import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
   SupplierRow,
   SupplierWithColors,
@@ -14,7 +16,7 @@ const suppliers = new Hono()
  * GET /api/suppliers - List all suppliers
  * Query params: search, is_active
  */
-suppliers.get('/', async (c) => {
+suppliers.get('/', requirePermission('thread.suppliers.view'), async (c) => {
   try {
     const search = c.req.query('search')
     const isActiveParam = c.req.query('is_active')
@@ -34,7 +36,8 @@ suppliers.get('/', async (c) => {
 
     // Search by name or code
     if (search) {
-      query = query.or(`name.ilike.%${search}%,code.ilike.%${search}%`)
+      const s = sanitizeFilterValue(search)
+      query = query.or(`name.ilike.%${s}%,code.ilike.%${s}%`)
     }
 
     const { data, error } = await query
@@ -64,7 +67,7 @@ suppliers.get('/', async (c) => {
 /**
  * GET /api/suppliers/:id - Get single supplier with colors
  */
-suppliers.get('/:id', async (c) => {
+suppliers.get('/:id', requirePermission('thread.suppliers.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -118,7 +121,7 @@ suppliers.get('/:id', async (c) => {
 /**
  * POST /api/suppliers - Create new supplier
  */
-suppliers.post('/', async (c) => {
+suppliers.post('/', requirePermission('thread.suppliers.manage'), async (c) => {
   try {
     const body = await c.req.json<CreateSupplierDTO>()
 
@@ -185,7 +188,7 @@ suppliers.post('/', async (c) => {
 /**
  * PATCH /api/suppliers/:id - Update supplier
  */
-suppliers.patch('/:id', async (c) => {
+suppliers.patch('/:id', requirePermission('thread.suppliers.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<UpdateSupplierDTO>()
@@ -263,7 +266,7 @@ suppliers.patch('/:id', async (c) => {
 /**
  * DELETE /api/suppliers/:id - Soft delete supplier (set is_active=false)
  */
-suppliers.delete('/:id', async (c) => {
+suppliers.delete('/:id', requirePermission('thread.suppliers.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -305,7 +308,7 @@ suppliers.delete('/:id', async (c) => {
 /**
  * GET /api/suppliers/:id/colors - List colors for a supplier
  */
-suppliers.get('/:id/colors', async (c) => {
+suppliers.get('/:id/colors', requirePermission('thread.suppliers.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -345,7 +348,7 @@ suppliers.get('/:id/colors', async (c) => {
 /**
  * POST /api/suppliers/:id/colors - Link color to supplier
  */
-suppliers.post('/:id/colors', async (c) => {
+suppliers.post('/:id/colors', requirePermission('thread.suppliers.manage'), async (c) => {
   try {
     const supplierId = parseInt(c.req.param('id'))
     const body = await c.req.json<{ color_id: number; is_preferred?: boolean; notes?: string }>()

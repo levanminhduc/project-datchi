@@ -31,7 +31,7 @@ export async function authMiddleware(c: Context, next: Next) {
 
   try {
     // Verify JWT
-    const payload = jwt.verify(token, JWT_SECRET) as JwtPayload
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as JwtPayload
 
     // ROOT users get wildcard permission
     let permissions: string[]
@@ -93,9 +93,9 @@ export function requirePermission(...requiredPermissions: string[]) {
     const hasPermission = requiredPermissions.some(p => auth.permissions.includes(p))
 
     if (!hasPermission) {
-      return c.json({ 
-        error: true, 
-        message: 'Bạn không có quyền thực hiện thao tác này' 
+      return c.json({
+        error: true,
+        message: 'Bạn không có quyền thực hiện thao tác này'
       }, 403)
     }
 

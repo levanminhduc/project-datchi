@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import type {
   ColorRow,
   ColorWithSuppliers,
@@ -14,7 +15,7 @@ const colors = new Hono()
  * GET /api/colors - List all colors
  * Query params: search, is_active
  */
-colors.get('/', async (c) => {
+colors.get('/', requirePermission('thread.colors.view'), async (c) => {
   try {
     const search = c.req.query('search')
     const isActiveParam = c.req.query('is_active')
@@ -64,7 +65,7 @@ colors.get('/', async (c) => {
 /**
  * GET /api/colors/:id - Get single color with suppliers
  */
-colors.get('/:id', async (c) => {
+colors.get('/:id', requirePermission('thread.colors.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -118,7 +119,7 @@ colors.get('/:id', async (c) => {
 /**
  * POST /api/colors - Create new color
  */
-colors.post('/', async (c) => {
+colors.post('/', requirePermission('thread.colors.manage'), async (c) => {
   try {
     const body = await c.req.json<CreateColorDTO>()
 
@@ -190,7 +191,7 @@ colors.post('/', async (c) => {
 /**
  * PATCH /api/colors/:id - Update color
  */
-colors.patch('/:id', async (c) => {
+colors.patch('/:id', requirePermission('thread.colors.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<UpdateColorDTO>()
@@ -273,7 +274,7 @@ colors.patch('/:id', async (c) => {
 /**
  * DELETE /api/colors/:id - Soft delete color (set is_active=false)
  */
-colors.delete('/:id', async (c) => {
+colors.delete('/:id', requirePermission('thread.colors.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -351,7 +352,7 @@ colors.delete('/:id', async (c) => {
 /**
  * GET /api/colors/:id/suppliers - List suppliers for a color
  */
-colors.get('/:id/suppliers', async (c) => {
+colors.get('/:id/suppliers', requirePermission('thread.colors.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -396,7 +397,7 @@ colors.get('/:id/suppliers', async (c) => {
 /**
  * POST /api/colors/:id/suppliers - Link supplier to color
  */
-colors.post('/:id/suppliers', async (c) => {
+colors.post('/:id/suppliers', requirePermission('thread.colors.manage'), async (c) => {
   try {
     const colorId = parseInt(c.req.param('id'))
     const body = await c.req.json<{ supplier_id: number; price_per_kg?: number; min_order_qty?: number }>()
@@ -459,7 +460,7 @@ colors.post('/:id/suppliers', async (c) => {
 /**
  * PATCH /api/colors/:id/suppliers/:linkId - Update link pricing
  */
-colors.patch('/:id/suppliers/:linkId', async (c) => {
+colors.patch('/:id/suppliers/:linkId', requirePermission('thread.colors.manage'), async (c) => {
   try {
     const linkId = parseInt(c.req.param('linkId'))
     const body = await c.req.json<{ price_per_kg?: number | null; min_order_qty?: number | null; is_active?: boolean }>()
@@ -514,7 +515,7 @@ colors.patch('/:id/suppliers/:linkId', async (c) => {
 /**
  * DELETE /api/colors/:id/suppliers/:linkId - Unlink supplier from color
  */
-colors.delete('/:id/suppliers/:linkId', async (c) => {
+colors.delete('/:id/suppliers/:linkId', requirePermission('thread.colors.manage'), async (c) => {
   try {
     const linkId = parseInt(c.req.param('linkId'))
 

@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
+import { sanitizeFilterValue } from '../utils/sanitize'
 import type { ThreadApiResponse, ConeRow, ReceiveStockDTO, StocktakeDTO, StocktakeResult, ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeStatus } from '../types/thread'
 
 const inventory = new Hono()
@@ -7,7 +9,7 @@ const inventory = new Hono()
 const BATCH_SIZE = 1000
 
 // GET /api/inventory - List inventory with filters and batch support
-inventory.get('/', async (c) => {
+inventory.get('/', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const search = c.req.query('search') || ''
     const threadTypeId = c.req.query('thread_type_id')
@@ -30,7 +32,8 @@ inventory.get('/', async (c) => {
           .range(offset, offset + BATCH_SIZE - 1)
 
         if (search) {
-          query = query.or(`cone_id.ilike.%${search}%,lot_number.ilike.%${search}%`)
+          const s = sanitizeFilterValue(search)
+          query = query.or(`cone_id.ilike.%${s}%,lot_number.ilike.%${s}%`)
         }
         if (threadTypeId) {
           const parsedThreadTypeId = parseInt(threadTypeId)
@@ -85,7 +88,8 @@ inventory.get('/', async (c) => {
       .order('created_at', { ascending: false })
 
     if (search) {
-      query = query.or(`cone_id.ilike.%${search}%,lot_number.ilike.%${search}%`)
+      const s = sanitizeFilterValue(search)
+      query = query.or(`cone_id.ilike.%${s}%,lot_number.ilike.%${s}%`)
     }
     if (threadTypeId) {
       const parsedThreadTypeId = parseInt(threadTypeId)
@@ -130,7 +134,7 @@ inventory.get('/', async (c) => {
 
 // GET /api/inventory/available/summary - Get available stock summary for allocation
 // IMPORTANT: This route must be defined BEFORE /:id to avoid route conflicts
-inventory.get('/available/summary', async (c) => {
+inventory.get('/available/summary', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const threadTypeId = c.req.query('thread_type_id')
 
@@ -185,7 +189,7 @@ inventory.get('/available/summary', async (c) => {
 
 // GET /api/inventory/by-barcode/:coneId - Get cone by barcode
 // IMPORTANT: This route must be defined BEFORE /:id to avoid route conflicts
-inventory.get('/by-barcode/:coneId', async (c) => {
+inventory.get('/by-barcode/:coneId', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const coneId = c.req.param('coneId')
 
@@ -216,7 +220,7 @@ inventory.get('/by-barcode/:coneId', async (c) => {
 })
 
 // GET /api/inventory/by-warehouse/:warehouseId - Get all cones by warehouse for stocktake
-inventory.get('/by-warehouse/:warehouseId', async (c) => {
+inventory.get('/by-warehouse/:warehouseId', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const warehouseId = c.req.param('warehouseId')
     const parsedId = parseInt(warehouseId)
@@ -276,7 +280,7 @@ inventory.get('/by-warehouse/:warehouseId', async (c) => {
 
 // GET /api/inventory/summary/by-cone - Cone-based inventory summary
 // Groups inventory by thread_type, counting full and partial cones
-inventory.get('/summary/by-cone', async (c) => {
+inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const warehouseId = c.req.query('warehouse_id')
     const supplierId = c.req.query('supplier_id')
@@ -413,7 +417,7 @@ inventory.get('/summary/by-cone', async (c) => {
 })
 
 // GET /api/inventory/summary/by-cone/:threadTypeId/warehouses - Warehouse breakdown for a thread type
-inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
+inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const threadTypeId = parseInt(c.req.param('threadTypeId'))
 
@@ -539,7 +543,7 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', async (c) => {
 })
 
 // GET /api/inventory/unassigned-by-thread-type - Get unassigned cones grouped by thread type
-inventory.get('/unassigned-by-thread-type', async (c) => {
+inventory.get('/unassigned-by-thread-type', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const warehouseId = c.req.query('warehouse_id')
 
@@ -637,7 +641,7 @@ inventory.get('/unassigned-by-thread-type', async (c) => {
 })
 
 // GET /api/inventory/:id - Get single cone
-inventory.get('/:id', async (c) => {
+inventory.get('/:id', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const id = c.req.param('id')
 
@@ -682,7 +686,7 @@ inventory.get('/:id', async (c) => {
 })
 
 // POST /api/inventory/receive - Receive stock
-inventory.post('/receive', async (c) => {
+inventory.post('/receive', requirePermission('thread.inventory.edit'), async (c) => {
   try {
     const body = await c.req.json<ReceiveStockDTO>()
 
@@ -785,7 +789,7 @@ inventory.post('/receive', async (c) => {
 })
 
 // POST /api/inventory/stocktake - Save stocktake results
-inventory.post('/stocktake', async (c) => {
+inventory.post('/stocktake', requirePermission('thread.inventory.edit'), async (c) => {
   try {
     const body = await c.req.json<StocktakeDTO>()
 

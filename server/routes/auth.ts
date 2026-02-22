@@ -5,13 +5,13 @@ import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import { supabaseAdmin } from '../db/supabase'
 import {
-  authMiddleware,
   requireAdmin,
   canManageEmployee,
   type AuthContext,
   type JwtPayload,
 } from '../middleware/auth'
 import { createPermissionSchema, updatePermissionSchema } from '../validation/auth'
+import { sanitizeFilterValue } from '../utils/sanitize'
 
 const JWT_SECRET = process.env.JWT_SECRET!
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m'
@@ -321,7 +321,7 @@ auth.post('/refresh', async (c) => {
 /**
  * POST /api/auth/logout - Revoke refresh token
  */
-auth.post('/logout', authMiddleware, async (c) => {
+auth.post('/logout', async (c) => {
   const authContext = c.get('auth') as AuthContext
   const { refreshToken } = await c.req.json().catch(() => ({}))
 
@@ -361,7 +361,7 @@ auth.post('/logout', authMiddleware, async (c) => {
 /**
  * GET /api/auth/me - Get current employee profile
  */
-auth.get('/me', authMiddleware, async (c) => {
+auth.get('/me', async (c) => {
   const { employeeId } = c.get('auth') as AuthContext
 
   try {
@@ -415,7 +415,7 @@ auth.get('/me', authMiddleware, async (c) => {
 /**
  * GET /api/auth/permissions - Get current employee's permissions
  */
-auth.get('/permissions', authMiddleware, async (c) => {
+auth.get('/permissions', async (c) => {
   const authContext = c.get('auth') as AuthContext & { permissions: string[] }
 
   // ROOT gets wildcard permission
@@ -435,7 +435,7 @@ auth.get('/permissions', authMiddleware, async (c) => {
 /**
  * POST /api/auth/change-password - Change own password
  */
-auth.post('/change-password', authMiddleware, async (c) => {
+auth.post('/change-password', async (c) => {
   const { employeeId } = c.get('auth') as AuthContext
   const { currentPassword, newPassword } = await c.req.json()
 
@@ -510,7 +510,7 @@ auth.post('/change-password', authMiddleware, async (c) => {
 /**
  * POST /api/auth/reset-password/:id - Admin: Reset employee password
  */
-auth.post('/reset-password/:id', authMiddleware, requireAdmin, async (c) => {
+auth.post('/reset-password/:id', requireAdmin,async (c) => {
   const authContext = c.get('auth') as AuthContext
   const targetId = parseInt(c.req.param('id'))
   const { newPassword } = await c.req.json().catch(() => ({}))
@@ -526,8 +526,18 @@ auth.post('/reset-password/:id', authMiddleware, requireAdmin, async (c) => {
     )
   }
 
+  if (!newPassword) {
+    return c.json(
+      {
+        error: true,
+        message: 'Mật khẩu mới là bắt buộc',
+      },
+      400
+    )
+  }
+
   try {
-    const passwordHash = await bcrypt.hash(newPassword || 'Password123!', 12)
+    const passwordHash = await bcrypt.hash(newPassword, 12)
 
     await supabaseAdmin
       .from('employees')
@@ -555,7 +565,7 @@ auth.post('/reset-password/:id', authMiddleware, requireAdmin, async (c) => {
 /**
  * PUT /api/auth/employees/:id/roles - Admin: Update employee roles
  */
-auth.put('/employees/:id/roles', authMiddleware, requireAdmin, async (c) => {
+auth.put('/employees/:id/roles', requireAdmin,async (c) => {
   const authContext = c.get('auth') as AuthContext
   const targetId = parseInt(c.req.param('id'))
   const { roleIds } = await c.req.json()
@@ -618,7 +628,7 @@ auth.put('/employees/:id/roles', authMiddleware, requireAdmin, async (c) => {
 /**
  * PUT /api/auth/employees/:id/permissions - Admin: Update direct permissions
  */
-auth.put('/employees/:id/permissions', authMiddleware, requireAdmin, async (c) => {
+auth.put('/employees/:id/permissions', requireAdmin,async (c) => {
   const authContext = c.get('auth') as AuthContext
   const targetId = parseInt(c.req.param('id'))
   const { permissions } = await c.req.json() // [{ permissionId, granted, expiresAt }]
@@ -665,7 +675,7 @@ auth.put('/employees/:id/permissions', authMiddleware, requireAdmin, async (c) =
 /**
  * POST /api/auth/employees/:id/unlock - Admin: Unlock locked account
  */
-auth.post('/employees/:id/unlock', authMiddleware, requireAdmin, async (c) => {
+auth.post('/employees/:id/unlock', requireAdmin,async (c) => {
   const authContext = c.get('auth') as AuthContext
   const targetId = parseInt(c.req.param('id'))
 
@@ -702,7 +712,7 @@ auth.post('/employees/:id/unlock', authMiddleware, requireAdmin, async (c) => {
 /**
  * GET /api/auth/roles - Get all available roles
  */
-auth.get('/roles', authMiddleware, requireAdmin, async (c) => {
+auth.get('/roles', requireAdmin,async (c) => {
   try {
     const { data: roles, error } = await supabaseAdmin
       .from('roles')
@@ -728,7 +738,7 @@ auth.get('/roles', authMiddleware, requireAdmin, async (c) => {
 /**
  * GET /api/auth/permissions/all - Get all available permissions
  */
-auth.get('/permissions/all', authMiddleware, requireAdmin, async (c) => {
+auth.get('/permissions/all', requireAdmin,async (c) => {
   try {
     const { data: permissions, error } = await supabaseAdmin
       .from('permissions')
@@ -757,7 +767,7 @@ auth.get('/permissions/all', authMiddleware, requireAdmin, async (c) => {
 /**
  * POST /api/auth/permissions - Create new permission (ROOT only)
  */
-auth.post('/permissions', authMiddleware, requireAdmin, async (c) => {
+auth.post('/permissions', requireAdmin,async (c) => {
   const authContext = c.get('auth') as AuthContext
 
   if (!authContext.isRoot) {
@@ -820,7 +830,7 @@ auth.post('/permissions', authMiddleware, requireAdmin, async (c) => {
 /**
  * PUT /api/auth/permissions/:id - Update permission (ROOT only)
  */
-auth.put('/permissions/:id', authMiddleware, requireAdmin, async (c) => {
+auth.put('/permissions/:id', requireAdmin,async (c) => {
   const authContext = c.get('auth') as AuthContext
 
   if (!authContext.isRoot) {
@@ -890,7 +900,7 @@ auth.put('/permissions/:id', authMiddleware, requireAdmin, async (c) => {
 /**
  * DELETE /api/auth/permissions/:id - Delete permission (ROOT only)
  */
-auth.delete('/permissions/:id', authMiddleware, requireAdmin, async (c) => {
+auth.delete('/permissions/:id', requireAdmin,async (c) => {
   const authContext = c.get('auth') as AuthContext
 
   if (!authContext.isRoot) {
@@ -958,7 +968,7 @@ auth.delete('/permissions/:id', authMiddleware, requireAdmin, async (c) => {
 /**
  * POST /api/auth/roles - Create new role (ROOT only)
  */
-auth.post('/roles', authMiddleware, requireAdmin, async (c) => {
+auth.post('/roles', requireAdmin,async (c) => {
   const authContext = c.get('auth') as AuthContext
   const { code, name, description, level, permissionIds } = await c.req.json()
 
@@ -1035,7 +1045,7 @@ auth.post('/roles', authMiddleware, requireAdmin, async (c) => {
 /**
  * PUT /api/auth/roles/:id - Update role (ROOT only)
  */
-auth.put('/roles/:id', authMiddleware, requireAdmin, async (c) => {
+auth.put('/roles/:id', requireAdmin,async (c) => {
   const authContext = c.get('auth') as AuthContext
   const roleId = parseInt(c.req.param('id'))
   const { name, description, level, isActive, permissionIds } = await c.req.json()
@@ -1118,7 +1128,7 @@ auth.put('/roles/:id', authMiddleware, requireAdmin, async (c) => {
 /**
  * DELETE /api/auth/roles/:id - Delete role (ROOT only)
  */
-auth.delete('/roles/:id', authMiddleware, requireAdmin, async (c) => {
+auth.delete('/roles/:id', requireAdmin,async (c) => {
   const authContext = c.get('auth') as AuthContext
   const roleId = parseInt(c.req.param('id'))
 
@@ -1173,7 +1183,7 @@ auth.delete('/roles/:id', authMiddleware, requireAdmin, async (c) => {
 /**
  * GET /api/auth/roles/:id/permissions - Get role's permissions
  */
-auth.get('/roles/:id/permissions', authMiddleware, requireAdmin, async (c) => {
+auth.get('/roles/:id/permissions', requireAdmin,async (c) => {
   const roleId = parseInt(c.req.param('id'))
 
   try {
@@ -1203,7 +1213,7 @@ auth.get('/roles/:id/permissions', authMiddleware, requireAdmin, async (c) => {
 /**
  * GET /api/auth/employees/search - Search employees for permission assignment
  */
-auth.get('/employees/search', authMiddleware, requireAdmin, async (c) => {
+auth.get('/employees/search', requireAdmin,async (c) => {
   const query = c.req.query('q') || ''
   const limit = parseInt(c.req.query('limit') || '20')
 
@@ -1216,8 +1226,9 @@ auth.get('/employees/search', authMiddleware, requireAdmin, async (c) => {
       .limit(limit)
 
     if (query) {
+      const q = sanitizeFilterValue(query)
       queryBuilder = queryBuilder.or(
-        `employee_id.ilike.%${query}%,full_name.ilike.%${query}%`
+        `employee_id.ilike.%${q}%,full_name.ilike.%${q}%`
       )
     }
 
@@ -1251,7 +1262,7 @@ auth.get('/employees/search', authMiddleware, requireAdmin, async (c) => {
 /**
  * GET /api/auth/employees/:id/roles-permissions - Get employee's roles and permissions
  */
-auth.get('/employees/:id/roles-permissions', authMiddleware, requireAdmin, async (c) => {
+auth.get('/employees/:id/roles-permissions', requireAdmin,async (c) => {
   const employeeId = parseInt(c.req.param('id'))
 
   try {

@@ -1,8 +1,11 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import type { ThreadApiResponse } from '../types/thread'
 
 const dashboard = new Hono()
+
+dashboard.use('*', requirePermission('dashboard.view'))
 
 // ============================================================================
 // Dashboard Types

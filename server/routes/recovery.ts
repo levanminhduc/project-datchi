@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import { broadcastNotification, getWarehouseEmployeeIds } from '../utils/notificationService'
 import type {
   ThreadApiResponse,
@@ -81,7 +82,7 @@ function calculateMetersFromWeight(
  * - status: RecoveryStatus filter
  * - cone_id: Filter by cone barcode
  */
-recovery.get('/', async (c) => {
+recovery.get('/', requirePermission('thread.recovery.view'), async (c) => {
   try {
     const status = c.req.query('status') as RecoveryStatus | undefined
     const coneBarcode = c.req.query('cone_id')
@@ -153,7 +154,7 @@ recovery.get('/', async (c) => {
 /**
  * GET /api/recovery/:id - Get single recovery record with cone details
  */
-recovery.get('/:id', async (c) => {
+recovery.get('/:id', requirePermission('thread.recovery.view'), async (c) => {
   try {
     const id = c.req.param('id')
 
@@ -220,7 +221,7 @@ recovery.get('/:id', async (c) => {
  * POST /api/recovery/initiate - Initiate return from production
  * Worker scans barcode to start recovery process
  */
-recovery.post('/initiate', async (c) => {
+recovery.post('/initiate', requirePermission('thread.recovery.manage'), async (c) => {
   try {
     const body = await c.req.json<InitiateReturnDTO>()
 
@@ -358,7 +359,7 @@ recovery.post('/initiate', async (c) => {
 /**
  * POST /api/recovery/:id/weigh - Record weight and calculate remaining meters
  */
-recovery.post('/:id/weigh', async (c) => {
+recovery.post('/:id/weigh', requirePermission('thread.recovery.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<WeighConeDTO>()
@@ -502,7 +503,7 @@ recovery.post('/:id/weigh', async (c) => {
 /**
  * POST /api/recovery/:id/confirm - Confirm recovery and re-enter to inventory
  */
-recovery.post('/:id/confirm', async (c) => {
+recovery.post('/:id/confirm', requirePermission('thread.recovery.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<{ confirmed_by?: string; notes?: string }>().catch(() => ({ confirmed_by: undefined, notes: undefined }))
@@ -659,7 +660,7 @@ recovery.post('/:id/confirm', async (c) => {
  * POST /api/recovery/:id/writeoff - Write off cone if too little remaining
  * Requires supervisor approval
  */
-recovery.post('/:id/writeoff', async (c) => {
+recovery.post('/:id/writeoff', requirePermission('thread.recovery.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<WriteOffDTO>()
@@ -818,7 +819,7 @@ recovery.post('/:id/writeoff', async (c) => {
 /**
  * POST /api/recovery/:id/reject - Reject recovery (quality issues, wrong cone)
  */
-recovery.post('/:id/reject', async (c) => {
+recovery.post('/:id/reject', requirePermission('thread.recovery.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<{ reason: string; rejected_by?: string }>()

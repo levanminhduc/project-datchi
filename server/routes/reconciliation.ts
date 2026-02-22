@@ -1,9 +1,12 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { supabaseAdmin as supabase } from '../db/supabase'
+import { requirePermission } from '../middleware/auth'
 import type { ThreadApiResponse } from '../types/thread'
 
 const reconciliation = new Hono()
+
+reconciliation.use('*', requirePermission('thread.inventory.view'))
 
 // ============ ZOD SCHEMAS ============
 
