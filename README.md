@@ -15,11 +15,13 @@ Hệ thống quản lý toàn diện cho:
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Vue 3 + Quasar 2 + TypeScript + Vite |
-| Backend | Hono (Node.js) |
-| Database | Supabase (PostgreSQL) |
+| Frontend | Vue 3.5 + Quasar 2.17 + TypeScript 5.9 + Vite 7.1 |
+| Backend | Hono 4.11 (Node.js) |
+| Database | Supabase (PostgreSQL) + supabase-js 2.91 |
 | Routing | unplugin-vue-router (file-based) |
-| State | Pinia + Composables |
+| State | Pinia 3 + Composables |
+| Validation | Zod 4.3 (backend + shared schemas) |
+| Utilities | date-fns, ExcelJS, VueUse, qrcode |
 
 ## 📁 Cấu trúc dự án
 
@@ -27,34 +29,43 @@ Hệ thống quản lý toàn diện cho:
 project-datchi/
 ├── server/                    # Hono API backend (port 3000)
 │   ├── routes/               # 25 API route handlers
-│   ├── db/                   # Supabase clients (anon + admin)
+│   ├── db/                   # Supabase clients (admin)
 │   ├── middleware/           # Auth JWT verification
-│   └── types/                # Backend-specific types
+│   ├── types/                # 11 backend-specific types
+│   ├── validation/           # 6 Zod validation schemas
+│   ├── utils/                # Error helpers, sanitize, notification
+│   └── scripts/              # Utility scripts
 ├── src/
 │   ├── components/
-│   │   ├── ui/               # 121 UI components (12 categories)
-│   │   ├── thread/           # 30 domain-specific components
+│   │   ├── ui/               # 67 UI components (13 categories)
+│   │   ├── thread/           # 41 domain-specific components
 │   │   ├── qr/               # QR scanning components
 │   │   └── hardware/         # Scanner/scale integration
-│   ├── composables/          # 23 composables
-│   │   ├── thread/           # Domain: inventory, allocations, recovery
+│   ├── composables/          # 46 composables
+│   │   ├── thread/           # 20 domain composables
 │   │   └── hardware/         # Scanner, scale, audio feedback
 │   ├── services/             # 28 API clients (fetchApi pattern)
 │   ├── pages/                # 41 pages (file-based routing)
 │   │   ├── thread/           # Thread management module
-│   │   │   ├── batch/        # Batch operations
-│   │   │   └── mobile/       # Mobile-optimized pages
+│   │   │   ├── batch/        # Batch operations (4 pages)
+│   │   │   ├── calculation/  # Thread calculation
+│   │   │   ├── issues/       # Issue management
+│   │   │   │   └── v2/       # Issue V2 flow
+│   │   │   ├── lots/         # Lot tracking
+│   │   │   ├── mobile/       # Mobile-optimized (3 pages)
+│   │   │   ├── styles/       # Style/SKU management
+│   │   │   └── weekly-order/ # Weekly ordering & deliveries
 │   │   ├── nhan-su/          # HR module
 │   │   └── reports/          # Reporting module
 │   ├── types/                # 40 TypeScript definitions
-│   │   ├── ui/               # UI component interfaces
-│   │   ├── thread/           # Thread domain types
+│   │   ├── ui/               # 13 UI component interfaces
+│   │   ├── thread/           # 18 thread domain types
 │   │   └── auth/             # Authentication types
 │   ├── stores/               # Pinia stores
 │   └── utils/                # Shared utilities
 ├── .claude/
-│   └── agents/               # 8 AI agent definitions
-└── supabase/                 # 54 migrations + seed data
+│   └── agents/               # 9 AI agent definitions
+└── supabase/                 # 55 migrations + seed data
 ```
 
 ## 💻 Cài đặt
@@ -89,6 +100,36 @@ npm run lint       # ESLint fix
 - Thu hồi cuộn chỉ còn dư
 - Cân và ghi nhận trọng lượng
 
+### 🧵 Quản lý Chỉ
+- Quản lý loại chỉ (thread types) với mã màu
+- Quản lý màu chỉ và nhà cung cấp
+- Định nghĩa styles/SKUs và thread specs cho từng style
+- Tính toán định mức chỉ (thread calculation)
+
+### 📦 Quản lý Lô (Lots)
+- Theo dõi lô chỉ nhập kho chi tiết
+- Trang chi tiết lô (`/thread/lots/[id]`)
+- Quản lý trạng thái lô hàng
+
+### 📋 Phiếu xuất V2
+- Quy trình xuất chỉ mới (Issue V2)
+- Trả chỉ và ghi nhận return logs
+- Đối chiếu (reconciliation) xuất - trả
+
+### 📅 Đặt hàng tuần
+- Tính toán nhu cầu chỉ hàng tuần
+- Tạo và theo dõi đơn đặt hàng (purchase orders)
+- Quản lý giao hàng (deliveries)
+
+### 📶 Hỗ trợ Offline
+- Hoạt động offline cho mobile
+- Đồng bộ tự động khi có kết nối
+- Giải quyết xung đột dữ liệu (conflict resolution)
+
+### 🔔 Thông báo
+- Hệ thống thông báo trong ứng dụng
+- Notification bell real-time
+
 ### 📱 QR Code Features
 - **Tra cứu nhanh**: Quét mã QR/barcode để tìm cuộn chỉ
 - **Xuất chỉ**: Quét liên tục nhiều cuộn khi xuất chỉ
@@ -96,10 +137,12 @@ npm run lint       # ESLint fix
 - **In nhãn QR**: In đơn (50x30mm) hoặc hàng loạt (A4)
 
 ### 📊 Báo cáo & Dashboard
-- Tổng quan tồn kho theo loại chỉ
-- Cảnh báo hết hàng, sắp hết hàng
-- Thống kê phân bổ và thu hồi
-- Export Excel
+- Tổng quan tồn kho theo loại chỉ, theo kho
+- Dashboard thống kê: nhập/xuất/tồn, phân bổ, thu hồi
+- Cảnh báo hết hàng, sắp hết hạn (FEFO)
+- Báo cáo đặt hàng tuần và tiến độ giao hàng
+- Báo cáo đối chiếu xuất - trả chỉ
+- Export Excel (ExcelJS) với định dạng chuyên nghiệp
 
 ### 👥 Quản lý Nhân sự
 - Quản lý nhân viên và chức vụ
@@ -111,10 +154,16 @@ npm run lint       # ESLint fix
 ### UI Components
 Sử dụng thư viện UI wrappers trong `src/components/ui/`:
 - **Buttons**: AppButton, IconButton, ButtonGroup, ButtonToggle, ButtonDropdown
-- **Inputs**: AppInput, AppSelect, AppTextarea, AppCheckbox, AppToggle, SearchInput
-- **Dialogs**: AppDialog, FormDialog, ConfirmDialog, DeleteDialog
-- **Feedback**: AppSpinner, AppProgress, AppSkeleton, EmptyState
-- **Navigation**: AppTabs, AppStepper, AppPagination, AppBreadcrumbs
+- **Cards**: AppCard, AppBadge, AppChip, InfoCard, StatCard
+- **Inputs**: AppInput, AppSelect, AppTextarea, AppCheckbox, AppToggle, AppRange, AppSlider, SearchInput, AppWarehouseSelect, ColorSelector, SupplierSelector
+- **Dialogs**: AppDialog, FormDialog, ConfirmDialog, DeleteDialog, AppMenu, AppTooltip, PopupEdit
+- **Feedback**: AppSpinner, AppProgress, AppSkeleton, EmptyState, AppBanner, CircularProgress, InnerLoading
+- **Layout**: AppDrawer, AppSeparator, AppSpace, AppToolbar, PageHeader, SectionHeader
+- **Lists**: AppList, ListItem
+- **Navigation**: AppTabs, AppStepper, AppPagination, AppBreadcrumbs, SidebarItem, StepperStep, TabPanel
+- **Pickers**: DatePicker, ColorPicker, FilePicker, TimePicker, AppEditor
+- **Media**: AppCarousel, AppImage, AppParallax, AppVideo
+- **Scroll**: ScrollArea, InfiniteScroll, PullToRefresh, VirtualScroll, Timeline, TimelineEntry
 - **Tables**: DataTable
 
 ```vue
