@@ -26,6 +26,8 @@ const state = ref<AuthState>({
 // Initialized flag to prevent multiple initializations
 let initialized = false
 
+const tempPassword = ref<string | null>(null)
+
 export function useAuth() {
   const router = useRouter()
   const snackbar = useSnackbar()
@@ -127,6 +129,10 @@ export function useAuth() {
 
       snackbar.success('Đăng nhập thành công')
 
+      if (data.employee.mustChangePassword) {
+        tempPassword.value = credentials.password
+      }
+
       return true
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Đăng nhập thất bại'
@@ -169,6 +175,7 @@ export function useAuth() {
     if (state.value.employee) {
       state.value.employee.mustChangePassword = false
     }
+    tempPassword.value = null
 
     snackbar.success('Đổi mật khẩu thành công')
     return true
@@ -242,6 +249,7 @@ export function useAuth() {
     permissions: readonly(permissions),
     error: readonly(error),
     isRoot: readonly(isRoot),
+    tempPassword: readonly(tempPassword),
 
     // Actions
     init,

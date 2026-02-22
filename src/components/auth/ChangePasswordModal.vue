@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
-import type { ChangePasswordData } from '@/types/auth'
 import type { QForm } from 'quasar'
 
 interface Props {
   modelValue?: boolean
+  currentPassword?: string | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: false,
+  currentPassword: null,
 })
 
 const emit = defineEmits<{
@@ -21,12 +22,10 @@ const { changePassword } = useAuth()
 
 const formRef = ref<QForm>()
 const loading = ref(false)
-const showCurrentPassword = ref(false)
 const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
 
-const form = reactive<ChangePasswordData>({
-  currentPassword: '',
+const form = reactive({
   newPassword: '',
   confirmPassword: '',
 })
@@ -38,10 +37,8 @@ const rules = {
 }
 
 function resetForm() {
-  form.currentPassword = ''
   form.newPassword = ''
   form.confirmPassword = ''
-  showCurrentPassword.value = false
   showNewPassword.value = false
   showConfirmPassword.value = false
   formRef.value?.resetValidation()
@@ -54,7 +51,7 @@ watch(() => props.modelValue, (val) => {
 async function onSubmit() {
   loading.value = true
   const success = await changePassword({
-    currentPassword: form.currentPassword,
+    currentPassword: props.currentPassword || '',
     newPassword: form.newPassword,
     confirmPassword: form.confirmPassword,
   })
@@ -89,27 +86,6 @@ async function onSubmit() {
             </template>
             Bạn cần đổi mật khẩu trước khi tiếp tục sử dụng hệ thống.
           </q-banner>
-
-          <q-input
-            v-model="form.currentPassword"
-            label="Mật khẩu hiện tại"
-            :type="showCurrentPassword ? 'text' : 'password'"
-            outlined
-            lazy-rules
-            :rules="[rules.required]"
-            autocomplete="current-password"
-          >
-            <template #prepend>
-              <q-icon name="lock" />
-            </template>
-            <template #append>
-              <q-icon
-                :name="showCurrentPassword ? 'visibility_off' : 'visibility'"
-                class="cursor-pointer"
-                @click="showCurrentPassword = !showCurrentPassword"
-              />
-            </template>
-          </q-input>
 
           <q-input
             v-model="form.newPassword"

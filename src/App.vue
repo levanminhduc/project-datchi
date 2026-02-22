@@ -13,7 +13,7 @@ const router = useRouter();
 const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
 const { startPolling, stopPolling } = useNotifications();
-const { employee, isAuthenticated } = useAuth();
+const { employee, isAuthenticated, tempPassword } = useAuth();
 
 const showChangePasswordModal = computed(
   () => employee.value?.mustChangePassword === true && isAuthenticated.value
@@ -87,6 +87,7 @@ onMounted(() => {
 
     <ChangePasswordModal
       :model-value="showChangePasswordModal"
+      :current-password="tempPassword"
       @changed="onPasswordChanged"
     />
   </q-layout>
