@@ -59,6 +59,14 @@ export function useAuth() {
         const perms = await authService.fetchPermissions()
 
         if (emp) {
+          if (emp.mustChangePassword) {
+            authService.clearTokens()
+            resetState()
+            initialized = false
+            router.push('/login')
+            return
+          }
+
           state.value = {
             employee: emp,
             accessToken: authService.getAccessToken(),
