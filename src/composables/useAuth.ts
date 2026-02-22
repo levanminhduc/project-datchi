@@ -127,12 +127,6 @@ export function useAuth() {
 
       snackbar.success('Đăng nhập thành công')
 
-      // Force password change if required
-      if (data.employee.mustChangePassword) {
-        router.push('/change-password')
-        return true
-      }
-
       return true
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Đăng nhập thất bại'

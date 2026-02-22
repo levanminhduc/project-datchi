@@ -107,7 +107,7 @@ definePage({
 
 const router = useRouter()
 const route = useRoute()
-const { signIn, isLoading, error: authError } = useAuth()
+const { signIn, isLoading, error: authError, employee } = useAuth()
 
 const form = reactive({
   employeeId: '',
@@ -127,7 +127,9 @@ async function handleLogin() {
   })
 
   if (success) {
-    // Redirect to intended page or home
+    if (employee.value?.mustChangePassword) {
+      return
+    }
     const redirect = route.query.redirect as string
     router.push(redirect || '/')
   }

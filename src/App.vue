@@ -1,15 +1,29 @@
 <script lang="ts" setup>
 import { onMounted, computed, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import DarkModeToggle from "./components/DarkModeToggle.vue";
+import ChangePasswordModal from "./components/auth/ChangePasswordModal.vue";
 import { useDarkMode } from "./composables/useDarkMode";
 import { useSidebar } from "./composables/useSidebar";
 import { useNotifications } from "./composables/useNotifications";
+import { useAuth } from "./composables/useAuth";
 
 const route = useRoute();
+const router = useRouter();
 const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
 const { startPolling, stopPolling } = useNotifications();
+const { employee, isAuthenticated } = useAuth();
+
+const showChangePasswordModal = computed(
+  () => employee.value?.mustChangePassword === true && isAuthenticated.value
+);
+
+function onPasswordChanged() {
+  if (route.path === "/login") {
+    router.push("/");
+  }
+}
 
 const showSidebar = computed(() => route.path !== "/login");
 
@@ -70,5 +84,10 @@ onMounted(() => {
     <q-page-container>
       <router-view />
     </q-page-container>
+
+    <ChangePasswordModal
+      :model-value="showChangePasswordModal"
+      @changed="onPasswordChanged"
+    />
   </q-layout>
 </template>

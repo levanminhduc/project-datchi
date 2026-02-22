@@ -31,3 +31,7 @@ nul
 # Aider
 .aider*
 .aider.tags.cache.v3/
+
+# OpenCode
+opencode.json
+.opencode/
