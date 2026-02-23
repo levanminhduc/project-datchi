@@ -659,7 +659,17 @@ weeklyOrder.post('/', requirePermission('thread.allocations.manage'), async (c) 
       throw err
     }
 
-    // Insert the week
+    const auth = c.get('auth')
+    let createdBy: string | null = null
+    if (auth?.employeeId) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', auth.employeeId)
+        .single()
+      createdBy = emp?.full_name || null
+    }
+
     const { data: week, error: weekError } = await supabase
       .from('thread_order_weeks')
       .insert([
@@ -669,6 +679,7 @@ weeklyOrder.post('/', requirePermission('thread.allocations.manage'), async (c) 
           end_date: validated.end_date || null,
           status: 'DRAFT',
           notes: validated.notes || null,
+          created_by: createdBy,
         },
       ])
       .select()
@@ -772,6 +783,16 @@ weeklyOrder.put('/:id', requirePermission('thread.allocations.manage'), async (c
     if (validated.start_date !== undefined) updateFields.start_date = validated.start_date || null
     if (validated.end_date !== undefined) updateFields.end_date = validated.end_date || null
     if (validated.notes !== undefined) updateFields.notes = validated.notes || null
+
+    const auth = c.get('auth')
+    if (auth?.employeeId) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', auth.employeeId)
+        .single()
+      updateFields.updated_by = emp?.full_name || null
+    }
 
     const { data: week, error: updateError } = await supabase
       .from('thread_order_weeks')

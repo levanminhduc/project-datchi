@@ -111,6 +111,13 @@ const columns: QTableColumn[] = [
     align: 'left',
     format: (val: string | null) => formatDate(val),
   },
+  {
+    name: 'created_by',
+    label: 'Người tạo',
+    field: 'created_by',
+    align: 'left',
+    format: (val: string | null) => val || '—',
+  },
   { name: 'status', label: 'Trạng thái', field: 'status', align: 'center' },
   {
     name: 'item_count',
