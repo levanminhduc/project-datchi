@@ -13,6 +13,7 @@ export interface ThreadTypeSupplierRow {
   supplier_id: number
   supplier_item_code: string    // Mã hàng của NCC (e.g., Astra-9700, Perma-9700)
   unit_price: number | null     // Giá mỗi đơn vị
+  meters_per_cone: number | null // Số mét chỉ trên mỗi cone
   is_active: boolean
   notes: string | null
   created_at: string
@@ -57,6 +58,7 @@ export interface CreateThreadTypeSupplierDTO {
   supplier_id: number
   supplier_item_code: string
   unit_price?: number
+  meters_per_cone?: number
   notes?: string
 }
 
@@ -66,6 +68,7 @@ export interface CreateThreadTypeSupplierDTO {
 export interface UpdateThreadTypeSupplierDTO {
   supplier_item_code?: string
   unit_price?: number
+  meters_per_cone?: number
   is_active?: boolean
   notes?: string
 }
@@ -77,6 +80,7 @@ export interface LinkSupplierDTO {
   supplier_id: number
   supplier_item_code: string
   unit_price?: number
+  meters_per_cone?: number
   notes?: string
 }
 

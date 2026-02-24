@@ -34,6 +34,7 @@ import settingsRouter from './routes/settings'
 import stockRouter from './routes/stock'
 import issuesV2Router from './routes/issuesV2'
 import notificationsRouter from './routes/notifications'
+import importRouter from './routes/import'
 import { authMiddleware } from './middleware/auth'
 
 const app = new Hono()
@@ -91,6 +92,7 @@ app.route('/api/issues/v2', issuesV2Router)
 app.route('/api/settings', settingsRouter)
 app.route('/api/stock', stockRouter)
 app.route('/api/notifications', notificationsRouter)
+app.route('/api/import', importRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
@@ -148,3 +150,4 @@ console.log(`Issues V2 API: http://localhost:${PORT}/api/issues/v2`)
 console.log(`Settings API: http://localhost:${PORT}/api/settings`)
 console.log(`Stock API: http://localhost:${PORT}/api/stock`)
 console.log(`Notifications API: http://localhost:${PORT}/api/notifications`)
+console.log(`Import API: http://localhost:${PORT}/api/import`)

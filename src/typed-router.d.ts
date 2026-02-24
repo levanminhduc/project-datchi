@@ -56,7 +56,9 @@ declare module 'vue-router/auto-routes' {
     '/thread/stocktake': RouteRecordInfo<'/thread/stocktake', '/thread/stocktake', Record<never, never>, Record<never, never>>,
     '/thread/styles/': RouteRecordInfo<'/thread/styles/', '/thread/styles', Record<never, never>, Record<never, never>>,
     '/thread/styles/[id]': RouteRecordInfo<'/thread/styles/[id]', '/thread/styles/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
-    '/thread/suppliers': RouteRecordInfo<'/thread/suppliers', '/thread/suppliers', Record<never, never>, Record<never, never>>,
+    '/thread/suppliers': RouteRecordInfo<'/thread/suppliers', '/thread/suppliers', Record<never, never>, Record<never, never>, '/thread/suppliers/import-colors' | '/thread/suppliers/import-tex'>,
+    '/thread/suppliers/import-colors': RouteRecordInfo<'/thread/suppliers/import-colors', '/thread/suppliers/import-colors', Record<never, never>, Record<never, never>>,
+    '/thread/suppliers/import-tex': RouteRecordInfo<'/thread/suppliers/import-tex', '/thread/suppliers/import-tex', Record<never, never>, Record<never, never>>,
     '/thread/weekly-order/': RouteRecordInfo<'/thread/weekly-order/', '/thread/weekly-order', Record<never, never>, Record<never, never>>,
     '/thread/weekly-order/deliveries': RouteRecordInfo<'/thread/weekly-order/deliveries', '/thread/weekly-order/deliveries', Record<never, never>, Record<never, never>>,
     '/thread/weekly-order/history': RouteRecordInfo<'/thread/weekly-order/history', '/thread/weekly-order/history', Record<never, never>, Record<never, never>>,
@@ -226,7 +228,15 @@ declare module 'vue-router/auto-routes' {
       views: never
     }
     'src/pages/thread/suppliers.vue': {
-      routes: '/thread/suppliers'
+      routes: '/thread/suppliers' | '/thread/suppliers/import-colors' | '/thread/suppliers/import-tex'
+      views: 'default'
+    }
+    'src/pages/thread/suppliers/import-colors.vue': {
+      routes: '/thread/suppliers/import-colors'
+      views: never
+    }
+    'src/pages/thread/suppliers/import-tex.vue': {
+      routes: '/thread/suppliers/import-tex'
       views: never
     }
     'src/pages/thread/weekly-order/index.vue': {

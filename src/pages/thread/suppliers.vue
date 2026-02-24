@@ -1,5 +1,13 @@
 <template>
-  <q-page padding>
+  <router-view v-slot="{ Component }">
+    <component
+      :is="Component"
+      v-if="Component"
+    />
+    <q-page
+      v-else
+      padding
+    >
     <!-- Page Header -->
     <div class="row q-col-gutter-md q-mb-lg items-center">
       <div class="col-12 col-md-4">
@@ -42,6 +50,17 @@
             />
           </div>
           
+          <div class="col-12 col-sm-auto">
+            <q-btn
+              color="secondary"
+              icon="upload"
+              label="Import NCC-Tex"
+              outline
+              class="full-width-xs"
+              @click="router.push('/thread/suppliers/import-tex')"
+            />
+          </div>
+
           <div class="col-12 col-sm-auto">
             <q-btn
               color="primary"
@@ -180,6 +199,16 @@
             @click="openEditDialog(props.row)"
           >
             <q-tooltip>Chỉnh sửa</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            round
+            color="purple"
+            icon="palette"
+            size="sm"
+            @click="router.push(`/thread/suppliers/import-colors?supplier_id=${props.row.id}`)"
+          >
+            <q-tooltip>Import Màu</q-tooltip>
           </q-btn>
           <q-btn
             v-if="props.row.is_active"
@@ -441,16 +470,19 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
-  </q-page>
+    </q-page>
+  </router-view>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useSuppliers } from '@/composables/thread/useSuppliers'
 import { useConfirm } from '@/composables/useConfirm'
 import type { Supplier, SupplierFormData } from '@/types/thread/supplier'
 
 // Composables
+const router = useRouter()
 const { suppliers, loading, fetchSuppliers, createSupplier, updateSupplier, deleteSupplier } = useSuppliers()
 const { confirm } = useConfirm()
 
