@@ -14,7 +14,7 @@ import {
   ReceiveDeliverySchema,
   UpdateQuotaConesSchema,
   OrderedQuantitiesQuerySchema,
-  OrderHistoryQuerySchema,
+  HistoryByWeekQuerySchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
 
@@ -700,13 +700,13 @@ weeklyOrder.get('/ordered-quantities', requirePermission('thread.allocations.vie
   }
 })
 
-weeklyOrder.get('/order-history', requirePermission('thread.allocations.view'), async (c) => {
+weeklyOrder.get('/history-by-week', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const query = c.req.query()
 
     let validated
     try {
-      validated = OrderHistoryQuerySchema.parse(query)
+      validated = HistoryByWeekQuerySchema.parse(query)
     } catch (err) {
       if (err instanceof ZodError) {
         return c.json({ data: null, error: formatZodError(err) }, 400)
@@ -715,58 +715,225 @@ weeklyOrder.get('/order-history', requirePermission('thread.allocations.view'), 
     }
 
     const page = validated.page ? Math.max(1, parseInt(validated.page)) : 1
-    const limit = validated.limit ? Math.min(Math.max(1, parseInt(validated.limit)), 100) : 20
+    const limit = validated.limit ? Math.min(Math.max(1, parseInt(validated.limit)), 100) : 10
     const from = (page - 1) * limit
 
-    let countQuery = supabase
-      .from('thread_order_items')
-      .select('id, week:thread_order_weeks!inner(status)', { count: 'exact', head: true })
-      .neq('week.status', 'CANCELLED')
+    let weekIds: number[] | null = null
 
-    let dataQuery = supabase
-      .from('thread_order_items')
-      .select(`
-        *,
-        week:thread_order_weeks!inner(id, week_name, created_by, status, created_at),
-        style:styles(id, style_code, style_name),
-        color:colors(id, name, hex_code),
-        po:purchase_orders(id, po_number)
-      `)
-      .neq('week.status', 'CANCELLED')
+    if (validated.po_id || validated.style_id) {
+      let itemQuery = supabase
+        .from('thread_order_items')
+        .select('week_id, week:thread_order_weeks!inner(status)')
+
+      if (validated.po_id) {
+        itemQuery = itemQuery.eq('po_id', parseInt(validated.po_id))
+      }
+      if (validated.style_id) {
+        itemQuery = itemQuery.eq('style_id', parseInt(validated.style_id))
+      }
+      itemQuery = itemQuery.neq('week.status', 'CANCELLED')
+
+      const { data: matchingItems } = await itemQuery
+      weekIds = [...new Set((matchingItems || []).map((i: any) => i.week_id))]
+
+      if (weekIds.length === 0) {
+        return c.json({
+          data: [],
+          error: null,
+          pagination: { page, limit, total: 0, totalPages: 0 },
+        })
+      }
+    }
+
+    let countQuery = supabase
+      .from('thread_order_weeks')
+      .select('id', { count: 'exact', head: true })
+
+    let weeksQuery = supabase
+      .from('thread_order_weeks')
+      .select('id, week_name, status, created_by, created_at')
       .order('created_at', { ascending: false })
       .range(from, from + limit - 1)
 
-    if (validated.po_id) {
-      const poId = parseInt(validated.po_id)
-      countQuery = countQuery.eq('po_id', poId)
-      dataQuery = dataQuery.eq('po_id', poId)
+    const statusParam = validated.status
+    if (statusParam === 'ALL') {
+      // No status filter
+    } else if (statusParam && ['DRAFT', 'CONFIRMED', 'CANCELLED'].includes(statusParam)) {
+      countQuery = countQuery.eq('status', statusParam)
+      weeksQuery = weeksQuery.eq('status', statusParam)
+    } else {
+      countQuery = countQuery.neq('status', 'CANCELLED')
+      weeksQuery = weeksQuery.neq('status', 'CANCELLED')
     }
 
-    if (validated.style_id) {
-      const styleId = parseInt(validated.style_id)
-      countQuery = countQuery.eq('style_id', styleId)
-      dataQuery = dataQuery.eq('style_id', styleId)
+    if (weekIds !== null) {
+      countQuery = countQuery.in('id', weekIds)
+      weeksQuery = weeksQuery.in('id', weekIds)
     }
 
     if (validated.from_date) {
       countQuery = countQuery.gte('created_at', validated.from_date)
-      dataQuery = dataQuery.gte('created_at', validated.from_date)
+      weeksQuery = weeksQuery.gte('created_at', validated.from_date)
     }
-
     if (validated.to_date) {
       const toDateEnd = validated.to_date.includes('T') ? validated.to_date : `${validated.to_date}T23:59:59.999Z`
       countQuery = countQuery.lte('created_at', toDateEnd)
-      dataQuery = dataQuery.lte('created_at', toDateEnd)
+      weeksQuery = weeksQuery.lte('created_at', toDateEnd)
     }
 
-    const [{ count }, { data, error }] = await Promise.all([countQuery, dataQuery])
+    const [{ count }, { data: weeks, error: weeksError }] = await Promise.all([countQuery, weeksQuery])
 
-    if (error) throw error
+    if (weeksError) throw weeksError
+    if (!weeks || weeks.length === 0) {
+      return c.json({
+        data: [],
+        error: null,
+        pagination: { page, limit, total: count ?? 0, totalPages: Math.ceil((count ?? 0) / limit) },
+      })
+    }
+
+    const pageWeekIds = weeks.map((w: any) => w.id)
+
+    let itemsQuery = supabase
+      .from('thread_order_items')
+      .select(`
+        id, week_id, po_id, style_id, color_id, quantity,
+        style:styles(id, style_code, style_name),
+        color:colors(id, name, hex_code),
+        po:purchase_orders(id, po_number)
+      `)
+      .in('week_id', pageWeekIds)
+
+    if (validated.po_id) {
+      itemsQuery = itemsQuery.eq('po_id', parseInt(validated.po_id))
+    }
+    if (validated.style_id) {
+      itemsQuery = itemsQuery.eq('style_id', parseInt(validated.style_id))
+    }
+
+    const { data: items, error: itemsError } = await itemsQuery
+    if (itemsError) throw itemsError
+
+    const uniquePairs = new Map<string, { po_id: number; style_id: number }>()
+    for (const item of (items || [])) {
+      if (item.po_id) {
+        const key = `${item.po_id}-${item.style_id}`
+        if (!uniquePairs.has(key)) {
+          uniquePairs.set(key, { po_id: item.po_id, style_id: item.style_id })
+        }
+      }
+    }
+
+    const progressMap = new Map<string, { po_quantity: number; total_ordered: number }>()
+
+    for (const pair of uniquePairs.values()) {
+      const { data: orderedItems } = await supabase
+        .from('thread_order_items')
+        .select('quantity, week:thread_order_weeks!inner(id, status)')
+        .eq('po_id', pair.po_id)
+        .eq('style_id', pair.style_id)
+        .neq('week.status', 'CANCELLED')
+
+      const totalOrdered = (orderedItems || []).reduce(
+        (sum: number, row: any) => sum + (row.quantity || 0),
+        0,
+      )
+
+      const { data: poItem } = await supabase
+        .from('po_items')
+        .select('quantity')
+        .eq('po_id', pair.po_id)
+        .eq('style_id', pair.style_id)
+        .single()
+
+      const poQuantity = poItem?.quantity || 0
+
+      progressMap.set(`${pair.po_id}-${pair.style_id}`, {
+        po_quantity: poQuantity,
+        total_ordered: totalOrdered,
+      })
+    }
+
+    const result = weeks.map((week: any) => {
+      const weekItems = (items || []).filter((i: any) => i.week_id === week.id)
+
+      const poMap = new Map<string, { po_id: number | null; po_number: string; items: any[] }>()
+      for (const item of weekItems) {
+        const poKey = item.po_id ? String(item.po_id) : 'null'
+        if (!poMap.has(poKey)) {
+          poMap.set(poKey, {
+            po_id: item.po_id,
+            po_number: item.po?.po_number || 'Không có PO',
+            items: [],
+          })
+        }
+        poMap.get(poKey)!.items.push(item)
+      }
+
+      const po_groups = Array.from(poMap.values()).map((poGroup) => {
+        const styleMap = new Map<number, { style: any; colors: any[]; thisWeekQty: number }>()
+        for (const item of poGroup.items) {
+          if (!styleMap.has(item.style_id)) {
+            styleMap.set(item.style_id, {
+              style: item.style,
+              colors: [],
+              thisWeekQty: 0,
+            })
+          }
+          const sg = styleMap.get(item.style_id)!
+          sg.colors.push({
+            color_id: item.color_id,
+            color_name: item.color?.name || '',
+            hex_code: item.color?.hex_code || '',
+            quantity: item.quantity,
+          })
+          sg.thisWeekQty += item.quantity
+        }
+
+        const styles = Array.from(styleMap.entries()).map(([styleId, sg]) => {
+          const progressKey = `${poGroup.po_id}-${styleId}`
+          const progress = progressMap.get(progressKey)
+          const poQuantity = progress?.po_quantity || 0
+          const totalOrdered = progress?.total_ordered || 0
+          const remaining = Math.max(0, poQuantity - totalOrdered)
+          const progressPct = poQuantity > 0 ? Math.round((totalOrdered / poQuantity) * 100) : 0
+
+          return {
+            style_id: styleId,
+            style_code: sg.style?.style_code || '',
+            style_name: sg.style?.style_name || '',
+            po_quantity: poQuantity,
+            total_ordered: totalOrdered,
+            this_week_quantity: sg.thisWeekQty,
+            remaining,
+            progress_pct: progressPct,
+            colors: sg.colors,
+          }
+        })
+
+        return {
+          po_id: poGroup.po_id,
+          po_number: poGroup.po_number,
+          styles,
+        }
+      })
+
+      const totalQuantity = weekItems.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0)
+
+      return {
+        week_id: week.id,
+        week_name: week.week_name,
+        status: week.status,
+        created_by: week.created_by,
+        created_at: week.created_at,
+        total_quantity: totalQuantity,
+        po_groups,
+      }
+    })
 
     const total = count ?? 0
-
     return c.json({
-      data: data || [],
+      data: result,
       error: null,
       pagination: {
         page,
@@ -776,7 +943,7 @@ weeklyOrder.get('/order-history', requirePermission('thread.allocations.view'), 
       },
     })
   } catch (err) {
-    console.error('Error fetching order history:', err)
+    console.error('Error fetching history by week:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

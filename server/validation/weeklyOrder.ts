@@ -75,11 +75,12 @@ export const OrderedQuantitiesQuerySchema = z.object({
   exclude_week_id: z.string().optional(),
 })
 
-export const OrderHistoryQuerySchema = z.object({
+export const HistoryByWeekQuerySchema = z.object({
   po_id: z.string().optional(),
   style_id: z.string().optional(),
   from_date: z.string().optional(),
   to_date: z.string().optional(),
+  status: z.string().optional(),
   page: z.string().optional(),
   limit: z.string().optional(),
 })

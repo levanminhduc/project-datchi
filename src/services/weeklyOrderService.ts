@@ -13,8 +13,8 @@ import type {
   WeeklyOrderResults,
   AggregatedRow,
   OrderedQuantityInfo,
-  OrderHistoryItem,
-  OrderHistoryFilter,
+  WeekHistoryGroup,
+  HistoryByWeekFilter,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -23,11 +23,6 @@ interface ApiResponse<T> {
   message?: string
 }
 
-interface PaginatedResponse<T> {
-  data: T[] | null
-  error: string | null
-  pagination: { page: number; limit: number; total: number; totalPages: number }
-}
 
 const BASE = '/api/weekly-orders'
 
@@ -248,19 +243,20 @@ export const weeklyOrderService = {
     return response.data || []
   },
 
-  async getOrderHistory(
-    filters: OrderHistoryFilter,
-  ): Promise<{ data: OrderHistoryItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
+  async getHistoryByWeek(
+    filters: HistoryByWeekFilter,
+  ): Promise<{ data: WeekHistoryGroup[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
     const searchParams = new URLSearchParams()
     if (filters.po_id) searchParams.append('po_id', String(filters.po_id))
     if (filters.style_id) searchParams.append('style_id', String(filters.style_id))
     if (filters.from_date) searchParams.append('from_date', filters.from_date)
     if (filters.to_date) searchParams.append('to_date', filters.to_date)
-    searchParams.append('page', String(filters.page || 1))
-    searchParams.append('limit', String(filters.limit || 20))
+    if (filters.status) searchParams.append('status', filters.status)
+    if (filters.page) searchParams.append('page', String(filters.page))
+    if (filters.limit) searchParams.append('limit', String(filters.limit))
 
-    const response = await fetchApi<PaginatedResponse<OrderHistoryItem>>(
-      `${BASE}/order-history?${searchParams.toString()}`,
+    const response = await fetchApi<any>(
+      `${BASE}/history-by-week?${searchParams.toString()}`,
     )
 
     if (response.error) {
@@ -269,7 +265,7 @@ export const weeklyOrderService = {
 
     return {
       data: response.data || [],
-      pagination: response.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 },
+      pagination: response.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 },
     }
   },
 }

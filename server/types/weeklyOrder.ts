@@ -58,3 +58,38 @@ export interface SaveResultsDTO {
   calculation_data: any
   summary_data: any
 }
+
+export interface ColorEntryHistory {
+  color_id: number
+  color_name: string
+  hex_code: string
+  quantity: number
+}
+
+export interface StyleProgress {
+  style_id: number
+  style_code: string
+  style_name: string
+  po_quantity: number
+  total_ordered: number
+  this_week_quantity: number
+  remaining: number
+  progress_pct: number
+  colors: ColorEntryHistory[]
+}
+
+export interface PoGroup {
+  po_id: number | null
+  po_number: string
+  styles: StyleProgress[]
+}
+
+export interface WeekHistoryGroup {
+  week_id: number
+  week_name: string
+  status: string
+  created_by: string | null
+  created_at: string
+  total_quantity: number
+  po_groups: PoGroup[]
+}

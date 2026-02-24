@@ -1,6 +1,5 @@
 <template>
   <q-page padding>
-    <!-- Page Header -->
     <div class="row items-center q-mb-lg">
       <q-btn
         flat
@@ -14,7 +13,7 @@
           Lịch Sử Đặt Hàng Chỉ
         </h1>
         <div class="text-grey-6">
-          Xem lịch sử đặt hàng chỉ theo tuần, PO, mã hàng
+          Xem lịch sử đặt hàng chỉ theo tuần
         </div>
       </div>
       <q-space />
@@ -22,12 +21,11 @@
         color="primary"
         label="Xuất Excel"
         icon="download"
-        :disable="historyItems.length === 0"
+        :disable="weekGroups.length === 0"
         @click="handleExportXlsx"
       />
     </div>
 
-    <!-- Filters -->
     <q-card
       flat
       bordered
@@ -38,7 +36,7 @@
           class="row items-end"
           :class="$q.screen.lt.sm ? 'q-col-gutter-sm' : 'q-col-gutter-md'"
         >
-          <div class="col-12 col-sm-6 col-md-3">
+          <div class="col-12 col-sm-6 col-md-2">
             <AppSelect
               v-model="filters.po_id"
               :options="poOptions"
@@ -54,8 +52,7 @@
               :loading="posLoading"
             />
           </div>
-
-          <div class="col-12 col-sm-6 col-md-3">
+          <div class="col-12 col-sm-6 col-md-2">
             <AppSelect
               v-model="filters.style_id"
               :options="styleOptions"
@@ -71,7 +68,17 @@
               :loading="stylesLoading"
             />
           </div>
-
+          <div class="col-12 col-sm-6 col-md-2">
+            <AppSelect
+              v-model="filters.status"
+              :options="statusOptions"
+              label="Trạng thái"
+              dense
+              hide-bottom-space
+              emit-value
+              map-options
+            />
+          </div>
           <div class="col-12 col-sm-6 col-md-2">
             <AppInput
               v-model="filters.from_date"
@@ -122,7 +129,6 @@
               </template>
             </AppInput>
           </div>
-
           <div class="col-12 col-md-2">
             <div class="row q-gutter-sm">
               <AppButton
@@ -144,88 +150,159 @@
       </q-card-section>
     </q-card>
 
-    <!-- History Table -->
-    <q-card
-      flat
-      bordered
-    >
-      <q-table
-        :rows="historyItems"
-        :columns="columns"
-        row-key="id"
-        :loading="loading"
-        :pagination="pagination"
-        :rows-per-page-options="[10, 25, 50, 100]"
-        class="history-table"
-        @request="onRequest"
+    <q-card flat bordered>
+      <q-inner-loading :showing="loading" />
+
+      <div
+        v-if="!loading && weekGroups.length === 0"
+        class="text-center q-py-xl text-grey-6"
       >
-        <template #body-cell-style="slotProps">
-          <q-td :props="slotProps">
-            <span class="text-weight-medium">{{ slotProps.row.style?.style_code || '' }}</span>
-            <span
-              v-if="slotProps.row.style?.style_name"
-              class="text-grey-7 q-ml-xs"
-            >{{ slotProps.row.style.style_name }}</span>
-          </q-td>
-        </template>
+        <q-icon
+          name="history"
+          size="48px"
+        />
+        <div class="q-mt-sm">
+          Chưa có lịch sử đặt hàng
+        </div>
+      </div>
 
-        <template #body-cell-color="slotProps">
-          <q-td :props="slotProps">
-            <div class="row items-center no-wrap">
-              <span
-                v-if="slotProps.row.color?.hex_code"
-                class="q-mr-sm"
-                :style="{
-                  display: 'inline-block',
-                  width: '14px',
-                  height: '14px',
-                  borderRadius: '50%',
-                  backgroundColor: slotProps.row.color.hex_code,
-                  border: '1px solid #ccc'
-                }"
-              />
-              {{ slotProps.row.color?.name || '' }}
-            </div>
-          </q-td>
-        </template>
+      <q-list
+        v-else
+        separator
+      >
+        <q-expansion-item
+          v-for="week in weekGroups"
+          :key="week.week_id"
+          group="weeks"
+          header-class="text-weight-medium"
+        >
+          <template #header>
+            <q-item-section>
+              <q-item-label>{{ week.week_name }}</q-item-label>
+              <q-item-label caption>
+                {{ week.created_by || '-' }} · {{ formatDate(week.created_at) }}
+              </q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <div class="row items-center q-gutter-sm">
+                <q-chip
+                  :color="getStatusColor(week.status)"
+                  text-color="white"
+                  dense
+                  size="sm"
+                >
+                  {{ getStatusLabel(week.status) }}
+                </q-chip>
+                <q-chip
+                  color="primary"
+                  text-color="white"
+                  dense
+                >
+                  {{ week.total_quantity.toLocaleString('vi-VN') }} SP
+                </q-chip>
+              </div>
+            </q-item-section>
+          </template>
 
-        <template #body-cell-quantity="slotProps">
-          <q-td :props="slotProps">
-            {{ slotProps.row.quantity.toLocaleString('vi-VN') }}
-          </q-td>
-        </template>
-
-        <template #body-cell-created_at="slotProps">
-          <q-td :props="slotProps">
-            {{ formatDate(slotProps.row.created_at) }}
-          </q-td>
-        </template>
-
-        <template #body-cell-status="slotProps">
-          <q-td :props="slotProps">
-            <q-chip
-              :color="getStatusColor(slotProps.row.week?.status)"
-              text-color="white"
-              dense
-              size="sm"
+          <q-card>
+            <q-card-section
+              v-for="poGroup in week.po_groups"
+              :key="poGroup.po_id ?? 'no-po'"
+              class="q-pt-sm"
             >
-              {{ getStatusLabel(slotProps.row.week?.status) }}
-            </q-chip>
-          </q-td>
-        </template>
+              <div class="text-subtitle2 text-primary q-mb-sm">
+                {{ poGroup.po_number }}
+              </div>
 
-        <template #no-data>
-          <div class="text-center q-py-xl text-grey-6">
-            <q-icon
-              name="history"
-              size="48px"
-            />
-            <div class="q-mt-sm">
-              Chưa có lịch sử đặt hàng
-            </div>
-          </div>
-        </template>
-      </q-table>
+              <q-card
+                v-for="style in poGroup.styles"
+                :key="style.style_id"
+                flat
+                bordered
+                class="q-mb-sm q-ml-md"
+              >
+                <q-card-section class="q-py-sm">
+                  <div class="row items-center q-mb-xs">
+                    <span class="text-weight-medium">{{ style.style_code }}</span>
+                    <span class="text-grey-7 q-ml-sm">{{ style.style_name }}</span>
+                    <q-space />
+                    <span
+                      v-if="style.po_quantity > 0"
+                      class="text-caption"
+                    >PO: {{ style.po_quantity.toLocaleString('vi-VN') }} SP</span>
+                  </div>
+
+                  <div
+                    v-if="style.po_quantity > 0"
+                    class="q-mb-sm"
+                  >
+                    <q-linear-progress
+                      :value="Math.min(style.progress_pct / 100, 1)"
+                      :color="getProgressColor(style.progress_pct)"
+                      size="20px"
+                      rounded
+                      class="q-mb-xs"
+                    >
+                      <div class="absolute-full flex flex-center">
+                        <span class="text-caption text-white text-weight-bold">
+                          {{ style.total_ordered.toLocaleString('vi-VN') }} / {{ style.po_quantity.toLocaleString('vi-VN') }} SP ({{ style.progress_pct }}%)
+                        </span>
+                      </div>
+                    </q-linear-progress>
+                  </div>
+
+                  <div class="row q-gutter-sm q-mb-xs">
+                    <q-chip
+                      v-for="color in style.colors"
+                      :key="color.color_id"
+                      dense
+                      size="sm"
+                      outline
+                    >
+                      <span
+                        class="q-mr-xs"
+                        :style="{
+                          display: 'inline-block',
+                          width: '10px',
+                          height: '10px',
+                          borderRadius: '50%',
+                          backgroundColor: color.hex_code || '#999',
+                          border: '1px solid #ccc',
+                        }"
+                      />
+                      {{ color.color_name }} {{ color.quantity.toLocaleString('vi-VN') }}
+                    </q-chip>
+                  </div>
+
+                  <div class="text-caption text-grey-7">
+                    <span>Tuần này: <b>{{ style.this_week_quantity.toLocaleString('vi-VN') }}</b> SP</span>
+                    <span class="q-mx-sm">·</span>
+                    <span>Đã đặt trước đó: <b>{{ (style.total_ordered - style.this_week_quantity).toLocaleString('vi-VN') }}</b> SP</span>
+                    <template v-if="style.po_quantity > 0">
+                      <span class="q-mx-sm">·</span>
+                      <span>Còn lại: <b>{{ style.remaining.toLocaleString('vi-VN') }}</b> SP</span>
+                    </template>
+                  </div>
+                </q-card-section>
+              </q-card>
+            </q-card-section>
+          </q-card>
+        </q-expansion-item>
+      </q-list>
+
+      <q-card-section
+        v-if="totalPages > 1"
+        class="flex flex-center"
+      >
+        <q-pagination
+          v-model="currentPage"
+          :max="totalPages"
+          :max-pages="7"
+          direction-links
+          boundary-links
+          @update:model-value="onPageChange"
+        />
+      </q-card-section>
     </q-card>
   </q-page>
 </template>
@@ -236,8 +313,7 @@ import { useQuasar } from 'quasar'
 import { usePurchaseOrders, useStyles, useSnackbar } from '@/composables'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
-import type { OrderHistoryItem, OrderHistoryFilter } from '@/types/thread'
-import type { QTableColumn, QTableProps } from 'quasar'
+import type { WeekHistoryGroup, HistoryByWeekFilter } from '@/types/thread'
 
 definePage({
   meta: {
@@ -251,23 +327,27 @@ const snackbar = useSnackbar()
 const { purchaseOrders: poList, isLoading: posLoading, fetchPurchaseOrders } = usePurchaseOrders()
 const { styles: styleList, loading: stylesLoading, fetchStyles } = useStyles()
 
-const historyItems = ref<OrderHistoryItem[]>([])
+const weekGroups = ref<WeekHistoryGroup[]>([])
 const loading = ref(false)
+const currentPage = ref(1)
+const totalPages = ref(0)
+const totalItems = ref(0)
 
-const filters = ref<OrderHistoryFilter>({
+const filters = ref<HistoryByWeekFilter>({
   po_id: undefined,
   style_id: undefined,
   from_date: undefined,
   to_date: undefined,
+  status: undefined,
 })
 
-const pagination = ref({
-  page: 1,
-  rowsPerPage: 25,
-  rowsNumber: 0,
-  sortBy: 'created_at' as string | null,
-  descending: true,
-})
+const statusOptions = [
+  { label: 'Tất cả (trừ đã hủy)', value: undefined },
+  { label: 'Nháp', value: 'DRAFT' },
+  { label: 'Đã xác nhận', value: 'CONFIRMED' },
+  { label: 'Đã hủy', value: 'CANCELLED' },
+  { label: 'Tất cả', value: 'ALL' },
+]
 
 const poOptions = computed(() =>
   poList.value.map((po) => ({
@@ -282,17 +362,6 @@ const styleOptions = computed(() =>
     value: s.id,
   })),
 )
-
-const columns: QTableColumn[] = [
-  { name: 'week', label: 'Tuần', field: (row) => row.week?.week_name || '', align: 'left', sortable: true },
-  { name: 'po', label: 'PO', field: (row) => row.po?.po_number || '-', align: 'left' },
-  { name: 'style', label: 'Mã hàng', field: 'style', align: 'left' },
-  { name: 'color', label: 'Màu', field: 'color', align: 'left' },
-  { name: 'quantity', label: 'SL (SP)', field: 'quantity', align: 'right', sortable: true },
-  { name: 'created_by', label: 'Người tạo', field: (row) => row.week?.created_by || '-', align: 'left' },
-  { name: 'created_at', label: 'Ngày tạo', field: 'created_at', align: 'left', sortable: true },
-  { name: 'status', label: 'Trạng thái', field: (row) => row.week?.status || '', align: 'center' },
-]
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '-'
@@ -317,32 +386,39 @@ function getStatusLabel(status?: string): string {
   }
 }
 
+function getProgressColor(pct: number): string {
+  if (pct > 100) return 'negative'
+  if (pct === 100) return 'positive'
+  if (pct >= 80) return 'warning'
+  return 'primary'
+}
+
 async function fetchHistory() {
   loading.value = true
   try {
-    const result = await weeklyOrderService.getOrderHistory({
+    const result = await weeklyOrderService.getHistoryByWeek({
       ...filters.value,
-      page: pagination.value.page,
-      limit: pagination.value.rowsPerPage,
+      page: currentPage.value,
+      limit: 10,
     })
-    historyItems.value = result.data
-    pagination.value.rowsNumber = result.pagination.total
+    weekGroups.value = result.data
+    totalPages.value = result.pagination.totalPages
+    totalItems.value = result.pagination.total
   } catch (err) {
-    console.error('[order-history] fetch error:', err)
+    console.error('[history-by-week] fetch error:', err)
     snackbar.error('Không thể tải lịch sử đặt hàng')
   } finally {
     loading.value = false
   }
 }
 
-function onRequest(props: Parameters<NonNullable<QTableProps['onRequest']>>[0]) {
-  pagination.value.page = props.pagination.page ?? 1
-  pagination.value.rowsPerPage = props.pagination.rowsPerPage ?? 25
+function onPageChange(page: number) {
+  currentPage.value = page
   fetchHistory()
 }
 
 function applyFilters() {
-  pagination.value.page = 1
+  currentPage.value = 1
   fetchHistory()
 }
 
@@ -352,13 +428,14 @@ function resetFilters() {
     style_id: undefined,
     from_date: undefined,
     to_date: undefined,
+    status: undefined,
   }
-  pagination.value.page = 1
+  currentPage.value = 1
   fetchHistory()
 }
 
 async function handleExportXlsx() {
-  if (historyItems.value.length === 0) return
+  if (weekGroups.value.length === 0) return
 
   try {
     const ExcelJS = await import('exceljs')
@@ -371,7 +448,11 @@ async function handleExportXlsx() {
       { header: 'Mã hàng', key: 'style_code', width: 15 },
       { header: 'Tên mã hàng', key: 'style_name', width: 25 },
       { header: 'Màu', key: 'color_name', width: 15 },
-      { header: 'Số lượng (SP)', key: 'quantity', width: 15 },
+      { header: 'SL (SP)', key: 'quantity', width: 12 },
+      { header: 'SL PO', key: 'po_quantity', width: 12 },
+      { header: 'Đã đặt', key: 'total_ordered', width: 12 },
+      { header: 'Còn lại', key: 'remaining', width: 12 },
+      { header: 'Tiến độ %', key: 'progress_pct', width: 12 },
       { header: 'Người tạo', key: 'created_by', width: 18 },
       { header: 'Ngày tạo', key: 'created_at', width: 15 },
       { header: 'Trạng thái', key: 'status', width: 15 },
@@ -384,17 +465,27 @@ async function handleExportXlsx() {
     }
     worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
 
-    historyItems.value.forEach((item) => {
-      worksheet.addRow({
-        week_name: item.week?.week_name || '',
-        po_number: item.po?.po_number || '',
-        style_code: item.style?.style_code || '',
-        style_name: item.style?.style_name || '',
-        color_name: item.color?.name || '',
-        quantity: item.quantity,
-        created_by: item.week?.created_by || '',
-        created_at: formatDate(item.created_at),
-        status: getStatusLabel(item.week?.status),
+    weekGroups.value.forEach((week) => {
+      week.po_groups.forEach((poGroup) => {
+        poGroup.styles.forEach((style) => {
+          style.colors.forEach((color) => {
+            worksheet.addRow({
+              week_name: week.week_name,
+              po_number: poGroup.po_number,
+              style_code: style.style_code,
+              style_name: style.style_name,
+              color_name: color.color_name,
+              quantity: color.quantity,
+              po_quantity: style.po_quantity,
+              total_ordered: style.total_ordered,
+              remaining: style.remaining,
+              progress_pct: style.progress_pct,
+              created_by: week.created_by || '',
+              created_at: formatDate(week.created_at),
+              status: getStatusLabel(week.status),
+            })
+          })
+        })
       })
     })
 
@@ -410,7 +501,7 @@ async function handleExportXlsx() {
 
     snackbar.success('Đã xuất file Excel')
   } catch (err) {
-    console.error('[order-history] export error:', err)
+    console.error('[history-by-week] export error:', err)
     snackbar.error('Không thể xuất file Excel')
   }
 }
@@ -421,17 +512,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.history-table {
-  max-width: 100%;
-}
-
-.history-table :deep(.q-table__middle) {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.history-table :deep(.q-table) {
-  table-layout: auto;
-  min-width: 900px;
+.q-expansion-item :deep(.q-item) {
+  min-height: 56px;
 }
 </style>

@@ -105,25 +105,47 @@ export interface OrderedQuantityInfo {
   remaining_quantity: number
 }
 
-export interface OrderHistoryItem {
-  id: number
-  week_id: number
-  po_id: number | null
-  style_id: number
+export interface ColorEntryHistory {
   color_id: number
+  color_name: string
+  hex_code: string
   quantity: number
-  created_at: string
-  week?: { id: number; week_name: string; created_by: string | null; status: string; created_at: string }
-  style?: { id: number; style_code: string; style_name: string }
-  color?: { id: number; name: string; hex_code: string }
-  po?: { id: number; po_number: string }
 }
 
-export interface OrderHistoryFilter {
+export interface StyleProgress {
+  style_id: number
+  style_code: string
+  style_name: string
+  po_quantity: number
+  total_ordered: number
+  this_week_quantity: number
+  remaining: number
+  progress_pct: number
+  colors: ColorEntryHistory[]
+}
+
+export interface PoGroup {
+  po_id: number | null
+  po_number: string
+  styles: StyleProgress[]
+}
+
+export interface WeekHistoryGroup {
+  week_id: number
+  week_name: string
+  status: string
+  created_by: string | null
+  created_at: string
+  total_quantity: number
+  po_groups: PoGroup[]
+}
+
+export interface HistoryByWeekFilter {
   po_id?: number
   style_id?: number
   from_date?: string
   to_date?: string
+  status?: string
   page?: number
   limit?: number
 }
