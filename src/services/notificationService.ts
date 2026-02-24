@@ -1,7 +1,7 @@
 import { authService } from './authService'
 import type { Notification, NotificationListParams } from '@/types/notification'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 export const notificationService = {
   async getNotifications(params?: NotificationListParams): Promise<Notification[]> {

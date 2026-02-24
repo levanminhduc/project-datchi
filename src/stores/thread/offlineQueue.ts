@@ -6,7 +6,7 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import { fetchApi } from '@/services/api'
 
 // Types

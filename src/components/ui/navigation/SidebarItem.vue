@@ -3,7 +3,7 @@
  * SidebarItem - Recursive sidebar navigation item
  * Renders either a simple q-item or a q-expansion-item for nested menus
  */
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { NavItem } from '@/types/navigation'
 

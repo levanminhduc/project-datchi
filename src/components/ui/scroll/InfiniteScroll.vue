@@ -13,7 +13,7 @@ interface Props {
   reverse?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   offset: 500,
   debounce: 100,
   disable: false,

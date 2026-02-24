@@ -28,7 +28,7 @@ interface Props {
   imgStyle?: string | Record<string, string>
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   alt: '',
   fit: 'cover',
   position: 'center',

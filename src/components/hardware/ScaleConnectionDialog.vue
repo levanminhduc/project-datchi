@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import AppDialog from '@/components/ui/dialogs/AppDialog.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import { useScale } from '@/composables/hardware/useScale'

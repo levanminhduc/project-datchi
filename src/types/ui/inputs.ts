@@ -1,4 +1,4 @@
-import type { Size, Color, BaseComponentProps, ValidationRule, LabeledProps, ValidatableProps } from './base'
+import type { Size, Color, BaseComponentProps, LabeledProps, ValidatableProps } from './base'
 
 export interface AppInputProps extends BaseComponentProps, LabeledProps, ValidatableProps {
   /** v-model value */

@@ -4,7 +4,6 @@ import type { AllocationConflict, Allocation, ConflictResolution } from '@/types
 import { AllocationPriority } from '@/types/thread/enums'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
-import AppSlider from '@/components/ui/inputs/AppSlider.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 
 interface Props {

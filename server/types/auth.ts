@@ -1,33 +1,22 @@
-// server/types/auth.ts
-
-// ============================================
-// JWT PAYLOAD
-// ============================================
-
 export interface JwtPayload {
-  sub: number          // employee.id
-  employeeId: string   // employee.employee_id (username)
-  roles: string[]      // role codes
-  isRoot: boolean      // quick ROOT check
+  sub: string
+  employee_id: number
+  employee_code: string
+  roles: string[]
+  is_root: boolean
+  iss?: string
+  aud?: string
   iat?: number
   exp?: number
 }
 
-// ============================================
-// AUTH CONTEXT (attached to request)
-// ============================================
-
 export interface AuthContext {
-  employeeId: number         // employee.id (primary key)
-  employeeCode: string       // employee.employee_id (username)
-  roles: string[]            // role codes
-  isRoot: boolean            // ROOT role check
-  isAdmin: boolean           // admin or root
+  employeeId: number
+  employeeCode: string
+  roles: string[]
+  isRoot: boolean
+  isAdmin: boolean
 }
-
-// ============================================
-// DATABASE ROW TYPES
-// ============================================
 
 export interface EmployeeAuthRow {
   id: number
@@ -36,12 +25,12 @@ export interface EmployeeAuthRow {
   department: string
   chuc_vu: string
   is_active: boolean
-  password_hash: string | null
   must_change_password: boolean
   password_changed_at: string | null
   failed_login_attempts: number
   locked_until: string | null
   last_login_at: string | null
+  auth_user_id: string | null
 }
 
 export interface RoleRow {
@@ -87,19 +76,6 @@ export interface EmployeePermissionRow {
   expires_at: string | null
 }
 
-// ============================================
-// REQUEST DTOs
-// ============================================
-
-export interface LoginRequest {
-  employeeId: string
-  password: string
-}
-
-export interface RefreshTokenRequest {
-  refreshToken: string
-}
-
 export interface ChangePasswordRequest {
   currentPassword: string
   newPassword: string
@@ -121,59 +97,4 @@ export interface AssignPermissionRequest {
   permissionId: number
   granted?: boolean
   expiresAt?: string
-}
-
-// ============================================
-// RESPONSE DTOs
-// ============================================
-
-export interface LoginResponseData {
-  employee: {
-    id: number
-    employeeId: string
-    fullName: string
-    department: string
-    chucVu: string
-    isActive: boolean
-    mustChangePassword: boolean
-    lastLoginAt: string | null
-    roles: Array<{
-      id: number
-      code: string
-      name: string
-      level: number
-    }>
-    permissions: string[]
-    isRoot: boolean
-  }
-  accessToken: string
-  refreshToken: string
-  expiresIn: number
-}
-
-export interface RefreshTokenResponseData {
-  accessToken: string
-  expiresIn: number
-}
-
-// ============================================
-// AUTH CONFIGURATION
-// ============================================
-
-export interface AuthConfig {
-  jwtSecret: string
-  jwtExpiresIn: string | number  // e.g., '15m' or 900
-  refreshTokenExpiresIn: string  // e.g., '7d'
-  maxFailedAttempts: number
-  lockoutDuration: number        // minutes
-  passwordMinLength: number
-}
-
-export const DEFAULT_AUTH_CONFIG: AuthConfig = {
-  jwtSecret: process.env.JWT_SECRET || 'change-this-secret-in-production',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15m',
-  refreshTokenExpiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '7d',
-  maxFailedAttempts: 5,
-  lockoutDuration: 30,           // 30 minutes
-  passwordMinLength: 8
 }

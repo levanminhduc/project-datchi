@@ -16,7 +16,6 @@ export function usePermission() {
     hasAnyPermission,
     hasAllPermissions,
     isAdmin,
-    isRoot,
     checkIsRoot,
   } = useAuth()
 

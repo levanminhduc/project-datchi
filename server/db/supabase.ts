@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
+import { existsSync } from 'fs'
 import dotenv from 'dotenv'
 
-dotenv.config()
+if (existsSync('.env')) {
+  dotenv.config()
+}
 
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:54321'

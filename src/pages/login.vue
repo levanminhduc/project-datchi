@@ -33,18 +33,14 @@
           hint="Ví dụ: NV001"
         />
 
-        <q-input
+        <AppInput
           v-model="form.password"
           label="Mật khẩu"
           :type="showPassword ? 'text' : 'password'"
-          outlined
-          lazy-rules
+          prepend-icon="lock"
           :rules="[required]"
           autocomplete="current-password"
         >
-          <template #prepend>
-            <q-icon name="lock" />
-          </template>
           <template #append>
             <q-icon
               :name="showPassword ? 'visibility_off' : 'visibility'"
@@ -52,7 +48,7 @@
               @click="showPassword = !showPassword"
             />
           </template>
-        </q-input>
+        </AppInput>
 
         <div class="row items-center justify-between">
           <q-checkbox

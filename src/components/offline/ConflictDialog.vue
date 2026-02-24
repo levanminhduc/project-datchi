@@ -218,7 +218,7 @@ const handleResolve = async (id: string, resolution: 'retry' | 'discard' | 'manu
     if (conflicts.value.length === 0) {
       isOpen.value = false
     }
-  } catch (err) {
+  } catch (_err) {
     snackbar.error('Không thể xử lý xung đột')
   }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import { useScanner } from '@/composables/hardware/useScanner'
 import { useAudioFeedback } from '@/composables/hardware/useAudioFeedback'

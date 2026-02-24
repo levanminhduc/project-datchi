@@ -70,11 +70,9 @@ export interface EmployeePermission {
 
 export interface AuthState {
   employee: EmployeeAuth | null
-  accessToken: string | null
-  refreshToken: string | null
-  permissions: string[]  // List of permission codes (or ['*'] for ROOT)
+  permissions: string[]
   isAuthenticated: boolean
-  isRoot: boolean        // Fast ROOT check
+  isRoot: boolean
   isLoading: boolean
   error: string | null
 }
@@ -90,14 +88,6 @@ export interface LoginCredentials {
 
 export interface LoginResponse {
   employee: EmployeeAuth
-  accessToken: string
-  refreshToken: string
-  expiresIn: number      // seconds
-}
-
-export interface RefreshTokenResponse {
-  accessToken: string
-  expiresIn: number
 }
 
 export interface ChangePasswordData {
@@ -199,10 +189,11 @@ export interface RouteMeta {
 // ============================================
 
 export interface JwtPayload {
-  sub: number          // employee.id
-  employeeId: string   // employee.employee_id (username)
-  roles: string[]      // role codes
-  isRoot: boolean      // quick ROOT check
+  sub: string
+  employee_id: number
+  employee_code: string
+  roles: string[]
+  is_root: boolean
   iat: number
   exp: number
 }

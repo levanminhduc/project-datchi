@@ -226,7 +226,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useLots } from '@/composables/useLots'
 import { useConfirm } from '@/composables/useConfirm'
@@ -236,7 +236,7 @@ import LotFormDialog from '@/components/thread/LotFormDialog.vue'
 import SearchInput from '@/components/ui/inputs/SearchInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import SupplierSelector from '@/components/ui/inputs/SupplierSelector.vue'
-import type { Lot, LotStatus, LotFilters } from '@/types/thread/lot'
+import type { Lot, LotFilters } from '@/types/thread/lot'
 
 const router = useRouter()
 const { lots, loading, fetchLots, quarantineLot: doQuarantine, releaseLot: doRelease } = useLots()

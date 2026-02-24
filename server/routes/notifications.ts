@@ -142,7 +142,7 @@ notifications.delete('/:id', async (c) => {
   }
 
   try {
-    const { data, error } = await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from('notifications')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)

@@ -38,7 +38,11 @@
       "mcp__enhance-mcp__enhance",
       "mcp__context7__resolve-library-id",
       "mcp__context7__query-docs",
-      "mcp__auggie__augment_code_search"
+      "mcp__auggie__augment_code_search",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_close"
     ]
   }
 }

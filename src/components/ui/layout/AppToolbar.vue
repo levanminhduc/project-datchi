@@ -9,7 +9,7 @@ interface Props {
   dense?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   inset: false,
   dense: false
 })

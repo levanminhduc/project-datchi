@@ -22,7 +22,7 @@ export function setupRouterGuards(router: Router) {
     const auth = useAuth()
     const meta = to.meta as RouteMeta
 
-    // Initialize auth state if not done (restores session from localStorage)
+    // Initialize auth state if not done (restores session from Supabase Auth)
     await auth.init()
 
     // Check if route is public (explicitly marked as public: true)

@@ -51,17 +51,6 @@ interface WriteOffDTO {
 // ============ HELPER FUNCTIONS ============
 
 /**
- * Generate unique movement code
- * Format: MOV-{type}-{YYYYMMDD}-{random}
- */
-function generateMovementCode(type: string): string {
-  const date = new Date()
-  const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '')
-  const random = Math.random().toString(36).substring(2, 8).toUpperCase()
-  return `MOV-${type}-${dateStr}-${random}`
-}
-
-/**
  * Calculate remaining meters from weight using density factor
  * Formula: (weight_grams - tare_weight) / density_grams_per_meter
  */

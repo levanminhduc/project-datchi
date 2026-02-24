@@ -7,7 +7,10 @@
     class="user-menu-btn"
   >
     <div class="row items-center no-wrap q-gutter-x-xs">
-      <q-icon name="account_circle" size="28px" />
+      <q-icon
+        name="account_circle"
+        size="28px"
+      />
       <span class="greeting-text gt-xs">Xin chào, {{ employee?.fullName || 'Tài khoản' }}</span>
     </div>
     <q-tooltip>{{ employee?.fullName || 'Tài khoản' }}</q-tooltip>

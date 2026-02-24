@@ -29,7 +29,7 @@ interface Props {
   contentStyle?: string | Record<string, string>
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   text: '',
   anchor: 'top middle',
   self: 'bottom middle',

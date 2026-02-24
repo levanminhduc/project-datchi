@@ -1,17 +1,7 @@
-/**
- * Base API client with error handling
- * 
- * Configurable via VITE_API_URL environment variable
- * Defaults to localhost:3000 for development
- */
+import { supabase } from '@/lib/supabase'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-const ACCESS_TOKEN_KEY = 'auth_access_token'
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
-/**
- * Custom error class for API errors
- * Includes HTTP status code for error handling
- */
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -22,26 +12,19 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * Generic fetch wrapper with JSON handling and error management
- * 
- * @param endpoint - API endpoint path (e.g., '/api/employees')
- * @param options - Standard fetch options
- * @returns Parsed JSON response
- * @throws ApiError on non-2xx responses or timeout (10 seconds)
- */
 export async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`
 
-  // Add timeout
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 seconds
+  const timeoutId = setTimeout(() => controller.abort(), 10000)
 
   try {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+
     const response = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
@@ -49,10 +32,10 @@ export async function fetchApi<T>(
         ...options.headers,
       },
       ...options,
-      signal: controller.signal, // Add abort signal
+      signal: controller.signal,
     })
 
-    clearTimeout(timeoutId) // Clear timeout on success
+    clearTimeout(timeoutId)
 
     const data = await response.json()
 
@@ -62,7 +45,7 @@ export async function fetchApi<T>(
 
     return data
   } catch (error) {
-    clearTimeout(timeoutId) // Clear timeout on error
+    clearTimeout(timeoutId)
 
     if (error instanceof Error && error.name === 'AbortError') {
       throw new ApiError(408, 'Yêu cầu quá thời gian. Vui lòng thử lại')

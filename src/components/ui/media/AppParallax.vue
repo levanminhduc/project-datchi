@@ -11,7 +11,7 @@ interface Props {
   scrollTarget?: string | Element
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   height: 500,
   speed: 1
 })

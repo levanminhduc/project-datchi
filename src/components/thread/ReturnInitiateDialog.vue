@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
-import type { Recovery } from '@/types/thread'
 
 interface Props {
   modelValue: boolean
@@ -12,7 +11,7 @@ interface Props {
   loading?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   productionOrderId: '',
   loading: false
 })

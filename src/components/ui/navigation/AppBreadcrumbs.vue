@@ -21,7 +21,7 @@ interface Props {
   gutter?: 'none' | 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   items: () => [],
   separator: '/',
   gutter: 'sm',

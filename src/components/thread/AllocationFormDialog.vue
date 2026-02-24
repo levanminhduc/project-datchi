@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { Allocation, CreateAllocationDTO, ThreadType } from '@/types/thread'
-import { AllocationPriority, AllocationStatus } from '@/types/thread/enums'
+import type { Allocation, CreateAllocationDTO } from '@/types/thread'
+import { AllocationPriority } from '@/types/thread/enums'
 import { useThreadTypes } from '@/composables/thread/useThreadTypes'
 import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
-import AppButton from '@/components/ui/buttons/AppButton.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
-import WeightMeterDisplay from './WeightMeterDisplay.vue'
 
 interface Props {
   allocation?: Allocation | null

@@ -10,7 +10,7 @@ interface Props {
   title?: string
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   ratio: '16/9',
   title: 'Video'
 })

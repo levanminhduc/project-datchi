@@ -28,7 +28,6 @@ const rejectReason = ref('')
 const showRejectInput = ref(false)
 
 const threadType = computed(() => props.recovery?.cone?.thread_type)
-const originalWeight = computed(() => props.recovery?.cone?.weight_grams || 0)
 const density = computed(() => threadType.value?.density_grams_per_meter || 0)
 
 const remainingMeters = computed(() => {

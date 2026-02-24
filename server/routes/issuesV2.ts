@@ -221,7 +221,7 @@ async function deductStock(
   threadTypeId: number,
   deductFull: number,
   deductPartial: number,
-  issueLineId?: number
+  _issueLineId?: number
 ): Promise<{ success: boolean; message?: string; allocatedConeIds?: number[] }> {
   const allocatedConeIds: number[] = []
 

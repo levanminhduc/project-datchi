@@ -1,21 +1,16 @@
-// src/composables/useAuth.ts
-
 import { ref, computed, readonly } from 'vue'
 import { useRouter } from 'vue-router'
+import { supabase } from '@/lib/supabase'
 import { authService } from '@/services/authService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type {
-  EmployeeAuth,
   AuthState,
   LoginCredentials,
   ChangePasswordData,
 } from '@/types/auth'
 
-// Module-level state (shared across components)
 const state = ref<AuthState>({
   employee: null,
-  accessToken: null,
-  refreshToken: null,
   permissions: [],
   isAuthenticated: false,
   isRoot: false,
@@ -23,16 +18,28 @@ const state = ref<AuthState>({
   error: null,
 })
 
-// Initialized flag to prevent multiple initializations
 let initialized = false
+let signingOut = false
+let loggedOut = false
+let authListenerUnsubscribe: (() => void) | null = null
 
 const tempPassword = ref<string | null>(null)
+
+function clearSupabaseTokens() {
+  const keysToRemove: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && key.startsWith('sb-') && key.includes('auth-token')) {
+      keysToRemove.push(key)
+    }
+  }
+  keysToRemove.forEach((key) => localStorage.removeItem(key))
+}
 
 export function useAuth() {
   const router = useRouter()
   const snackbar = useSnackbar()
 
-  // Computed
   const employee = computed(() => state.value.employee)
   const isAuthenticated = computed(() => state.value.isAuthenticated)
   const isLoading = computed(() => state.value.isLoading)
@@ -40,27 +47,30 @@ export function useAuth() {
   const error = computed(() => state.value.error)
   const isRoot = computed(() => state.value.isRoot)
 
-  /**
-   * Initialize auth state from stored tokens
-   */
   async function init() {
-    if (initialized) {
+    if (initialized || signingOut) {
       return
     }
+
+    if (loggedOut) {
+      resetState()
+      return
+    }
+
     initialized = true
 
     state.value.isLoading = true
 
     try {
-      const hasTokens = authService.hasTokens()
+      const { data: { session } } = await supabase.auth.getSession()
 
-      if (hasTokens) {
+      if (session) {
         const emp = await authService.fetchCurrentEmployee()
         const perms = await authService.fetchPermissions()
 
         if (emp) {
           if (emp.mustChangePassword) {
-            authService.clearTokens()
+            await supabase.auth.signOut()
             resetState()
             initialized = false
             router.push('/login')
@@ -69,18 +79,14 @@ export function useAuth() {
 
           state.value = {
             employee: emp,
-            accessToken: authService.getAccessToken(),
-            refreshToken: authService.getRefreshToken(),
             permissions: perms,
             isAuthenticated: true,
             isRoot: emp.isRoot || perms.includes('*'),
             isLoading: false,
             error: null,
           }
-
         } else {
-          // Token invalid, clear state
-          authService.clearTokens()
+          await supabase.auth.signOut()
           resetState()
         }
       } else {
@@ -90,13 +96,38 @@ export function useAuth() {
       resetState()
       state.value.error = 'Không thể khởi tạo phiên đăng nhập'
     }
+
+    setupAuthListener()
+  }
+
+  function setupAuthListener() {
+    if (authListenerUnsubscribe) return
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event) => {
+        if (event === 'SIGNED_OUT') {
+          if (signingOut) return
+          resetState()
+          initialized = false
+          snackbar.error('Phiên đăng nhập đã hết hạn')
+          router.push('/login')
+        }
+
+        if (event === 'TOKEN_REFRESHED') {
+          const emp = await authService.fetchCurrentEmployee()
+          if (emp) {
+            state.value.employee = emp
+          }
+        }
+      }
+    )
+
+    authListenerUnsubscribe = () => subscription.unsubscribe()
   }
 
   function resetState() {
     state.value = {
       employee: null,
-      accessToken: null,
-      refreshToken: null,
       permissions: [],
       isAuthenticated: false,
       isRoot: false,
@@ -105,10 +136,8 @@ export function useAuth() {
     }
   }
 
-  /**
-   * Sign in with employee_id and password
-   */
   async function signIn(credentials: LoginCredentials): Promise<boolean> {
+    loggedOut = false
     state.value.isLoading = true
     state.value.error = null
 
@@ -121,13 +150,10 @@ export function useAuth() {
         return false
       }
 
-      // Fetch full permissions
       const perms = await authService.fetchPermissions()
 
       state.value = {
         employee: data.employee,
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
         permissions: perms,
         isAuthenticated: true,
         isRoot: data.employee.isRoot || perms.includes('*'),
@@ -141,6 +167,9 @@ export function useAuth() {
         tempPassword.value = credentials.password
       }
 
+      setupAuthListener()
+      initialized = true
+
       return true
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Đăng nhập thất bại'
@@ -152,25 +181,21 @@ export function useAuth() {
     }
   }
 
-  /**
-   * Sign out current employee
-   */
   async function signOut() {
+    signingOut = true
+    loggedOut = true
     try {
       await authService.signOut()
-      snackbar.success('Đã đăng xuất')
     } catch {
-      // Still clear local state even if server call fails
-    } finally {
-      resetState()
-      initialized = false // Allow re-init on next login
-      router.push('/login')
     }
+    clearSupabaseTokens()
+    snackbar.success('Đã đăng xuất')
+    resetState()
+    initialized = false
+    await router.push('/login')
+    signingOut = false
   }
 
-  /**
-   * Change password
-   */
   async function changePassword(data: ChangePasswordData): Promise<boolean> {
     const { error: changeError } = await authService.changePassword(data)
 
@@ -179,7 +204,6 @@ export function useAuth() {
       return false
     }
 
-    // Update state to reflect password changed
     if (state.value.employee) {
       state.value.employee.mustChangePassword = false
     }
@@ -189,58 +213,33 @@ export function useAuth() {
     return true
   }
 
-  /**
-   * Check if current employee has ROOT role
-   * ROOT bypasses ALL permission checks
-   */
   function checkIsRoot(): boolean {
     return state.value.isRoot
   }
 
-  /**
-   * Check if current employee has a specific permission
-   * ROOT always returns true
-   */
   function hasPermission(permission: string): boolean {
     if (state.value.isRoot) return true
     return state.value.permissions.includes(permission)
   }
 
-  /**
-   * Check if current employee has any of the given permissions
-   * ROOT always returns true
-   */
   function hasAnyPermission(perms: string[]): boolean {
     if (state.value.isRoot) return true
     return perms.some((p) => state.value.permissions.includes(p))
   }
 
-  /**
-   * Check if current employee has all of the given permissions
-   * ROOT always returns true
-   */
   function hasAllPermissions(perms: string[]): boolean {
     if (state.value.isRoot) return true
     return perms.every((p) => state.value.permissions.includes(p))
   }
 
-  /**
-   * Check if employee has a specific role
-   */
   function hasRole(roleCode: string): boolean {
     return state.value.employee?.roles?.some((r) => r.code === roleCode) ?? false
   }
 
-  /**
-   * Check if employee is admin (ROOT or admin role)
-   */
   function isAdmin(): boolean {
     return state.value.isRoot || hasRole('admin')
   }
 
-  /**
-   * Refresh employee permissions (after role/permission change)
-   */
   async function refreshPermissions() {
     if (!state.value.isAuthenticated) return
 
@@ -250,7 +249,6 @@ export function useAuth() {
   }
 
   return {
-    // State
     employee: readonly(employee),
     isAuthenticated: readonly(isAuthenticated),
     isLoading: readonly(isLoading),
@@ -259,14 +257,12 @@ export function useAuth() {
     isRoot: readonly(isRoot),
     tempPassword: readonly(tempPassword),
 
-    // Actions
     init,
     signIn,
     signOut,
     changePassword,
     refreshPermissions,
 
-    // Permission helpers
     hasPermission,
     hasAnyPermission,
     hasAllPermissions,

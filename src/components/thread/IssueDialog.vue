@@ -2,7 +2,6 @@
 import { ref, computed } from 'vue'
 import type { Allocation, IssueConfirmation } from '@/types/thread'
 import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
-import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
 import WeightMeterDisplay from './WeightMeterDisplay.vue'
 import { QrScannerDialog } from '@/components/qr'

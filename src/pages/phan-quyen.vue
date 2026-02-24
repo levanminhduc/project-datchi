@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { PageHeader } from '@/components/ui/layout'
 import { AppCard } from '@/components/ui/cards'
 import { EmptyState } from '@/components/ui/feedback'
@@ -10,7 +10,7 @@ import {
   type EmployeeSearchResult,
   type EmployeeRolesPermissions,
 } from '@/composables/usePermissionManagement'
-import type { Role, Permission, CreateRoleData, UpdateRoleData, CreatePermissionData, UpdatePermissionData } from '@/types/auth'
+import type { Role, Permission, CreateRoleData, CreatePermissionData, UpdatePermissionData } from '@/types/auth'
 
 // Route protection - ROOT only
 definePage({
@@ -292,7 +292,7 @@ async function savePermission() {
       await permMgmt.createPermission(permForm.value)
       snackbar.success('Tạo quyền thành công')
     } else if (selectedPermission.value) {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+       
       const { code: _code, ...updateData } = permForm.value
       await permMgmt.updatePermission(selectedPermission.value.id, updateData as UpdatePermissionData)
       snackbar.success('Cập nhật quyền thành công')
@@ -318,7 +318,6 @@ async function confirmDeletePermission(perm: Permission) {
 // ============================================
 // Tab 3: Employee Permissions
 // ============================================
-const employeeSearch = ref('')
 const employeeOptions = ref<EmployeeSearchResult[]>([])
 const selectedEmployee = ref<EmployeeSearchResult | null>(null)
 const employeeData = ref<EmployeeRolesPermissions | null>(null)
@@ -444,8 +443,7 @@ async function saveEmployeePermissions() {
 onMounted(async () => {
   try {
     await permMgmt.initialize()
-  } catch (err) {
-    snackbar.error('Không thể tải dữ liệu phân quyền')
+  } catch {
   }
 })
 </script>

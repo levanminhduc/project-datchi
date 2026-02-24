@@ -13,7 +13,7 @@ interface Props {
   keepAliveMax?: number
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   disable: false,
   keepAlive: false
 })

@@ -8,13 +8,6 @@ const reports = new Hono()
 reports.use('*', requirePermission('reports.view'))
 
 // Types
-interface ReportFilters {
-  from_date?: string  // YYYY-MM-DD
-  to_date?: string    // YYYY-MM-DD
-  thread_type_id?: number
-  status?: string
-}
-
 interface AllocationReportRow {
   id: number
   order_id: string
@@ -103,7 +96,7 @@ reports.get('/allocations', async (c) => {
         .order('created_at', { ascending: true })
 
       // Process audit log to find status transitions
-      (auditData || []).forEach(entry => {
+      ;(auditData || []).forEach(entry => {
         const recordId = entry.record_id
         const newStatus = entry.new_values?.status
         

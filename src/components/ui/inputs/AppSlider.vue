@@ -41,7 +41,7 @@
 <script setup lang="ts">
 import type { AppSliderProps } from '@/types/ui'
 
-const props = withDefaults(defineProps<AppSliderProps & { showLabel?: boolean }>(), {
+withDefaults(defineProps<AppSliderProps & { showLabel?: boolean }>(), {
   min: 0,
   max: 100,
   step: 1,

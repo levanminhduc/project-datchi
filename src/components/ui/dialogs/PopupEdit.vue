@@ -25,7 +25,7 @@ interface Props {
   rules?: ((val: any) => boolean | string)[]
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   title: '',
   buttons: true,
   labelSet: 'Lưu',

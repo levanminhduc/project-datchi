@@ -1,11 +1,13 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
-import { except } from 'hono/combine'
 import { serve } from '@hono/node-server'
+import { existsSync } from 'fs'
 import dotenv from 'dotenv'
 
-dotenv.config()
+if (existsSync('.env')) {
+  dotenv.config()
+}
 
 import authRouter from './routes/auth'
 import employeesRouter from './routes/employees'
@@ -44,7 +46,7 @@ app.use('*', secureHeaders())
 app.use(
   '/api/*',
   cors({
-    origin: [FRONTEND_URL, 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:5174', 'http://localhost:5174'],
+    origin: [FRONTEND_URL, 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:5174', 'http://localhost:5174', 'https://datchi.ithoathodb.xyz'],
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
@@ -53,10 +55,7 @@ app.use(
 
 app.use(
   '/api/*',
-  except(
-    ['/api/auth/login', '/api/auth/refresh'],
-    authMiddleware
-  )
+  authMiddleware
 )
 
 app.get('/health', (c) => {

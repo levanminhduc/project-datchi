@@ -315,7 +315,7 @@ employees.get('/:id', requirePermission('employees.view'), async (c) => {
 
 employees.post('/', requirePermission('employees.create'), async (c) => {
   try {
-    const body = await c.req.json<CreateEmployeeDTO>()
+    const body = await c.req.json<CreateEmployeeDTO & { password?: string }>()
 
     if (!body.full_name || !body.employee_id || !body.department || !body.chuc_vu) {
       return c.json<ApiResponse<null>>(
@@ -337,20 +337,41 @@ employees.post('/', requirePermission('employees.create'), async (c) => {
       )
     }
 
+    const employeeCode = body.employee_id.trim()
+    const email = `${employeeCode.toLowerCase()}@internal.datchi.local`
+    const defaultPassword = body.password || `${employeeCode}@123`
+
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+      email,
+      password: defaultPassword,
+      email_confirm: true,
+    })
+
+    if (authError) {
+      console.error('Supabase Auth error:', authError)
+      return c.json<ApiResponse<null>>(
+        { data: null, error: 'Lỗi khi tạo tài khoản đăng nhập' },
+        500
+      )
+    }
+
     const { data, error } = await supabase
       .from('employees')
       .insert({
         full_name: body.full_name.trim(),
-        employee_id: body.employee_id.trim(),
+        employee_id: employeeCode,
         department: body.department.trim(),
         chuc_vu: body.chuc_vu.trim(),
         is_active: true,
+        auth_user_id: authUser.user.id,
+        must_change_password: true,
       })
       .select()
       .single()
 
     if (error) {
       console.error('Supabase error:', error)
+      await supabase.auth.admin.deleteUser(authUser.user.id)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Lỗi khi thêm nhân viên' },
         500
@@ -457,7 +478,6 @@ employees.delete('/:id', requirePermission('employees.delete'), async (c) => {
   try {
     const id = c.req.param('id')
 
-    // Validate numeric ID format (auto-increment integer)
     const numericId = Number(id)
     if (!Number.isInteger(numericId) || numericId <= 0) {
       return c.json<ApiResponse<null>>(
@@ -468,7 +488,7 @@ employees.delete('/:id', requirePermission('employees.delete'), async (c) => {
 
     const { data: existing, error: findError } = await supabase
       .from('employees')
-      .select('id')
+      .select('id, auth_user_id')
       .eq('id', id)
       .single()
 
@@ -490,6 +510,12 @@ employees.delete('/:id', requirePermission('employees.delete'), async (c) => {
         { data: null, error: 'Xóa thất bại. Vui lòng thử lại' },
         500
       )
+    }
+
+    if (existing.auth_user_id) {
+      await supabase.auth.admin.updateUserById(existing.auth_user_id, {
+        ban_duration: '876000h',
+      })
     }
 
     return c.json<ApiResponse<{ success: boolean }>>({

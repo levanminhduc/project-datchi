@@ -72,7 +72,10 @@ async function onSubmit() {
     no-backdrop-dismiss
   >
     <q-card style="max-width: 500px; width: 100%">
-      <q-form ref="formRef" @submit.prevent="onSubmit">
+      <q-form
+        ref="formRef"
+        @submit.prevent="onSubmit"
+      >
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">
             Đổi mật khẩu
@@ -80,25 +83,24 @@ async function onSubmit() {
         </q-card-section>
 
         <q-card-section class="q-pt-md q-gutter-md">
-          <q-banner class="bg-warning text-white" rounded>
+          <q-banner
+            class="bg-warning text-white"
+            rounded
+          >
             <template #avatar>
               <q-icon name="warning" />
             </template>
             Bạn cần đổi mật khẩu trước khi tiếp tục sử dụng hệ thống.
           </q-banner>
 
-          <q-input
+          <AppInput
             v-model="form.newPassword"
             label="Mật khẩu mới"
             :type="showNewPassword ? 'text' : 'password'"
-            outlined
-            lazy-rules
+            prepend-icon="lock_reset"
             :rules="[rules.required, rules.minLength]"
             autocomplete="new-password"
           >
-            <template #prepend>
-              <q-icon name="lock_reset" />
-            </template>
             <template #append>
               <q-icon
                 :name="showNewPassword ? 'visibility_off' : 'visibility'"
@@ -106,20 +108,16 @@ async function onSubmit() {
                 @click="showNewPassword = !showNewPassword"
               />
             </template>
-          </q-input>
+          </AppInput>
 
-          <q-input
+          <AppInput
             v-model="form.confirmPassword"
             label="Xác nhận mật khẩu mới"
             :type="showConfirmPassword ? 'text' : 'password'"
-            outlined
-            lazy-rules
+            prepend-icon="lock_reset"
             :rules="[rules.required, rules.confirmMatch]"
             autocomplete="new-password"
           >
-            <template #prepend>
-              <q-icon name="lock_reset" />
-            </template>
             <template #append>
               <q-icon
                 :name="showConfirmPassword ? 'visibility_off' : 'visibility'"
@@ -127,12 +125,14 @@ async function onSubmit() {
                 @click="showConfirmPassword = !showConfirmPassword"
               />
             </template>
-          </q-input>
+          </AppInput>
         </q-card-section>
 
-        <q-card-actions align="right" class="text-primary q-pa-md">
-          <q-btn
-            unelevated
+        <q-card-actions
+          align="right"
+          class="text-primary q-pa-md"
+        >
+          <AppButton
             type="submit"
             label="Đổi mật khẩu"
             color="primary"

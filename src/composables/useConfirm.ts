@@ -37,17 +37,6 @@ export function useConfirm() {
     return colorMap[type] || 'primary'
   }
 
-  // Map dialog type to icon (using Material Icons format)
-  const getIcon = (type: DialogType): string => {
-    const iconMap: Record<DialogType, string> = {
-      info: 'info',
-      warning: 'warning',
-      error: 'error',
-      success: 'check_circle'
-    }
-    return iconMap[type]
-  }
-
   /**
    * Show confirmation dialog
    * @param config - String message or full options object
@@ -64,7 +53,6 @@ export function useConfirm() {
       confirmText = 'Đồng ý',
       cancelText = 'Hủy',
       type = 'info',
-      icon,
       html = false,
       persistent = false,
       color,

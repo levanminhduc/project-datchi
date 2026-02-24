@@ -1,11 +1,11 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import { requirePermission } from '../middleware/auth'
-import type { WarehouseRow, WarehouseTreeNode, WarehouseType, ThreadApiResponse } from '../types/thread'
+import type { WarehouseRow, WarehouseTreeNode, ThreadApiResponse } from '../types/thread'
 
-interface Warehouse extends WarehouseRow {}
+type Warehouse = WarehouseRow
 
-interface WarehouseTree extends WarehouseTreeNode {}
+type WarehouseTree = WarehouseTreeNode
 
 const warehouses = new Hono()
 

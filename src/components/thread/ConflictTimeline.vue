@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AllocationConflict, Allocation } from '@/types/thread'
+import type { AllocationConflict } from '@/types/thread'
 import { AllocationStatus } from '@/types/thread/enums'
 import AllocationStatusBadge from './AllocationStatusBadge.vue'
 

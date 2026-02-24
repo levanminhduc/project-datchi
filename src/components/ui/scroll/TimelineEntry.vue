@@ -17,7 +17,7 @@ interface Props {
   tag?: string
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   color: 'primary',
   heading: false,
   tag: 'div'

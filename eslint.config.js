@@ -55,6 +55,9 @@ export default [
         EventTarget: 'readonly',
         AbortController: 'readonly',
         AbortSignal: 'readonly',
+        Element: 'readonly',
+        // Vue Router auto-import macros
+        definePage: 'readonly',
         // Node.js globals (for server files)
         process: 'readonly',
         Buffer: 'readonly',
@@ -69,6 +72,12 @@ export default [
     rules: {
       'vue/multi-word-component-names': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': ['error', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+      }],
+      'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
 ]

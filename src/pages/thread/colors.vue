@@ -715,7 +715,7 @@ async function handleUpdateLink(link: ColorSupplierLink) {
       price_per_kg: link.price_per_kg,
       min_order_qty: link.min_order_qty,
     })
-  } catch (err) {
+  } catch {
     snackbar.error('Lỗi khi cập nhật thông tin')
     await loadLinkedSuppliers() // Reload to revert
   }
@@ -730,7 +730,7 @@ async function toggleLinkActive(link: ColorSupplierLink, isActive: boolean) {
     })
     link.is_active = isActive
     snackbar.success(isActive ? 'Đã kích hoạt' : 'Đã ngừng kích hoạt')
-  } catch (err) {
+  } catch {
     snackbar.error('Lỗi khi cập nhật trạng thái')
   }
 }
@@ -748,7 +748,7 @@ async function confirmUnlink(link: ColorSupplierLink) {
       await colorService.unlinkSupplier(suppliersDialog.color.id, link.id)
       snackbar.success('Đã gỡ liên kết nhà cung cấp')
       await loadLinkedSuppliers()
-    } catch (err) {
+    } catch {
       snackbar.error('Lỗi khi gỡ liên kết')
     }
   }

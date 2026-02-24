@@ -11,7 +11,6 @@ import type {
   BatchOperationResult,
   BatchTransactionRow,
   LotRow,
-  MAX_BATCH_SIZE
 } from '../types/batch'
 
 const batch = new Hono()
@@ -308,7 +307,7 @@ batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) =>
     // Update lot warehouse if entire lot was transferred
     if (body.lot_id) {
       // Check if this is a full lot transfer (all cones from lot in source warehouse)
-      const { data: remainingCones, count: remainingCount } = await supabase
+      const { count: remainingCount } = await supabase
         .from('thread_inventory')
         .select('id', { count: 'exact', head: true })
         .eq('lot_id', body.lot_id)

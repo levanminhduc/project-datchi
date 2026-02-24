@@ -162,7 +162,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useOfflineQueueStore } from '@/stores/thread/offlineQueue'
 import { storeToRefs } from 'pinia'
 

@@ -39,7 +39,6 @@ const {
   issues,
   total,
   filters,
-  createIssue,
   createIssueWithFirstLine,
   fetchIssue,
   loadFormData,

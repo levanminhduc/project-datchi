@@ -438,7 +438,7 @@ const handleIssueAllocation = async () => {
     } else {
       playBeep('error')
     }
-  } catch (err) {
+  } catch {
     playBeep('error')
   } finally {
     isSubmitting.value = false

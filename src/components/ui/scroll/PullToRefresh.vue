@@ -14,7 +14,7 @@ interface Props {
   scrollTarget?: Element | string
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   color: 'primary',
   icon: 'mdi-refresh',
   noMouse: false,

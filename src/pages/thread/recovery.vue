@@ -611,7 +611,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { reactive, computed, onMounted } from 'vue'
 import { type QTableColumn } from 'quasar'
 import { useRecovery, useSnackbar, useConfirm } from '@/composables'
 import { RecoveryStatus } from '@/types/thread/enums'

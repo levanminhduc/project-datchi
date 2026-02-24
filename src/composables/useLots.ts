@@ -62,7 +62,7 @@ export function useLots() {
     loading.value = true
     try {
       currentCones.value = await lotService.getCones(lotId)
-    } catch (err) {
+    } catch {
       snackbar.error('Lỗi khi tải danh sách cuộn')
     } finally {
       loading.value = false

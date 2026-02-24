@@ -34,10 +34,12 @@
     @blur="emit('blur', $event)"
   >
     <template
-      v-if="prependIcon"
+      v-if="prependIcon || $slots.prepend"
       #prepend
     >
-      <q-icon :name="prependIcon" />
+      <slot name="prepend">
+        <q-icon :name="prependIcon" />
+      </slot>
     </template>
 
     <template
@@ -56,13 +58,6 @@
           :name="appendIcon"
         />
       </slot>
-    </template>
-
-    <template
-      v-if="$slots.prepend"
-      #prepend
-    >
-      <slot name="prepend" />
     </template>
 
     <template
