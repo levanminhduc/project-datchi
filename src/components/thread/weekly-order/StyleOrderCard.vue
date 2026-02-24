@@ -23,6 +23,56 @@
         </AppButton>
       </div>
 
+      <!-- PO Quantity Info Bar -->
+      <div
+        v-if="poQuantity != null"
+        class="q-mb-sm"
+      >
+        <div class="row items-center q-gutter-x-md text-caption">
+          <span class="text-grey-8">
+            Đã đặt: <strong>{{ alreadyOrdered || 0 }}</strong> / {{ poQuantity }} SP
+          </span>
+          <span class="text-grey-8">
+            Tuần này: <strong>{{ currentTotal }}</strong> SP
+          </span>
+          <span :class="isOverLimit ? 'text-negative text-weight-bold' : isWarning ? 'text-warning text-weight-bold' : 'text-positive'">
+            Còn lại: <strong>{{ remaining }}</strong> SP
+          </span>
+        </div>
+
+        <q-banner
+          v-if="isOverLimit"
+          dense
+          rounded
+          class="bg-red-1 text-negative q-mt-xs"
+        >
+          <template #avatar>
+            <q-icon
+              name="error"
+              color="negative"
+              size="sm"
+            />
+          </template>
+          Vượt quá {{ Math.abs(remaining) }} SP so với SL PO cho phép
+        </q-banner>
+
+        <q-banner
+          v-else-if="isWarning"
+          dense
+          rounded
+          class="bg-orange-1 text-warning q-mt-xs"
+        >
+          <template #avatar>
+            <q-icon
+              name="warning"
+              color="warning"
+              size="sm"
+            />
+          </template>
+          Sắp đạt giới hạn SL PO (còn {{ remaining }} SP)
+        </q-banner>
+      </div>
+
       <!-- Color entries -->
       <div
         v-if="entry.colors.length > 0"
@@ -56,6 +106,8 @@
               label="Số lượng (SP)"
               :min="0"
               style="width: 140px"
+              :error="isOverLimit"
+              :error-message="isOverLimit ? `Vượt ${Math.abs(remaining)} SP` : undefined"
               @update:model-value="$emit('update-quantity', entry.style_id, color.color_id, Number($event), entry.po_id)"
             />
           </div>
@@ -112,10 +164,15 @@
 import { ref, computed } from 'vue'
 import type { StyleOrderEntry } from '@/types/thread'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   entry: StyleOrderEntry
   colorOptions: Array<{ id: number; name: string; hex_code: string }>
-}>()
+  poQuantity?: number | null
+  alreadyOrdered?: number
+}>(), {
+  poQuantity: null,
+  alreadyOrdered: 0,
+})
 
 const emit = defineEmits<{
   remove: [styleId: number, poId: number | null]
@@ -125,6 +182,26 @@ const emit = defineEmits<{
 }>()
 
 const selectedColorId = ref<number | null>(null)
+
+const currentTotal = computed(() =>
+  props.entry.colors.reduce((sum, c) => sum + c.quantity, 0)
+)
+
+const maxAllowed = computed(() =>
+  props.poQuantity != null ? props.poQuantity - (props.alreadyOrdered || 0) : null
+)
+
+const remaining = computed(() =>
+  maxAllowed.value != null ? maxAllowed.value - currentTotal.value : 0
+)
+
+const isOverLimit = computed(() =>
+  maxAllowed.value != null && remaining.value < 0
+)
+
+const isWarning = computed(() =>
+  maxAllowed.value != null && remaining.value >= 0 && maxAllowed.value > 0 && remaining.value <= maxAllowed.value * 0.1
+)
 
 const availableColors = computed(() => {
   const usedIds = new Set(props.entry.colors.map(c => c.color_id))

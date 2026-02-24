@@ -45,7 +45,14 @@ export interface ColorCalculationResult {
   quantity: number
   thread_type_id: number
   thread_type_name: string
+  thread_color: string | null
+  thread_color_code: string | null
   total_meters: number
+  process_name: string
+  supplier_name: string
+  tex_number: string
+  meters_per_unit: number
+  meters_per_cone: number | null
 }
 
 export interface POCalculationResult {

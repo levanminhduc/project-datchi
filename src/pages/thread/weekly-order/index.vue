@@ -32,7 +32,7 @@
           icon="save"
           label="Lưu"
           :loading="weekLoading"
-          :disable="!weekName || !canSave"
+          :disable="!weekName || !canSave || hasOverLimitEntries"
           @click="handleSave"
         />
       </template>
@@ -98,6 +98,7 @@
           :key="po.id"
           :po="po"
           :entries="orderEntries"
+          :ordered-quantities="orderedQuantities"
           @remove-po="handleRemovePO"
           @add-style="handleAddStyleFromPO"
           @remove-style="(styleId, poId) => removeStyle(styleId, poId)"
@@ -116,6 +117,23 @@
       </q-card-section>
     </AppCard>
 
+    <!-- Over Limit Warning -->
+    <q-banner
+      v-if="hasOverLimitEntries"
+      dense
+      rounded
+      class="bg-red-1 text-negative q-mb-md"
+    >
+      <template #avatar>
+        <q-icon
+          name="error"
+          color="negative"
+        />
+      </template>
+      <span class="text-weight-medium">Số lượng màu vượt quá SL cho phép trong PO.</span>
+      Vui lòng điều chỉnh trước khi tính toán hoặc lưu.
+    </q-banner>
+
     <!-- Calculate Button -->
     <div class="row items-center q-mb-md q-gutter-sm">
       <AppButton
@@ -123,7 +141,7 @@
         icon="calculate"
         label="Tính toán"
         :loading="isCalculating"
-        :disable="!canCalculate"
+        :disable="!canCalculate || hasOverLimitEntries"
         @click="handleCalculate"
       />
       <span
@@ -282,6 +300,8 @@ const {
   canCalculate,
   hasResults,
   isResultsStale,
+  hasOverLimitEntries,
+  orderedQuantities,
   addStyle,
   removeStyle,
   removePO,
@@ -296,6 +316,7 @@ const {
   updateDeliveryDate,
   mergeDeliveryDateOverrides,
   reorderResults,
+  fetchOrderedQuantities,
 } = useWeeklyOrderCalculation()
 
 const {
@@ -339,6 +360,15 @@ const handleAddPO = async () => {
   try {
     const poWithItems = await purchaseOrderService.getWithItems(selectedPOId.value)
     loadedPOs.value.push(poWithItems)
+
+    if (poWithItems.items && poWithItems.items.length > 0) {
+      const pairs = poWithItems.items.map((item) => ({
+        po_id: poWithItems.id,
+        style_id: item.style_id,
+      }))
+      await fetchOrderedQuantities(pairs, selectedWeek.value?.id).catch(() => {})
+    }
+
     selectedPOId.value = null
   } catch (err) {
     snackbar.error('Không thể tải dữ liệu PO')
@@ -489,6 +519,15 @@ const handleLoadWeek = async (weekId: number) => {
       } catch {
         // PO may have been deleted, entries still show from setFromWeekItems
       }
+    }
+
+    // Fetch ordered quantities for all PO/style pairs (exclude current week)
+    const pairs = week.items
+      .filter((item) => item.po_id)
+      .map((item) => ({ po_id: item.po_id!, style_id: item.style_id }))
+    const uniquePairs = [...new Map(pairs.map((p) => [`${p.po_id}_${p.style_id}`, p])).values()]
+    if (uniquePairs.length > 0) {
+      await fetchOrderedQuantities(uniquePairs, weekId).catch(() => {})
     }
   } else {
     clearAll()

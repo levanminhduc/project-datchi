@@ -13,6 +13,8 @@ import {
   UpdateDeliverySchema,
   ReceiveDeliverySchema,
   UpdateQuotaConesSchema,
+  OrderedQuantitiesQuerySchema,
+  OrderHistoryQuerySchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
 
@@ -26,6 +28,80 @@ const VALID_STATUS_TRANSITIONS: Record<WeeklyOrderStatus, WeeklyOrderStatus[]> =
   DRAFT: ['CONFIRMED'],
   CONFIRMED: ['CANCELLED'],
   CANCELLED: [],
+}
+
+async function validatePOQuantityLimits(
+  items: Array<{ po_id?: number | null; style_id: number; quantity: number }>,
+  excludeWeekId?: number,
+): Promise<{ valid: boolean; errors: string[] }> {
+  const groups = new Map<string, { po_id: number; style_id: number; total: number }>()
+  for (const item of items) {
+    if (!item.po_id) continue
+    const key = `${item.po_id}-${item.style_id}`
+    const existing = groups.get(key)
+    if (existing) {
+      existing.total += item.quantity
+    } else {
+      groups.set(key, { po_id: item.po_id, style_id: item.style_id, total: item.quantity })
+    }
+  }
+
+  if (groups.size === 0) return { valid: true, errors: [] }
+
+  const errors: string[] = []
+
+  for (const [, group] of groups) {
+    const { data: poItem } = await supabase
+      .from('po_items')
+      .select('quantity')
+      .eq('po_id', group.po_id)
+      .eq('style_id', group.style_id)
+      .single()
+
+    if (!poItem) continue
+
+    let existingQuery = supabase
+      .from('thread_order_items')
+      .select('quantity, week:thread_order_weeks!inner(id, status)')
+      .eq('po_id', group.po_id)
+      .eq('style_id', group.style_id)
+      .neq('week.status', 'CANCELLED')
+
+    if (excludeWeekId) {
+      existingQuery = existingQuery.neq('week.id', excludeWeekId)
+    }
+
+    const { data: existingItems } = await existingQuery
+
+    const existingTotal = (existingItems || []).reduce(
+      (sum: number, row: any) => sum + (row.quantity || 0),
+      0,
+    )
+
+    if (existingTotal + group.total > poItem.quantity) {
+      const { data: po } = await supabase
+        .from('purchase_orders')
+        .select('po_number')
+        .eq('id', group.po_id)
+        .single()
+
+      const { data: style } = await supabase
+        .from('styles')
+        .select('style_code')
+        .eq('id', group.style_id)
+        .single()
+
+      const poNumber = po?.po_number || `PO#${group.po_id}`
+      const styleCode = style?.style_code || `Style#${group.style_id}`
+      const remaining = poItem.quantity - existingTotal
+
+      errors.push(
+        `${poNumber} - ${styleCode}: vượt quá số lượng PO (PO: ${poItem.quantity}, đã đặt: ${existingTotal}, đang đặt: ${group.total}, còn lại: ${remaining})`,
+      )
+    }
+  }
+
+  return { valid: errors.length === 0, errors }
 }
 
 /**
@@ -474,7 +550,6 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
       qty_full_cones: quantity,
       qty_partial_cones: 0,
       received_date: now.toISOString().split('T')[0],
-      notes: `Nhập từ delivery #${deliveryId} bởi ${received_by}`,
     }
 
     // 7. Insert thread_stock record
@@ -546,6 +621,162 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
     })
   } catch (err) {
     console.error('Error receiving delivery:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+weeklyOrder.get('/ordered-quantities', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const query = c.req.query()
+
+    let validated
+    try {
+      validated = OrderedQuantitiesQuerySchema.parse(query)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    let pairs: Array<{ po_id: number; style_id: number }>
+    try {
+      pairs = JSON.parse(validated.po_style_pairs)
+      if (!Array.isArray(pairs) || pairs.length === 0) {
+        return c.json({ data: null, error: 'po_style_pairs phải là mảng không rỗng' }, 400)
+      }
+    } catch {
+      return c.json({ data: null, error: 'po_style_pairs không phải JSON hợp lệ' }, 400)
+    }
+
+    const excludeWeekId = validated.exclude_week_id ? parseInt(validated.exclude_week_id) : undefined
+
+    const results = []
+
+    for (const pair of pairs) {
+      if (!pair.po_id || !pair.style_id) continue
+
+      let itemsQuery = supabase
+        .from('thread_order_items')
+        .select('quantity, week:thread_order_weeks!inner(id, status)')
+        .eq('po_id', pair.po_id)
+        .eq('style_id', pair.style_id)
+        .neq('week.status', 'CANCELLED')
+
+      if (excludeWeekId) {
+        itemsQuery = itemsQuery.neq('week.id', excludeWeekId)
+      }
+
+      const { data: items } = await itemsQuery
+
+      const orderedQuantity = (items || []).reduce(
+        (sum: number, row: any) => sum + (row.quantity || 0),
+        0,
+      )
+
+      const { data: poItem } = await supabase
+        .from('po_items')
+        .select('quantity')
+        .eq('po_id', pair.po_id)
+        .eq('style_id', pair.style_id)
+        .single()
+
+      const poQuantity = poItem?.quantity || 0
+      const remaining = Math.max(0, poQuantity - orderedQuantity)
+
+      results.push({
+        po_id: pair.po_id,
+        style_id: pair.style_id,
+        po_quantity: poQuantity,
+        ordered_quantity: orderedQuantity,
+        remaining,
+      })
+    }
+
+    return c.json({ data: results, error: null })
+  } catch (err) {
+    console.error('Error fetching ordered quantities:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+weeklyOrder.get('/order-history', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const query = c.req.query()
+
+    let validated
+    try {
+      validated = OrderHistoryQuerySchema.parse(query)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    const page = validated.page ? Math.max(1, parseInt(validated.page)) : 1
+    const limit = validated.limit ? Math.min(Math.max(1, parseInt(validated.limit)), 100) : 20
+    const from = (page - 1) * limit
+
+    let countQuery = supabase
+      .from('thread_order_items')
+      .select('id, week:thread_order_weeks!inner(status)', { count: 'exact', head: true })
+      .neq('week.status', 'CANCELLED')
+
+    let dataQuery = supabase
+      .from('thread_order_items')
+      .select(`
+        *,
+        week:thread_order_weeks!inner(id, week_name, created_by, status, created_at),
+        style:styles(id, style_code, style_name),
+        color:colors(id, name, hex_code),
+        po:purchase_orders(id, po_number)
+      `)
+      .neq('week.status', 'CANCELLED')
+      .order('created_at', { ascending: false })
+      .range(from, from + limit - 1)
+
+    if (validated.po_id) {
+      const poId = parseInt(validated.po_id)
+      countQuery = countQuery.eq('po_id', poId)
+      dataQuery = dataQuery.eq('po_id', poId)
+    }
+
+    if (validated.style_id) {
+      const styleId = parseInt(validated.style_id)
+      countQuery = countQuery.eq('style_id', styleId)
+      dataQuery = dataQuery.eq('style_id', styleId)
+    }
+
+    if (validated.from_date) {
+      countQuery = countQuery.gte('created_at', validated.from_date)
+      dataQuery = dataQuery.gte('created_at', validated.from_date)
+    }
+
+    if (validated.to_date) {
+      const toDateEnd = validated.to_date.includes('T') ? validated.to_date : `${validated.to_date}T23:59:59.999Z`
+      countQuery = countQuery.lte('created_at', toDateEnd)
+      dataQuery = dataQuery.lte('created_at', toDateEnd)
+    }
+
+    const [{ count }, { data, error }] = await Promise.all([countQuery, dataQuery])
+
+    if (error) throw error
+
+    const total = count ?? 0
+
+    return c.json({
+      data: data || [],
+      error: null,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    })
+  } catch (err) {
+    console.error('Error fetching order history:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })
@@ -657,6 +888,14 @@ weeklyOrder.post('/', requirePermission('thread.allocations.manage'), async (c) 
         return c.json({ data: null, error: formatZodError(err) }, 400)
       }
       throw err
+    }
+
+    const poValidation = await validatePOQuantityLimits(validated.items)
+    if (!poValidation.valid) {
+      return c.json({
+        data: null,
+        error: `Số lượng vượt quá PO:\n${poValidation.errors.join('\n')}`,
+      }, 400)
     }
 
     const auth = c.get('auth')
@@ -773,6 +1012,16 @@ weeklyOrder.put('/:id', requirePermission('thread.allocations.manage'), async (c
         return c.json({ data: null, error: formatZodError(err) }, 400)
       }
       throw err
+    }
+
+    if (validated.items && validated.items.length > 0) {
+      const poValidation = await validatePOQuantityLimits(validated.items, id)
+      if (!poValidation.valid) {
+        return c.json({
+          data: null,
+          error: `Số lượng vượt quá PO:\n${poValidation.errors.join('\n')}`,
+        }, 400)
+      }
     }
 
     // Update the week record

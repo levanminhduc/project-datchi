@@ -54,6 +54,8 @@ interface ColorThreadTypeJoin {
   id: number
   name: string
   tex_number: string
+  meters_per_cone: number | null
+  color_data: { name: string; hex_code: string | null } | null
 }
 
 /** Row shape from style_color_thread_specs with joined colors and thread_types */
@@ -117,7 +119,14 @@ interface CalculationResult {
       quantity: number
       thread_type_id: number
       thread_type_name: string
+      thread_color: string | null
+      thread_color_code: string | null
       total_meters: number
+      process_name: string
+      supplier_name: string
+      tex_number: string
+      meters_per_unit: number
+      meters_per_cone: number | null
     }[]
     // Inventory preview fields
     inventory_available?: number
@@ -143,7 +152,7 @@ const COLOR_SPEC_SELECT = `
   color_id,
   thread_type_id,
   colors:color_id (id, name),
-  thread_types:thread_type_id (id, name, tex_number)
+  thread_types:thread_type_id (id, name, tex_number, meters_per_cone, color_data:colors!color_id(name, hex_code))
 ` as const
 
 /**
@@ -289,7 +298,14 @@ function buildCalculation(
         quantity: cb.quantity,
         thread_type_id: colorSpec?.thread_type_id || spec.thread_type_id,
         thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
+        thread_color: colorSpec?.thread_types?.color_data?.name || spec.thread_types?.color_data?.name || null,
+        thread_color_code: colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
         total_meters: spec.meters_per_unit * cb.quantity,
+        process_name: spec.process_name,
+        supplier_name: spec.suppliers?.name || '',
+        tex_number: spec.thread_types?.tex_number || '',
+        meters_per_unit: spec.meters_per_unit,
+        meters_per_cone: colorSpec?.thread_types?.meters_per_cone ?? spec.thread_types?.meters_per_cone ?? null,
       }
     })
   }
@@ -641,7 +657,14 @@ threadCalculation.post('/calculate-by-po', async (c) => {
             quantity: sku.quantity,
             thread_type_id: colorSpec?.thread_type_id || spec.thread_type_id,
             thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
+            thread_color: colorSpec?.thread_types?.color_data?.name || spec.thread_types?.color_data?.name || null,
+            thread_color_code: colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
             total_meters: spec.meters_per_unit * sku.quantity,
+            process_name: spec.process_name,
+            supplier_name: spec.suppliers?.name || '',
+            tex_number: spec.thread_types?.tex_number || '',
+            meters_per_unit: spec.meters_per_unit,
+            meters_per_cone: colorSpec?.thread_types?.meters_per_cone ?? spec.thread_types?.meters_per_cone ?? null,
           }
         })
 

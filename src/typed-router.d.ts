@@ -59,6 +59,7 @@ declare module 'vue-router/auto-routes' {
     '/thread/suppliers': RouteRecordInfo<'/thread/suppliers', '/thread/suppliers', Record<never, never>, Record<never, never>>,
     '/thread/weekly-order/': RouteRecordInfo<'/thread/weekly-order/', '/thread/weekly-order', Record<never, never>, Record<never, never>>,
     '/thread/weekly-order/deliveries': RouteRecordInfo<'/thread/weekly-order/deliveries', '/thread/weekly-order/deliveries', Record<never, never>, Record<never, never>>,
+    '/thread/weekly-order/history': RouteRecordInfo<'/thread/weekly-order/history', '/thread/weekly-order/history', Record<never, never>, Record<never, never>>,
   }
 
   /**
@@ -234,6 +235,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/thread/weekly-order/deliveries.vue': {
       routes: '/thread/weekly-order/deliveries'
+      views: never
+    }
+    'src/pages/thread/weekly-order/history.vue': {
+      routes: '/thread/weekly-order/history'
       views: never
     }
   }

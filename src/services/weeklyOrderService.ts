@@ -12,12 +12,21 @@ import type {
   UpdateWeeklyOrderDTO,
   WeeklyOrderResults,
   AggregatedRow,
+  OrderedQuantityInfo,
+  OrderHistoryItem,
+  OrderHistoryFilter,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
   data: T | null
   error: string | null
   message?: string
+}
+
+interface PaginatedResponse<T> {
+  data: T[] | null
+  error: string | null
+  pagination: { page: number; limit: number; total: number; totalPages: number }
 }
 
 const BASE = '/api/weekly-orders'
@@ -217,6 +226,50 @@ export const weeklyOrderService = {
 
     if (response.error) {
       throw new Error(response.error)
+    }
+  },
+
+  async getOrderedQuantities(
+    pairs: Array<{ po_id: number; style_id: number }>,
+    excludeWeekId?: number,
+  ): Promise<OrderedQuantityInfo[]> {
+    const searchParams = new URLSearchParams()
+    searchParams.append('po_style_pairs', JSON.stringify(pairs))
+    if (excludeWeekId) searchParams.append('exclude_week_id', String(excludeWeekId))
+
+    const response = await fetchApi<ApiResponse<OrderedQuantityInfo[]>>(
+      `${BASE}/ordered-quantities?${searchParams.toString()}`,
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
+  },
+
+  async getOrderHistory(
+    filters: OrderHistoryFilter,
+  ): Promise<{ data: OrderHistoryItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
+    const searchParams = new URLSearchParams()
+    if (filters.po_id) searchParams.append('po_id', String(filters.po_id))
+    if (filters.style_id) searchParams.append('style_id', String(filters.style_id))
+    if (filters.from_date) searchParams.append('from_date', filters.from_date)
+    if (filters.to_date) searchParams.append('to_date', filters.to_date)
+    searchParams.append('page', String(filters.page || 1))
+    searchParams.append('limit', String(filters.limit || 20))
+
+    const response = await fetchApi<PaginatedResponse<OrderHistoryItem>>(
+      `${BASE}/order-history?${searchParams.toString()}`,
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return {
+      data: response.data || [],
+      pagination: response.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 },
     }
   },
 }

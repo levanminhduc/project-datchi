@@ -93,6 +93,39 @@ export interface StyleOrderEntry {
     hex_code: string
     quantity: number
   }>
+  po_quantity?: number
+  already_ordered?: number
+}
+
+export interface OrderedQuantityInfo {
+  po_id: number
+  style_id: number
+  po_quantity: number
+  ordered_quantity: number
+  remaining_quantity: number
+}
+
+export interface OrderHistoryItem {
+  id: number
+  week_id: number
+  po_id: number | null
+  style_id: number
+  color_id: number
+  quantity: number
+  created_at: string
+  week?: { id: number; week_name: string; created_by: string | null; status: string; created_at: string }
+  style?: { id: number; style_code: string; style_name: string }
+  color?: { id: number; name: string; hex_code: string }
+  po?: { id: number; po_number: string }
+}
+
+export interface OrderHistoryFilter {
+  po_id?: number
+  style_id?: number
+  from_date?: string
+  to_date?: string
+  page?: number
+  limit?: number
 }
 
 export interface DeliveryRecord {

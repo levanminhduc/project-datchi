@@ -14,6 +14,7 @@ import type {
   ThreadOrderItem,
   CalculationResult,
   CalculationInput,
+  OrderedQuantityInfo,
 } from '@/types/thread'
 
 /**
@@ -40,6 +41,9 @@ export function useWeeklyOrderCalculation() {
   // Delivery date overrides: spec_id → YYYY-MM-DD string
   const deliveryDateOverrides = reactive(new Map<number, string>())
 
+  // Ordered quantities from previous weeks: "po_id_style_id" → info
+  const orderedQuantities = ref<Map<string, OrderedQuantityInfo>>(new Map())
+
   // Computed
   const canCalculate = computed(() => {
     return orderEntries.value.some((entry) =>
@@ -55,6 +59,16 @@ export function useWeeklyOrderCalculation() {
       lastCalculatedAt.value !== null &&
       lastModifiedAt.value > lastCalculatedAt.value
     )
+  })
+
+  const hasOverLimitEntries = computed(() => {
+    for (const entry of orderEntries.value) {
+      if (!entry.po_id || entry.po_quantity == null) continue
+      const currentTotal = entry.colors.reduce((sum, c) => sum + c.quantity, 0)
+      const maxAllowed = entry.po_quantity - (entry.already_ordered || 0)
+      if (currentTotal > maxAllowed) return true
+    }
+    return false
   })
 
   /**
@@ -74,6 +88,8 @@ export function useWeeklyOrderCalculation() {
     )
     if (exists) return
 
+    const qtyInfo = poId ? orderedQuantities.value.get(`${poId}_${style.id}`) : undefined
+
     orderEntries.value.push({
       po_id: poId,
       po_number: style.po_number || '',
@@ -81,6 +97,8 @@ export function useWeeklyOrderCalculation() {
       style_code: style.style_code,
       style_name: style.style_name,
       colors: [],
+      po_quantity: qtyInfo?.po_quantity,
+      already_ordered: qtyInfo?.ordered_quantity,
     })
     lastModifiedAt.value = Date.now()
   }
@@ -189,8 +207,8 @@ export function useWeeklyOrderCalculation() {
                 total_meters: cb.total_meters,
                 total_cones: 0,
                 meters_per_cone: calc.meters_per_cone ?? null,
-                thread_color: calc.thread_color ?? null,
-                thread_color_code: calc.thread_color_code ?? null,
+                thread_color: cb.thread_color ?? calc.thread_color ?? null,
+                thread_color_code: cb.thread_color_code ?? calc.thread_color_code ?? null,
                 supplier_id: calc.supplier_id ?? null,
                 delivery_date: calc.delivery_date ?? null,
                 lead_time_days: calc.lead_time_days ?? null,
@@ -395,6 +413,7 @@ export function useWeeklyOrderCalculation() {
     lastCalculatedAt.value = null
     lastModifiedAt.value = null
     deliveryDateOverrides.clear()
+    orderedQuantities.value.clear()
   }
 
   /**
@@ -486,6 +505,25 @@ export function useWeeklyOrderCalculation() {
     deliveryDateOverrides.clear()
   }
 
+  const fetchOrderedQuantities = async (
+    pairs: Array<{ po_id: number; style_id: number }>,
+    excludeWeekId?: number,
+  ) => {
+    if (pairs.length === 0) return
+    const result = await weeklyOrderService.getOrderedQuantities(pairs, excludeWeekId)
+    for (const info of result) {
+      orderedQuantities.value.set(`${info.po_id}_${info.style_id}`, info)
+    }
+    for (const entry of orderEntries.value) {
+      if (!entry.po_id) continue
+      const qtyInfo = orderedQuantities.value.get(`${entry.po_id}_${entry.style_id}`)
+      if (qtyInfo) {
+        entry.po_quantity = qtyInfo.po_quantity
+        entry.already_ordered = qtyInfo.ordered_quantity
+      }
+    }
+  }
+
   /**
    * Update perStyleResults with reordered results from drag-and-drop
    * Then recalculate to get updated inventory preview
@@ -511,11 +549,13 @@ export function useWeeklyOrderCalculation() {
     lastCalculatedAt,
     lastModifiedAt,
     deliveryDateOverrides,
+    orderedQuantities,
 
     // Computed
     canCalculate,
     hasResults,
     isResultsStale,
+    hasOverLimitEntries,
 
     // Actions
     addStyle,
@@ -531,6 +571,7 @@ export function useWeeklyOrderCalculation() {
     updateDeliveryDate,
     mergeDeliveryDateOverrides,
     reorderResults,
+    fetchOrderedQuantities,
     clearAll,
     setFromWeekItems,
   }

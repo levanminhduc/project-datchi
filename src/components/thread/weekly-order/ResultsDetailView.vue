@@ -62,7 +62,57 @@
               />
             </div>
 
+            <template v-if="colorGroupsMap.get(result.style_id)">
+              <div
+                v-for="group in colorGroupsMap.get(result.style_id)!"
+                :key="group.color_id"
+                class="q-mb-sm"
+              >
+                <div class="row items-center q-gutter-sm q-mb-xs">
+                  <span
+                    :style="{
+                      display: 'inline-block',
+                      width: '14px',
+                      height: '14px',
+                      borderRadius: '50%',
+                      backgroundColor: getColorHex(result, group.color_id),
+                      border: '1px solid #ccc',
+                    }"
+                  />
+                  <span class="text-weight-medium text-body2">{{ group.color_name }}</span>
+                  <AppChip
+                    dense
+                    size="sm"
+                    :label="`${group.quantity} SP`"
+                  />
+                </div>
+                <q-table
+                  :rows="group.rows"
+                  :columns="colorColumns"
+                  row-key="process_name"
+                  flat
+                  bordered
+                  dense
+                  hide-bottom
+                  :rows-per-page-options="[0]"
+                >
+                  <template #body-cell-thread_color="props">
+                    <q-td :props="props">
+                      <AppBadge
+                        v-if="props.row.thread_color"
+                        :style="{ backgroundColor: props.row.thread_color_code || '#999' }"
+                        :class="props.row.thread_color_code && isLightColor(props.row.thread_color_code) ? 'text-dark' : 'text-white'"
+                        :label="props.row.thread_color"
+                      />
+                      <span v-else class="text-grey-5">—</span>
+                    </q-td>
+                  </template>
+                </q-table>
+              </div>
+            </template>
+
             <q-table
+              v-else
               :rows="result.calculations"
               :columns="columns"
               row-key="spec_id"
@@ -200,9 +250,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import type { QTableColumn } from 'quasar'
-import type { CalculationResult, CalculationItem } from '@/types/thread'
+import type { CalculationResult, CalculationItem, ColorCalculationResult } from '@/types/thread'
 import type { StyleOrderEntry } from '@/types/thread/weeklyOrder'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import { useAuth } from '@/composables/useAuth'
@@ -333,6 +383,75 @@ function getColorNames(styleId: number): Array<{ color_id: number; color_name: s
   }
   return Array.from(colorMap.values())
 }
+
+interface ColorGroup {
+  color_id: number
+  color_name: string
+  quantity: number
+  rows: ColorCalculationResult[]
+}
+
+function getColorGroups(result: CalculationResult): ColorGroup[] | null {
+  const hasColorBreakdown = result.calculations.some(c => c.color_breakdown && c.color_breakdown.length > 0)
+  if (!hasColorBreakdown) return null
+
+  const map = new Map<number, ColorGroup>()
+  for (const calc of result.calculations) {
+    if (!calc.color_breakdown) continue
+    for (const cb of calc.color_breakdown) {
+      if (!map.has(cb.color_id)) {
+        map.set(cb.color_id, { color_id: cb.color_id, color_name: cb.color_name, quantity: cb.quantity, rows: [] })
+      }
+      map.get(cb.color_id)!.rows.push(cb)
+    }
+  }
+  return Array.from(map.values())
+}
+
+const colorGroupsMap = computed(() => {
+  const map = new Map<number, ColorGroup[]>()
+  for (const result of props.results) {
+    const groups = getColorGroups(result)
+    if (groups) map.set(result.style_id, groups)
+  }
+  return map
+})
+
+function getColorHex(result: CalculationResult, colorId: number): string {
+  if (!props.orderEntries) return '#ccc'
+  for (const entry of props.orderEntries) {
+    if (entry.style_id !== result.style_id) continue
+    const c = entry.colors.find(c => c.color_id === colorId)
+    if (c) return c.hex_code || '#ccc'
+  }
+  return '#ccc'
+}
+
+const colorColumns: QTableColumn[] = [
+  { name: 'process_name', label: 'Công đoạn', field: 'process_name', align: 'left' },
+  { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
+  { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'left' },
+  { name: 'meters_per_unit', label: 'Mét/SP', field: 'meters_per_unit', align: 'right', format: (val: number) => val.toFixed(2) },
+  {
+    name: 'total_meters',
+    label: 'Tổng mét',
+    field: 'total_meters',
+    align: 'right',
+    format: (val: number) => val.toLocaleString('vi-VN', { maximumFractionDigits: 2 }),
+  },
+  {
+    name: 'total_cones',
+    label: 'Tổng cuộn',
+    field: (row) => {
+      const r = row as ColorCalculationResult
+      if (!r.meters_per_cone || r.meters_per_cone <= 0) return null
+      return Math.ceil(r.total_meters / r.meters_per_cone)
+    },
+    align: 'right',
+    format: (val) => (val !== null && val !== undefined) ? Number(val).toLocaleString('vi-VN') : '—',
+  },
+  { name: 'thread_color', label: 'Màu chỉ', field: 'thread_color', align: 'center' },
+]
 
 const columns: QTableColumn[] = [
   { name: 'process_name', label: 'Công đoạn', field: 'process_name', align: 'left' },

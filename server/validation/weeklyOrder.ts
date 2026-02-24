@@ -69,3 +69,17 @@ export const UpdateQuotaConesSchema = z.object({
   thread_type_id: z.number({ required_error: 'thread_type_id là bắt buộc' }).int().positive('thread_type_id phải là số nguyên dương'),
   quota_cones: z.number({ required_error: 'quota_cones là bắt buộc' }).int().nonnegative('quota_cones phải >= 0'),
 })
+
+export const OrderedQuantitiesQuerySchema = z.object({
+  po_style_pairs: z.string().min(1, 'po_style_pairs là bắt buộc'),
+  exclude_week_id: z.string().optional(),
+})
+
+export const OrderHistoryQuerySchema = z.object({
+  po_id: z.string().optional(),
+  style_id: z.string().optional(),
+  from_date: z.string().optional(),
+  to_date: z.string().optional(),
+  page: z.string().optional(),
+  limit: z.string().optional(),
+})

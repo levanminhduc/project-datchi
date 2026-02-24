@@ -19,7 +19,8 @@ const navItems: NavItem[] = [
     to: '/ke-hoach#top',
     children: [
       { label: 'Tính Toán Chỉ', icon: 'o_calculate', to: '/thread/calculation' },
-      { label: 'Đặt Hàng Chỉ Tuần', icon: 'o_shopping_cart', to: '/thread/weekly-order' }
+      { label: 'Đặt Hàng Chỉ Tuần', icon: 'o_shopping_cart', to: '/thread/weekly-order' },
+      { label: 'Lịch Sử Đặt Hàng', icon: 'o_history', to: '/thread/weekly-order/history' }
     ]
   },
   { 
@@ -41,8 +42,9 @@ const navItems: NavItem[] = [
       { label: 'Tồn Kho', icon: 'o_inventory', to: '/thread/inventory' },
       { label: 'Xuất Kho', icon: 'o_output', to: '/thread/issues/v2' },
       { label: 'Trả Kho V2', icon: 'o_assignment_return', to: '/thread/issues/v2/return' },
+      { label: 'Theo Dõi Giao Hàng', icon: 'o_local_shipping', to: '/thread/weekly-order/deliveries' },
       { label: 'Màu Sắc', icon: 'o_palette', to: '/thread/colors' },
-      { label: 'Nhà Cung Cấp', icon: 'o_local_shipping', to: '/thread/suppliers' }
+      { label: 'Nhà Cung Cấp', icon: 'o_store', to: '/thread/suppliers' }
     ]
   },
   { label: 'Phân Quyền', icon: 'o_admin_panel_settings', to: '/phan-quyen#top' },

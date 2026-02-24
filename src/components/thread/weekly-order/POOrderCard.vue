@@ -83,6 +83,8 @@
         :key="`${entry.po_id}_${entry.style_id}`"
         :entry="entry"
         :color-options="getColorOptionsForStyle(entry.style_id)"
+        :po-quantity="getPoQuantity(entry.style_id)"
+        :already-ordered="getAlreadyOrdered(entry.style_id)"
         @remove="(styleId, poId) => $emit('remove-style', styleId, poId)"
         @add-color="(styleId, color, poId) => $emit('add-color', styleId, color, poId)"
         @remove-color="(styleId, colorId, poId) => $emit('remove-color', styleId, colorId, poId)"
@@ -104,13 +106,16 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import StyleOrderCard from './StyleOrderCard.vue'
-import type { StyleOrderEntry, PurchaseOrderWithItems } from '@/types/thread'
+import type { StyleOrderEntry, PurchaseOrderWithItems, OrderedQuantityInfo } from '@/types/thread'
 import { styleService } from '@/services/styleService'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   po: PurchaseOrderWithItems
   entries: StyleOrderEntry[]
-}>()
+  orderedQuantities?: Map<string, OrderedQuantityInfo>
+}>(), {
+  orderedQuantities: () => new Map(),
+})
 
 const emit = defineEmits<{
   'remove-po': [poId: number]
@@ -123,10 +128,8 @@ const emit = defineEmits<{
 
 const selectedStyleId = ref<number | null>(null)
 
-// Cache spec-colors per style_id
 const specColorsCache = ref(new Map<number, Array<{ id: number; name: string; hex_code: string }>>())
 
-// Fetch spec-colors for a style and store in cache
 const fetchSpecColors = async (styleId: number) => {
   if (specColorsCache.value.has(styleId)) return
   try {
@@ -138,32 +141,44 @@ const fetchSpecColors = async (styleId: number) => {
   }
 }
 
-// Filter entries that belong to this PO
 const poEntries = computed(() => {
   return props.entries.filter((e) => e.po_id === props.po.id)
 })
 
-// Style options from PO items that haven't been added yet
+const getPoQuantity = (styleId: number): number | null => {
+  const key = `${props.po.id}_${styleId}`
+  const info = props.orderedQuantities.get(key)
+  if (info) return info.po_quantity
+  const poItem = props.po.items?.find((item) => item.style_id === styleId)
+  return poItem?.quantity ?? null
+}
+
+const getAlreadyOrdered = (styleId: number): number => {
+  const key = `${props.po.id}_${styleId}`
+  return props.orderedQuantities.get(key)?.ordered_quantity ?? 0
+}
+
 const availableStyleOptions = computed(() => {
   if (!props.po.items) return []
   const addedStyleIds = new Set(poEntries.value.map((e) => e.style_id))
   return props.po.items
     .filter((item) => !addedStyleIds.has(item.style_id))
     .filter((item) => item.style)
-    .map((item) => ({
-      label: `${item.style!.style_code} - ${item.style!.style_name} (SL: ${item.quantity})`,
-      value: item.style_id,
-    }))
+    .map((item) => {
+      const key = `${props.po.id}_${item.style_id}`
+      const info = props.orderedQuantities.get(key)
+      const remaining = info ? info.remaining_quantity : item.quantity
+      return {
+        label: `${item.style!.style_code} - ${item.style!.style_name} (SL: ${item.quantity} | Còn lại: ${remaining})`,
+        value: item.style_id,
+      }
+    })
 })
 
-/**
- * Get color options for a specific style (from spec-colors cache)
- */
 const getColorOptionsForStyle = (styleId: number): Array<{ id: number; name: string; hex_code: string }> => {
   return specColorsCache.value.get(styleId) || []
 }
 
-// Watch poEntries to fetch spec-colors for new styles
 watch(
   poEntries,
   (entries) => {
