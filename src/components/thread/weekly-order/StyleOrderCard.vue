@@ -105,10 +105,9 @@
               hide-bottom-space
               label="Số lượng (SP)"
               :min="0"
+              :max="getMaxForColor(color.color_id)"
               style="width: 140px"
-              :error="isOverLimit"
-              :error-message="isOverLimit ? `Vượt ${Math.abs(remaining)} SP` : undefined"
-              @update:model-value="$emit('update-quantity', entry.style_id, color.color_id, Number($event), entry.po_id)"
+              @update:model-value="handleQuantityChange(color.color_id, Number($event))"
             />
           </div>
           <div class="col-auto">
@@ -202,6 +201,23 @@ const isOverLimit = computed(() =>
 const isWarning = computed(() =>
   maxAllowed.value != null && remaining.value >= 0 && maxAllowed.value > 0 && remaining.value <= maxAllowed.value * 0.1
 )
+
+const getMaxForColor = (colorId: number) => {
+  if (maxAllowed.value == null) return undefined
+  const othersTotal = props.entry.colors
+    .filter((c) => c.color_id !== colorId)
+    .reduce((sum, c) => sum + c.quantity, 0)
+  return Math.max(0, maxAllowed.value - othersTotal)
+}
+
+const handleQuantityChange = (colorId: number, rawQty: number) => {
+  let qty = Math.max(0, rawQty)
+  const max = getMaxForColor(colorId)
+  if (max != null) {
+    qty = Math.min(qty, max)
+  }
+  emit('update-quantity', props.entry.style_id, colorId, qty, props.entry.po_id)
+}
 
 const availableColors = computed(() => {
   const usedIds = new Set(props.entry.colors.map(c => c.color_id))

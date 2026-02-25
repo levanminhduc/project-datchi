@@ -24,8 +24,9 @@ This skill sends uncommitted changes to Codex CLI for **review only** after `/sp
    - `openspec/changes/<change-name>/tasks.md`
    - `openspec/changes/<change-name>/design.md`
    - `openspec/changes/<change-name>/proposal.md`
-   - `openspec/changes/<change-name>/specs/` directory
+   - Each individual spec file — run `find openspec/changes/<change-name>/specs -name "*.md" -type f` to get the full list
 3. These provide Codex with the **implementation intent** — what the code changes are supposed to achieve.
+4. **List every spec file explicitly in the prompt** — do NOT just give the `specs/` directory path. Codex may miss files if only given a directory.
 
 ## Step 1: Gather Configuration
 
@@ -34,6 +35,14 @@ Ask the user (via `AskUserQuestion`) **only one question**:
 
 **Do NOT ask** which model to use — always use Codex's default model (no `-m` flag).
 **Do NOT ask** how many rounds — the loop runs automatically until consensus.
+
+## Pre-flight Check
+
+Before launching Codex, verify it's available:
+```bash
+command -v codex >/dev/null 2>&1 && echo "OK" || echo "MISSING: codex not found in PATH"
+```
+If missing, inform the user and stop.
 
 ## Progress Monitoring Strategy
 
@@ -44,7 +53,7 @@ Codex runs in background — no hardcoded timeout needed. Claude Code polls the 
 1. Launch Codex with `run_in_background: true`. Save `task_id` and absolute JSONL path.
 2. **Every ~60 seconds**, poll:
    ```bash
-   sleep 60 && tail -20 /tmp/codex-review-xxxx.jsonl
+   sleep 60 && tail -20 "$CODEX_OUTPUT"
    ```
 3. Report short progress updates to user.
 4. `turn.completed` → extract review.
@@ -81,7 +90,7 @@ Codex runs in background — no hardcoded timeout needed. Claude Code polls the 
 Run Codex in background with `--json` output. Use Bash tool with `run_in_background: true`:
 
 ```bash
-RUN_ID=$(date +%s)-$$ && CODEX_OUTPUT=/tmp/codex-review-$RUN_ID.jsonl && CODEX_ERR=/tmp/codex-review-$RUN_ID.err && echo "$CODEX_OUTPUT $CODEX_ERR" && codex exec --skip-git-repo-check --json --sandbox read-only --config model_reasoning_effort="<EFFORT>" -C <PROJECT_DIR> 2>"$CODEX_ERR" <<'EOF' > "$CODEX_OUTPUT"
+TMPDIR="${TMPDIR:-${TMP:-/tmp}}" && RUN_ID=$(date +%s)-$$ && CODEX_OUTPUT="$TMPDIR/codex-review-$RUN_ID.jsonl" && CODEX_ERR="$TMPDIR/codex-review-$RUN_ID.err" && echo "$CODEX_OUTPUT $CODEX_ERR" && codex exec --skip-git-repo-check --json --sandbox read-only --config model_reasoning_effort="<EFFORT>" -C <PROJECT_DIR> 2>"$CODEX_ERR" <<'EOF' > "$CODEX_OUTPUT"
 <PROMPT>
 EOF
 ```
@@ -100,14 +109,16 @@ You are the CODE REVIEWER. You review ONLY — you do NOT modify any code. Your 
 - **Stack**: Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
 - **Architecture**: Frontend → Hono API (fetchApi) → supabaseAdmin → PostgreSQL
 - **Key conventions**:
-  - Use AppInput/AppSelect/AppBtn (NEVER raw q-input/q-select/q-btn)
+  - Use AppInput/AppSelect/AppButton (NEVER raw q-input/q-select/q-btn)
   - useSnackbar for toasts, DD/MM/YYYY dates via DatePicker component
   - ExcelJS for exports (never CSV), fetchApi wrapper (never raw fetch)
   - Frontend NEVER calls Supabase directly — always through Hono API
-  - Response format: { success, data?, error?, message? }
+  - Response format: { data: T|null, error: string|null, message?: string }
   - Validation with Zod schemas
   - Database: snake_case, soft delete (deleted_at), enums UPPERCASE
+  - Views use v_ prefix, Functions use fn_ prefix
   - Vietnamese UI messages for all user-facing text
+  - Auth: global authMiddleware via except() in server/index.ts, per-route requirePermission()
 
 ## How to Inspect Changes
 1. Run `git status --porcelain` to see all changes.
@@ -119,9 +130,12 @@ You are the CODE REVIEWER. You review ONLY — you do NOT modify any code. Your 
 1. **Tasks (implementation plan)**: <ABSOLUTE_PATH_TO_TASKS_MD>
 2. **Design (architecture decisions)**: <ABSOLUTE_PATH_TO_DESIGN_MD>
 3. **Proposal (why + what)**: <ABSOLUTE_PATH_TO_PROPOSAL_MD>
-4. **Specs directory**: <ABSOLUTE_PATH_TO_SPECS_DIR>
+4. **Specs** (read ALL — each file is a separate capability/requirement):
+   - <ABSOLUTE_PATH_TO_SPEC_FILE_1>
+   - <ABSOLUTE_PATH_TO_SPEC_FILE_2>
+   - ... (list every .md file found in specs/ directory)
 
-Cross-reference the diff against these artifacts to verify the implementation matches the plan.
+Cross-reference the diff against ALL artifacts above to verify the implementation matches the plan. Do NOT skip any spec file.
 
 ## User's Original Request
 <DESCRIPTION>
@@ -167,11 +181,13 @@ Rules:
   - Hono route ordering (specific routes before generic /:id)
   - Supabase column names matching actual schema
   - fetchApi usage (not raw fetch)
-  - AppInput/AppSelect/AppBtn usage (not q-*)
+  - AppInput/AppSelect/AppButton usage (not q-*)
   - Vietnamese messages for user-facing text
   - Soft delete patterns (deleted_at)
   - FEFO allocation logic correctness
   - Dual UoM consistency (kg + meters)
+- Severity-to-verdict mapping: any CRITICAL → REJECT, any HIGH or MEDIUM → APPROVE_WITH_CHANGES, only LOW → APPROVE.
+- Maximum 5 rounds. If no consensus after 5 rounds → present final state to user for decision.
 ```
 
 **After receiving Codex's review**, summarize findings grouped by severity.
@@ -179,13 +195,13 @@ Rules:
 ### Extracting the final review
 
 ```bash
-grep '"type":"agent_message"' /tmp/codex-review-XXXXXXXXXX.jsonl | tail -1 | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['item']['text'])"
+grep '"type":"agent_message"' "$CODEX_OUTPUT" | tail -1 | python -c "import sys,json; print(json.loads(sys.stdin.read())['item']['text'])"
 ```
 
 ### Cleanup after extraction
 
 1. `TaskOutput(task_id, block: false)` then `TaskStop(task_id)`.
-2. `rm -f /tmp/codex-review-XXXXXXXXXX.jsonl /tmp/codex-review-XXXXXXXXXX.err`
+2. `rm -f "$CODEX_OUTPUT" "$CODEX_ERR"`
 
 ## Step 4: Claude Code Responds (Round 1)
 
@@ -202,7 +218,7 @@ After receiving Codex's review:
 Resume using **saved `thread_id`**:
 
 ```bash
-RUN_ID=$(date +%s)-$$ && CODEX_OUTPUT=/tmp/codex-review-$RUN_ID.jsonl && CODEX_ERR=/tmp/codex-review-$RUN_ID.err && echo "$CODEX_OUTPUT $CODEX_ERR" && codex exec --skip-git-repo-check --json --sandbox read-only -C <PROJECT_DIR> resume <THREAD_ID> 2>"$CODEX_ERR" <<'EOF' > "$CODEX_OUTPUT"
+TMPDIR="${TMPDIR:-${TMP:-/tmp}}" && RUN_ID=$(date +%s)-$$ && CODEX_OUTPUT="$TMPDIR/codex-review-$RUN_ID.jsonl" && CODEX_ERR="$TMPDIR/codex-review-$RUN_ID.err" && echo "$CODEX_OUTPUT $CODEX_ERR" && codex exec --skip-git-repo-check --json --sandbox read-only -C <PROJECT_DIR> resume <THREAD_ID> 2>"$CODEX_ERR" <<'EOF' > "$CODEX_OUTPUT"
 <REBUTTAL_PROMPT>
 EOF
 ```
@@ -284,11 +300,11 @@ Then ask user (via `AskUserQuestion`):
 
 | Action | Command |
 | --- | --- |
-| Initial review | `codex exec --skip-git-repo-check --json --sandbox read-only --config model_reasoning_effort="<EFFORT>" -C <DIR> 2>"$ERR" <<'EOF' ... EOF > "$OUT"` |
-| Subsequent rounds | `codex exec --skip-git-repo-check --json --sandbox read-only -C <DIR> resume <THREAD_ID> 2>"$ERR" <<'EOF' ... EOF > "$OUT"` |
-| Poll progress | `tail -5 /tmp/codex-review-XXXXXXXXXX.jsonl` |
-| Extract review | `grep '"type":"agent_message"' ... \| tail -1 \| python3 -c "..."` |
-| Check errors | `tail -20 /tmp/codex-review-XXXXXXXXXX.err` |
+| Initial review | `TMPDIR="${TMPDIR:-${TMP:-/tmp}}" && ... codex exec --skip-git-repo-check --json --sandbox read-only --config model_reasoning_effort="<EFFORT>" -C <DIR> 2>"$CODEX_ERR" <<'EOF' ... EOF > "$CODEX_OUTPUT"` |
+| Subsequent rounds | `codex exec --skip-git-repo-check --json --sandbox read-only -C <DIR> resume <THREAD_ID> 2>"$CODEX_ERR" <<'EOF' ... EOF > "$CODEX_OUTPUT"` |
+| Poll progress | `tail -5 "$CODEX_OUTPUT"` |
+| Extract review | `grep '"type":"agent_message"' "$CODEX_OUTPUT" \| tail -1 \| python -c "..."` |
+| Check errors | `tail -20 "$CODEX_ERR"` |
 | Stop background | `TaskOutput(task_id, block: false)` then `TaskStop(task_id)` |
 
 ## Important Rules

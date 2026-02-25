@@ -180,7 +180,16 @@ export function useWeeklyOrderCalculation() {
     const color = entry.colors.find((c) => c.color_id === colorId)
     if (!color) return
 
-    color.quantity = qty
+    let capped = Math.max(0, qty)
+    if (entry.po_id && entry.po_quantity != null) {
+      const othersTotal = entry.colors
+        .filter((c) => c.color_id !== colorId)
+        .reduce((sum, c) => sum + c.quantity, 0)
+      const maxForThisColor = Math.max(0, entry.po_quantity - (entry.already_ordered || 0) - othersTotal)
+      capped = Math.min(capped, maxForThisColor)
+    }
+
+    color.quantity = capped
     lastModifiedAt.value = Date.now()
   }
 

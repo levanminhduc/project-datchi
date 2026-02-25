@@ -24,8 +24,8 @@ Before anything else, identify which OpenSpec change to review:
 3. Also check for other artifacts:
    - `openspec/changes/<change-name>/proposal.md`
    - `openspec/changes/<change-name>/design.md`
-   - `openspec/changes/<change-name>/specs/` directory
-4. Save the `<change-name>` and the **absolute paths** to all available artifacts.
+   - Each individual spec file — run `find openspec/changes/<change-name>/specs -name "*.md" -type f` to get the full list
+4. Save the `<change-name>` and the **absolute paths** to all available artifacts (including each spec file individually).
 
 If no active change exists or `tasks.md` is missing, inform the user and stop.
 
@@ -37,6 +37,14 @@ Ask the user (via `AskUserQuestion`) **only one question**:
 **Do NOT ask** which model to use — always use Codex's default model (no `-m` flag).
 **Do NOT ask** how many rounds — the loop runs automatically until consensus.
 
+## Pre-flight Check
+
+Before launching Codex, verify it's available:
+```bash
+command -v codex >/dev/null 2>&1 && echo "OK" || echo "MISSING: codex not found in PATH"
+```
+If missing, inform the user and stop.
+
 ## Progress Monitoring Strategy
 
 Codex runs in background — no hardcoded timeout needed. Instead, Claude Code polls the JSONL output file periodically and reports progress to the user.
@@ -46,7 +54,7 @@ Codex runs in background — no hardcoded timeout needed. Instead, Claude Code p
 1. Launch Codex with `run_in_background: true` in the Bash tool. The Bash tool will return a `task_id` for the background process — **save this `task_id`** for cleanup after extraction. The first line of output will be the absolute path to the JSONL file — **save this path** for use in all subsequent poll and extract commands.
 2. **Every ~60 seconds**, poll the output file with the Bash tool using the **absolute path** saved in step 1. **You MUST wait before each poll**:
    ```bash
-   sleep 60 && tail -20 /tmp/codex-review-xxxx.jsonl
+   sleep 60 && tail -20 "$CODEX_OUTPUT"
    ```
 3. Parse the last few JSONL lines and report a **short progress update** to the user. Examples:
    - "Codex is thinking... (*Reading the tasks file*)"
@@ -69,8 +77,9 @@ If 3 consecutive polls (~3 minutes) show **no new lines**, Codex may be stuck:
    - `tasks.md` (primary — the implementation plan)
    - `design.md` (architecture decisions, risks, migration)
    - `proposal.md` (why + what + capabilities + impact)
-   - `specs/` directory (requirements + scenarios)
+   - Each individual spec file inside `specs/` — run `find openspec/changes/<name>/specs -name "*.md" -type f` to get the full list
 3. **Do NOT paste file contents into the Codex prompt.** Codex will read the files directly.
+4. **List every spec file explicitly in the prompt** — do NOT just give the `specs/` directory path. Codex may miss files if only given a directory.
 
 ## Prompt Construction Principle
 
@@ -91,7 +100,7 @@ If 3 consecutive polls (~3 minutes) show **no new lines**, Codex may be stuck:
 Run Codex in background with `--json` output. Use the Bash tool with `run_in_background: true`:
 
 ```bash
-RUN_ID=$(date +%s)-$$ && CODEX_OUTPUT=/tmp/codex-review-$RUN_ID.jsonl && CODEX_ERR=/tmp/codex-review-$RUN_ID.err && echo "$CODEX_OUTPUT $CODEX_ERR" && codex exec --skip-git-repo-check --json --config model_reasoning_effort="<EFFORT>" --sandbox read-only -C <PROJECT_DIR> 2>"$CODEX_ERR" <<'EOF' > "$CODEX_OUTPUT"
+TMPDIR="${TMPDIR:-${TMP:-/tmp}}" && RUN_ID=$(date +%s)-$$ && CODEX_OUTPUT="$TMPDIR/codex-review-$RUN_ID.jsonl" && CODEX_ERR="$TMPDIR/codex-review-$RUN_ID.err" && echo "$CODEX_OUTPUT $CODEX_ERR" && codex exec --skip-git-repo-check --json --config model_reasoning_effort="<EFFORT>" --sandbox read-only -C <PROJECT_DIR> 2>"$CODEX_ERR" <<'EOF' > "$CODEX_OUTPUT"
 <PROMPT>
 EOF
 ```
@@ -111,16 +120,21 @@ You are the REVIEWER. Your job is to critically evaluate an implementation plan 
 ## Project Context
 - **Stack**: Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
 - **Architecture**: Frontend → Hono API (fetchApi) → supabaseAdmin → PostgreSQL
-- **Key conventions**: AppInput/AppSelect (not q-*), useSnackbar for toasts, DD/MM/YYYY dates, ExcelJS for exports, Vietnamese UI messages
-- **Database**: snake_case tables, soft delete (deleted_at), enums use UPPERCASE values
+- **Key conventions**: AppInput/AppSelect/AppButton (not q-*), useSnackbar for toasts, DD/MM/YYYY dates, ExcelJS for exports, Vietnamese UI messages
+- **Database**: snake_case tables, soft delete (deleted_at), enums use UPPERCASE values, views use v_ prefix, functions use fn_ prefix
+- **Response format**: { data: T|null, error: string|null, message?: string }
+- **Auth**: global authMiddleware via except() in server/index.ts, per-route requirePermission()
 
 ## OpenSpec Artifacts — Read These Files
 1. **Tasks (implementation plan)**: <ABSOLUTE_PATH_TO_TASKS_MD>
 2. **Design (architecture decisions)**: <ABSOLUTE_PATH_TO_DESIGN_MD>
 3. **Proposal (why + what)**: <ABSOLUTE_PATH_TO_PROPOSAL_MD>
-4. **Specs directory**: <ABSOLUTE_PATH_TO_SPECS_DIR>
+4. **Specs** (read ALL — each file is a separate capability/requirement):
+   - <ABSOLUTE_PATH_TO_SPEC_FILE_1>
+   - <ABSOLUTE_PATH_TO_SPEC_FILE_2>
+   - ... (list every .md file found in specs/ directory)
 
-Read ALL available files above for full context before reviewing.
+Read ALL files listed above for full context before reviewing. Do NOT skip any spec file.
 
 ## User's Original Request
 <DESCRIPTION>
@@ -160,6 +174,8 @@ Rules:
 - Do NOT raise vague concerns without concrete scenarios.
 - Every Critical Issue and Missing Task MUST have a Suggested Fix.
 - Pay special attention to: database migration order, Hono route ordering (specific before generic), Supabase column names, FEFO allocation logic, dual UoM (kg + meters).
+- Severity-to-verdict mapping: any CRITICAL → REJECT, any HIGH or MEDIUM → APPROVE_WITH_CHANGES, only LOW → APPROVE.
+- Maximum 5 rounds. If no consensus after 5 rounds → present final state to user for decision.
 ```
 
 **After receiving Codex's review**, summarize it for the user before proceeding.
@@ -167,7 +183,7 @@ Rules:
 ### Extracting the final review
 
 ```bash
-grep '"type":"agent_message"' /tmp/codex-review-XXXXXXXXXX.jsonl | tail -1 | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['item']['text'])"
+grep '"type":"agent_message"' "$CODEX_OUTPUT" | tail -1 | python -c "import sys,json; print(json.loads(sys.stdin.read())['item']['text'])"
 ```
 
 ### Cleanup after extraction
@@ -175,7 +191,7 @@ grep '"type":"agent_message"' /tmp/codex-review-XXXXXXXXXX.jsonl | tail -1 | pyt
 1. Stop background task: `TaskOutput(task_id, block: false)` then `TaskStop(task_id)`.
 2. Remove temp files:
 ```bash
-rm -f /tmp/codex-review-XXXXXXXXXX.jsonl /tmp/codex-review-XXXXXXXXXX.err
+rm -f "$CODEX_OUTPUT" "$CODEX_ERR"
 ```
 
 ## Step 4: Claude Code Rebuts (Round 1)
@@ -193,7 +209,7 @@ After receiving Codex's review:
 Resume using the **saved `thread_id`**:
 
 ```bash
-RUN_ID=$(date +%s)-$$ && CODEX_OUTPUT=/tmp/codex-review-$RUN_ID.jsonl && CODEX_ERR=/tmp/codex-review-$RUN_ID.err && echo "$CODEX_OUTPUT $CODEX_ERR" && codex exec --skip-git-repo-check --json --sandbox read-only -C <PROJECT_DIR> resume <THREAD_ID> 2>"$CODEX_ERR" <<'EOF' > "$CODEX_OUTPUT"
+TMPDIR="${TMPDIR:-${TMP:-/tmp}}" && RUN_ID=$(date +%s)-$$ && CODEX_OUTPUT="$TMPDIR/codex-review-$RUN_ID.jsonl" && CODEX_ERR="$TMPDIR/codex-review-$RUN_ID.err" && echo "$CODEX_OUTPUT $CODEX_ERR" && codex exec --skip-git-repo-check --json --sandbox read-only -C <PROJECT_DIR> resume <THREAD_ID> 2>"$CODEX_ERR" <<'EOF' > "$CODEX_OUTPUT"
 <REBUTTAL_PROMPT>
 EOF
 ```
@@ -271,11 +287,11 @@ If the user approves:
 
 | Action | Command |
 | --- | --- |
-| Initial review | `codex exec --skip-git-repo-check --json --sandbox read-only --config model_reasoning_effort="<EFFORT>" -C <DIR> 2>"$ERR" <<'EOF' ... EOF > "$OUT"` |
-| Subsequent rounds | `codex exec --skip-git-repo-check --json --sandbox read-only -C <DIR> resume <THREAD_ID> 2>"$ERR" <<'EOF' ... EOF > "$OUT"` |
-| Poll progress | `tail -5 /tmp/codex-review-XXXXXXXXXX.jsonl` |
-| Extract review | `grep '"type":"agent_message"' ... \| tail -1 \| python3 -c "..."` |
-| Check errors | `tail -20 /tmp/codex-review-XXXXXXXXXX.err` |
+| Initial review | `TMPDIR="${TMPDIR:-${TMP:-/tmp}}" && ... codex exec --skip-git-repo-check --json --sandbox read-only --config model_reasoning_effort="<EFFORT>" -C <DIR> 2>"$CODEX_ERR" <<'EOF' ... EOF > "$CODEX_OUTPUT"` |
+| Subsequent rounds | `codex exec --skip-git-repo-check --json --sandbox read-only -C <DIR> resume <THREAD_ID> 2>"$CODEX_ERR" <<'EOF' ... EOF > "$CODEX_OUTPUT"` |
+| Poll progress | `tail -5 "$CODEX_OUTPUT"` |
+| Extract review | `grep '"type":"agent_message"' "$CODEX_OUTPUT" \| tail -1 \| python -c "..."` |
+| Check errors | `tail -20 "$CODEX_ERR"` |
 | Stop background | `TaskOutput(task_id, block: false)` then `TaskStop(task_id)` |
 
 ## Important Rules

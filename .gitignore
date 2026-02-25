@@ -40,3 +40,6 @@ nul
 # OpenCode
 opencode.json
 .opencode/
+
+# Claude Code
+.claude/
