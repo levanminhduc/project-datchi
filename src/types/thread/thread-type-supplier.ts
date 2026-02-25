@@ -14,10 +14,12 @@ import type { SupplierSummary } from './color'
  */
 export interface ThreadTypeSummary {
   id: number
-  item_id: string
+  code: string
   name: string
-  type: string
-  tex: number
+  material: string
+  tex_number: number | null
+  color_id: number | null
+  color_data?: { id: number; name: string; hex_code: string } | null
 }
 
 /**

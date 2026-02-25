@@ -29,7 +29,7 @@ threadTypeSuppliers.get('/', async (c) => {
       .from('thread_type_supplier')
       .select(`
         *,
-        thread_type:thread_types(id, code, name, material, tex_number),
+        thread_type:thread_types(id, code, name, material, tex_number, color_id, color_data:colors(id, name, hex_code)),
         supplier:suppliers(id, code, name)
       `)
       .order('created_at', { ascending: false })
@@ -89,7 +89,7 @@ threadTypeSuppliers.get('/:id', async (c) => {
       .from('thread_type_supplier')
       .select(`
         *,
-        thread_type:thread_types(id, code, name, material, tex_number),
+        thread_type:thread_types(id, code, name, material, tex_number, color_id, color_data:colors(id, name, hex_code)),
         supplier:suppliers(id, code, name)
       `)
       .eq('id', id)
@@ -180,7 +180,7 @@ threadTypeSuppliers.post('/', async (c) => {
       })
       .select(`
         *,
-        thread_type:thread_types(id, code, name, material, tex_number),
+        thread_type:thread_types(id, code, name, material, tex_number, color_id, color_data:colors(id, name, hex_code)),
         supplier:suppliers(id, code, name)
       `)
       .single()
@@ -261,7 +261,7 @@ threadTypeSuppliers.patch('/:id', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        thread_type:thread_types(id, code, name, material, tex_number),
+        thread_type:thread_types(id, code, name, material, tex_number, color_id, color_data:colors(id, name, hex_code)),
         supplier:suppliers(id, code, name)
       `)
       .single()
@@ -350,6 +350,7 @@ threadTypeSuppliers.get('/by-thread/:threadTypeId', async (c) => {
       .from('thread_type_supplier')
       .select(`
         *,
+        thread_type:thread_types(id, code, name, material, tex_number, color_id, color_data:colors(id, name, hex_code)),
         supplier:suppliers(id, code, name, is_active)
       `)
       .eq('thread_type_id', threadTypeId)
@@ -441,6 +442,7 @@ threadTypeSuppliers.post('/by-thread/:threadTypeId', async (c) => {
       })
       .select(`
         *,
+        thread_type:thread_types(id, code, name, material, tex_number, color_id, color_data:colors(id, name, hex_code)),
         supplier:suppliers(id, code, name)
       `)
       .single()

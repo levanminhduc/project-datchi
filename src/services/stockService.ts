@@ -61,18 +61,12 @@ export const stockService = {
     return response.data || []
   },
 
-  /**
-   * Them ton kho (nhap kho/nhan hang)
-   * Upsert: neu da co record voi cung thread_type_id + warehouse_id + lot_number, se cong them so luong
-   * @param data - Stock data to add
-   * @returns Created or updated stock record
-   */
-  async addStock(data: AddStockDTO): Promise<ThreadStockRow> {
-    const response = await fetchApi<StockApiResponse<ThreadStockRow>>('/api/stock', {
+  async addStock(data: AddStockDTO): Promise<{ cones_created: number; lot_number: string; cone_ids: string[] }> {
+    const response = await fetchApi<{ data: { cones_created: number; lot_number: string; cone_ids: string[] }; error: string | null; message?: string }>('/api/stock', {
       method: 'POST',
       body: JSON.stringify(data),
     })
-    return response.data!
+    return response.data
   },
 
   /**

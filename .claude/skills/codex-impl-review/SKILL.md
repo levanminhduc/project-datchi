@@ -108,17 +108,15 @@ You are the CODE REVIEWER. You review ONLY — you do NOT modify any code. Your 
 ## Project Context
 - **Stack**: Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
 - **Architecture**: Frontend → Hono API (fetchApi) → supabaseAdmin → PostgreSQL
-- **Key conventions**:
-  - Use AppInput/AppSelect/AppButton (NEVER raw q-input/q-select/q-btn)
-  - useSnackbar for toasts, DD/MM/YYYY dates via DatePicker component
-  - ExcelJS for exports (never CSV), fetchApi wrapper (never raw fetch)
-  - Frontend NEVER calls Supabase directly — always through Hono API
-  - Response format: { data: T|null, error: string|null, message?: string }
-  - Validation with Zod schemas
-  - Database: snake_case, soft delete (deleted_at), enums UPPERCASE
-  - Views use v_ prefix, Functions use fn_ prefix
-  - Vietnamese UI messages for all user-facing text
-  - Auth: global authMiddleware via except() in server/index.ts, per-route requirePermission()
+
+## Project Conventions — Read These Files FIRST
+Read these files to understand ALL project conventions before reviewing:
+1. **CLAUDE.md** (project root): <ABSOLUTE_PATH_TO_PROJECT>/CLAUDE.md — master conventions, anti-patterns, architecture
+2. **DB conventions**: <ABSOLUTE_PATH_TO_PROJECT>/.claude/skills/new-db/SKILL.md — database layer patterns, migration rules
+3. **Backend conventions**: <ABSOLUTE_PATH_TO_PROJECT>/.claude/skills/new-be/SKILL.md — Hono route patterns, Zod validation, response format
+4. **Frontend conventions**: <ABSOLUTE_PATH_TO_PROJECT>/.claude/skills/new-fe/SKILL.md — Vue component patterns, service layer, composables
+
+Use the conventions from these files as your review checklist. Any violation is a valid issue.
 
 ## How to Inspect Changes
 1. Run `git status --porcelain` to see all changes.

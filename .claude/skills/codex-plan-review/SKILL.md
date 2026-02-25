@@ -120,10 +120,15 @@ You are the REVIEWER. Your job is to critically evaluate an implementation plan 
 ## Project Context
 - **Stack**: Vue 3 + Quasar 2 + TypeScript + Vite | Hono backend | Supabase (PostgreSQL)
 - **Architecture**: Frontend → Hono API (fetchApi) → supabaseAdmin → PostgreSQL
-- **Key conventions**: AppInput/AppSelect/AppButton (not q-*), useSnackbar for toasts, DD/MM/YYYY dates, ExcelJS for exports, Vietnamese UI messages
-- **Database**: snake_case tables, soft delete (deleted_at), enums use UPPERCASE values, views use v_ prefix, functions use fn_ prefix
-- **Response format**: { data: T|null, error: string|null, message?: string }
-- **Auth**: global authMiddleware via except() in server/index.ts, per-route requirePermission()
+
+## Project Conventions — Read These Files FIRST
+Read these files to understand ALL project conventions before reviewing:
+1. **CLAUDE.md** (project root): <ABSOLUTE_PATH_TO_PROJECT>/CLAUDE.md — master conventions, anti-patterns, architecture
+2. **DB conventions**: <ABSOLUTE_PATH_TO_PROJECT>/.claude/skills/new-db/SKILL.md — database layer patterns, migration rules
+3. **Backend conventions**: <ABSOLUTE_PATH_TO_PROJECT>/.claude/skills/new-be/SKILL.md — Hono route patterns, Zod validation, response format
+4. **Frontend conventions**: <ABSOLUTE_PATH_TO_PROJECT>/.claude/skills/new-fe/SKILL.md — Vue component patterns, service layer, composables
+
+Use the conventions from these files as your review checklist. Any violation is a valid issue.
 
 ## OpenSpec Artifacts — Read These Files
 1. **Tasks (implementation plan)**: <ABSOLUTE_PATH_TO_TASKS_MD>

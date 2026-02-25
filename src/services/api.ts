@@ -40,7 +40,7 @@ export async function fetchApi<T>(
     const data = await response.json()
 
     if (!response.ok) {
-      throw new ApiError(response.status, data.error || 'Đã xảy ra lỗi')
+      throw new ApiError(response.status, (typeof data.error === 'string' ? data.error : data.message) || 'Đã xảy ra lỗi')
     }
 
     return data

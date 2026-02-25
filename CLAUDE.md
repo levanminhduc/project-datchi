@@ -85,15 +85,22 @@ Pages/Components → Real-time via useRealtime
 | Notifications | `src/composables/useSnackbar.ts` | Toast helpers |
 | API Service | `src/services/threadService.ts` | fetchApi pattern |
 
-## Multi-Agent (khi cần)
+## Multi-Agent / Swarm
 
-Dùng team khi task ảnh hưởng ≥3 layers (DB + Backend + Frontend).
+Dùng team khi task ảnh hưởng ≥2 layers hoặc ≥8 tasks. **Chỉ Opus mới spawn teammates** — Sonnet không có swarm.
 
-| Agent | Nhiệm vụ |
-|-------|----------|
-| db-agent | Migration, RPC functions |
-| backend-agent | Hono routes, validation |
-| frontend-agent | Vue pages, components, services |
+| Điều kiện | Mode |
+|-----------|------|
+| ≤ 7 tasks, 1 layer | Sonnet single agent |
+| ≥ 8 tasks hoặc ≥ 2 layers | Opus swarm (TeamCreate + spawn teammates) |
+
+| Agent | Nhiệm vụ | Conventions |
+|-------|----------|-------------|
+| db-agent | Migration, RPC functions | `.claude/skills/new-db/SKILL.md` |
+| backend-agent | Hono routes, validation | `.claude/skills/new-be/SKILL.md` |
+| frontend-agent | Vue pages, components, services | `.claude/skills/new-fe/SKILL.md` |
+
+Xem `AGENTS.md` cho chi tiết swarm flow + teammate prompt template.
 
 ## Key Files
 

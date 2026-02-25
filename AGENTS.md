@@ -303,6 +303,65 @@ npm run lint       # ESLint fix
 
 ---
 
+## Swarm Team Strategy (Implementation Mode)
+
+Khi implement với `/spx-apply` hoặc task phức tạp, dùng **Opus swarm** để song song hóa.
+
+### Khi nào kích hoạt Swarm
+
+| Điều kiện | Mode |
+|-----------|------|
+| ≤ 7 tasks, single layer (chỉ DB/BE/FE) | **Sonnet single agent** |
+| ≥ 8 tasks HOẶC ≥ 2 layers | **Opus swarm** (TeamCreate + spawn teammates) |
+
+**Lưu ý:** Sonnet KHÔNG có tính năng team/swarm — chỉ Opus mới spawn teammates được.
+
+### Model Selection
+
+| Bước | Model | Lý do |
+|------|-------|-------|
+| `/spx-ff` (tạo plan) | **Opus** | Phân tích, quyết định architecture |
+| `/codex-plan-review` | **Opus** | Phản biện sắc bén với Codex |
+| `/spx-apply` (đơn giản) | **Sonnet** | Spec đã đủ, follow plan |
+| `/spx-apply` (phức tạp) | **Opus** | Cần swarm song song hóa |
+| `/codex-impl-review` | **Opus** | Phân tích code review |
+| `/spx-vibe` (debug) | **Opus** | Trace root cause, suy luận sâu |
+
+### Team Roles
+
+| Role | Agent Name | Scope | Conventions File |
+|------|-----------|-------|------------------|
+| DB | `db-agent` | `supabase/migrations/`, RPC, RLS | `.claude/skills/new-db/SKILL.md` |
+| Backend | `backend-agent` | `server/routes/`, types, Zod | `.claude/skills/new-be/SKILL.md` |
+| Frontend | `frontend-agent` | `src/services/`, `src/composables/`, `src/pages/`, `src/components/`, `src/types/` | `.claude/skills/new-fe/SKILL.md` |
+| Researcher | `researcher` | Read-only, tìm patterns | Không viết code |
+| Debug | `debug-agent` | Toàn bộ codebase | Trace root cause |
+
+### Swarm Flow
+
+```
+1. TeamCreate(team_name="<kebab-case>")
+2. TaskCreate cho TỪNG task (subject, description, activeForm)
+3. TaskUpdate set dependencies (addBlockedBy/addBlocks)
+4. Spawn teammates bằng Task tool với team_name
+5. Assign tasks cho teammates bằng TaskUpdate(owner=<agent-name>)
+6. Đợi hoàn thành → coordinate qua SendMessage
+7. SendMessage(type="shutdown_request") cho từng teammate
+8. TeamDelete() dọn dẹp
+```
+
+### Teammate Prompt Template
+
+Mỗi teammate PHẢI nhận prompt chứa:
+1. **Role:** "Bạn là db-agent, chỉ làm việc với database"
+2. **Scope files:** "Chỉ sửa files trong `supabase/migrations/`"
+3. **Conventions:** "Đọc file `.claude/skills/new-db/SKILL.md` và `CLAUDE.md` trước khi code"
+4. **Tasks:** "Hoàn thành task #1, #2, #3 trong TaskList"
+5. **Pre-code rule:** "PHẢI đọc file hiện tại trước khi sửa. PHẢI kiểm tra schema DB trước khi viết query."
+6. **Khi xong:** "Mark task completed bằng TaskUpdate, rồi kiểm tra TaskList cho task tiếp"
+
+---
+
 ## OpenSpec Subagents (Explore Mode)
 
 When in **Explore Mode** (planning, researching, analyzing before implementation), use OpenSpec subagents instead of direct tools.
