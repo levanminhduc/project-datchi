@@ -211,111 +211,166 @@ stock.get('/summary', requirePermission('thread.inventory.view'), async (c) => {
 })
 
 // ============================================================================
-// POST /api/stock - Add stock (receiving/upsert)
+// POST /api/stock - Manual stock entry → creates individual thread_inventory cones
 // ============================================================================
 stock.post('/', requirePermission('thread.batch.receive'), async (c) => {
   try {
     const body = await c.req.json()
 
-    // Validate request body
     const parseResult = AddStockSchema.safeParse(body)
     if (!parseResult.success) {
-      return c.json<StockApiResponse<null>>({
-        success: false,
-        error: parseResult.error.errors[0]?.message || 'Du lieu khong hop le',
+      return c.json({
+        data: null,
+        error: parseResult.error.errors[0]?.message || 'Dữ liệu không hợp lệ',
       }, 400)
     }
 
     const data = parseResult.data
+    const totalCones = data.qty_full_cones + (data.qty_partial_cones || 0)
 
-    // Check if record exists (upsert logic)
-    let query = supabase
-      .from('thread_stock')
-      .select('id, qty_full_cones, qty_partial_cones')
-      .eq('thread_type_id', data.thread_type_id)
-      .eq('warehouse_id', data.warehouse_id)
-
-    if (data.lot_number) {
-      query = query.eq('lot_number', data.lot_number)
-    } else {
-      query = query.is('lot_number', null)
+    if (totalCones <= 0) {
+      return c.json({
+        data: null,
+        error: 'Phải có ít nhất 1 cuộn (nguyên hoặc lẻ)',
+      }, 400)
     }
 
-    const { data: existing, error: findError } = await query.maybeSingle()
+    const { data: threadType, error: threadError } = await supabase
+      .from('thread_types')
+      .select('meters_per_cone')
+      .eq('id', data.thread_type_id)
+      .single()
 
-    if (findError) {
-      console.error('Supabase error:', findError)
-      return c.json<StockApiResponse<null>>({
-        success: false,
-        error: 'Loi khi kiem tra ton kho',
+    if (threadError || !threadType) {
+      return c.json({
+        data: null,
+        error: 'Không tìm thấy loại chỉ',
+      }, 404)
+    }
+
+    const { data: warehouse, error: warehouseError } = await supabase
+      .from('warehouses')
+      .select('id')
+      .eq('id', data.warehouse_id)
+      .single()
+
+    if (warehouseError || !warehouse) {
+      return c.json({
+        data: null,
+        error: 'Không tìm thấy kho',
+      }, 404)
+    }
+
+    const { data: ratioResult } = await supabase.rpc('fn_get_partial_cone_ratio')
+    const partialConeRatio = Number(ratioResult) || 0.3
+
+    const metersPerCone = threadType.meters_per_cone || 0
+    const partialMeters = metersPerCone * partialConeRatio
+
+    const now = new Date()
+    const lotNumber = data.lot_number || `MC-LOT-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+
+    const { data: lotRecord, error: lotError } = await supabase
+      .from('lots')
+      .insert({
+        lot_number: lotNumber,
+        thread_type_id: data.thread_type_id,
+        warehouse_id: data.warehouse_id,
+        supplier_id: data.supplier_id || null,
+        expiry_date: data.expiry_date || null,
+        total_cones: totalCones,
+        available_cones: totalCones,
+        status: 'ACTIVE',
+        notes: data.notes || null,
+      })
+      .select('id')
+      .single()
+
+    if (lotError || !lotRecord) {
+      console.error('Lot creation error:', lotError)
+      return c.json({
+        data: null,
+        error: 'Lỗi khi tạo lô hàng: ' + (lotError?.message || 'Không thể tạo lô'),
       }, 500)
     }
 
-    let result: StockRow
+    const lotId = lotRecord.id
 
-    if (existing) {
-      // Update existing record
-      const { data: updated, error: updateError } = await supabase
-        .from('thread_stock')
-        .update({
-          qty_full_cones: existing.qty_full_cones + data.qty_full_cones,
-          qty_partial_cones: existing.qty_partial_cones + (data.qty_partial_cones || 0),
-          received_date: data.received_date,
-          expiry_date: data.expiry_date,
-          notes: data.notes,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id)
-        .select()
-        .single()
+    const timestamp = Date.now()
+    const cones: Array<{
+      cone_id: string
+      thread_type_id: number
+      warehouse_id: number
+      quantity_cones: number
+      quantity_meters: number
+      is_partial: boolean
+      status: string
+      lot_number: string
+      lot_id: number
+      received_date: string
+      expiry_date: string | null
+    }> = []
 
-      if (updateError) {
-        console.error('Supabase error:', updateError)
-        return c.json<StockApiResponse<null>>({
-          success: false,
-          error: 'Loi khi cap nhat ton kho',
-        }, 500)
-      }
-
-      result = updated as StockRow
-    } else {
-      // Insert new record
-      const { data: created, error: insertError } = await supabase
-        .from('thread_stock')
-        .insert({
-          thread_type_id: data.thread_type_id,
-          warehouse_id: data.warehouse_id,
-          lot_number: data.lot_number || null,
-          qty_full_cones: data.qty_full_cones,
-          qty_partial_cones: data.qty_partial_cones || 0,
-          received_date: data.received_date,
-          expiry_date: data.expiry_date || null,
-          notes: data.notes || null,
-        })
-        .select()
-        .single()
-
-      if (insertError) {
-        console.error('Supabase error:', insertError)
-        return c.json<StockApiResponse<null>>({
-          success: false,
-          error: 'Loi khi them ton kho',
-        }, 500)
-      }
-
-      result = created as StockRow
+    for (let i = 0; i < data.qty_full_cones; i++) {
+      cones.push({
+        cone_id: `MC-${timestamp}-${String(cones.length + 1).padStart(4, '0')}`,
+        thread_type_id: data.thread_type_id,
+        warehouse_id: data.warehouse_id,
+        quantity_cones: 1,
+        quantity_meters: metersPerCone,
+        is_partial: false,
+        status: 'AVAILABLE',
+        lot_number: lotNumber,
+        lot_id: lotId,
+        received_date: data.received_date,
+        expiry_date: data.expiry_date || null,
+      })
     }
 
-    return c.json<StockApiResponse<StockRow>>({
-      success: true,
-      data: result,
-      message: existing ? 'Cap nhat ton kho thanh cong' : 'Them ton kho thanh cong',
-    }, existing ? 200 : 201)
+    const qtyPartial = data.qty_partial_cones || 0
+    for (let i = 0; i < qtyPartial; i++) {
+      cones.push({
+        cone_id: `MC-${timestamp}-${String(cones.length + 1).padStart(4, '0')}`,
+        thread_type_id: data.thread_type_id,
+        warehouse_id: data.warehouse_id,
+        quantity_cones: 1,
+        quantity_meters: partialMeters,
+        is_partial: true,
+        status: 'AVAILABLE',
+        lot_number: lotNumber,
+        lot_id: lotId,
+        received_date: data.received_date,
+        expiry_date: data.expiry_date || null,
+      })
+    }
+
+    const { data: insertedCones, error: insertError } = await supabase
+      .from('thread_inventory')
+      .insert(cones)
+      .select('cone_id')
+
+    if (insertError) {
+      console.error('Cone insert error:', insertError)
+      return c.json({
+        data: null,
+        error: 'Lỗi khi tạo cuộn chỉ: ' + insertError.message,
+      }, 500)
+    }
+
+    return c.json({
+      data: {
+        cones_created: cones.length,
+        lot_number: lotNumber,
+        cone_ids: (insertedCones || []).map((r: { cone_id: string }) => r.cone_id),
+      },
+      error: null,
+      message: `Nhập kho thành công ${data.qty_full_cones} cuộn nguyên, ${qtyPartial} cuộn lẻ (Lô: ${lotNumber})`,
+    }, 201)
   } catch (err) {
     console.error('Server error:', err)
-    return c.json<StockApiResponse<null>>({
-      success: false,
-      error: 'Loi he thong',
+    return c.json({
+      data: null,
+      error: 'Lỗi hệ thống',
     }, 500)
   }
 })

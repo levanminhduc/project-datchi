@@ -32,6 +32,8 @@ export const AddStockSchema = z.object({
 
   warehouse_id: z.number().int().positive('warehouse_id phai la so nguyen duong'),
 
+  supplier_id: z.number().int().positive().optional().nullable(),
+
   lot_number: z.string().trim().optional().nullable(),
 
   qty_full_cones: z.number().int().min(0, 'qty_full_cones khong duoc am'),

@@ -112,6 +112,15 @@
           <div class="col-12 col-sm-auto">
             <div class="row q-gutter-sm">
               <q-btn
+                v-if="canReceive"
+                color="teal"
+                icon="edit_note"
+                label="Nhập Thủ Công"
+                outline
+                class="full-width-xs"
+                @click="showManualEntryDialog = true"
+              />
+              <q-btn
                 color="secondary"
                 icon="qr_code_scanner"
                 label="Quét tra cứu"
@@ -399,6 +408,106 @@
       </div>
     </FormDialog>
 
+    <!-- Manual Stock Entry Dialog -->
+    <FormDialog
+      v-model="showManualEntryDialog"
+      title="Nhập Thủ Công"
+      submit-text="Nhập kho"
+      :loading="manualEntrySubmitting"
+      max-width="500px"
+      @submit="handleManualEntrySubmit"
+      @cancel="showManualEntryDialog = false"
+    >
+      <div class="row q-col-gutter-md">
+        <div class="col-12">
+          <AppSelect
+            v-model="manualEntryForm.supplier_id"
+            label="Nhà cung cấp"
+            :options="manualSupplierOptions"
+            :loading="manualEntryLoading"
+            required
+            emit-value
+            map-options
+            use-input
+            fill-input
+            hide-selected
+            @update:model-value="onManualSupplierChange"
+          />
+        </div>
+
+        <div class="col-12">
+          <AppSelect
+            v-model="manualEntryForm.tex_number"
+            label="Tex"
+            :options="manualTexOptions"
+            :disable="!manualEntryForm.supplier_id || manualTexOptions.length === 0"
+            :hint="manualEntryForm.supplier_id && manualTexOptions.length === 0 ? 'NCC này chưa có loại chỉ nào' : undefined"
+            required
+            emit-value
+            map-options
+            @update:model-value="onManualTexChange"
+          />
+        </div>
+
+        <div class="col-12">
+          <AppSelect
+            v-model="manualEntryForm.thread_type_id"
+            label="Màu chỉ"
+            :options="manualColorOptions"
+            :disable="!manualEntryForm.tex_number || manualColorOptions.length === 0"
+            required
+            emit-value
+            map-options
+          >
+            <template #option="{ opt, itemProps }">
+              <q-item v-bind="itemProps">
+                <q-item-section avatar>
+                  <div
+                    class="color-dot shadow-1"
+                    :style="{ backgroundColor: opt.hex || '#ccc' }"
+                  />
+                </q-item-section>
+                <q-item-section>{{ opt.label }}</q-item-section>
+              </q-item>
+            </template>
+          </AppSelect>
+        </div>
+
+        <div class="col-12">
+          <AppSelect
+            v-model="manualEntryForm.warehouse_id"
+            label="Kho nhập"
+            :options="manualWarehouseOptions"
+            required
+            emit-value
+            map-options
+            use-input
+            fill-input
+            hide-selected
+          />
+        </div>
+
+        <div class="col-12 col-sm-6">
+          <AppInput
+            v-model.number="manualEntryForm.qty_full_cones"
+            label="Cuộn nguyên"
+            type="number"
+            min="0"
+            required
+          />
+        </div>
+
+        <div class="col-12 col-sm-6">
+          <AppInput
+            v-model.number="manualEntryForm.qty_partial_cones"
+            label="Cuộn lẻ"
+            type="number"
+            min="0"
+          />
+        </div>
+      </div>
+    </FormDialog>
+
     <!-- Detail Dialog -->
     <q-dialog v-model="detailDialog.isOpen">
       <q-card
@@ -610,16 +719,23 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useQuasar, type QTableColumn } from 'quasar'
 import { useInventory, useThreadTypes, useSnackbar, useWarehouses, useConeSummary, useSuppliers } from '@/composables'
+import { useAuth } from '@/composables/useAuth'
 import { ConeStatus } from '@/types/thread/enums'
 import type { Cone, ReceiveStockDTO, ConeSummaryRow } from '@/types/thread/inventory'
+import type { ThreadTypeSupplierWithRelations } from '@/types/thread/thread-type-supplier'
 import { QrScannerDialog, QrPrintDialog } from '@/components/qr'
 import ConeSummaryTable from '@/components/thread/ConeSummaryTable.vue'
 import ConeWarehouseBreakdownDialog from '@/components/thread/ConeWarehouseBreakdownDialog.vue'
 import type { ConeLabelData } from '@/types/qr-label'
+import { threadTypeSupplierService } from '@/services/threadTypeSupplierService'
+import { stockService } from '@/services/stockService'
+import { ApiError } from '@/services/api'
 
 // Composables
 const $q = useQuasar()
 const snackbar = useSnackbar()
+const { hasPermission } = useAuth()
+const canReceive = computed(() => hasPermission('thread.batch.receive'))
 const {
   inventory,
   isLoading,
@@ -635,7 +751,7 @@ const {
   loading: threadTypesLoading,
 } = useThreadTypes()
 
-const { warehouseOptions, fetchWarehouses, loading: warehousesLoading } = useWarehouses()
+const { warehouseOptions, storageOptions, fetchWarehouses, loading: warehousesLoading } = useWarehouses()
 
 const { suppliers, fetchSuppliers, loading: suppliersLoading } = useSuppliers()
 
@@ -953,6 +1069,136 @@ const openPrintSingle = (cone: Cone) => {
   }]
   showPrintDialog.value = true
 }
+
+// ============ Manual Stock Entry ============
+const showManualEntryDialog = ref(false)
+const manualEntryLoading = ref(false)
+const manualEntrySubmitting = ref(false)
+const manualEntryThreadTypes = ref<ThreadTypeSupplierWithRelations[]>([])
+let manualSupplierRequestId = 0
+
+const manualEntryForm = reactive({
+  supplier_id: null as number | null,
+  tex_number: null as number | null,
+  thread_type_id: null as number | null,
+  warehouse_id: null as number | null,
+  qty_full_cones: 0,
+  qty_partial_cones: 0,
+})
+
+const resetManualEntryForm = () => {
+  manualEntryForm.supplier_id = null
+  manualEntryForm.tex_number = null
+  manualEntryForm.thread_type_id = null
+  manualEntryForm.warehouse_id = null
+  manualEntryForm.qty_full_cones = 0
+  manualEntryForm.qty_partial_cones = 0
+  manualEntryThreadTypes.value = []
+}
+
+const manualSupplierOptions = computed(() =>
+  suppliers.value.filter(s => s.is_active).map(s => ({
+    label: `${s.code} - ${s.name}`,
+    value: s.id,
+  }))
+)
+
+const manualTexOptions = computed(() => {
+  const texSet = new Map<number, string>()
+  for (const link of manualEntryThreadTypes.value) {
+    const tt = link.thread_type
+    if (tt?.tex_number != null) {
+      texSet.set(tt.tex_number, `Tex ${tt.tex_number}`)
+    }
+  }
+  return Array.from(texSet.entries()).map(([value, label]) => ({ label, value }))
+})
+
+const manualColorOptions = computed(() => {
+  if (!manualEntryForm.tex_number) return []
+  return manualEntryThreadTypes.value
+    .filter(link => link.thread_type?.tex_number === manualEntryForm.tex_number)
+    .map(link => ({
+      label: link.thread_type?.color_data?.name || 'Không xác định',
+      value: link.thread_type!.id,
+      hex: link.thread_type?.color_data?.hex_code || '#ccc',
+    }))
+})
+
+const manualWarehouseOptions = computed(() => storageOptions.value)
+
+const onManualSupplierChange = async (supplierId: number | null) => {
+  manualEntryForm.tex_number = null
+  manualEntryForm.thread_type_id = null
+  manualEntryThreadTypes.value = []
+
+  if (!supplierId) return
+
+  const requestId = ++manualSupplierRequestId
+  manualEntryLoading.value = true
+  try {
+    const result = await threadTypeSupplierService.getAll({ supplier_id: supplierId })
+    if (requestId !== manualSupplierRequestId) return
+    manualEntryThreadTypes.value = result
+  } catch (err: any) {
+    if (requestId !== manualSupplierRequestId) return
+    if (err instanceof ApiError && err.status === 403) {
+      snackbar.error('Bạn không có quyền xem loại chỉ của nhà cung cấp này')
+    } else {
+      snackbar.error('Lỗi khi tải loại chỉ cho nhà cung cấp này')
+    }
+  } finally {
+    if (requestId === manualSupplierRequestId) {
+      manualEntryLoading.value = false
+    }
+  }
+}
+
+const onManualTexChange = () => {
+  manualEntryForm.thread_type_id = null
+}
+
+const handleManualEntrySubmit = async () => {
+  if (!manualEntryForm.thread_type_id || !manualEntryForm.warehouse_id) {
+    snackbar.warning('Vui lòng chọn đầy đủ loại chỉ và kho')
+    return
+  }
+  if (manualEntryForm.qty_full_cones <= 0 && manualEntryForm.qty_partial_cones <= 0) {
+    snackbar.warning('Vui lòng nhập ít nhất một số lượng > 0')
+    return
+  }
+
+  manualEntrySubmitting.value = true
+  try {
+    await stockService.addStock({
+      thread_type_id: manualEntryForm.thread_type_id,
+      supplier_id: manualEntryForm.supplier_id || undefined,
+      warehouse_id: manualEntryForm.warehouse_id,
+      qty_full_cones: manualEntryForm.qty_full_cones || 0,
+      qty_partial_cones: manualEntryForm.qty_partial_cones || 0,
+      received_date: new Date().toISOString().split('T')[0],
+    })
+    snackbar.success('Đã nhập kho thành công')
+    showManualEntryDialog.value = false
+    resetManualEntryForm()
+  } catch (err: any) {
+    if (err instanceof ApiError && err.status === 403) {
+      snackbar.error('Bạn không có quyền thực hiện thao tác này')
+    } else {
+      snackbar.error(err?.message || 'Lỗi khi nhập kho')
+    }
+  } finally {
+    manualEntrySubmitting.value = false
+  }
+}
+
+watch(showManualEntryDialog, (isOpen) => {
+  if (isOpen) {
+    fetchSuppliers()
+  } else {
+    resetManualEntryForm()
+  }
+})
 
 const formatDate = (dateString: string): string => {
   if (!dateString) return '---'
