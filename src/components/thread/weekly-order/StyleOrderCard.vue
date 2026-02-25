@@ -35,29 +35,13 @@
           <span class="text-grey-8">
             Tuần này: <strong>{{ currentTotal }}</strong> SP
           </span>
-          <span :class="isOverLimit ? 'text-negative text-weight-bold' : isWarning ? 'text-warning text-weight-bold' : 'text-positive'">
+          <span :class="isWarning ? 'text-warning text-weight-bold' : 'text-positive'">
             Còn lại: <strong>{{ remaining }}</strong> SP
           </span>
         </div>
 
         <q-banner
-          v-if="isOverLimit"
-          dense
-          rounded
-          class="bg-red-1 text-negative q-mt-xs"
-        >
-          <template #avatar>
-            <q-icon
-              name="error"
-              color="negative"
-              size="sm"
-            />
-          </template>
-          Vượt quá {{ Math.abs(remaining) }} SP so với SL PO cho phép
-        </q-banner>
-
-        <q-banner
-          v-else-if="isWarning"
+          v-if="isWarning"
           dense
           rounded
           class="bg-orange-1 text-warning q-mt-xs"
@@ -108,6 +92,8 @@
               :max="getMaxForColor(color.color_id)"
               style="width: 140px"
               @update:model-value="handleQuantityChange(color.color_id, Number($event))"
+              @keydown="(e: KeyboardEvent) => clampOnKeydown(e, color.color_id, color.quantity)"
+              @paste="(e: ClipboardEvent) => clampOnPaste(e, color.color_id)"
             />
           </div>
           <div class="col-auto">
@@ -208,6 +194,48 @@ const getMaxForColor = (colorId: number) => {
     .filter((c) => c.color_id !== colorId)
     .reduce((sum, c) => sum + c.quantity, 0)
   return Math.max(0, maxAllowed.value - othersTotal)
+}
+
+const clampOnKeydown = (e: KeyboardEvent, colorId: number, currentValue: number) => {
+  const max = getMaxForColor(colorId)
+  if (max == null) return
+
+  if (e.key === 'ArrowUp' && currentValue >= max) {
+    e.preventDefault()
+    return
+  }
+
+  const isDigit = /^[0-9]$/.test(e.key)
+  if (!isDigit) return
+
+  const input = e.target as HTMLInputElement
+  const selStart = input.selectionStart ?? input.value.length
+  const selEnd = input.selectionEnd ?? input.value.length
+  const before = input.value.slice(0, selStart)
+  const after = input.value.slice(selEnd)
+  const projected = parseInt(before + e.key + after, 10)
+
+  if (!isNaN(projected) && projected > max) {
+    e.preventDefault()
+    if (parseInt(input.value, 10) !== max) {
+      input.value = String(max)
+      emit('update-quantity', props.entry.style_id, colorId, max, props.entry.po_id)
+    }
+  }
+}
+
+const clampOnPaste = (e: ClipboardEvent, colorId: number) => {
+  const max = getMaxForColor(colorId)
+  if (max == null) return
+
+  const pasted = e.clipboardData?.getData('text') ?? ''
+  const val = parseInt(pasted, 10)
+  if (!isNaN(val) && val > max) {
+    e.preventDefault()
+    const input = e.target as HTMLInputElement
+    input.value = String(max)
+    emit('update-quantity', props.entry.style_id, colorId, max, props.entry.po_id)
+  }
 }
 
 const handleQuantityChange = (colorId: number, rawQty: number) => {

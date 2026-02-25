@@ -81,6 +81,7 @@ export const HistoryByWeekQuerySchema = z.object({
   from_date: z.string().optional(),
   to_date: z.string().optional(),
   status: z.string().optional(),
+  created_by: z.string().optional(),
   page: z.string().optional(),
   limit: z.string().optional(),
 })

@@ -252,6 +252,7 @@ export const weeklyOrderService = {
     if (filters.from_date) searchParams.append('from_date', filters.from_date)
     if (filters.to_date) searchParams.append('to_date', filters.to_date)
     if (filters.status) searchParams.append('status', filters.status)
+    if (filters.created_by) searchParams.append('created_by', filters.created_by)
     if (filters.page) searchParams.append('page', String(filters.page))
     if (filters.limit) searchParams.append('limit', String(filters.limit))
 

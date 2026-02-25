@@ -772,13 +772,24 @@ weeklyOrder.get('/history-by-week', requirePermission('thread.allocations.view')
     }
 
     if (validated.from_date) {
-      countQuery = countQuery.gte('created_at', validated.from_date)
-      weeksQuery = weeksQuery.gte('created_at', validated.from_date)
+      const fromIso = validated.from_date.includes('/')
+        ? validated.from_date.split('/').reverse().join('-')
+        : validated.from_date
+      countQuery = countQuery.gte('created_at', `${fromIso}T00:00:00.000Z`)
+      weeksQuery = weeksQuery.gte('created_at', `${fromIso}T00:00:00.000Z`)
     }
     if (validated.to_date) {
-      const toDateEnd = validated.to_date.includes('T') ? validated.to_date : `${validated.to_date}T23:59:59.999Z`
+      const toIso = validated.to_date.includes('/')
+        ? validated.to_date.split('/').reverse().join('-')
+        : validated.to_date
+      const toDateEnd = toIso.includes('T') ? toIso : `${toIso}T23:59:59.999Z`
       countQuery = countQuery.lte('created_at', toDateEnd)
       weeksQuery = weeksQuery.lte('created_at', toDateEnd)
+    }
+
+    if (validated.created_by) {
+      countQuery = countQuery.ilike('created_by', `%${validated.created_by}%`)
+      weeksQuery = weeksQuery.ilike('created_by', `%${validated.created_by}%`)
     }
 
     const [{ count }, { data: weeks, error: weeksError }] = await Promise.all([countQuery, weeksQuery])

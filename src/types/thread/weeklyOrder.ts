@@ -146,6 +146,7 @@ export interface HistoryByWeekFilter {
   from_date?: string
   to_date?: string
   status?: string
+  created_by?: string
   page?: number
   limit?: number
 }

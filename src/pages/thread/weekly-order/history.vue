@@ -115,6 +115,15 @@
               </template>
             </AppInput>
           </div>
+          <div class="col-12 col-sm-6 col-md-2">
+            <AppInput
+              v-model="filters.created_by"
+              label="Người tạo"
+              dense
+              clearable
+              hide-bottom-space
+            />
+          </div>
           <div class="col-12 col-md-2">
             <AppButton
               flat
@@ -329,6 +338,7 @@ const filters = ref<HistoryByWeekFilter>({
   from_date: undefined,
   to_date: undefined,
   status: undefined,
+  created_by: undefined,
 });
 
 const statusOptions = [
@@ -435,6 +445,7 @@ function resetFilters() {
     from_date: undefined,
     to_date: undefined,
     status: undefined,
+    created_by: undefined,
   };
 }
 
