@@ -8,146 +8,234 @@
     >
       <template #actions>
         <AppButton
+          label="Tải mẫu Excel"
           icon="download"
-          label="Tải mẫu"
           variant="outlined"
+          color="primary"
           @click="downloadTemplate"
         />
       </template>
     </PageHeader>
 
-    <div class="row q-col-gutter-md items-end">
-      <div class="col-12 col-md-4">
-        <AppSelect
-          v-model="selectedSupplierId"
-          :options="supplierOptions"
-          label="Nhà cung cấp"
-          option-value="value"
-          option-label="label"
-          use-input
-          clearable
-          :loading="loadingSuppliers"
-          :disable="importing"
-          required
-        />
-      </div>
-
-      <div class="col-12 col-md-4">
-        <FilePicker
-          v-model="selectedFile"
-          accept=".xlsx,.xls"
-          label="Chọn file Excel (.xlsx, .xls)"
-          :disable="!selectedSupplierId || importing"
-          @update:model-value="handleFileSelected"
-        />
-      </div>
-
-      <div class="col-12 col-md-auto">
-        <AppButton
-          icon="upload_file"
-          label="Import"
-          :disable="!canImport"
-          :loading="importing"
-          @click="handleImport"
-        />
-      </div>
-    </div>
-
-    <q-separator class="q-my-md" />
-
-    <div
-      v-if="parsedRows.length > 0"
-      class="q-mb-md"
+    <AppStepper
+      v-model="currentStep"
+      :steps="steps"
+      flat
+      bordered
+      :header-nav="false"
+      class="q-mt-md"
     >
-      <div class="row q-gutter-sm items-center">
-        <q-badge
-          color="blue"
-          outline
-        >
-          Tạo mới: {{ summary.newCount }}
-        </q-badge>
-        <q-badge
-          color="positive"
-          outline
-        >
-          Đã có: {{ summary.existsCount }}
-        </q-badge>
-        <q-badge
-          v-if="summary.errorCount > 0"
-          color="negative"
-          outline
-        >
-          Lỗi: {{ summary.errorCount }}
-        </q-badge>
-        <q-badge
-          color="grey"
-          outline
-        >
-          Tổng: {{ parsedRows.length }}
-        </q-badge>
-      </div>
-    </div>
-
-    <DataTable
-      v-if="parsedRows.length > 0"
-      :rows="parsedRows"
-      :columns="previewColumns"
-      row-key="row_number"
-      :rows-per-page-options="[0]"
-      hide-pagination
-      empty-title="Chưa có dữ liệu"
-      empty-subtitle="Tải file Excel lên để xem trước"
-    >
-      <template #body-cell-status="props">
-        <q-td :props="props">
-          <q-badge
-            :color="getStatusColor(props.row.status)"
-            :label="getStatusLabel(props.row.status)"
-          />
-          <div
-            v-if="props.row.errors.length > 0"
-            class="text-caption text-negative q-mt-xs"
-          >
-            {{ props.row.errors.join(', ') }}
+      <template #step-upload>
+        <div class="q-pa-md">
+          <div class="text-subtitle1 q-mb-md">
+            Chọn nhà cung cấp và file Excel (.xlsx, .xls) chứa danh sách màu
           </div>
-        </q-td>
-      </template>
-    </DataTable>
 
-    <div
-      v-if="parsedRows.length === 0 && !selectedFile"
-      class="text-center q-pa-xl text-grey-5"
-    >
-      <q-icon
-        name="cloud_upload"
-        size="64px"
-        class="q-mb-md"
-      />
-      <div class="text-h6">
-        Chọn nhà cung cấp và tải file Excel lên
-      </div>
-      <div class="text-caption">
-        File Excel cần có cột: Tên Màu, Mã màu NCC (tùy chọn)
-      </div>
-    </div>
+          <div class="row q-col-gutter-md items-start">
+            <div class="col-12 col-sm-6 col-md-6">
+              <AppSelect
+                v-model="selectedSupplierId"
+                :options="supplierOptions"
+                label="Nhà cung cấp"
+                option-value="value"
+                option-label="label"
+                use-input
+                clearable
+                dense
+                hide-bottom-space
+                :loading="loadingSuppliers"
+                :disable="parsing || importing"
+                required
+                @update:model-value="onSupplierSelected"
+              />
+            </div>
+
+            <div class="col-12 col-sm-6 col-md-6">
+              <FilePicker
+                v-model="selectedFile"
+                accept=".xlsx,.xls"
+                label="Chọn file Excel"
+                hint="Định dạng: .xlsx hoặc .xls"
+                dense
+                hide-bottom-space
+                :disable="!selectedSupplierId || parsing || importing"
+                @update:model-value="onFileSelected"
+              />
+            </div>
+          </div>
+
+          <div
+            v-if="parseError"
+            class="text-negative q-mt-sm"
+          >
+            {{ parseError }}
+          </div>
+        </div>
+
+        <q-stepper-navigation>
+          <AppButton
+            label="Tiếp tục"
+            icon-right="arrow_forward"
+            :disable="!selectedSupplierId || !selectedFile || parsing"
+            :loading="parsing"
+            @click="parseFile"
+          />
+        </q-stepper-navigation>
+      </template>
+
+      <template #step-preview>
+        <div class="q-pa-md">
+          <div class="row q-col-gutter-md q-mb-md">
+            <div class="col-auto">
+              <q-badge
+                color="positive"
+                class="q-pa-sm text-body2"
+              >
+                {{ summary.valid }} hợp lệ
+              </q-badge>
+            </div>
+            <div
+              v-if="summary.newCount > 0"
+              class="col-auto"
+            >
+              <q-badge
+                color="info"
+                class="q-pa-sm text-body2"
+              >
+                {{ summary.newCount }} màu mới
+              </q-badge>
+            </div>
+            <div
+              v-if="summary.existsCount > 0"
+              class="col-auto"
+            >
+              <q-badge
+                color="blue-grey"
+                class="q-pa-sm text-body2"
+              >
+                {{ summary.existsCount }} đã có
+              </q-badge>
+            </div>
+            <div
+              v-if="summary.errorCount > 0"
+              class="col-auto"
+            >
+              <q-badge
+                color="negative"
+                class="q-pa-sm text-body2"
+              >
+                {{ summary.errorCount }} lỗi
+              </q-badge>
+            </div>
+          </div>
+
+          <q-table
+            flat
+            bordered
+            dense
+            :rows="parsedRows"
+            :columns="previewColumns"
+            row-key="row_number"
+            :rows-per-page-options="[10, 25, 50, 0]"
+            :pagination="{ page: 1, rowsPerPage: 25 }"
+          >
+            <template #body-cell-status="props">
+              <q-td :props="props">
+                <q-badge :color="getStatusColor(props.row.status)">
+                  {{ getStatusLabel(props.row.status) }}
+                </q-badge>
+                <div
+                  v-if="props.row.errors.length > 0"
+                  class="text-caption text-negative q-mt-xs"
+                >
+                  {{ props.row.errors.join(', ') }}
+                </div>
+              </q-td>
+            </template>
+          </q-table>
+        </div>
+
+        <q-stepper-navigation>
+          <AppButton
+            label="Quay lại"
+            variant="flat"
+            color="grey"
+            icon="arrow_back"
+            class="q-mr-sm"
+            @click="currentStep = 'upload'"
+          />
+          <AppButton
+            label="Import"
+            icon="upload"
+            :disable="summary.valid === 0 || !selectedSupplierId"
+            :loading="importing"
+            @click="doImport"
+          />
+        </q-stepper-navigation>
+      </template>
+
+      <template #step-result>
+        <div class="q-pa-md text-center">
+          <q-icon
+            name="check_circle"
+            color="positive"
+            size="64px"
+            class="q-mb-md"
+          />
+          <div class="text-h6 q-mb-sm">
+            Import thành công!
+          </div>
+          <div
+            v-if="importResult"
+            class="text-body1 q-mb-md"
+          >
+            <div>Đã import: {{ importResult.imported }} liên kết</div>
+            <div v-if="importResult.skipped > 0">
+              Bỏ qua: {{ importResult.skipped }} dòng
+            </div>
+            <div v-if="importResult.colors_created > 0">
+              Màu mới tạo: {{ importResult.colors_created }}
+            </div>
+          </div>
+          <div class="row justify-center q-gutter-sm">
+            <AppButton
+              label="Import file khác"
+              icon="replay"
+              variant="outlined"
+              @click="resetFlow"
+            />
+            <AppButton
+              label="Về trang NCC"
+              icon="arrow_back"
+              @click="router.push('/thread/suppliers')"
+            />
+          </div>
+        </div>
+      </template>
+    </AppStepper>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { importService } from '@/services/importService'
-import { colorService } from '@/services/colorService'
-import { supplierService } from '@/services/supplierService'
 import { useSnackbar } from '@/composables/useSnackbar'
-import type { ImportMappingConfig, ImportColorRow, ImportRowStatus } from '@/types/thread'
+import { colorService } from '@/services/colorService'
+import { importService } from '@/services/importService'
+import { supplierService } from '@/services/supplierService'
 import type { Color } from '@/types/thread/color'
 import type { Supplier } from '@/types/thread/supplier'
-import PageHeader from '@/components/ui/layout/PageHeader.vue'
+import type {
+  ImportColorResponse,
+  ImportColorRow,
+  ImportMappingConfig,
+  ImportRowStatus,
+} from '@/types/thread'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
+import PageHeader from '@/components/ui/layout/PageHeader.vue'
+import AppStepper from '@/components/ui/navigation/AppStepper.vue'
 import FilePicker from '@/components/ui/pickers/FilePicker.vue'
-import DataTable from '@/components/ui/tables/DataTable.vue'
 
 definePage({
   meta: {
@@ -160,128 +248,188 @@ const route = useRoute()
 const router = useRouter()
 const snackbar = useSnackbar()
 
+const steps = [
+  { name: 'upload', title: 'Chọn file', icon: 'upload_file' },
+  { name: 'preview', title: 'Xem trước', icon: 'preview' },
+  { name: 'result', title: 'Kết quả', icon: 'check_circle' },
+]
+
+const currentStep = ref<string | number>('upload')
 const selectedSupplierId = ref<number | null>(null)
 const selectedFile = ref<File | null>(null)
-const parsedRows = ref<ImportColorRow[]>([])
+const parsing = ref(false)
+const parseError = ref('')
 const importing = ref(false)
+const parsedRows = ref<ImportColorRow[]>([])
+const importResult = ref<ImportColorResponse | null>(null)
 const loadingSuppliers = ref(false)
 const suppliers = ref<Supplier[]>([])
 const existingColors = ref<Color[]>([])
 const mappingConfig = ref<ImportMappingConfig | null>(null)
 
 const supplierOptions = computed(() =>
-  suppliers.value.map((s) => ({
-    label: `${s.code} - ${s.name}`,
-    value: s.id,
+  suppliers.value.map((supplier) => ({
+    label: `${supplier.code} - ${supplier.name}`,
+    value: supplier.id,
   }))
 )
 
 const summary = computed(() => {
-  const newCount = parsedRows.value.filter((r) => r.status === 'new_color').length
-  const existsCount = parsedRows.value.filter((r) => r.status === 'exists').length
-  const errorCount = parsedRows.value.filter((r) => r.status === 'error').length
-  return { newCount, existsCount, errorCount }
-})
-
-const canImport = computed(() => {
-  if (!selectedSupplierId.value || parsedRows.value.length === 0 || importing.value) return false
-  const validRows = parsedRows.value.filter((r) => r.status !== 'error')
-  return validRows.length > 0
+  const rows = parsedRows.value
+  return {
+    valid: rows.filter((row) => row.status !== 'error').length,
+    newCount: rows.filter((row) => row.status === 'new_color').length,
+    existsCount: rows.filter((row) => row.status === 'exists').length,
+    errorCount: rows.filter((row) => row.status === 'error').length,
+  }
 })
 
 const previewColumns = [
-  { name: 'row_number', label: '#', field: 'row_number', align: 'center' as const, style: 'width: 60px' },
-  { name: 'color_name', label: 'Tên Màu', field: 'color_name', align: 'left' as const },
-  { name: 'supplier_color_code', label: 'Mã NCC', field: 'supplier_color_code', align: 'left' as const, format: (v: string | undefined) => v || '-' },
+  { name: 'row_number', label: '#', field: 'row_number', align: 'center' as const, sortable: true },
+  { name: 'color_name', label: 'Tên màu', field: 'color_name', align: 'left' as const, sortable: true },
+  {
+    name: 'supplier_color_code',
+    label: 'Mã màu NCC',
+    field: 'supplier_color_code',
+    align: 'left' as const,
+    format: (value: string | undefined) => value || '-',
+  },
   { name: 'status', label: 'Trạng thái', field: 'status', align: 'center' as const },
 ]
 
 function getStatusColor(status: ImportRowStatus): string {
   switch (status) {
-    case 'new_color': return 'blue'
-    case 'exists': return 'positive'
-    case 'error': return 'negative'
-    default: return 'grey'
+    case 'new_color':
+      return 'info'
+    case 'exists':
+      return 'blue-grey'
+    case 'error':
+      return 'negative'
+    default:
+      return 'grey'
   }
 }
 
 function getStatusLabel(status: ImportRowStatus): string {
   switch (status) {
-    case 'new_color': return 'Tạo mới'
-    case 'exists': return 'Đã có'
-    case 'error': return 'Lỗi'
-    default: return status
+    case 'new_color':
+      return 'Màu mới'
+    case 'exists':
+      return 'Đã có'
+    case 'error':
+      return 'Lỗi'
+    default:
+      return status
   }
+}
+
+function resetPreviewState(): void {
+  parseError.value = ''
+  parsedRows.value = []
+  importResult.value = null
+  if (currentStep.value !== 'upload') {
+    currentStep.value = 'upload'
+  }
+}
+
+function onSupplierSelected(): void {
+  resetPreviewState()
+}
+
+function onFileSelected(file: File | File[] | null): void {
+  if (Array.isArray(file)) {
+    selectedFile.value = file[0] ?? null
+  }
+  resetPreviewState()
+}
+
+function resetFlow(): void {
+  selectedFile.value = null
+  resetPreviewState()
+}
+
+async function loadMappingConfig(): Promise<ImportMappingConfig> {
+  if (mappingConfig.value) return mappingConfig.value
+  const config = await importService.getSupplierColorMapping()
+  mappingConfig.value = config
+  return config
 }
 
 async function loadInitialData() {
   loadingSuppliers.value = true
   try {
-    const [suppliersData, colorsData, config] = await Promise.all([
+    const [supplierData, colorData] = await Promise.all([
       supplierService.getAll({ is_active: true }),
       colorService.getAll(),
-      importService.getSupplierColorMapping().catch(() => null),
     ])
-    suppliers.value = suppliersData
-    existingColors.value = colorsData
-    mappingConfig.value = config
 
-    const preSelectedId = route.query.supplier_id
-    if (preSelectedId) {
-      const id = Number(preSelectedId)
-      if (!isNaN(id) && suppliers.value.some((s) => s.id === id)) {
-        selectedSupplierId.value = id
-      }
+    suppliers.value = supplierData
+    existingColors.value = colorData
+
+    const preSelectedId = Number(route.query.supplier_id)
+    if (!Number.isNaN(preSelectedId) && suppliers.value.some((supplier) => supplier.id === preSelectedId)) {
+      selectedSupplierId.value = preSelectedId
     }
-  } catch (err) {
+  } catch (error) {
     snackbar.error('Lỗi khi tải dữ liệu')
-    console.error(err)
+    console.error(error)
   } finally {
     loadingSuppliers.value = false
   }
 }
 
-async function handleFileSelected(file: File | File[] | null) {
-  parsedRows.value = []
-  if (!file || Array.isArray(file)) return
+async function parseFile() {
+  if (!selectedSupplierId.value) {
+    parseError.value = 'Vui lòng chọn nhà cung cấp'
+    return
+  }
+
+  if (!selectedFile.value) {
+    parseError.value = 'Vui lòng chọn file Excel'
+    return
+  }
+
+  parsing.value = true
+  parseError.value = ''
 
   try {
+    const config = await loadMappingConfig()
     const ExcelJS = await import('exceljs')
     const workbook = new ExcelJS.Workbook()
-    const buffer = await file.arrayBuffer()
+    const buffer = await selectedFile.value.arrayBuffer()
     await workbook.xlsx.load(buffer)
 
-    const sheetIndex = mappingConfig.value?.sheet_index ?? 0
-    const dataStartRow = mappingConfig.value?.data_start_row ?? 2
-    const columns = mappingConfig.value?.columns ?? { color_name: 'A', supplier_color_code: 'B' }
-
-    const sheet = workbook.worksheets[sheetIndex]
+    const sheet = workbook.worksheets[config.sheet_index]
     if (!sheet) {
-      snackbar.error('Không tìm thấy sheet trong file Excel')
+      parseError.value = `Không tìm thấy sheet tại vị trí ${config.sheet_index}`
       return
     }
 
+    const columns = config.columns
     const rows: ImportColorRow[] = []
-    const existingColorNames = new Set(
-      existingColors.value.map((c) => c.name.toLowerCase().trim())
-    )
+    const existingColorNames = new Set(existingColors.value.map((color) => color.name.toLowerCase().trim()))
+    const fileColorNames = new Set<string>()
 
-    for (let rowNum = dataStartRow; rowNum <= sheet.rowCount; rowNum++) {
-      const row = sheet.getRow(rowNum)
+    for (let rowIdx = config.data_start_row; rowIdx <= sheet.rowCount; rowIdx++) {
+      const row = sheet.getRow(rowIdx)
       const colorName = String(row.getCell(columns.color_name || 'A').value ?? '').trim()
       const supplierColorCode = String(row.getCell(columns.supplier_color_code || 'B').value ?? '').trim()
 
       if (!colorName) continue
 
+      const normalizedColor = colorName.toLowerCase()
       const errors: string[] = []
-      let status: ImportRowStatus = 'new_color'
+      let status: ImportRowStatus = existingColorNames.has(normalizedColor) ? 'exists' : 'new_color'
 
-      if (existingColorNames.has(colorName.toLowerCase())) {
-        status = 'exists'
+      if (fileColorNames.has(normalizedColor)) {
+        status = 'error'
+        errors.push('Tên màu bị trùng trong file')
+      } else {
+        fileColorNames.add(normalizedColor)
       }
 
       rows.push({
-        row_number: rowNum,
+        row_number: rowIdx,
         color_name: colorName,
         supplier_color_code: supplierColorCode || undefined,
         status,
@@ -290,22 +438,24 @@ async function handleFileSelected(file: File | File[] | null) {
     }
 
     if (rows.length === 0) {
-      snackbar.error('Không tìm thấy dữ liệu trong file Excel')
+      parseError.value = 'Không tìm thấy dữ liệu trong file. Kiểm tra lại cấu hình sheet và dòng bắt đầu.'
       return
     }
 
     parsedRows.value = rows
     snackbar.success(`Đã đọc ${rows.length} dòng từ file Excel`)
-  } catch (err) {
-    snackbar.error('Lỗi khi đọc file Excel')
-    console.error(err)
+    currentStep.value = 'preview'
+  } catch (error) {
+    parseError.value = error instanceof Error ? error.message : 'Lỗi khi đọc file Excel'
+  } finally {
+    parsing.value = false
   }
 }
 
-async function handleImport() {
-  if (!selectedSupplierId.value || parsedRows.value.length === 0) return
+async function doImport() {
+  if (!selectedSupplierId.value) return
 
-  const validRows = parsedRows.value.filter((r) => r.status !== 'error')
+  const validRows = parsedRows.value.filter((row) => row.status !== 'error')
   if (validRows.length === 0) {
     snackbar.error('Không có dòng hợp lệ để import')
     return
@@ -314,13 +464,11 @@ async function handleImport() {
   importing.value = true
   try {
     const result = await importService.importSupplierColors(selectedSupplierId.value, validRows)
-    snackbar.success(
-      `Import thành công: ${result.imported} liên kết, ${result.colors_created} màu mới`
-    )
-    router.push('/thread/suppliers')
-  } catch (err) {
-    snackbar.error((err as Error).message || 'Lỗi khi import')
-    console.error(err)
+    importResult.value = result
+    snackbar.success(`Import thành công ${result.imported} liên kết`)
+    currentStep.value = 'result'
+  } catch (error) {
+    snackbar.error(error instanceof Error ? error.message : 'Lỗi khi import dữ liệu')
   } finally {
     importing.value = false
   }
@@ -329,8 +477,8 @@ async function handleImport() {
 async function downloadTemplate() {
   try {
     await importService.downloadColorTemplate()
-  } catch (err) {
-    snackbar.error((err as Error).message || 'Không thể tải file mẫu')
+  } catch (error) {
+    snackbar.error(error instanceof Error ? error.message : 'Không thể tải file mẫu')
   }
 }
 
