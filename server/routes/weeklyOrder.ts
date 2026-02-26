@@ -478,8 +478,8 @@ weeklyOrder.patch('/deliveries/:deliveryId', requirePermission('thread.allocatio
 })
 
 /**
- * POST /api/weekly-orders/deliveries/:deliveryId/receive - Receive delivery into stock
- * Creates ONE thread_stock record (not individual cones) and updates delivery receiving status
+ * POST /api/weekly-orders/deliveries/:deliveryId/receive - Receive delivery into inventory
+ * Creates individual thread_inventory cones (not thread_stock aggregate) and updates delivery status
  */
 weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.allocations.manage'), async (c) => {
   try {
@@ -500,9 +500,8 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
       throw err
     }
 
-    const { warehouse_id, quantity, received_by } = validated
+    const { warehouse_id, quantity, received_by, expiry_date } = validated
 
-    // 1. Get delivery record with thread_type info
     const { data: delivery, error: deliveryError } = await supabase
       .from('thread_order_deliveries')
       .select(`
@@ -519,12 +518,10 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
       throw deliveryError
     }
 
-    // 2. Validate delivery status
     if (delivery.status !== 'DELIVERED') {
       return c.json({ data: null, error: 'Chỉ có thể nhập kho cho đơn đã giao' }, 400)
     }
 
-    // 3. Validate warehouse exists
     const { data: warehouse, error: warehouseError } = await supabase
       .from('warehouses')
       .select('id, name')
@@ -535,39 +532,77 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
       return c.json({ data: null, error: 'Kho không tồn tại' }, 400)
     }
 
-    // 4. Generate lot number: LOT-{YYYYMMDD}-{HHmmss}
+    const threadTypeId = delivery.thread_type_id
+    const metersPerCone = (delivery as any).thread_type?.meters_per_cone || 0
+
     const now = new Date()
     const lotNumber = `LOT-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+    const receivedDate = now.toISOString().split('T')[0]
 
-    // 5. Get thread_type_id from delivery
-    const threadTypeId = delivery.thread_type_id
-
-    // 6. Create ONE thread_stock record (not individual cones)
-    const stockRecord = {
-      thread_type_id: threadTypeId,
-      warehouse_id: warehouse_id,
-      lot_number: lotNumber,
-      qty_full_cones: quantity,
-      qty_partial_cones: 0,
-      received_date: now.toISOString().split('T')[0],
-    }
-
-    // 7. Insert thread_stock record
-    const { data: insertedStock, error: insertError } = await supabase
-      .from('thread_stock')
-      .insert(stockRecord)
-      .select()
+    const { data: lotRecord, error: lotError } = await supabase
+      .from('lots')
+      .insert({
+        lot_number: lotNumber,
+        thread_type_id: threadTypeId,
+        warehouse_id: warehouse_id,
+        supplier_id: delivery.supplier_id || null,
+        expiry_date: expiry_date || null,
+        total_cones: quantity,
+        available_cones: quantity,
+        status: 'ACTIVE',
+      })
+      .select('id')
       .single()
 
+    if (lotError || !lotRecord) {
+      console.error('Lot creation error:', lotError)
+      throw lotError || new Error('Không thể tạo lô hàng')
+    }
+
+    const lotId = lotRecord.id
+    const timestamp = Date.now()
+    const cones: Array<{
+      cone_id: string
+      thread_type_id: number
+      warehouse_id: number
+      quantity_cones: number
+      quantity_meters: number
+      is_partial: boolean
+      status: string
+      lot_number: string
+      lot_id: number
+      received_date: string
+      expiry_date: string | null
+    }> = []
+
+    for (let i = 0; i < quantity; i++) {
+      cones.push({
+        cone_id: `DLV-${timestamp}-${String(i + 1).padStart(4, '0')}`,
+        thread_type_id: threadTypeId,
+        warehouse_id: warehouse_id,
+        quantity_cones: 1,
+        quantity_meters: metersPerCone,
+        is_partial: false,
+        status: 'AVAILABLE',
+        lot_number: lotNumber,
+        lot_id: lotId,
+        received_date: receivedDate,
+        expiry_date: expiry_date || null,
+      })
+    }
+
+    const { data: insertedCones, error: insertError } = await supabase
+      .from('thread_inventory')
+      .insert(cones)
+      .select('cone_id')
+
     if (insertError) {
-      console.error('Error inserting stock:', insertError)
+      console.error('Cone insert error:', insertError)
       throw insertError
     }
 
-    // 8. Update delivery record
     const newReceivedQuantity = (delivery.received_quantity || 0) + quantity
 
-    // Get total_final from thread_order_results to calculate inventory_status
     const { data: results } = await supabase
       .from('thread_order_results')
       .select('summary_data')
@@ -583,7 +618,6 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
       }
     }
 
-    // Calculate inventory_status
     let inventoryStatus: 'PENDING' | 'PARTIAL' | 'RECEIVED' = 'PENDING'
     if (newReceivedQuantity > 0 && newReceivedQuantity < totalFinal) {
       inventoryStatus = 'PARTIAL'
@@ -612,9 +646,9 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
     return c.json({
       data: {
         delivery: updatedDelivery,
-        stock_id: insertedStock?.id || null,
-        qty_full_cones: quantity,
+        cones_created: quantity,
         lot_number: lotNumber,
+        cone_ids: (insertedCones || []).map((r: { cone_id: string }) => r.cone_id),
       },
       error: null,
       message: `Đã nhập ${quantity} cuộn chỉ vào kho ${warehouse.name}`,

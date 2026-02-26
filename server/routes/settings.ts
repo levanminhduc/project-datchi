@@ -9,6 +9,11 @@ import {
 import { requireRoot } from '../middleware/auth'
 
 const settings = new Hono()
+const rootOnlySettingsKeys = new Set([
+  'employee_detail_fields',
+  'import_supplier_tex_mapping',
+  'import_supplier_color_mapping',
+])
 
 /**
  * GET /api/settings - List all system settings
@@ -67,6 +72,11 @@ settings.get('/:key', async (c) => {
       )
     }
 
+    if (rootOnlySettingsKeys.has(key)) {
+      const denied = await requireRoot(c, async () => {})
+      if (denied) return denied
+    }
+
     const { data, error } = await supabase
       .from('system_settings')
       .select('*')
@@ -116,7 +126,7 @@ settings.get('/:key', async (c) => {
  */
 settings.put('/:key', async (c, next) => {
   const key = c.req.param('key')
-  if (key === 'employee_detail_fields') {
+  if (rootOnlySettingsKeys.has(key)) {
     return requireRoot(c, next)
   }
   await next()

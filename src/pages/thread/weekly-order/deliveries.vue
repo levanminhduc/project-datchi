@@ -305,6 +305,12 @@
             class="q-mt-md"
           />
 
+          <DatePicker
+            v-model="receiveForm.expiry_date"
+            label="Ngày hết hạn (tùy chọn)"
+            class="q-mt-md"
+          />
+
           <div class="q-mt-md text-grey-7">
             <q-icon
               name="person"
@@ -380,6 +386,7 @@ const warehouses = ref<Warehouse[]>([])
 const receiveForm = ref({
   warehouse_id: null as number | null,
   quantity: 0,
+  expiry_date: '' as string,
 })
 
 const currentUser = computed(() => {
@@ -545,6 +552,7 @@ function openReceiveDialog(delivery: DeliveryRecord) {
   receiveForm.value = {
     warehouse_id: null,
     quantity: getPendingQuantity(delivery),
+    expiry_date: '',
   }
   showReceiveDialog.value = true
 }
@@ -553,11 +561,15 @@ async function confirmReceive() {
   if (!selectedReceiveDelivery.value || !receiveForm.value.warehouse_id) return
   receiving.value = true
   try {
-    const result = await deliveryService.receiveDelivery(selectedReceiveDelivery.value.id, {
+    const dto: { warehouse_id: number; quantity: number; received_by: string; expiry_date?: string } = {
       warehouse_id: receiveForm.value.warehouse_id,
       quantity: receiveForm.value.quantity,
       received_by: currentUser.value,
-    })
+    }
+    if (receiveForm.value.expiry_date) {
+      dto.expiry_date = fromDatePickerFormat(receiveForm.value.expiry_date)
+    }
+    const result = await deliveryService.receiveDelivery(selectedReceiveDelivery.value.id, dto)
     snackbar.success(`Đã nhập ${result.cones_created} cuộn vào kho (Lot: ${result.lot_number})`)
     showReceiveDialog.value = false
     await loadReceiveData()

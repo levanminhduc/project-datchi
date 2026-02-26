@@ -6,6 +6,7 @@ export interface ImportMappingConfig {
 }
 
 export interface ImportTexRow {
+  row_number: number
   supplier_name: string
   tex_number: number
   meters_per_cone: number
@@ -13,8 +14,30 @@ export interface ImportTexRow {
   supplier_item_code?: string
 }
 
+export type ImportRowStatus = 'valid' | 'new_supplier' | 'new_tex' | 'error'
+
+export interface ImportTexPreviewRow extends ImportTexRow {
+  status: ImportRowStatus
+  errors: string[]
+}
+
 export interface ImportTexRequest {
   rows: ImportTexRow[]
+}
+
+export interface ImportTexPreviewRequest {
+  rows: ImportTexRow[]
+}
+
+export interface ImportTexPreviewResponse {
+  rows: ImportTexPreviewRow[]
+}
+
+export interface ImportTexSkipDetail {
+  row_number: number
+  supplier_name: string
+  tex_number: number
+  reason: string
 }
 
 export interface ImportTexResponse {
@@ -22,6 +45,7 @@ export interface ImportTexResponse {
   skipped: number
   suppliers_created: number
   thread_types_created: number
+  skipped_details: ImportTexSkipDetail[]
 }
 
 export interface ImportColorRow {

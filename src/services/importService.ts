@@ -42,10 +42,26 @@ async function authenticatedDownload(endpoint: string, filename: string): Promis
 }
 
 export const importService = {
-  async getImportMapping(key: string): Promise<ImportMappingConfig> {
-    const response = await fetchApi<ApiResponse<{ key: string; value: ImportMappingConfig }>>(`/api/settings/${key}`)
+  async getSupplierTexMapping(): Promise<ImportMappingConfig> {
+    const response = await fetchApi<ApiResponse<ImportMappingConfig>>('/api/import/mapping/supplier-tex')
     if (!response.data) throw new Error(response.error || 'Không tìm thấy cấu hình import')
-    return response.data.value
+    return response.data
+  },
+
+  async getSupplierColorMapping(): Promise<ImportMappingConfig> {
+    const response = await fetchApi<ApiResponse<ImportMappingConfig>>('/api/import/mapping/supplier-colors')
+    if (!response.data) throw new Error(response.error || 'Không tìm thấy cấu hình import')
+    return response.data
+  },
+
+  async previewSupplierTex(rows: ImportTexRow[]): Promise<ImportTexRow[]> {
+    const response = await fetchApi<ApiResponse<{ rows: ImportTexRow[] }>>('/api/import/supplier-tex/preview', {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    })
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không nhận được dữ liệu xem trước')
+    return response.data.rows
   },
 
   async importSupplierTex(rows: ImportTexRow[]): Promise<ImportTexResponse> {

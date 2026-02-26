@@ -220,7 +220,7 @@ async function loadInitialData() {
     const [suppliersData, colorsData, config] = await Promise.all([
       supplierService.getAll({ is_active: true }),
       colorService.getAll(),
-      importService.getImportMapping('import_supplier_color_mapping').catch(() => null),
+      importService.getSupplierColorMapping().catch(() => null),
     ])
     suppliers.value = suppliersData
     existingColors.value = colorsData

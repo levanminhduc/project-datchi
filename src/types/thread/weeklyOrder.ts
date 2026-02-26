@@ -180,6 +180,7 @@ export interface ReceiveDeliveryDTO {
   warehouse_id: number
   quantity: number
   received_by: string
+  expiry_date?: string
 }
 
 export interface UpdateDeliveryDTO {

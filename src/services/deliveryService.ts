@@ -11,6 +11,7 @@ interface ReceiveDeliveryResponse {
   delivery: DeliveryRecord
   cones_created: number
   lot_number: string
+  cone_ids: string[]
 }
 
 const BASE = '/api/weekly-orders'

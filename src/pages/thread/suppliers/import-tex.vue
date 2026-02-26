@@ -199,6 +199,19 @@
               Loại chỉ mới tạo: {{ importResult.thread_types_created }}
             </div>
           </div>
+          <q-table
+            v-if="importResult?.skipped_details?.length"
+            flat
+            bordered
+            dense
+            :rows="importResult.skipped_details"
+            :columns="skipDetailColumns"
+            row-key="row_number"
+            :rows-per-page-options="[0]"
+            hide-pagination
+            class="q-mb-md text-left"
+            title="Chi tiết dòng bị bỏ qua"
+          />
           <AppButton
             label="Về trang NCC"
             icon="arrow_back"
@@ -215,11 +228,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { importService } from '@/services/importService'
-import { supplierService } from '@/services/supplierService'
-import { threadService } from '@/services/threadService'
 import type { ImportMappingConfig, ImportTexRow, ImportTexResponse, ImportRowStatus } from '@/types/thread'
-import type { Supplier } from '@/types/thread/supplier'
-import type { ThreadType } from '@/types/thread/thread-type'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppStepper from '@/components/ui/navigation/AppStepper.vue'
@@ -260,6 +269,13 @@ const previewColumns = [
   { name: 'status', label: 'Trạng thái', field: 'status', align: 'center' as const },
 ]
 
+const skipDetailColumns = [
+  { name: 'row_number', label: 'Dòng', field: 'row_number', align: 'center' as const },
+  { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' as const },
+  { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'center' as const },
+  { name: 'reason', label: 'Lý do', field: 'reason', align: 'left' as const },
+]
+
 const summary = computed(() => {
   const rows = parsedRows.value
   return {
@@ -290,7 +306,7 @@ async function downloadTemplate() {
 
 async function loadMappingConfig(): Promise<ImportMappingConfig> {
   if (mappingConfig.value) return mappingConfig.value
-  const config = await importService.getImportMapping('import_supplier_tex_mapping')
+  const config = await importService.getSupplierTexMapping()
   mappingConfig.value = config
   return config
 }
@@ -317,14 +333,6 @@ async function parseFile() {
     const cols = config.columns
     const rows: ImportTexRow[] = []
 
-    const [suppliers, threadTypes] = await Promise.all([
-      supplierService.getAll(),
-      threadService.getAll(),
-    ])
-
-    const supplierNames = new Set(suppliers.map((s: Supplier) => s.name.toLowerCase().trim()))
-    const texNumbers = new Set(threadTypes.map((t: ThreadType) => t.tex_number).filter(Boolean))
-
     for (let rowIdx = config.data_start_row; rowIdx <= sheet.rowCount; rowIdx++) {
       const row = sheet.getRow(rowIdx)
       const supplierName = String(row.getCell(cols.supplier_name || 'A').value || '').trim()
@@ -339,21 +347,6 @@ async function parseFile() {
       const metersPerCone = Number(metersRaw) || 0
       const unitPrice = Number(priceRaw) || 0
 
-      const errors: string[] = []
-      if (!supplierName) errors.push('Thiếu tên NCC')
-      if (texNumber <= 0) errors.push('Tex phải > 0')
-      if (metersPerCone <= 0) errors.push('Mét/cuộn phải > 0')
-      if (unitPrice < 0) errors.push('Giá không được âm')
-
-      let status: ImportRowStatus = 'valid'
-      if (errors.length > 0) {
-        status = 'error'
-      } else if (!supplierNames.has(supplierName.toLowerCase())) {
-        status = 'new_supplier'
-      } else if (!texNumbers.has(texNumber)) {
-        status = 'new_tex'
-      }
-
       rows.push({
         row_number: rowIdx,
         supplier_name: supplierName,
@@ -361,8 +354,8 @@ async function parseFile() {
         meters_per_cone: metersPerCone,
         unit_price: unitPrice,
         supplier_item_code: itemCode || undefined,
-        status,
-        errors,
+        status: 'valid' as ImportRowStatus,
+        errors: [],
       })
     }
 
@@ -371,7 +364,7 @@ async function parseFile() {
       return
     }
 
-    parsedRows.value = rows
+    parsedRows.value = await importService.previewSupplierTex(rows)
     currentStep.value = 'preview'
   } catch (err) {
     parseError.value = err instanceof Error ? err.message : 'Lỗi khi đọc file Excel'

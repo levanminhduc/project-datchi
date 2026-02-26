@@ -51,7 +51,21 @@ threads.get('/', requirePermission('thread.types.view'), async (c) => {
       query = query.eq('material', material)
     }
     if (supplierId) {
-      query = query.eq('supplier_id', parseInt(supplierId))
+      const sid = parseInt(supplierId)
+      const { data: junctionRows } = await supabase
+        .from('thread_type_supplier')
+        .select('thread_type_id')
+        .eq('supplier_id', sid)
+        .eq('is_active', true)
+
+      const junctionIds = (junctionRows || []).map((r: any) => r.thread_type_id)
+
+      if (junctionIds.length > 0) {
+        const idList = junctionIds.join(',')
+        query = query.or(`supplier_id.eq.${sid},id.in.(${idList})`)
+      } else {
+        query = query.eq('supplier_id', sid)
+      }
     }
     if (isActive !== undefined) {
       query = query.eq('is_active', isActive === 'true')

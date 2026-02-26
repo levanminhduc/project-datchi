@@ -7,8 +7,7 @@
 
 import { fetchApi } from './api'
 import type {
-  ThreadStockRow,
-  ThreadStockWithRelations,
+  AggregatedStockRecord,
   ThreadStockSummary,
   ThreadStockFilters,
   AddStockDTO,
@@ -40,9 +39,9 @@ export const stockService = {
    * @param filters - Optional filters: thread_type_id, warehouse_id, lot_number
    * @returns Array of stock records with relations
    */
-  async getAll(filters?: ThreadStockFilters): Promise<ThreadStockWithRelations[]> {
+  async getAll(filters?: ThreadStockFilters): Promise<AggregatedStockRecord[]> {
     const queryString = buildQueryString(filters)
-    const response = await fetchApi<StockApiResponse<ThreadStockWithRelations[]>>(
+    const response = await fetchApi<StockApiResponse<AggregatedStockRecord[]>>(
       `/api/stock${queryString}`
     )
     return response.data || []
@@ -89,8 +88,8 @@ export const stockService = {
    * @param data - Return data
    * @returns Updated stock record
    */
-  async returnStock(data: ReturnStockDTO): Promise<ThreadStockRow> {
-    const response = await fetchApi<StockApiResponse<ThreadStockRow>>('/api/stock/return', {
+  async returnStock(data: ReturnStockDTO): Promise<{ cones_created: number; lot_number: string }> {
+    const response = await fetchApi<StockApiResponse<{ cones_created: number; lot_number: string }>>('/api/stock/return', {
       method: 'POST',
       body: JSON.stringify(data),
     })
@@ -106,7 +105,7 @@ export const stockService = {
   async getByThreadType(
     threadTypeId: number,
     warehouseId?: number
-  ): Promise<ThreadStockWithRelations[]> {
+  ): Promise<AggregatedStockRecord[]> {
     return this.getAll({
       thread_type_id: threadTypeId,
       warehouse_id: warehouseId,
@@ -118,7 +117,7 @@ export const stockService = {
    * @param warehouseId - Warehouse ID
    * @returns Array of stock records for that warehouse
    */
-  async getByWarehouse(warehouseId: number): Promise<ThreadStockWithRelations[]> {
+  async getByWarehouse(warehouseId: number): Promise<AggregatedStockRecord[]> {
     return this.getAll({ warehouse_id: warehouseId })
   },
 

@@ -63,6 +63,7 @@ export const ReceiveDeliverySchema = z.object({
   warehouse_id: z.number({ required_error: 'Vui lòng chọn kho nhập' }).int().positive('warehouse_id phải là số nguyên dương'),
   quantity: z.number({ required_error: 'Số lượng là bắt buộc' }).int().positive('Số lượng phải lớn hơn 0'),
   received_by: z.string({ required_error: 'Người nhập là bắt buộc' }).min(1, 'Người nhập không được để trống'),
+  expiry_date: z.string().optional(),
 })
 
 export const UpdateQuotaConesSchema = z.object({

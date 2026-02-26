@@ -26,11 +26,19 @@ export interface ImportColorRow {
 
 export type ImportRowStatus = 'valid' | 'new_supplier' | 'new_tex' | 'new_color' | 'exists' | 'error'
 
+export interface ImportTexSkipDetail {
+  row_number: number
+  supplier_name: string
+  tex_number: number
+  reason: string
+}
+
 export interface ImportTexResponse {
   imported: number
   skipped: number
   suppliers_created: number
   thread_types_created: number
+  skipped_details: ImportTexSkipDetail[]
 }
 
 export interface ImportColorResponse {

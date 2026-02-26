@@ -54,7 +54,11 @@ class AuthService {
         },
       })
 
-      if (!response.ok) return null
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null)
+        console.error('fetchCurrentEmployee failed:', response.status, errorBody)
+        return null
+      }
 
       const { data } = await response.json()
       return data as EmployeeAuth

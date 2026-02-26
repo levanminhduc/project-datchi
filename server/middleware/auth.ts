@@ -25,6 +25,11 @@ export async function authMiddleware(c: Context, next: Next) {
 
     const jwtPayload = payload as unknown as JwtPayload
 
+    if (!jwtPayload.employee_id || !jwtPayload.employee_code) {
+      console.error('Auth middleware: JWT missing custom claims (employee_id, employee_code). Check custom_access_token_hook is enabled in Supabase Auth.')
+      return c.json({ error: true, message: 'Token thiếu thông tin nhân viên. Vui lòng đăng nhập lại.' }, 401)
+    }
+
     let permissions: string[]
     if (jwtPayload.is_root) {
       permissions = ['*']
@@ -32,12 +37,13 @@ export async function authMiddleware(c: Context, next: Next) {
       permissions = await getEmployeePermissions(jwtPayload.employee_id)
     }
 
-    const isAdmin = jwtPayload.is_root || jwtPayload.roles.includes('admin')
+    const roles = Array.isArray(jwtPayload.roles) ? jwtPayload.roles : []
+    const isAdmin = jwtPayload.is_root || roles.includes('admin')
 
     c.set('auth', {
       employeeId: jwtPayload.employee_id,
       employeeCode: jwtPayload.employee_code,
-      roles: jwtPayload.roles,
+      roles,
       isRoot: jwtPayload.is_root,
       isAdmin,
       permissions,

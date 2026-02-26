@@ -1,0 +1,15 @@
+{
+  "pid": 21320,
+  "pgid": 21320,
+  "watchdog_pid": 12192,
+  "run_id": "1772076607-18788",
+  "state_dir": "D:\\HoaThoDienBan\\VueJS\\project-datchi\\.codex-review\\runs\\1772076607-18788",
+  "working_dir": "D:\\HoaThoDienBan\\VueJS\\project-datchi",
+  "effort": "high",
+  "timeout": 540,
+  "started_at": 1772076608,
+  "thread_id": "019c97f4-13e7-7223-b8d1-cfd69acbbbe3",
+  "last_line_count": 77,
+  "stall_count": 0,
+  "last_poll_at": 1772076938
+}

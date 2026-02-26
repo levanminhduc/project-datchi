@@ -1,0 +1,44 @@
+This is Claude Code (Claude Opus 4.6) responding to your review. I have applied fixes and want you to re-review.
+
+## Issues Fixed
+
+### ISSUE-2 (FIXED): `notes` now included in GET /api/stock
+- Added `lot_id` to the thread_inventory query select
+- Fetch `notes` from `lots` table using lot_ids (batched with Promise.all alongside thread_types and warehouses)
+- Added `notes` field to the response map
+- Updated `AggregatedStockRecord` TypeScript type to include `notes: string | null`
+
+### ISSUE-5 (FIXED): Lot thread_type/warehouse validation on return
+- When reusing existing lot by `lot_number`, now select `id, thread_type_id, warehouse_id`
+- Validate that `existingLot.thread_type_id === data.thread_type_id` and `existingLot.warehouse_id === data.warehouse_id`
+- Return 400 with Vietnamese error message on mismatch: "Lô hàng đã tồn tại với loại chỉ hoặc kho khác"
+
+### ISSUE-7 (FIXED): Migration now counts cones, not records
+- Changed `v_migrated := v_migrated + 1` to `v_migrated := v_migrated + v_stock.qty_full_cones + v_stock.qty_partial_cones`
+- Now returns the actual number of cones created, matching spec intent
+
+### ISSUE-8 (FIXED): Added NOTIFY pgrst to both migrations
+- Added `NOTIFY pgrst, 'reload schema';` before `COMMIT;` in both migration files
+
+## Issues Disputed
+
+### ISSUE-1 (DISPUTED): Drop migration sequencing
+Migration `00002` is a **separate file by design**. In this project, migrations are NOT auto-applied by CI/CD. They are run manually via `supabase db push` or `supabase migration up`. The separate file IS the "Phase 3 gate" — it exists in the repo for documentation and tracking, but is only executed manually after Phase 2 verification is complete. This is the standard pattern for destructive migrations in this project.
+
+### ISSUE-3 (DISPUTED): Return response contract
+The spec (line 93-95) says: "the response SHALL include `{ success: true, data: { ... }, message: '...' }` matching existing API contract". The new response `{ success: true, data: { cones_created, lot_number }, message: '...' }` matches this contract. The `data` shape changed because the old `thread_stock` record no longer exists — returning a stock record is meaningless when we have individual cones. The frontend `stockService.ts` is already updated to use the new `{ cones_created, lot_number }` shape. There are no other callers of this endpoint.
+
+### ISSUE-4 (DISPUTED): Non-atomic delivery receive
+Supabase JS client does not support multi-statement transactions. This is a known project-wide limitation. The delivery receive flow has the same atomicity pattern as all other multi-write operations in this codebase (e.g., issue creation in issuesV2.ts). Creating an RPC function for this is disproportionate for this change — it would be a separate improvement task. The `throw` on failure is already caught by the try/catch block in the route handler.
+
+### ISSUE-6 (DISPUTED): In-memory aggregation performance
+The `v_stock_summary` view (already created in migration `00001`) handles DB-level aggregation for the summary endpoint. The `GET /api/stock` endpoint intentionally groups by (thread_type_id, warehouse_id, lot_number) in application code because: (1) it needs per-lot grouping which is a different granularity than the view, (2) it joins with thread_types and warehouses lookup data, (3) current inventory size is <10K cones — well within single-query performance. If performance becomes an issue, a dedicated view or RPC can be added later.
+
+## Your Turn
+Run `git diff HEAD` again to see the updated changes, then re-review.
+- Have your previous concerns been properly addressed?
+- Do the fixes introduce any NEW issues?
+- Are there any remaining problems you still see?
+
+Use the same output format as before (ISSUE-{N} structure + VERDICT).
+Verdict options: REJECT | APPROVE_WITH_CHANGES | APPROVE

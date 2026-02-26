@@ -324,7 +324,7 @@ const {
   isLoading: posLoading,
   fetchPurchaseOrders,
 } = usePurchaseOrders();
-const { styles: styleList, loading: stylesLoading, fetchStyles } = useStyles();
+const { styles: styleList, isLoading: stylesLoading, fetchStyles } = useStyles();
 
 const weekGroups = ref<WeekHistoryGroup[]>([]);
 const loading = ref(false);

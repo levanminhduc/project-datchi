@@ -722,12 +722,12 @@ import { useInventory, useThreadTypes, useSnackbar, useWarehouses, useConeSummar
 import { useAuth } from '@/composables/useAuth'
 import { ConeStatus } from '@/types/thread/enums'
 import type { Cone, ReceiveStockDTO, ConeSummaryRow } from '@/types/thread/inventory'
-import type { ThreadTypeSupplierWithRelations } from '@/types/thread/thread-type-supplier'
+import type { ThreadType } from '@/types/thread/thread-type'
 import { QrScannerDialog, QrPrintDialog } from '@/components/qr'
 import ConeSummaryTable from '@/components/thread/ConeSummaryTable.vue'
 import ConeWarehouseBreakdownDialog from '@/components/thread/ConeWarehouseBreakdownDialog.vue'
 import type { ConeLabelData } from '@/types/qr-label'
-import { threadTypeSupplierService } from '@/services/threadTypeSupplierService'
+import { threadService } from '@/services/threadService'
 import { stockService } from '@/services/stockService'
 import { ApiError } from '@/services/api'
 
@@ -1074,7 +1074,7 @@ const openPrintSingle = (cone: Cone) => {
 const showManualEntryDialog = ref(false)
 const manualEntryLoading = ref(false)
 const manualEntrySubmitting = ref(false)
-const manualEntryThreadTypes = ref<ThreadTypeSupplierWithRelations[]>([])
+const manualEntryThreadTypes = ref<ThreadType[]>([])
 let manualSupplierRequestId = 0
 
 const manualEntryForm = reactive({
@@ -1105,9 +1105,8 @@ const manualSupplierOptions = computed(() =>
 
 const manualTexOptions = computed(() => {
   const texSet = new Map<number, string>()
-  for (const link of manualEntryThreadTypes.value) {
-    const tt = link.thread_type
-    if (tt?.tex_number != null) {
+  for (const tt of manualEntryThreadTypes.value) {
+    if (tt.tex_number != null) {
       texSet.set(tt.tex_number, `Tex ${tt.tex_number}`)
     }
   }
@@ -1117,11 +1116,11 @@ const manualTexOptions = computed(() => {
 const manualColorOptions = computed(() => {
   if (!manualEntryForm.tex_number) return []
   return manualEntryThreadTypes.value
-    .filter(link => link.thread_type?.tex_number === manualEntryForm.tex_number)
-    .map(link => ({
-      label: link.thread_type?.color_data?.name || 'Không xác định',
-      value: link.thread_type!.id,
-      hex: link.thread_type?.color_data?.hex_code || '#ccc',
+    .filter(tt => tt.tex_number === manualEntryForm.tex_number)
+    .map(tt => ({
+      label: tt.color_data?.name || 'Không xác định',
+      value: tt.id,
+      hex: tt.color_data?.hex_code || '#ccc',
     }))
 })
 
@@ -1137,7 +1136,7 @@ const onManualSupplierChange = async (supplierId: number | null) => {
   const requestId = ++manualSupplierRequestId
   manualEntryLoading.value = true
   try {
-    const result = await threadTypeSupplierService.getAll({ supplier_id: supplierId })
+    const result = await threadService.getAll({ supplier_id: supplierId })
     if (requestId !== manualSupplierRequestId) return
     manualEntryThreadTypes.value = result
   } catch (err: any) {
@@ -1176,7 +1175,7 @@ const handleManualEntrySubmit = async () => {
       warehouse_id: manualEntryForm.warehouse_id,
       qty_full_cones: manualEntryForm.qty_full_cones || 0,
       qty_partial_cones: manualEntryForm.qty_partial_cones || 0,
-      received_date: new Date().toISOString().split('T')[0],
+      received_date: new Date().toISOString().slice(0, 10),
     })
     snackbar.success('Đã nhập kho thành công')
     showManualEntryDialog.value = false

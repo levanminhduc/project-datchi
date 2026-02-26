@@ -1,6 +1,6 @@
 ---
 name: codex-plan-review
-description: Debate OpenSpec implementation plans between Claude Code and Codex CLI (GPT). After creating tasks.md via OpenSpec, invoke this skill to have Codex review the plan. Both AIs debate through multiple rounds until reaching consensus before /spx-apply begins.
+description: Debate OpenSpec implementation plans between Claude Code and Codex CLI (GPT). After creating tasks.md via OpenSpec, invoke this skill to have Codex review the plan. Both AIs debate through multiple rounds until reaching consensus before /spx-apply begins. (OpenSpec Integration)
 ---
 
 # Codex Plan Review — Skill Guide (OpenSpec Integration)
@@ -14,6 +14,70 @@ This skill orchestrates an adversarial debate between Claude Code and OpenAI Cod
 - An active OpenSpec change must exist with at least `tasks.md` written (ideally all 4 artifacts: proposal.md, specs/, design.md, tasks.md).
 - The Codex CLI (`codex`) must be installed and available in PATH.
 - OpenAI API key configured for Codex.
+
+### Codex CLI Pre-Check
+Before starting the debate, verify Codex is available:
+```bash
+if ! command -v codex &>/dev/null; then
+  echo "ERROR: Codex CLI not found in PATH. Install it first: npm install -g @openai/codex"
+  exit 1
+fi
+codex --version
+```
+If the check fails, inform the user and stop. Do NOT proceed without a working Codex CLI.
+
+## Codex Runner Script
+
+This skill uses `codex-runner` (Go binary) with `start`/`poll`/`stop` subcommands to run Codex CLI in the background and report progress incrementally.
+
+- **`start`** — launches Codex as a detached background process, returns immediately with a state directory path
+- **`poll`** — checks progress, outputs plain text status on stdout and progress events on stderr
+- **`stop`** — kills processes and cleans up the state directory
+
+### Bootstrap Logic (inline in every Bash call)
+
+Every Bash call that invokes the runner must include this resolve block at the top:
+
+```bash
+RUNNER="${CODEX_RUNNER:-$HOME/.local/bin/codex-runner}"
+if ! test -x "$RUNNER" || ! "$RUNNER" --version 2>/dev/null | grep -q 'codex-runner 6'; then
+  echo "ERROR: codex-runner v6 not found at $RUNNER. SessionStart hook should have installed it." >&2
+  exit 1
+fi
+```
+
+The `codex-runner` binary is a compiled Go program installed by the SessionStart hook. No embedded script is needed — the binary is self-contained.
+
+### Runner Output Format
+
+**Start mode** outputs a single line:
+```
+CODEX_STARTED:<STATE_DIR>
+```
+
+**Poll mode** outputs on stdout (machine-readable, one line per field):
+- Running: `POLL:running:<elapsed>s`
+- Completed: `POLL:completed:<elapsed>s` + `THREAD_ID:<id>` (review text in `<STATE_DIR>/review.txt`)
+- Failed: `POLL:failed:<elapsed>s:<exit_code>:<error>`
+- Timeout: `POLL:timeout:<elapsed>s:2:<error>`
+- Stalled: `POLL:stalled:<elapsed>s:4:<error>`
+
+Progress events are written to stderr in format `[Xs] message` — these are visible in Bash tool output.
+
+### Exit Codes (legacy mode)
+- `0` = success
+- `1` = general error
+- `2` = timeout (540s default)
+- `3` = codex turn failed
+- `4` = codex stalled (~3 min no output)
+- `5` = codex not found in PATH
+
+### Poll Status Codes
+- `running` — Codex still working; stderr shows progress events
+- `completed` — Codex finished; `THREAD_ID:<id>` on stdout, review in `<STATE_DIR>/review.txt`
+- `failed` — Codex turn failed or process exited unexpectedly
+- `timeout` — Exceeded timeout (default 540s)
+- `stalled` — No new output for ~3 minutes
 
 ## Step 0: Identify the Active OpenSpec Change
 
@@ -36,39 +100,6 @@ Ask the user (via `AskUserQuestion`) **only one question**:
 
 **Do NOT ask** which model to use — always use Codex's default model (no `-m` flag).
 **Do NOT ask** how many rounds — the loop runs automatically until consensus.
-
-## Pre-flight Check
-
-Before launching Codex, verify it's available:
-```bash
-command -v codex >/dev/null 2>&1 && echo "OK" || echo "MISSING: codex not found in PATH"
-```
-If missing, inform the user and stop.
-
-## Progress Monitoring Strategy
-
-Codex runs in background — no hardcoded timeout needed. Instead, Claude Code polls the JSONL output file periodically and reports progress to the user.
-
-### Polling Loop
-
-1. Launch Codex with `run_in_background: true` in the Bash tool. The Bash tool will return a `task_id` for the background process — **save this `task_id`** for cleanup after extraction. The first line of output will be the absolute path to the JSONL file — **save this path** for use in all subsequent poll and extract commands.
-2. **Every ~60 seconds**, poll the output file with the Bash tool using the **absolute path** saved in step 1. **You MUST wait before each poll**:
-   ```bash
-   sleep 60 && tail -20 "$CODEX_OUTPUT"
-   ```
-3. Parse the last few JSONL lines and report a **short progress update** to the user. Examples:
-   - "Codex is thinking... (*Reading the tasks file*)"
-   - "Codex is running: `cat openspec/changes/bin-management-system/design.md`"
-   - "Codex finished reading the plan, now analyzing..."
-4. **Check for completion**: if `turn.completed` appears in the output, Codex is done — proceed to extract the review.
-5. **Check for turn failure**: if `turn.failed` appears, extract `error.message`, report to user, stop polling.
-6. **Check for process failure**: if the background task exited with error but no `turn.completed` or `turn.failed`, read stderr and report.
-
-### Stall Detection
-
-If 3 consecutive polls (~3 minutes) show **no new lines**, Codex may be stuck:
-1. Report: "Codex appears to be stalled — no new output for ~3 minutes."
-2. Ask user: **Wait longer** or **Abort and retry**.
 
 ## Step 2: Prepare the Plan Context
 
@@ -95,21 +126,53 @@ If 3 consecutive polls (~3 minutes) show **no new lines**, Codex may be stuck:
 
 ## Step 3: Send Plan to Codex for Review (Round 1)
 
-### Running Codex with Progress Monitoring
+### Step 3a — Start Codex
 
-Run Codex in background with `--json` output. Use the Bash tool with `run_in_background: true`:
+Run the codex-runner `start` subcommand with the bootstrap block:
 
 ```bash
-TMPDIR="${TMPDIR:-${TMP:-/tmp}}" && RUN_ID=$(date +%s)-$$ && CODEX_OUTPUT="$TMPDIR/codex-review-$RUN_ID.jsonl" && CODEX_ERR="$TMPDIR/codex-review-$RUN_ID.err" && echo "$CODEX_OUTPUT $CODEX_ERR" && codex exec --skip-git-repo-check --json --config model_reasoning_effort="<EFFORT>" --sandbox read-only -C <PROJECT_DIR> 2>"$CODEX_ERR" <<'EOF' > "$CODEX_OUTPUT"
-<PROMPT>
+RUNNER="${CODEX_RUNNER:-$HOME/.local/bin/codex-runner}"
+if ! test -x "$RUNNER" || ! "$RUNNER" --version 2>/dev/null | grep -q 'codex-runner 6'; then
+  echo "ERROR: codex-runner v6 not found at $RUNNER. SessionStart hook should have installed it." >&2
+  exit 1
+fi
+"$RUNNER" start --working-dir <WORKING_DIR> --effort <EFFORT> <<'EOF'
+<REVIEW_PROMPT>
 EOF
 ```
 
-**IMPORTANT**: Save `task_id`, absolute JSONL path, absolute ERR path. Each Bash call is a new shell — variables don't persist. Always use literal absolute paths.
+The output will be: `CODEX_STARTED:<WORKING_DIR>/.codex-review/runs/<RUN_ID>`
 
-Also save the `thread_id` from the first `thread.started` event in the JSONL for resuming in subsequent rounds.
+Save the state directory path — you need it for polling and cleanup.
 
-The `<PROMPT>` must follow this structure:
+### Step 3b — Poll Loop
+
+Call `poll` repeatedly to check progress. Each poll outputs status on stdout and progress on stderr:
+
+```bash
+sleep 60 && "$RUNNER" poll <STATE_DIR>
+```
+
+After each poll:
+- stdout starts with `POLL:running:` → Codex is still working. The stderr output shows progress events like `[45s] Codex running: cat tasks.md`. Call poll again — use `sleep 30` for the second poll, then `sleep 15` for all subsequent polls.
+- stdout starts with `POLL:completed:` → Extract thread_id from the `THREAD_ID:` line. Read the review from `<STATE_DIR>/review.txt` using the Read tool. Proceed to Step 3c.
+- stdout starts with `POLL:failed:` or `POLL:timeout:` or `POLL:stalled:` → Handle per Error Handling section. Call `stop` to cleanup.
+
+**Progress reporting**: The stderr output from the Bash tool call shows progress events (e.g., `[45s] Codex is thinking...`, `[52s] Codex running: cat tasks.md`). Summarize these for the user between polls.
+
+### Step 3c — Cleanup
+
+After extracting the completed result (or handling an error):
+
+```bash
+"$RUNNER" stop <STATE_DIR>
+```
+
+This kills any remaining processes and removes the state directory.
+
+Save the `thread_id` from the `THREAD_ID:` line — you will need it for subsequent rounds.
+
+### Review Prompt Template
 
 ```
 You are participating in a plan review debate with Claude Code (Claude Opus 4.6).
@@ -142,10 +205,12 @@ Use the conventions from these files as your review checklist. Any violation is 
 Read ALL files listed above for full context before reviewing. Do NOT skip any spec file.
 
 ## User's Original Request
-<DESCRIPTION>
+<The user's original task/request that prompted this plan>
 
 ## Session Context
-<CONTEXT_OR_"No additional context — the OpenSpec artifacts are self-contained.">
+<Any important context from the conversation that Codex cannot access on its own>
+
+(If there is no additional context beyond the artifact files, write "No additional context — the OpenSpec artifacts are self-contained.")
 
 ## Instructions
 1. Read ALL the OpenSpec artifact files listed above.
@@ -174,64 +239,76 @@ After all issues, provide:
 - **Design Alignment**: Do tasks correctly implement design decisions? Note any deviations.
 
 Rules:
-- Be specific: reference exact task numbers, file paths, or design decisions.
+- Be specific: reference exact task numbers, file paths, or design decisions in the plan.
 - Do NOT rubber-stamp the plan. Your value comes from finding real problems.
 - Do NOT raise vague concerns without concrete scenarios.
 - Every Critical Issue and Missing Task MUST have a Suggested Fix.
-- Pay special attention to: database migration order, Hono route ordering (specific before generic), Supabase column names, FEFO allocation logic, dual UoM (kg + meters).
+- Pay special attention to:
+  - Database migration order and dependencies
+  - Hono route ordering (specific routes before generic /:id)
+  - Supabase column names matching actual schema
+  - FEFO allocation logic correctness
+  - Dual UoM consistency (kg + meters)
+  - fetchApi usage (not raw fetch)
+  - AppInput/AppSelect/AppButton usage (not q-*)
+  - Vietnamese messages for user-facing text
+  - Soft delete patterns (deleted_at)
 - Severity-to-verdict mapping: any CRITICAL → REJECT, any HIGH or MEDIUM → APPROVE_WITH_CHANGES, only LOW → APPROVE.
 - Maximum 5 rounds. If no consensus after 5 rounds → present final state to user for decision.
 ```
 
 **After receiving Codex's review**, summarize it for the user before proceeding.
 
-### Extracting the final review
-
-```bash
-grep '"type":"agent_message"' "$CODEX_OUTPUT" | tail -1 | python -c "import sys,json; print(json.loads(sys.stdin.read())['item']['text'])"
-```
-
-### Cleanup after extraction
-
-1. Stop background task: `TaskOutput(task_id, block: false)` then `TaskStop(task_id)`.
-2. Remove temp files:
-```bash
-rm -f "$CODEX_OUTPUT" "$CODEX_ERR"
-```
-
 ## Step 4: Claude Code Rebuts (Round 1)
 
-After receiving Codex's review:
+After receiving Codex's review, you (Claude Code) must:
 
-1. **Analyze** each ISSUE against the actual OpenSpec artifacts and codebase.
-2. **Accept valid criticisms** — update `tasks.md` (and `design.md` if needed) with accepted changes using Edit tool.
-3. **Push back on invalid points** — explain why with evidence from the codebase, CLAUDE.md conventions, or documentation.
-4. **Summarize** for the user what you accepted, rejected, and why.
-5. **Immediately proceed to Step 5** — do NOT ask the user whether to continue.
+1. **Carefully analyze** each ISSUE Codex raised against the actual OpenSpec artifacts and codebase.
+2. **Accept valid criticisms** - If Codex found real issues, acknowledge them and update `tasks.md` (and `design.md` if needed) using Edit tool.
+3. **Push back on invalid points** - If you disagree with Codex's assessment, explain why with evidence from the codebase, CLAUDE.md conventions, or documentation.
+4. **Summarize** for the user what you accepted, what you rejected, and why.
+5. **Immediately proceed to Step 5** — do NOT ask the user whether to continue. Always send the updated plan back to Codex for re-review.
 
 ## Step 5: Continue the Debate (Rounds 2+)
 
-Resume using the **saved `thread_id`**:
+### Step 5a — Start Codex (resume)
+
+Run the runner with `--thread-id` to resume the existing Codex conversation:
 
 ```bash
-TMPDIR="${TMPDIR:-${TMP:-/tmp}}" && RUN_ID=$(date +%s)-$$ && CODEX_OUTPUT="$TMPDIR/codex-review-$RUN_ID.jsonl" && CODEX_ERR="$TMPDIR/codex-review-$RUN_ID.err" && echo "$CODEX_OUTPUT $CODEX_ERR" && codex exec --skip-git-repo-check --json --sandbox read-only -C <PROJECT_DIR> resume <THREAD_ID> 2>"$CODEX_ERR" <<'EOF' > "$CODEX_OUTPUT"
+RUNNER="${CODEX_RUNNER:-$HOME/.local/bin/codex-runner}"
+if ! test -x "$RUNNER" || ! "$RUNNER" --version 2>/dev/null | grep -q 'codex-runner 6'; then
+  echo "ERROR: codex-runner v6 not found at $RUNNER. SessionStart hook should have installed it." >&2
+  exit 1
+fi
+"$RUNNER" start --working-dir <WORKING_DIR> --effort <EFFORT> --thread-id <THREAD_ID> <<'EOF'
 <REBUTTAL_PROMPT>
 EOF
 ```
 
-The `<REBUTTAL_PROMPT>`:
+### Step 5b — Poll Loop
+
+Same as Step 3b — poll until completed, then proceed to Step 5c.
+
+### Step 5c — Cleanup
+
+```bash
+"$RUNNER" stop <STATE_DIR>
+```
+
+### Rebuttal Prompt Template
 
 ```
 This is Claude Code (Claude Opus 4.6) responding to your review.
 
 ## Issues Accepted & Fixed
-<List accepted issues and what was changed in tasks.md/design.md>
+<For each accepted issue, reference by ISSUE-{N} and describe what was changed in tasks.md/design.md>
 
 ## Issues Disputed
-<List disputed issues with evidence why they're not valid>
+<For each disputed issue, reference by ISSUE-{N} and explain why with evidence>
 
 ## Your Turn
-Re-read the OpenSpec artifact files (same paths as before) to see updated plan, then re-review.
+Re-read the OpenSpec artifact files (same paths as before) to see the updated plan, then re-review.
 - Have your previous concerns been properly addressed?
 - Do the changes introduce any NEW issues?
 - Are there any remaining problems?
@@ -241,17 +318,24 @@ Verdict options: REJECT | APPROVE_WITH_CHANGES | APPROVE
 ```
 
 **After each Codex response:**
-1. Summarize for the user.
-2. `APPROVE` → proceed to Step 6.
-3. `APPROVE_WITH_CHANGES` → address suggestions, automatically send one more round.
-4. `REJECT` → address issues, automatically continue next round.
+1. Summarize Codex's response for the user.
+2. If Codex's verdict is `APPROVE` → proceed to Step 6.
+3. If Codex's verdict is `APPROVE_WITH_CHANGES` → address the suggestions, then **automatically** send one more round to Codex for confirmation. Do NOT ask the user.
+4. If Codex's verdict is `REJECT` → address the issues and **automatically** continue to next round. Do NOT ask the user.
 
-### Stalemate Detection
-If same points go back and forth for 2 consecutive rounds → present disagreement to user and let them decide.
+**IMPORTANT**: The debate loop is fully automatic. After fixing issues or updating the plan, ALWAYS send it back to Codex without asking the user. The loop only stops when Codex returns `APPROVE`. The user is only consulted at the very end (Step 6) or if a stalemate is detected.
+
+### Early Termination & Round Extension
+
+- **Early termination**: If Codex returns `APPROVE`, end the debate immediately and proceed to Step 6.
+- **Max round limit**: The debate runs for a maximum of **5 rounds**. After 5 rounds without `APPROVE`, present the current state to the user and let them decide whether to continue, accept as-is, or modify manually.
+- **Stalemate detection**: If the same points go back and forth without progress for 2 consecutive rounds, present the disagreement to the user and let them decide (even if under 5 rounds).
+
+**Repeat** Steps 4-5 until consensus or stalemate.
 
 ## Step 6: Finalize and Report
 
-Present:
+After the debate concludes, present the user with a **Plan Review Debate Summary**:
 
 ```
 ## Plan Review Debate Summary
@@ -262,6 +346,7 @@ Present:
 
 ### Key Changes from Debate:
 1. [Change 1 - accepted from Codex]
+2. [Change 2 - accepted from Codex]
 ...
 
 ### Points Where Claude Prevailed:
@@ -278,9 +363,9 @@ Present:
 ```
 
 Then ask the user (via `AskUserQuestion`):
-- **Approve & Implement** — Proceed with `/spx-apply`
-- **Request more rounds** — Continue debating specific points
-- **Modify manually** — User wants to adjust before implementing
+- **Approve & Implement (/spx-apply)** - Proceed with the final plan
+- **Request more rounds** - Continue debating specific points
+- **Modify manually** - User wants to make their own adjustments before implementing
 
 ## Step 7: Transition to Implementation
 
@@ -288,41 +373,31 @@ If the user approves:
 1. Inform user the plan has been stress-tested and is ready for `/spx-apply`.
 2. The user can now run `/spx-apply` to begin implementation.
 
-## Codex Command Reference
-
-| Action | Command |
-| --- | --- |
-| Initial review | `TMPDIR="${TMPDIR:-${TMP:-/tmp}}" && ... codex exec --skip-git-repo-check --json --sandbox read-only --config model_reasoning_effort="<EFFORT>" -C <DIR> 2>"$CODEX_ERR" <<'EOF' ... EOF > "$CODEX_OUTPUT"` |
-| Subsequent rounds | `codex exec --skip-git-repo-check --json --sandbox read-only -C <DIR> resume <THREAD_ID> 2>"$CODEX_ERR" <<'EOF' ... EOF > "$CODEX_OUTPUT"` |
-| Poll progress | `tail -5 "$CODEX_OUTPUT"` |
-| Extract review | `grep '"type":"agent_message"' "$CODEX_OUTPUT" \| tail -1 \| python -c "..."` |
-| Check errors | `tail -20 "$CODEX_ERR"` |
-| Stop background | `TaskOutput(task_id, block: false)` then `TaskStop(task_id)` |
-
 ## Important Rules
 
-1. **Codex reads files itself** — Do NOT paste content into prompts. Just give paths.
-2. **Only send what Codex can't access** — Paths, user request, session context. NOT file contents.
-3. **Always use heredoc (`<<'EOF'`)** — Prevents shell expansion.
-4. **Always `--sandbox read-only`** — Review only, no file edits during debate.
-5. **Always `-C <PROJECT_DIR>`** — Correct project directory.
-6. **Always `--skip-git-repo-check`** — Required for Codex CLI.
-7. **Redirect stderr to file** — `2>"$ERR"`, never `/dev/null`.
-8. **No `-m` flag** — Use Codex's default model.
-9. **Use absolute paths for temp files** — Shell variables don't persist between Bash calls.
-10. **Resume by thread ID, not `--last`** — Avoid resuming wrong session.
-11. **Always summarize after each round** — User must know what happened.
-12. **Be genuinely adversarial** — Push back when you have good reason to. Don't just accept everything.
-13. **Track artifact evolution** — Update tasks.md/design.md after each round so Codex reads latest version.
-14. **Require structured output** — If Codex doesn't use ISSUE-{N} format, ask to reformat in resume prompt.
-15. **Stop background tasks after each round** — Drain with `TaskOutput`, terminate with `TaskStop`.
-16. **OpenSpec artifact priority** — tasks.md is the primary review target, but design.md and specs/ provide crucial context for validating completeness.
+1. **Codex reads the plan files itself** - Do NOT paste plan content into the prompt. Just give Codex the file paths.
+2. **Only send what Codex can't access** - The prompt should contain: file paths, user's original request, session context. NOT: file contents, diffs, code snippets.
+3. **Always use heredoc (`<<'EOF'`) for prompts** - Heredoc with single-quoted delimiter prevents shell expansion.
+4. **Always `--sandbox read-only`** - Review only, no file edits during debate.
+5. **Always `-C <PROJECT_DIR>`** - Correct project directory.
+6. **Always `--skip-git-repo-check`** - Required for Codex CLI.
+7. **Redirect stderr to file** - `2>"$ERR"`, never `/dev/null`.
+8. **No `-m` flag** - Always use Codex's default model.
+9. **Use absolute paths for temp files** - Shell variables don't persist.
+10. **Resume by thread ID** - Use the `thread_id` from the `THREAD_ID:` line of poll completed output for subsequent rounds.
+11. **Always summarize after each round** - User must know what happened before continuing.
+12. **Be genuinely adversarial** - Push back when you have good reason to. Don't just accept everything.
+13. **Track artifact evolution** - Update tasks.md/design.md after each round so Codex reads latest version.
+14. **Require structured output** - If Codex doesn't use ISSUE-{N} format, ask to reformat in resume prompt.
+15. **Always call `stop` after getting results** - Clean up the state directory after extracting the completed result or handling errors.
+16. **OpenSpec artifact priority** - tasks.md is the primary review target, but design.md and specs/ provide crucial context for validating completeness.
 
 ## Error Handling
 
 - If no active OpenSpec change exists → inform user, suggest running `npx openspec new change <name>` first.
 - If `tasks.md` is missing → inform user, suggest completing the OpenSpec flow first.
-- If Codex background process errors → read stderr file, report to user.
-- If Codex stalls → ask user to wait or abort.
-- If debate stalls (same points 2 rounds) → present to user for decision.
-- If `TaskOutput`/`TaskStop` errors on cleanup → safe to ignore.
+- If poll returns `POLL:timeout:`, inform the user and ask if they want to retry with a longer timeout. Call `stop` to cleanup.
+- If poll returns `POLL:failed:`, report the error message to the user. Call `stop` to cleanup.
+- If poll returns `POLL:stalled:`, ask the user whether to retry or abort. Call `stop` to cleanup.
+- If the `start` command exits with code `5` (codex not found), tell the user to install the Codex CLI.
+- If the debate stalls (same points going back and forth without resolution), present the disagreement to the user and let them decide.

@@ -1,0 +1,29 @@
+### ISSUE-1: Type-check currently fails in changed inventory flow
+- **Category**: Type Safety
+- **Severity**: HIGH
+- **File**: `src/pages/thread/inventory.vue:1178`
+- **Description**: `received_date` is assigned from `new Date().toISOString().split('T')[0]`, which is inferred as `string | undefined` under current TS settings, while `AddStockDTO.received_date` requires `string`.
+- **Why It Matters**: `npm run type-check` fails, which blocks build/CI and masks other regressions.
+- **Suggested Fix**: Replace with a guaranteed string expression, e.g. `new Date().toISOString().slice(0, 10)`.
+
+### ISSUE-2: `GET /api/stock` does not handle secondary lookup query failures
+- **Category**: Error Handling
+- **Severity**: MEDIUM
+- **File**: `server/routes/stock.ts:117-131`
+- **Description**: After fetching cones, the batched lookups (`thread_types`, `warehouses`, `lots`) are used without checking `threadTypesResult.error`, `warehousesResult.error`, `lotsResult.error`.
+- **Why It Matters**: If any lookup query fails, API can still return `success: true` with incomplete/null `thread_type`, `warehouse`, `notes`, causing silent data corruption at UI level.
+- **Suggested Fix**: Validate all three `.error` fields and return `500` when any lookup fails.
+
+### ISSUE-3: Delivery receive remains non-atomic across lot/cone/delivery writes
+- **Category**: Architecture Violation
+- **Severity**: MEDIUM
+- **File**: `server/routes/weeklyOrder.ts:543-651`
+- **Description**: Receive flow does 3 dependent write steps (insert lot → insert cones → update delivery) without transaction boundaries.
+- **Why It Matters**: A failure in later steps can leave partial state (inventory created but delivery status not updated), and user retries can duplicate inventory.
+- **Suggested Fix**: Move receive workflow into a single transactional RPC (or equivalent DB-side transaction wrapper).
+
+### VERDICT
+- **Result**: APPROVE_WITH_CHANGES
+- **Summary**: The previously raised fixes for notes, lot validation, migration cone-count semantics, and `NOTIFY pgrst` are correctly addressed. Main remaining concerns are one build-blocking TS issue and two reliability/error-handling gaps.
+- **Plan Alignment**: Largely aligned with OpenSpec intent; core unification behavior is implemented and prior mismatches are mostly resolved.
+- **Convention Compliance**: Mostly compliant; Vietnamese messages and API patterns are consistent, with remaining gaps in robustness rather than convention style.
