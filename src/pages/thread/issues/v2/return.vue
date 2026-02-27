@@ -233,7 +233,7 @@ function handleReset() {
         </q-banner>
 
         <q-table
-          :rows="selectedIssue.lines"
+          :rows="selectedIssue?.lines || []"
           :columns="[
             { name: 'thread', label: 'Loại chỉ', field: 'thread_name', align: 'left' },
             { name: 'issued', label: 'Đã xuất', field: 'issued', align: 'center' },

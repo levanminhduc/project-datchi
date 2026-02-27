@@ -88,6 +88,105 @@ function calculateIssuedEquivalent(
   return issuedFull + issuedPartial * ratio
 }
 
+interface ReturnValidationResult {
+  valid: boolean
+  errors: string[]
+}
+
+interface IssueLine {
+  id: number
+  thread_type_id: number
+  issued_full: number
+  issued_partial: number
+  returned_full: number
+  returned_partial: number
+}
+
+interface ReturnLineInput {
+  line_id: number
+  returned_full: number
+  returned_partial: number
+}
+
+function validateReturnQuantities(
+  returnLines: ReturnLineInput[],
+  lineMap: Map<number, IssueLine>
+): ReturnValidationResult {
+  const errors: string[] = []
+
+  for (const returnLine of returnLines) {
+    const line = lineMap.get(returnLine.line_id)
+    if (!line) {
+      errors.push(`Dong ID ${returnLine.line_id} khong ton tai`)
+      continue
+    }
+
+    const totalReturnedFull = (line.returned_full || 0) + returnLine.returned_full
+    const totalReturnedPartial = (line.returned_partial || 0) + returnLine.returned_partial
+    const totalReturned = totalReturnedFull + totalReturnedPartial
+    const totalIssued = (line.issued_full || 0) + (line.issued_partial || 0)
+
+    if (totalReturnedFull > (line.issued_full || 0)) {
+      errors.push(
+        `Dong ${line.id}: Tra nguyen ${totalReturnedFull} > xuat ${line.issued_full || 0}`
+      )
+    }
+
+    if (totalReturned > totalIssued) {
+      errors.push(
+        `Dong ${line.id}: Tong tra (${totalReturned}) > tong xuat (${totalIssued})`
+      )
+    }
+  }
+
+  return { valid: errors.length === 0, errors }
+}
+
+interface FoundCones {
+  ids: number[]
+  requested: number
+  found: number
+}
+
+async function tryFindHardAllocatedCones(
+  threadTypeId: number,
+  count: number,
+  isPartial: boolean,
+  excludeIds: Set<number>
+): Promise<FoundCones> {
+  if (count <= 0) {
+    return { ids: [], requested: 0, found: 0 }
+  }
+
+  const excludeList = excludeIds.size > 0 ? Array.from(excludeIds).join(',') : '0'
+
+  let query = supabase
+    .from('thread_inventory')
+    .select('id')
+    .eq('thread_type_id', threadTypeId)
+    .eq('status', 'HARD_ALLOCATED')
+    .eq('is_partial', isPartial)
+    .order('updated_at', { ascending: false })
+    .limit(count)
+
+  if (excludeIds.size > 0) {
+    query = query.not('id', 'in', `(${excludeList})`)
+  }
+
+  const { data: cones, error } = await query
+
+  if (error) {
+    console.error(`[return] Error finding HARD_ALLOCATED cones:`, error)
+    return { ids: [], requested: count, found: 0 }
+  }
+
+  return {
+    ids: cones?.map((c) => c.id) || [],
+    requested: count,
+    found: cones?.length || 0,
+  }
+}
+
 /**
  * Generate issue code in format XK-YYYYMMDD-NNN
  */
@@ -1735,7 +1834,7 @@ issuesV2.post('/:id/confirm', async (c) => {
  *
  * Body: { lines: [{ line_id, returned_full, returned_partial }] }
  * Validates: returned_full <= issued_full AND (returned_full + returned_partial) <= (issued_full + issued_partial)
- * Auto-converts full cones to partial if returning more partial than available
+ * Best-effort inventory update: flips HARD_ALLOCATED cones to AVAILABLE when found; skips if not found
  * Adds stock back and updates line returned quantities
  * If all returned (total_returned >= total_issued) → set status=RETURNED
  */
@@ -1813,70 +1912,43 @@ issuesV2.post('/:id/return', async (c) => {
       )
     }
 
-    const lineMap = new Map(existingLines?.map((l) => [l.id, l]) || [])
-    const errors: string[] = []
+    const lineMap = new Map<number, IssueLine>(
+      existingLines?.map((l) => [l.id, l as IssueLine]) || []
+    )
 
-    // Validate return quantities
-    for (const returnLine of validated.lines) {
-      const line = lineMap.get(returnLine.line_id)
-      if (!line) {
-        errors.push(`Dong ID ${returnLine.line_id} khong ton tai`)
-        continue
-      }
-
-      const totalReturnedFull = line.returned_full + returnLine.returned_full
-      const totalReturnedPartial = line.returned_partial + returnLine.returned_partial
-      const totalReturned = totalReturnedFull + totalReturnedPartial
-      const totalIssued = line.issued_full + line.issued_partial
-
-      if (totalReturnedFull > line.issued_full) {
-        errors.push(
-          `Dong ${line.id}: Tra nguyen ${totalReturnedFull} > xuat ${line.issued_full}`
-        )
-      }
-      if (totalReturned > totalIssued) {
-        errors.push(
-          `Dong ${line.id}: Tong tra (${totalReturned}) > tong xuat (${totalIssued})`
-        )
-      }
-    }
-
-    if (errors.length > 0) {
+    // ========================================================================
+    // PHASE 1: VALIDATE return quantities (quantity-based, not inventory-based)
+    // ========================================================================
+    const validation = validateReturnQuantities(validated.lines, lineMap)
+    if (!validation.valid) {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: errors.join('. '),
+          error: validation.errors.join('. '),
         },
         400
       )
     }
 
     // ========================================================================
-    // PHASE 1: PREFLIGHT ALL addStock operations
-    // Validate all inventory operations can succeed BEFORE executing any
-    // Track already-selected IDs to prevent double-booking across lines
+    // PHASE 2: TRY FIND HARD_ALLOCATED cones (best-effort)
+    // Continue even if cones not found - just update counters
     // ========================================================================
     interface StockOperation {
       lineId: number
       threadTypeId: number
       returnedFull: number
       returnedPartial: number
-      // Preflight results - cone IDs to operate on
       fullConeIds: number[]
       partialConeIds: number[]
-      convertConeIds: number[]
-      convertedQuantityMeters: number | null
     }
 
     const stockOperations: StockOperation[] = []
-
-    // Track already-selected cone IDs across all lines to prevent double-booking
     const selectedConeIds = new Set<number>()
 
     for (const returnLine of validated.lines) {
       const line = lineMap.get(returnLine.line_id)!
 
-      // Run preflight checks for this line (similar to addStock Phase 1)
       const operation: StockOperation = {
         lineId: returnLine.line_id,
         threadTypeId: line.thread_type_id,
@@ -1884,250 +1956,78 @@ issuesV2.post('/:id/return', async (c) => {
         returnedPartial: returnLine.returned_partial,
         fullConeIds: [],
         partialConeIds: [],
-        convertConeIds: [],
-        convertedQuantityMeters: null,
       }
 
-      // Build exclusion list from already-selected cones
-      const excludeSelected = selectedConeIds.size > 0 ? Array.from(selectedConeIds).join(',') : '0'
+      const fullResult = await tryFindHardAllocatedCones(
+        line.thread_type_id,
+        returnLine.returned_full,
+        false,
+        selectedConeIds
+      )
+      operation.fullConeIds = fullResult.ids
+      fullResult.ids.forEach((id) => selectedConeIds.add(id))
 
-      // Check full cones availability
-      if (returnLine.returned_full > 0) {
-        let query = supabase
-          .from('thread_inventory')
-          .select('id')
-          .eq('thread_type_id', line.thread_type_id)
-          .eq('status', 'HARD_ALLOCATED')
-          .eq('is_partial', false)
-          .order('updated_at', { ascending: false })
-          .limit(returnLine.returned_full)
-
-        // Exclude already-selected cones from previous lines
-        if (selectedConeIds.size > 0) {
-          query = query.not('id', 'in', `(${excludeSelected})`)
-        }
-
-        const { data: fullCones, error: fullError } = await query
-
-        if (fullError) {
-          return c.json<ThreadApiResponse<null>>(
-            { data: null, error: 'Loi truy van cuon nguyen da xuat' },
-            500
-          )
-        }
-
-        if (!fullCones || fullCones.length < returnLine.returned_full) {
-          return c.json<ThreadApiResponse<null>>(
-            {
-              data: null,
-              error: `Dong ${line.id}: Khong du cuon nguyen da xuat. Can ${returnLine.returned_full}, co ${fullCones?.length || 0}`,
-            },
-            400
-          )
-        }
-
-        operation.fullConeIds = fullCones.map((c) => c.id)
-        // Add to selected set to prevent double-booking
-        operation.fullConeIds.forEach((id) => selectedConeIds.add(id))
-      }
-
-      // Check partial cones availability and conversion feasibility
-      if (returnLine.returned_partial > 0) {
-        // Rebuild exclusion list (now includes full cones from this line)
-        const excludeForPartial = selectedConeIds.size > 0 ? Array.from(selectedConeIds).join(',') : '0'
-
-        let partialQuery = supabase
-          .from('thread_inventory')
-          .select('id')
-          .eq('thread_type_id', line.thread_type_id)
-          .eq('status', 'HARD_ALLOCATED')
-          .eq('is_partial', true)
-          .order('updated_at', { ascending: false })
-          .limit(returnLine.returned_partial)
-
-        if (selectedConeIds.size > 0) {
-          partialQuery = partialQuery.not('id', 'in', `(${excludeForPartial})`)
-        }
-
-        const { data: partialCones, error: partialError } = await partialQuery
-
-        if (partialError) {
-          return c.json<ThreadApiResponse<null>>(
-            { data: null, error: 'Loi truy van cuon le da xuat' },
-            500
-          )
-        }
-
-        const availablePartialCount = partialCones?.length || 0
-        operation.partialConeIds = partialCones?.map((c) => c.id) || []
-        // Add to selected set
-        operation.partialConeIds.forEach((id) => selectedConeIds.add(id))
-
-        const needToConvert = returnLine.returned_partial - availablePartialCount
-
-        if (needToConvert > 0) {
-          // Find full cones to convert (excluding all already-selected cones)
-          const excludeForConvert = Array.from(selectedConeIds).join(',') || '0'
-          const { data: fullConesToConvert, error: fullConvertError } = await supabase
-            .from('thread_inventory')
-            .select('id')
-            .eq('thread_type_id', line.thread_type_id)
-            .eq('status', 'HARD_ALLOCATED')
-            .eq('is_partial', false)
-            .not('id', 'in', `(${excludeForConvert})`)
-            .order('updated_at', { ascending: false })
-            .limit(needToConvert)
-
-          if (fullConvertError) {
-            return c.json<ThreadApiResponse<null>>(
-              { data: null, error: 'Loi truy van cuon nguyen de quy doi' },
-              500
-            )
-          }
-
-          if (!fullConesToConvert || fullConesToConvert.length < needToConvert) {
-            return c.json<ThreadApiResponse<null>>(
-              {
-                data: null,
-                error: `Dong ${line.id}: Khong du cuon de tra le. Can ${returnLine.returned_partial}, co ${availablePartialCount} le + ${fullConesToConvert?.length || 0} quy doi`,
-              },
-              400
-            )
-          }
-
-          const metersPerCone = await getMetersPerCone(line.thread_type_id)
-          if (metersPerCone === null) {
-            return c.json<ThreadApiResponse<null>>(
-              { data: null, error: 'Khong the lay thong tin meters_per_cone' },
-              500
-            )
-          }
-
-          const partialConeRatio = await getPartialConeRatio()
-          operation.convertedQuantityMeters = metersPerCone * partialConeRatio
-          operation.convertConeIds = fullConesToConvert.map((c) => c.id)
-          // Add to selected set
-          operation.convertConeIds.forEach((id) => selectedConeIds.add(id))
-        }
-      }
+      const partialResult = await tryFindHardAllocatedCones(
+        line.thread_type_id,
+        returnLine.returned_partial,
+        true,
+        selectedConeIds
+      )
+      operation.partialConeIds = partialResult.ids
+      partialResult.ids.forEach((id) => selectedConeIds.add(id))
 
       stockOperations.push(operation)
     }
 
     // ========================================================================
-    // PHASE 2: EXECUTE ALL inventory updates
-    // All preflight passed - now execute inventory changes
-    // Include status guard to detect concurrent modifications
+    // PHASE 3: EXECUTE inventory updates (only for found cones)
+    // Skip if no cones found - this is the fallback behavior
     // ========================================================================
     for (const op of stockOperations) {
-      // Return full cones to AVAILABLE (with status guard)
       if (op.fullConeIds.length > 0) {
-        const { data: updated, error } = await supabase
+        const { error } = await supabase
           .from('thread_inventory')
           .update({ status: 'AVAILABLE', updated_at: new Date().toISOString() })
-          .eq('status', 'HARD_ALLOCATED') // Guard: only update if still HARD_ALLOCATED
+          .eq('status', 'HARD_ALLOCATED')
           .in('id', op.fullConeIds)
-          .select('id')
 
         if (error) {
-          console.error('Error returning full cones:', error)
-          return c.json<ThreadApiResponse<null>>(
-            { data: null, error: 'Loi tra cuon nguyen ve kho' },
-            500
-          )
-        }
-
-        // Verify all expected rows were updated (detect concurrent modifications)
-        if (!updated || updated.length !== op.fullConeIds.length) {
-          console.error(`Concurrent modification detected: expected ${op.fullConeIds.length} rows, updated ${updated?.length || 0}`)
-          return c.json<ThreadApiResponse<null>>(
-            { data: null, error: 'Du lieu ton kho da thay doi. Vui long thu lai' },
-            409
-          )
+          console.error('[return] Error returning full cones:', error)
         }
       }
 
-      // Return partial cones to AVAILABLE (with status guard)
       if (op.partialConeIds.length > 0) {
-        const { data: updated, error } = await supabase
+        const { error } = await supabase
           .from('thread_inventory')
           .update({ status: 'AVAILABLE', updated_at: new Date().toISOString() })
-          .eq('status', 'HARD_ALLOCATED') // Guard: only update if still HARD_ALLOCATED
+          .eq('status', 'HARD_ALLOCATED')
           .in('id', op.partialConeIds)
-          .select('id')
 
         if (error) {
-          console.error('Error returning partial cones:', error)
-          return c.json<ThreadApiResponse<null>>(
-            { data: null, error: 'Loi tra cuon le ve kho' },
-            500
-          )
+          console.error('[return] Error returning partial cones:', error)
         }
-
-        // Verify all expected rows were updated
-        if (!updated || updated.length !== op.partialConeIds.length) {
-          console.error(`Concurrent modification detected: expected ${op.partialConeIds.length} rows, updated ${updated?.length || 0}`)
-          return c.json<ThreadApiResponse<null>>(
-            { data: null, error: 'Du lieu ton kho da thay doi. Vui long thu lai' },
-            409
-          )
-        }
-      }
-
-      // Convert full cones to partial (with status guard)
-      if (op.convertConeIds.length > 0 && op.convertedQuantityMeters !== null) {
-        const { data: updated, error } = await supabase
-          .from('thread_inventory')
-          .update({
-            status: 'AVAILABLE',
-            is_partial: true,
-            quantity_meters: op.convertedQuantityMeters,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('status', 'HARD_ALLOCATED') // Guard: only update if still HARD_ALLOCATED
-          .in('id', op.convertConeIds)
-          .select('id')
-
-        if (error) {
-          console.error('Error converting full cones to partial:', error)
-          return c.json<ThreadApiResponse<null>>(
-            { data: null, error: 'Loi quy doi cuon nguyen sang le' },
-            500
-          )
-        }
-
-        // Verify all expected rows were updated
-        if (!updated || updated.length !== op.convertConeIds.length) {
-          console.error(`Concurrent modification detected: expected ${op.convertConeIds.length} rows, updated ${updated?.length || 0}`)
-          return c.json<ThreadApiResponse<null>>(
-            { data: null, error: 'Du lieu ton kho da thay doi. Vui long thu lai' },
-            409
-          )
-        }
-
-        console.log(
-          `[return] Converted ${op.convertConeIds.length} full cones to partial for thread_type_id ${op.threadTypeId}`
-        )
       }
     }
 
     // ========================================================================
-    // PHASE 3: EXECUTE ALL line counter updates
-    // Only reached if all inventory updates succeeded
+    // PHASE 4: UPDATE counters (ALWAYS runs regardless of inventory result)
     // ========================================================================
     for (const op of stockOperations) {
       const line = lineMap.get(op.lineId)!
 
+      const newReturnedFull = (line.returned_full || 0) + op.returnedFull
+      const newReturnedPartial = (line.returned_partial || 0) + op.returnedPartial
+
       const { error: updateError } = await supabase
         .from('thread_issue_lines')
         .update({
-          returned_full: line.returned_full + op.returnedFull,
-          returned_partial: line.returned_partial + op.returnedPartial,
+          returned_full: newReturnedFull,
+          returned_partial: newReturnedPartial,
         })
         .eq('id', op.lineId)
 
       if (updateError) {
-        console.error('Error updating line:', updateError)
+        console.error('[return] Error updating line:', updateError)
         return c.json<ThreadApiResponse<null>>(
           { data: null, error: 'Khong the cap nhat dong tra' },
           500
@@ -2147,7 +2047,7 @@ issuesV2.post('/:id/return', async (c) => {
           })
       }
     } catch (logError) {
-      console.error('[issuesV2] Failed to insert return log:', logError)
+      console.error('[return] Failed to insert return log:', logError)
     }
 
     const { data: updatedLines } = await supabase
