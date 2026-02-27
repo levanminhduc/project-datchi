@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { getRefreshedSession } from '@/services/api'
 import type {
   LoginCredentials,
   LoginResponse,
@@ -55,6 +56,21 @@ class AuthService {
       })
 
       if (!response.ok) {
+        if (response.status === 401) {
+          const newSession = await getRefreshedSession()
+          const retryResponse = await fetch(`${API_URL}/api/auth/me`, {
+            headers: {
+              Authorization: `Bearer ${newSession.access_token}`,
+            },
+          })
+          if (!retryResponse.ok) {
+            const errorBody = await retryResponse.json().catch(() => null)
+            console.error('fetchCurrentEmployee retry failed:', retryResponse.status, errorBody)
+            return null
+          }
+          const { data } = await retryResponse.json()
+          return data as EmployeeAuth
+        }
         const errorBody = await response.json().catch(() => null)
         console.error('fetchCurrentEmployee failed:', response.status, errorBody)
         return null
@@ -67,10 +83,10 @@ class AuthService {
     }
   }
 
-  async fetchPermissions(): Promise<string[]> {
+  async fetchPermissions(): Promise<string[] | null> {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) return []
+      if (!session?.access_token) return null
 
       const response = await fetch(`${API_URL}/api/auth/permissions`, {
         headers: {
@@ -78,12 +94,25 @@ class AuthService {
         },
       })
 
-      if (!response.ok) return []
+      if (!response.ok) {
+        if (response.status === 401) {
+          const newSession = await getRefreshedSession()
+          const retryResponse = await fetch(`${API_URL}/api/auth/permissions`, {
+            headers: {
+              Authorization: `Bearer ${newSession.access_token}`,
+            },
+          })
+          if (!retryResponse.ok) return null
+          const { data } = await retryResponse.json()
+          return data as string[]
+        }
+        return null
+      }
 
       const { data } = await response.json()
       return data as string[]
     } catch {
-      return []
+      return null
     }
   }
 
@@ -122,13 +151,26 @@ class AuthService {
     const { data: { session } } = await supabase.auth.getSession()
     const token = session?.access_token
 
-    return fetch(url, {
+    const response = await fetch(url, {
       ...options,
       headers: {
         ...options.headers,
         ...(token && { Authorization: `Bearer ${token}` }),
       },
     })
+
+    if (response.status === 401) {
+      const newSession = await getRefreshedSession()
+      return fetch(url, {
+        ...options,
+        headers: {
+          ...options.headers,
+          Authorization: `Bearer ${newSession.access_token}`,
+        },
+      })
+    }
+
+    return response
   }
 
   async hasSession(): Promise<boolean> {

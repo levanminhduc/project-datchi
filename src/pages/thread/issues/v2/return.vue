@@ -70,16 +70,30 @@ function getReturnInput(lineId: number): { full: number; partial: number } {
   return returnInputs.value.get(lineId)!
 }
 
-function updateReturnFull(lineId: number, value: number | string | null) {
+function updateReturnFull(lineId: number, value: number | string | null, line: IssueLineV2WithComputed) {
   const input = getReturnInput(lineId)
-  input.full = Number(value) || 0
+  const totalRemaining = getTotalRemaining(line)
+  const perTypeMax = line.issued_full - line.returned_full
+  const numValue = Math.max(0, Math.min(Number(value) || 0, perTypeMax, totalRemaining - input.partial))
+  input.full = numValue
+  const newMaxPartial = totalRemaining - numValue
+  if (input.partial > newMaxPartial) {
+    input.partial = Math.max(0, newMaxPartial)
+  }
   returnInputs.value.set(lineId, input)
   validateInputs()
 }
 
-function updateReturnPartial(lineId: number, value: number | string | null) {
+function updateReturnPartial(lineId: number, value: number | string | null, line: IssueLineV2WithComputed) {
   const input = getReturnInput(lineId)
-  input.partial = Number(value) || 0
+  const totalRemaining = getTotalRemaining(line)
+  const numValue = Math.max(0, Math.min(Number(value) || 0, totalRemaining - input.full))
+  input.partial = numValue
+  const perTypeMax = line.issued_full - line.returned_full
+  const newMaxFull = Math.min(perTypeMax, totalRemaining - numValue)
+  if (input.full > newMaxFull) {
+    input.full = Math.max(0, newMaxFull)
+  }
   returnInputs.value.set(lineId, input)
   validateInputs()
 }
@@ -107,16 +121,16 @@ function getTotalRemaining(line: IssueLineV2WithComputed): number {
 }
 
 function getMaxReturnFull(line: IssueLineV2WithComputed): number {
-  // Cap by both per-type limit AND total remaining
-  // Rule: returned_full <= issued_full AND total_returned <= total_issued
   const perTypeMax = line.issued_full - line.returned_full
   const totalRemaining = getTotalRemaining(line)
-  return Math.min(perTypeMax, totalRemaining)
+  const currentPartialInput = getReturnInput(line.id).partial
+  return Math.max(0, Math.min(perTypeMax, totalRemaining - currentPartialInput))
 }
 
 function getMaxReturnPartial(line: IssueLineV2WithComputed): number {
-  // Total-based: partial can be returned up to total remaining (not just issued_partial)
-  return getTotalRemaining(line)
+  const totalRemaining = getTotalRemaining(line)
+  const currentFullInput = getReturnInput(line.id).full
+  return Math.max(0, totalRemaining - currentFullInput)
 }
 
 function hasOutstandingItems(line: IssueLineV2WithComputed): boolean {
@@ -286,32 +300,30 @@ function handleReset() {
                 v-if="hasOutstandingItems(props.row)"
                 class="row items-center q-gutter-sm"
               >
-                <AppInput
-                  :model-value="getReturnInput(props.row.id).full"
-                  type="number"
-                  dense
-                  style="width: 70px"
-                  :disable="getMaxReturnFull(props.row) === 0"
-                  :rules="[
-                    (v: any) => v >= 0 || 'Phải >= 0',
-                    (v: any) => v <= getMaxReturnFull(props.row) || `Tối đa ${getMaxReturnFull(props.row)}`
-                  ]"
-                  @update:model-value="updateReturnFull(props.row.id, $event)"
-                />
+                <div style="width: 90px">
+                  <AppInput
+                    :model-value="getReturnInput(props.row.id).full"
+                    type="number"
+                    dense
+                    :min="0"
+                    :max="getMaxReturnFull(props.row)"
+                    :disable="getMaxReturnFull(props.row) === 0"
+                    @update:model-value="updateReturnFull(props.row.id, $event, props.row)"
+                  />
+                </div>
                 <span class="text-caption">ng</span>
                 <span class="q-mx-xs">+</span>
-                <AppInput
-                  :model-value="getReturnInput(props.row.id).partial"
-                  type="number"
-                  dense
-                  style="width: 70px"
-                  :disable="getMaxReturnPartial(props.row) === 0"
-                  :rules="[
-                    (v: any) => v >= 0 || 'Phải >= 0',
-                    (v: any) => v <= getMaxReturnPartial(props.row) || `Tối đa ${getMaxReturnPartial(props.row)}`
-                  ]"
-                  @update:model-value="updateReturnPartial(props.row.id, $event)"
-                />
+                <div style="width: 90px">
+                  <AppInput
+                    :model-value="getReturnInput(props.row.id).partial"
+                    type="number"
+                    dense
+                    :min="0"
+                    :max="getMaxReturnPartial(props.row)"
+                    :disable="getMaxReturnPartial(props.row) === 0"
+                    @update:model-value="updateReturnPartial(props.row.id, $event, props.row)"
+                  />
+                </div>
                 <span class="text-caption">le</span>
               </div>
               <div

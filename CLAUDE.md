@@ -52,8 +52,9 @@ Pages/Components → Real-time via useRealtime
 ### API (Hono)
 - Response format: `{ data: T|null, error: string|null, message?: string }`
 - Use `fetchApi()` wrapper, never raw `fetch()`
-- `fetchApi()` auto-attaches `Authorization: Bearer <token>` from `localStorage('auth_access_token')`
-- Global auth via `except()` in `server/index.ts` — whitelists `/api/auth/login` and `/api/auth/refresh`
+- `fetchApi()` gets token from Supabase session and auto-refreshes on 401 using single-flight pattern
+- Token refresh: `getRefreshedSession()` in `api.ts` — handles concurrent 401s with single refresh request
+- Auth errors trigger centralized logout via `isLoggingOut` flag (no multiple toasts/redirects)
 - Per-route authorization via `requirePermission()` — ROOT bypasses all checks
 - Validation with Zod schemas
 

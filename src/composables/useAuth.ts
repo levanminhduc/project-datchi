@@ -2,6 +2,7 @@ import { ref, computed, readonly } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import { authService } from '@/services/authService'
+import { resetLogoutFlag, isLogoutInProgress } from '@/services/api'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type {
   AuthState,
@@ -58,13 +59,31 @@ export function useAuth() {
     }
 
     initialized = true
+    setupAuthListener()
 
     state.value.isLoading = true
 
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const { data: { user }, error: getUserError } = await supabase.auth.getUser()
 
-      if (session) {
+      if (getUserError) {
+        const isSessionMissing = getUserError.message?.includes('Auth session missing') ||
+          getUserError.name === 'AuthSessionMissingError'
+        const authErrorCodes = ['invalid_grant', 'session_not_found', 'refresh_token_not_found', 'bad_jwt']
+        const isAuthError = isSessionMissing || authErrorCodes.some(code =>
+          getUserError.message?.includes(code) || getUserError.code === code
+        )
+
+        if (isAuthError) {
+          await supabase.auth.signOut({ scope: 'local' })
+        } else {
+          initialized = false
+        }
+        resetState()
+        return
+      }
+
+      if (user) {
         const emp = await authService.fetchCurrentEmployee()
         const perms = await authService.fetchPermissions()
 
@@ -79,9 +98,9 @@ export function useAuth() {
 
           state.value = {
             employee: emp,
-            permissions: perms,
+            permissions: perms ?? [],
             isAuthenticated: true,
-            isRoot: emp.isRoot || perms.includes('*'),
+            isRoot: emp.isRoot || (perms ?? []).includes('*'),
             isLoading: false,
             error: null,
           }
@@ -96,8 +115,6 @@ export function useAuth() {
       resetState()
       state.value.error = 'Không thể khởi tạo phiên đăng nhập'
     }
-
-    setupAuthListener()
   }
 
   function setupAuthListener() {
@@ -109,14 +126,21 @@ export function useAuth() {
           if (signingOut) return
           resetState()
           initialized = false
-          snackbar.error('Phiên đăng nhập đã hết hạn')
+          if (!isLogoutInProgress()) {
+            snackbar.error('Phiên đăng nhập đã hết hạn')
+          }
           router.push('/login')
         }
 
         if (event === 'TOKEN_REFRESHED') {
           const emp = await authService.fetchCurrentEmployee()
+          const perms = await authService.fetchPermissions()
           if (emp) {
             state.value.employee = emp
+          }
+          if (perms !== null) {
+            state.value.permissions = perms
+            state.value.isRoot = (emp?.isRoot ?? state.value.employee?.isRoot ?? false) || perms.includes('*')
           }
         }
       }
@@ -154,9 +178,9 @@ export function useAuth() {
 
       state.value = {
         employee: data.employee,
-        permissions: perms,
+        permissions: perms ?? [],
         isAuthenticated: true,
-        isRoot: data.employee.isRoot || perms.includes('*'),
+        isRoot: data.employee.isRoot || (perms ?? []).includes('*'),
         isLoading: false,
         error: null,
       }
@@ -167,6 +191,7 @@ export function useAuth() {
         tempPassword.value = credentials.password
       }
 
+      resetLogoutFlag()
       setupAuthListener()
       initialized = true
 
@@ -244,8 +269,10 @@ export function useAuth() {
     if (!state.value.isAuthenticated) return
 
     const perms = await authService.fetchPermissions()
-    state.value.permissions = perms
-    state.value.isRoot = perms.includes('*') || hasRole('root')
+    if (perms !== null) {
+      state.value.permissions = perms
+      state.value.isRoot = perms.includes('*') || hasRole('root')
+    }
   }
 
   return {

@@ -127,6 +127,7 @@ export function useReturnV2() {
     try {
       await loading.withLoading(async () => {
         const dto: ReturnIssueV2DTO = { lines: linesToSubmit }
+        console.log('[useReturnV2] submitReturn request:', { issueId, dto })
         const response = await fetchApi<ApiResponse<IssueV2WithLines>>(
           `/api/issues/v2/${issueId}/return`,
           {
@@ -134,10 +135,10 @@ export function useReturnV2() {
             body: JSON.stringify(dto),
           }
         )
+        console.log('[useReturnV2] submitReturn response:', response)
         if (response.error) {
           throw new Error(response.error)
         }
-        // Update selected issue with response
         if (response.data) {
           selectedIssue.value = response.data
         }

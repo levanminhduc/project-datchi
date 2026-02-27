@@ -33,6 +33,11 @@ if (!supabaseAnonKey) {
  * All CRUD operations should go through the Hono API
  */
 export const supabase = createClient(resolvedSupabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
   realtime: {
     params: {
       eventsPerSecond: 10,
