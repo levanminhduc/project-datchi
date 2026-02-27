@@ -382,7 +382,7 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
 
     const now = new Date()
     now.setHours(0, 0, 0, 0)
-    const enriched = (data || [])
+    const enrichedRows = (data || [])
       .map((row: any) => {
         const deliveryDate = new Date(row.delivery_date)
         deliveryDate.setHours(0, 0, 0, 0)
@@ -403,8 +403,41 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
           total_cones,
         }
       })
-      // Filter out records where total_cones < 1 (no need to order, inventory is sufficient)
-      .filter((row: any) => row.total_cones === null || row.total_cones >= 1)
+      // Hide stale PENDING rows that are no longer present in summary_data.
+      .filter((row: any) => {
+        if (row.total_cones === null) {
+          return row.status === 'DELIVERED' || (row.received_quantity || 0) > 0
+        }
+        return row.total_cones >= 1
+      })
+
+    // Defensive dedupe for legacy duplicated rows by (week_id, thread_type_id).
+    const dedupeMap = new Map<string, any>()
+    const toTimestamp = (value: unknown) => {
+      const ts = new Date(String(value || '')).getTime()
+      return Number.isNaN(ts) ? 0 : ts
+    }
+
+    for (const row of enrichedRows) {
+      const key = `${row.week_id}_${row.thread_type_id}`
+      const existing = dedupeMap.get(key)
+      if (!existing) {
+        dedupeMap.set(key, row)
+        continue
+      }
+
+      const existingDelivered = existing.status === 'DELIVERED'
+      const currentDelivered = row.status === 'DELIVERED'
+      const existingUpdatedAt = toTimestamp(existing.updated_at ?? existing.created_at)
+      const currentUpdatedAt = toTimestamp(row.updated_at ?? row.created_at)
+
+      if ((!existingDelivered && currentDelivered) || currentUpdatedAt > existingUpdatedAt) {
+        dedupeMap.set(key, row)
+      }
+    }
+
+    const enriched = Array.from(dedupeMap.values())
+      .sort((a, b) => String(a.delivery_date).localeCompare(String(b.delivery_date)))
 
     return c.json({ data: enriched, error: null })
   } catch (err) {
@@ -459,6 +492,41 @@ weeklyOrder.patch('/deliveries/:deliveryId', requirePermission('thread.allocatio
         return c.json({ data: null, error: 'Không tìm thấy bản ghi giao hàng' }, 404)
       }
       throw error
+    }
+
+    // Keep weekly order summary_data in sync when delivery_date is edited from delivery tracking page.
+    if (validated.delivery_date !== undefined) {
+      const updatedDelivery = data as { week_id: number; thread_type_id: number }
+
+      const { data: resultRow, error: resultFetchError } = await supabase
+        .from('thread_order_results')
+        .select('id, summary_data')
+        .eq('week_id', updatedDelivery.week_id)
+        .maybeSingle()
+
+      if (resultFetchError) {
+        console.warn('Error fetching weekly result for delivery-date sync:', resultFetchError)
+      } else if (resultRow?.summary_data && Array.isArray(resultRow.summary_data)) {
+        let changed = false
+        const nextSummary = (resultRow.summary_data as Array<Record<string, unknown>>).map((row) => {
+          if (row.thread_type_id === updatedDelivery.thread_type_id) {
+            changed = true
+            return { ...row, delivery_date: validated.delivery_date }
+          }
+          return row
+        })
+
+        if (changed) {
+          const { error: resultUpdateError } = await supabase
+            .from('thread_order_results')
+            .update({ summary_data: nextSummary })
+            .eq('id', resultRow.id)
+
+          if (resultUpdateError) {
+            console.warn('Error syncing delivery_date into summary_data:', resultUpdateError)
+          }
+        }
+      }
     }
 
     return c.json({
@@ -1589,23 +1657,32 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
         supplier_id?: number | null
         delivery_date?: string | null
         lead_time_days?: number | null
+        total_final?: number | null
+        total_cones?: number | null
         [key: string]: unknown
       }>
 
       // Get existing delivery records for this week
       const { data: existingDeliveries } = await supabase
         .from('thread_order_deliveries')
-        .select('thread_type_id')
+        .select('id, thread_type_id, supplier_id, delivery_date, status, received_quantity')
         .eq('week_id', id)
 
-      const existingThreadTypeIds = new Set(
-        (existingDeliveries || []).map((d: { thread_type_id: number }) => d.thread_type_id)
-      )
+      // Build desired delivery rows from current summary data.
+      // Deduplicate by thread_type_id to prevent repeated rows in tracking tab.
+      const desiredDeliveryMap = new Map<number, {
+        week_id: number
+        thread_type_id: number
+        supplier_id: number
+        delivery_date: string
+        status: 'PENDING'
+      }>()
 
-      // Only insert NEW delivery records (preserve existing ones with manual edits)
-      const newDeliveryRows = summaryRows
-        .filter((row) => row.supplier_id && !existingThreadTypeIds.has(row.thread_type_id))
-        .map((row) => {
+      for (const row of summaryRows) {
+        const plannedCones = row.total_final ?? row.total_cones ?? 0
+        if (!row.supplier_id || plannedCones < 1) continue
+
+        if (!desiredDeliveryMap.has(row.thread_type_id)) {
           const leadTime = (row.lead_time_days && row.lead_time_days > 0) ? row.lead_time_days : 7
           const deliveryDate = row.delivery_date || (() => {
             const d = new Date()
@@ -1613,14 +1690,25 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
             return d.toISOString().split('T')[0]
           })()
 
-          return {
+          desiredDeliveryMap.set(row.thread_type_id, {
             week_id: id,
             thread_type_id: row.thread_type_id,
             supplier_id: row.supplier_id!,
             delivery_date: deliveryDate,
             status: 'PENDING',
-          }
-        })
+          })
+        }
+      }
+
+      const desiredDeliveryRows = Array.from(desiredDeliveryMap.values())
+      const desiredThreadTypeIds = new Set(desiredDeliveryRows.map((row) => row.thread_type_id))
+      const existingThreadTypeIds = new Set(
+        (existingDeliveries || []).map((d: { thread_type_id: number }) => d.thread_type_id)
+      )
+
+      // Insert NEW rows only.
+      const newDeliveryRows = desiredDeliveryRows
+        .filter((row) => !existingThreadTypeIds.has(row.thread_type_id))
 
       if (newDeliveryRows.length > 0) {
         const { error: deliveryError } = await supabase
@@ -1630,6 +1718,74 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
         if (deliveryError) {
           console.warn('Error creating delivery records:', deliveryError)
           // Don't throw - delivery creation is secondary to results saving
+        }
+      }
+
+      // Sync existing pending rows with the latest summary data.
+      // Keep delivered/received rows unchanged to preserve execution history.
+      const existingByThreadType = new Map(
+        (existingDeliveries || []).map((row: {
+          id: number
+          thread_type_id: number
+          supplier_id: number | null
+          delivery_date: string
+          status: string
+          received_quantity: number | null
+        }) => [row.thread_type_id, row])
+      )
+
+      const rowsToSync = desiredDeliveryRows.filter((row) => {
+        const existing = existingByThreadType.get(row.thread_type_id)
+        if (!existing) return false
+        if (existing.status !== 'PENDING') return false
+        if ((existing.received_quantity || 0) > 0) return false
+
+        const sameSupplier = (existing.supplier_id ?? null) === (row.supplier_id ?? null)
+        const sameDate = existing.delivery_date === row.delivery_date
+        return !(sameSupplier && sameDate)
+      })
+
+      if (rowsToSync.length > 0) {
+        const nowIso = new Date().toISOString()
+        for (const row of rowsToSync) {
+          const existing = existingByThreadType.get(row.thread_type_id)
+          if (!existing) continue
+
+          const { error: syncError } = await supabase
+            .from('thread_order_deliveries')
+            .update({
+              supplier_id: row.supplier_id,
+              delivery_date: row.delivery_date,
+              updated_at: nowIso,
+            })
+            .eq('id', existing.id)
+
+          if (syncError) {
+            console.warn('Error syncing existing pending delivery row:', syncError)
+            // Don't throw - delivery sync is secondary to results saving
+          }
+        }
+      }
+
+      // Remove stale pending rows no longer in current summary
+      // (keep delivered/received rows for audit history).
+      const stalePendingIds = (existingDeliveries || [])
+        .filter((row: { id: number; thread_type_id: number; status: string; received_quantity: number | null }) =>
+          !desiredThreadTypeIds.has(row.thread_type_id)
+          && row.status === 'PENDING'
+          && (row.received_quantity || 0) === 0
+        )
+        .map((row: { id: number }) => row.id)
+
+      if (stalePendingIds.length > 0) {
+        const { error: cleanupError } = await supabase
+          .from('thread_order_deliveries')
+          .delete()
+          .in('id', stalePendingIds)
+
+        if (cleanupError) {
+          console.warn('Error cleaning stale pending deliveries:', cleanupError)
+          // Don't throw - cleanup is secondary to results saving
         }
       }
     }

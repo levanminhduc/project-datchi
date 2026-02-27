@@ -9,8 +9,12 @@
         @click="$router.push('/thread/weekly-order')"
       />
       <div class="q-ml-md">
-        <h1 class="text-h5 q-my-none text-weight-bold">Lịch Sử Đặt Hàng Chỉ</h1>
-        <div class="text-grey-6">Xem lịch sử đặt hàng chỉ theo tuần</div>
+        <h1 class="text-h5 q-my-none text-weight-bold">
+          Lịch Sử Đặt Hàng Chỉ
+        </h1>
+        <div class="text-grey-6">
+          Xem lịch sử đặt hàng chỉ theo tuần
+        </div>
       </div>
       <q-space />
       <AppButton
@@ -22,7 +26,11 @@
       />
     </div>
 
-    <q-card flat bordered class="q-mb-lg">
+    <q-card
+      flat
+      bordered
+      class="q-mb-lg"
+    >
       <q-card-section>
         <div
           class="row items-end"
@@ -81,7 +89,10 @@
               hide-bottom-space
             >
               <template #append>
-                <q-icon name="event" class="cursor-pointer">
+                <q-icon
+                  name="event"
+                  class="cursor-pointer"
+                >
                   <q-popup-proxy
                     cover
                     transition-show="scale"
@@ -103,7 +114,10 @@
               hide-bottom-space
             >
               <template #append>
-                <q-icon name="event" class="cursor-pointer">
+                <q-icon
+                  name="event"
+                  class="cursor-pointer"
+                >
                   <q-popup-proxy
                     cover
                     transition-show="scale"
@@ -137,18 +151,29 @@
       </q-card-section>
     </q-card>
 
-    <q-card flat bordered>
+    <q-card
+      flat
+      bordered
+    >
       <q-inner-loading :showing="loading" />
 
       <div
         v-if="!loading && weekGroups.length === 0"
         class="text-center q-py-xl text-grey-6"
       >
-        <q-icon name="history" size="48px" />
-        <div class="q-mt-sm">Chưa có lịch sử đặt hàng</div>
+        <q-icon
+          name="history"
+          size="48px"
+        />
+        <div class="q-mt-sm">
+          Chưa có lịch sử đặt hàng
+        </div>
       </div>
 
-      <q-list v-else separator>
+      <q-list
+        v-else
+        separator
+      >
         <q-expansion-item
           v-for="week in weekGroups"
           :key="week.week_id"
@@ -172,7 +197,11 @@
                 >
                   {{ getStatusLabel(week.status) }}
                 </q-chip>
-                <q-chip color="primary" text-color="white" dense>
+                <q-chip
+                  color="primary"
+                  text-color="white"
+                  dense
+                >
                   {{ week.total_quantity.toLocaleString("vi-VN") }} SP
                 </q-chip>
               </div>
@@ -205,13 +234,17 @@
                       style.style_name
                     }}</span>
                     <q-space />
-                    <span v-if="style.po_quantity > 0" class="text-caption"
-                      >PO:
-                      {{ style.po_quantity.toLocaleString("vi-VN") }} SP</span
-                    >
+                    <span
+                      v-if="style.po_quantity > 0"
+                      class="text-caption"
+                    >PO:
+                      {{ style.po_quantity.toLocaleString("vi-VN") }} SP</span>
                   </div>
 
-                  <div v-if="style.po_quantity > 0" class="q-mb-sm">
+                  <div
+                    v-if="style.po_quantity > 0"
+                    class="q-mb-sm"
+                  >
                     <q-linear-progress
                       :value="Math.min(style.progress_pct / 100, 1)"
                       :color="getProgressColor(style.progress_pct)"
@@ -255,30 +288,24 @@
                   </div>
 
                   <div class="text-caption text-grey-7">
-                    <span
-                      >Tuần này:
+                    <span>Tuần này:
                       <b>{{
                         style.this_week_quantity.toLocaleString("vi-VN")
                       }}</b>
-                      SP</span
-                    >
+                      SP</span>
                     <span class="q-mx-sm">·</span>
-                    <span
-                      >Đã đặt trước đó:
+                    <span>Đã đặt trước đó:
                       <b>{{
                         (
                           style.total_ordered - style.this_week_quantity
                         ).toLocaleString("vi-VN")
                       }}</b>
-                      SP</span
-                    >
+                      SP</span>
                     <template v-if="style.po_quantity > 0">
                       <span class="q-mx-sm">·</span>
-                      <span
-                        >Còn lại:
+                      <span>Còn lại:
                         <b>{{ style.remaining.toLocaleString("vi-VN") }}</b>
-                        SP</span
-                      >
+                        SP</span>
                     </template>
                   </div>
                 </q-card-section>
@@ -288,7 +315,10 @@
         </q-expansion-item>
       </q-list>
 
-      <q-card-section v-if="totalPages > 1" class="flex flex-center">
+      <q-card-section
+        v-if="totalPages > 1"
+        class="flex flex-center"
+      >
         <q-pagination
           v-model="currentPage"
           :max="totalPages"

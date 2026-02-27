@@ -211,14 +211,14 @@ export function useWeeklyOrderCalculation() {
               map.set(cb.thread_type_id, {
                 thread_type_id: cb.thread_type_id,
                 thread_type_name: cb.thread_type_name,
-                supplier_name: calc.supplier_name,
-                tex_number: calc.tex_number,
+                supplier_name: cb.supplier_name || calc.supplier_name,
+                tex_number: cb.tex_number || calc.tex_number,
                 total_meters: cb.total_meters,
                 total_cones: 0,
                 meters_per_cone: calc.meters_per_cone ?? null,
                 thread_color: cb.thread_color ?? calc.thread_color ?? null,
                 thread_color_code: cb.thread_color_code ?? calc.thread_color_code ?? null,
-                supplier_id: calc.supplier_id ?? null,
+                supplier_id: cb.supplier_id ?? calc.supplier_id ?? null,
                 delivery_date: calc.delivery_date ?? null,
                 lead_time_days: calc.lead_time_days ?? null,
               })
@@ -494,20 +494,32 @@ export function useWeeklyOrderCalculation() {
   const mergeDeliveryDateOverrides = () => {
     if (deliveryDateOverrides.size === 0) return
 
+    // Track thread_type_id-level overrides so summary_data can be synced before save.
+    const threadTypeDeliveryOverrides = new Map<number, string>()
+
     for (const result of perStyleResults.value) {
       for (const calc of result.calculations) {
         const override = deliveryDateOverrides.get(calc.spec_id)
         if (override) {
           calc.delivery_date = override
+
+          if (calc.color_breakdown && calc.color_breakdown.length > 0) {
+            for (const cb of calc.color_breakdown) {
+              threadTypeDeliveryOverrides.set(cb.thread_type_id, override)
+            }
+          } else {
+            // Fallback for non-color specs where aggregated row key currently follows spec_id.
+            threadTypeDeliveryOverrides.set(calc.spec_id, override)
+          }
         }
       }
     }
 
-    // Also update aggregated results if they have delivery_date
+    // Also update aggregated summary rows so summary_data stays in sync with edited dates.
     for (const row of aggregatedResults.value) {
-      const aggRow = row as AggregatedRow & { delivery_date?: string | null; spec_id?: number }
-      if (aggRow.spec_id && deliveryDateOverrides.has(aggRow.spec_id)) {
-        aggRow.delivery_date = deliveryDateOverrides.get(aggRow.spec_id)!
+      const override = threadTypeDeliveryOverrides.get(row.thread_type_id)
+      if (override) {
+        row.delivery_date = override
       }
     }
 

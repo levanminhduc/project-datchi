@@ -104,7 +104,10 @@
                         :class="props.row.thread_color_code && isLightColor(props.row.thread_color_code) ? 'text-dark' : 'text-white'"
                         :label="props.row.thread_color"
                       />
-                      <span v-else class="text-grey-5">—</span>
+                      <span
+                        v-else
+                        class="text-grey-5"
+                      >—</span>
                     </q-td>
                   </template>
                 </q-table>

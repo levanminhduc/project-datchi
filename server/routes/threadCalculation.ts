@@ -55,6 +55,8 @@ interface ColorThreadTypeJoin {
   name: string
   tex_number: string
   meters_per_cone: number | null
+  supplier_id: number | null
+  suppliers: SupplierJoin | null
   color_data: { name: string; hex_code: string | null } | null
 }
 
@@ -124,6 +126,7 @@ interface CalculationResult {
       total_meters: number
       process_name: string
       supplier_name: string
+      supplier_id?: number | null
       tex_number: string
       meters_per_unit: number
       meters_per_cone: number | null
@@ -152,7 +155,15 @@ const COLOR_SPEC_SELECT = `
   color_id,
   thread_type_id,
   colors:color_id (id, name),
-  thread_types:thread_type_id (id, name, tex_number, meters_per_cone, color_data:colors!color_id(name, hex_code))
+  thread_types:thread_type_id (
+    id,
+    name,
+    tex_number,
+    meters_per_cone,
+    supplier_id,
+    suppliers:supplier_id (id, name, lead_time_days),
+    color_data:colors!color_id(name, hex_code)
+  )
 ` as const
 
 /**
@@ -291,6 +302,18 @@ function buildCalculation(
       const colorSpec = specColorSpecs.find(
         (sc) => sc.color_id === cb.color_id
       )
+      const resolvedSupplierName =
+        colorSpec?.thread_types?.suppliers?.name ||
+        spec.suppliers?.name ||
+        ''
+      const resolvedSupplierId =
+        colorSpec?.thread_types?.supplier_id ??
+        spec.suppliers?.id ??
+        null
+      const resolvedTexNumber =
+        colorSpec?.thread_types?.tex_number ||
+        spec.thread_types?.tex_number ||
+        ''
 
       return {
         color_id: cb.color_id,
@@ -302,8 +325,9 @@ function buildCalculation(
         thread_color_code: colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
         total_meters: spec.meters_per_unit * cb.quantity,
         process_name: spec.process_name,
-        supplier_name: spec.suppliers?.name || '',
-        tex_number: spec.thread_types?.tex_number || '',
+        supplier_name: resolvedSupplierName,
+        supplier_id: resolvedSupplierId,
+        tex_number: resolvedTexNumber,
         meters_per_unit: spec.meters_per_unit,
         meters_per_cone: colorSpec?.thread_types?.meters_per_cone ?? spec.thread_types?.meters_per_cone ?? null,
       }
@@ -650,6 +674,18 @@ threadCalculation.post('/calculate-by-po', async (c) => {
           const colorSpec = relevantColorSpecs.find(
             (cs) => cs.style_thread_spec_id === spec.id && cs.color_id === sku.color_id
           )
+          const resolvedSupplierName =
+            colorSpec?.thread_types?.suppliers?.name ||
+            spec.suppliers?.name ||
+            ''
+          const resolvedSupplierId =
+            colorSpec?.thread_types?.supplier_id ??
+            spec.suppliers?.id ??
+            null
+          const resolvedTexNumber =
+            colorSpec?.thread_types?.tex_number ||
+            spec.thread_types?.tex_number ||
+            ''
 
           return {
             color_id: sku.color_id,
@@ -661,8 +697,9 @@ threadCalculation.post('/calculate-by-po', async (c) => {
             thread_color_code: colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
             total_meters: spec.meters_per_unit * sku.quantity,
             process_name: spec.process_name,
-            supplier_name: spec.suppliers?.name || '',
-            tex_number: spec.thread_types?.tex_number || '',
+            supplier_name: resolvedSupplierName,
+            supplier_id: resolvedSupplierId,
+            tex_number: resolvedTexNumber,
             meters_per_unit: spec.meters_per_unit,
             meters_per_cone: colorSpec?.thread_types?.meters_per_cone ?? spec.thread_types?.meters_per_cone ?? null,
           }

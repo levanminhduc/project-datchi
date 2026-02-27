@@ -50,6 +50,7 @@ export interface ColorCalculationResult {
   total_meters: number
   process_name: string
   supplier_name: string
+  supplier_id?: number | null
   tex_number: string
   meters_per_unit: number
   meters_per_cone: number | null

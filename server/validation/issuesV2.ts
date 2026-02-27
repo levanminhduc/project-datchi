@@ -111,9 +111,17 @@ export const ReturnLineSchema = z.object({
   returned_partial: z.number().int().min(0, 'So cuon le tra phai >= 0').default(0),
 })
 
-export const ReturnIssueV2Schema = z.object({
-  lines: z.array(ReturnLineSchema).min(1, 'Phai co it nhat 1 dong tra'),
-})
+export const ReturnIssueV2Schema = z
+  .object({
+    lines: z.array(ReturnLineSchema).min(1, 'Phai co it nhat 1 dong tra'),
+  })
+  .refine(
+    (data) => {
+      const lineIds = data.lines.map((l) => l.line_id)
+      return new Set(lineIds).size === lineIds.length
+    },
+    { message: 'Khong duoc co line_id trung lap trong request', path: ['lines'] }
+  )
 
 export type ReturnLineDTO = z.infer<typeof ReturnLineSchema>
 export type ReturnIssueV2DTO = z.infer<typeof ReturnIssueV2Schema>

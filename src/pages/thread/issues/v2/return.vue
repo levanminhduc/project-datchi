@@ -100,16 +100,28 @@ function validateInputs() {
   validationErrors.value = result.errors
 }
 
+function getTotalRemaining(line: IssueLineV2WithComputed): number {
+  const totalIssued = line.issued_full + line.issued_partial
+  const totalReturned = line.returned_full + line.returned_partial
+  return totalIssued - totalReturned
+}
+
 function getMaxReturnFull(line: IssueLineV2WithComputed): number {
-  return line.issued_full - line.returned_full
+  // Cap by both per-type limit AND total remaining
+  // Rule: returned_full <= issued_full AND total_returned <= total_issued
+  const perTypeMax = line.issued_full - line.returned_full
+  const totalRemaining = getTotalRemaining(line)
+  return Math.min(perTypeMax, totalRemaining)
 }
 
 function getMaxReturnPartial(line: IssueLineV2WithComputed): number {
-  return line.issued_partial - line.returned_partial
+  // Total-based: partial can be returned up to total remaining (not just issued_partial)
+  return getTotalRemaining(line)
 }
 
 function hasOutstandingItems(line: IssueLineV2WithComputed): boolean {
-  return getMaxReturnFull(line) > 0 || getMaxReturnPartial(line) > 0
+  // Total-based: has outstanding if total remaining > 0
+  return getTotalRemaining(line) > 0
 }
 
 async function handleSubmit() {

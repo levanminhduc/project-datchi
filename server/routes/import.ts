@@ -280,13 +280,14 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
 
       const supplierItemCode = previewRow.supplier_item_code || `${previewRow.supplier_name}-TEX${previewRow.tex_number}`
 
-      const { data: existingLink } = await supabase
+      const { data: existingLinks } = await supabase
         .from('thread_type_supplier')
         .select('id')
         .eq('thread_type_id', threadTypeId)
         .eq('supplier_id', supplierId)
-        .single()
+        .limit(1)
 
+      const existingLink = existingLinks?.[0]
       if (existingLink) {
         const { error: updateError } = await supabase
           .from('thread_type_supplier')

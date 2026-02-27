@@ -179,7 +179,9 @@ export function useReturnV2() {
 
   /**
    * Validate return quantities locally (for UI feedback)
-   * Returns true if all quantities are valid
+   * Uses total-based validation to allow cross-type returns
+   * Rule 1: returned_full <= issued_full (can't create full cones from nothing)
+   * Rule 2: total_returned <= total_issued (total can't exceed total issued)
    */
   const validateReturnQuantities = (
     lines: ReturnLineInput[],
@@ -191,19 +193,22 @@ export function useReturnV2() {
       const issueLine = issueLines.find((l) => l.id === line.line_id)
       if (!issueLine) continue
 
-      // Check if returned_full + new_return_full <= issued_full
       const totalReturnedFull = issueLine.returned_full + line.returned_full
+      const totalReturnedPartial = issueLine.returned_partial + line.returned_partial
+      const totalReturned = totalReturnedFull + totalReturnedPartial
+      const totalIssued = issueLine.issued_full + issueLine.issued_partial
+
+      // Rule 1: returned_full cannot exceed issued_full
       if (totalReturnedFull > issueLine.issued_full) {
         errors.push(
           `${issueLine.thread_name || issueLine.thread_code}: Số cuộn nguyên trả (${totalReturnedFull}) vượt quá số đã xuất (${issueLine.issued_full})`
         )
       }
 
-      // Check if returned_partial + new_return_partial <= issued_partial
-      const totalReturnedPartial = issueLine.returned_partial + line.returned_partial
-      if (totalReturnedPartial > issueLine.issued_partial) {
+      // Rule 2: total returned cannot exceed total issued
+      if (totalReturned > totalIssued) {
         errors.push(
-          `${issueLine.thread_name || issueLine.thread_code}: Số cuộn lẻ trả (${totalReturnedPartial}) vượt quá số đã xuất (${issueLine.issued_partial})`
+          `${issueLine.thread_name || issueLine.thread_code}: Tổng trả (${totalReturned}) vượt quá tổng đã xuất (${totalIssued})`
         )
       }
     }
