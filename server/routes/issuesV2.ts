@@ -9,8 +9,9 @@
  * - Backend handles ALL calculations
  */
 
-import { Hono } from 'hono'
+import { Hono, Context } from 'hono'
 import { ZodError } from 'zod'
+import { createHash } from 'crypto'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
@@ -37,6 +38,15 @@ issuesV2.use('*', requirePermission('thread.allocations.view'))
 
 function formatZodError(err: ZodError): string {
   return err.issues.map((e) => e.message).join('; ')
+}
+
+function getPerformedBy(c: Context, confirmedByFromBody?: string): string {
+  const auth = c.get('auth') as { employeeCode?: string; employeeId?: number } | undefined
+  return auth?.employeeCode || (auth?.employeeId ? String(auth.employeeId) : '') || confirmedByFromBody || ''
+}
+
+function hashPayload(payload: unknown): string {
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex')
 }
 
 /**
@@ -329,101 +339,84 @@ async function getQuotaCones(
 
 /**
  * Deduct stock using FEFO (First Expired First Out)
- */
-/**
- * Deduct stock by updating thread_inventory status
- * Changes cones from AVAILABLE to HARD_ALLOCATED (FEFO order)
+ * Uses RPC fn_issue_cones_with_movements for atomic operation with movement logging
  */
 async function deductStock(
   threadTypeId: number,
   deductFull: number,
   deductPartial: number,
-  _issueLineId?: number
+  issueLineId: number,
+  performedBy: string
 ): Promise<{ success: boolean; message?: string; allocatedConeIds?: number[] }> {
   const allocatedConeIds: number[] = []
 
-  // Deduct full cones first (FEFO: earliest expiry/received first)
-  if (deductFull > 0) {
-    const { data: fullCones, error: fullError } = await supabase
-      .from('thread_inventory')
-      .select('id')
-      .eq('thread_type_id', threadTypeId)
-      .eq('status', 'AVAILABLE')
-      .eq('is_partial', false)
-      .order('expiry_date', { ascending: true, nullsFirst: false })
-      .order('received_date', { ascending: true })
-      .limit(deductFull)
-
-    if (fullError) {
-      return { success: false, message: 'Loi truy van ton kho cuon nguyen' }
-    }
-
-    if (!fullCones || fullCones.length < deductFull) {
-      return {
-        success: false,
-        message: `Khong du cuon nguyen. Can ${deductFull}, chi co ${fullCones?.length || 0}`,
-      }
-    }
-
-    // Update status to HARD_ALLOCATED
-    const fullIds = fullCones.map((c) => c.id)
-    const { error: updateFullError } = await supabase
-      .from('thread_inventory')
-      .update({
-        status: 'HARD_ALLOCATED',
-        updated_at: new Date().toISOString(),
-      })
-      .in('id', fullIds)
-
-    if (updateFullError) {
-      console.error('Error allocating full cones:', updateFullError)
-      return { success: false, message: 'Loi cap nhat trang thai cuon nguyen' }
-    }
-
-    allocatedConeIds.push(...fullIds)
+  const totalCones = deductFull + deductPartial
+  if (totalCones === 0) {
+    return { success: true, allocatedConeIds: [] }
   }
 
-  // Deduct partial cones (FEFO: earliest expiry/received first)
-  if (deductPartial > 0) {
-    const { data: partialCones, error: partialError } = await supabase
-      .from('thread_inventory')
-      .select('id')
-      .eq('thread_type_id', threadTypeId)
-      .eq('status', 'AVAILABLE')
-      .eq('is_partial', true)
-      .order('expiry_date', { ascending: true, nullsFirst: false })
-      .order('received_date', { ascending: true })
-      .limit(deductPartial)
+  const { data: fullCones, error: fullError } = await supabase
+    .from('thread_inventory')
+    .select('id')
+    .eq('thread_type_id', threadTypeId)
+    .eq('status', 'AVAILABLE')
+    .eq('is_partial', false)
+    .order('expiry_date', { ascending: true, nullsFirst: false })
+    .order('received_date', { ascending: true })
+    .limit(deductFull)
 
-    if (partialError) {
-      return { success: false, message: 'Loi truy van ton kho cuon le' }
-    }
-
-    if (!partialCones || partialCones.length < deductPartial) {
-      return {
-        success: false,
-        message: `Khong du cuon le. Can ${deductPartial}, chi co ${partialCones?.length || 0}`,
-      }
-    }
-
-    // Update status to HARD_ALLOCATED
-    const partialIds = partialCones.map((c) => c.id)
-    const { error: updatePartialError } = await supabase
-      .from('thread_inventory')
-      .update({
-        status: 'HARD_ALLOCATED',
-        updated_at: new Date().toISOString(),
-      })
-      .in('id', partialIds)
-
-    if (updatePartialError) {
-      console.error('Error allocating partial cones:', updatePartialError)
-      return { success: false, message: 'Loi cap nhat trang thai cuon le' }
-    }
-
-    allocatedConeIds.push(...partialIds)
+  if (fullError) {
+    return { success: false, message: 'Loi truy van ton kho cuon nguyen' }
   }
 
+  if (deductFull > 0 && (!fullCones || fullCones.length < deductFull)) {
+    return {
+      success: false,
+      message: `Khong du cuon nguyen. Can ${deductFull}, chi co ${fullCones?.length || 0}`,
+    }
+  }
+
+  const { data: partialCones, error: partialError } = await supabase
+    .from('thread_inventory')
+    .select('id')
+    .eq('thread_type_id', threadTypeId)
+    .eq('status', 'AVAILABLE')
+    .eq('is_partial', true)
+    .order('expiry_date', { ascending: true, nullsFirst: false })
+    .order('received_date', { ascending: true })
+    .limit(deductPartial)
+
+  if (partialError) {
+    return { success: false, message: 'Loi truy van ton kho cuon le' }
+  }
+
+  if (deductPartial > 0 && (!partialCones || partialCones.length < deductPartial)) {
+    return {
+      success: false,
+      message: `Khong du cuon le. Can ${deductPartial}, chi co ${partialCones?.length || 0}`,
+    }
+  }
+
+  const fullIds = fullCones?.map((c) => c.id) || []
+  const partialIds = partialCones?.map((c) => c.id) || []
+  const allConeIds = [...fullIds, ...partialIds]
+
+  if (allConeIds.length === 0) {
+    return { success: true, allocatedConeIds: [] }
+  }
+
+  const { data: rpcResult, error: rpcError } = await supabase.rpc('fn_issue_cones_with_movements', {
+    p_cone_ids: allConeIds,
+    p_line_id: issueLineId,
+    p_performed_by: performedBy,
+  })
+
+  if (rpcError) {
+    console.error('[deductStock] RPC error:', rpcError)
+    return { success: false, message: rpcError.message || 'Loi xu ly xuat kho' }
+  }
+
+  allocatedConeIds.push(...allConeIds)
   return { success: true, allocatedConeIds }
 }
 
@@ -1668,17 +1661,85 @@ issuesV2.post('/:id/confirm', async (c) => {
       )
     }
 
-    // Optional body for confirmed_by
-    let confirmedBy: string | undefined
+    const body = await c.req.json()
+    let validated
     try {
-      const body = await c.req.json()
-      const validated = ConfirmIssueV2Schema.parse(body)
-      confirmedBy = validated.confirmed_by
-    } catch {
-      // Body is optional
+      validated = ConfirmIssueV2Schema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json<ThreadApiResponse<null>>(
+          {
+            data: null,
+            error: formatZodError(err),
+          },
+          400
+        )
+      }
+      throw err
     }
 
-    // Get issue
+    const { idempotency_key, confirmed_by } = validated
+    const performedBy = getPerformedBy(c, confirmed_by)
+    const requestHash = hashPayload({ issueId, ...body })
+
+    const { data: existingOp, error: opCheckError } = await supabase
+      .from('issue_operations_log')
+      .select('*')
+      .eq('operation_type', 'CONFIRM')
+      .eq('idempotency_key', idempotency_key)
+      .single()
+
+    if (existingOp && !opCheckError) {
+      if (existingOp.request_hash !== requestHash) {
+        return c.json<ThreadApiResponse<null>>(
+          {
+            data: null,
+            error: 'Idempotency key da duoc su dung voi payload khac',
+          },
+          409
+        )
+      }
+
+      if (existingOp.status === 'COMPLETED') {
+        const { data: cachedIssue } = await supabase
+          .from('thread_issues')
+          .select('*')
+          .eq('id', issueId)
+          .single()
+        return c.json({
+          data: cachedIssue,
+          error: null,
+          message: 'Xac nhan xuat kho thanh cong (cached)',
+        })
+      }
+
+      if (existingOp.status === 'IN_PROGRESS') {
+        return c.json<ThreadApiResponse<null>>(
+          {
+            data: null,
+            error: 'Operation dang xu ly, vui long doi',
+          },
+          409
+        )
+      }
+    }
+
+    const { error: insertOpError } = await supabase.from('issue_operations_log').upsert(
+      {
+        idempotency_key,
+        operation_type: 'CONFIRM',
+        request_hash: requestHash,
+        request_payload: body,
+        status: 'IN_PROGRESS',
+        succeeded_line_ids: [],
+      },
+      { onConflict: 'operation_type,idempotency_key' }
+    )
+
+    if (insertOpError) {
+      console.error('[confirm] Failed to create operation log:', insertOpError)
+    }
+
     const { data: issue, error: issueError } = await supabase
       .from('thread_issues')
       .select('*')
@@ -1686,6 +1747,11 @@ issuesV2.post('/:id/confirm', async (c) => {
       .single()
 
     if (issueError || !issue) {
+      await supabase
+        .from('issue_operations_log')
+        .update({ status: 'FAILED', error_info: 'Khong tim thay phieu xuat', completed_at: new Date().toISOString() })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'CONFIRM')
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -1696,6 +1762,11 @@ issuesV2.post('/:id/confirm', async (c) => {
     }
 
     if (issue.status !== 'DRAFT') {
+      await supabase
+        .from('issue_operations_log')
+        .update({ status: 'COMPLETED', completed_at: new Date().toISOString() })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'CONFIRM')
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -1705,13 +1776,17 @@ issuesV2.post('/:id/confirm', async (c) => {
       )
     }
 
-    // Get lines
     const { data: lines, error: linesError } = await supabase
       .from('thread_issue_lines')
       .select('*')
       .eq('issue_id', issueId)
 
     if (linesError) {
+      await supabase
+        .from('issue_operations_log')
+        .update({ status: 'FAILED', error_info: 'Khong the tai chi tiet phieu xuat', completed_at: new Date().toISOString() })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'CONFIRM')
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -1722,6 +1797,11 @@ issuesV2.post('/:id/confirm', async (c) => {
     }
 
     if (!lines || lines.length === 0) {
+      await supabase
+        .from('issue_operations_log')
+        .update({ status: 'FAILED', error_info: 'Phieu xuat khong co dong nao', completed_at: new Date().toISOString() })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'CONFIRM')
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -1734,12 +1814,10 @@ issuesV2.post('/:id/confirm', async (c) => {
     const ratio = await getPartialConeRatio()
     const errors: string[] = []
 
-    // Validate each line
     for (const line of lines) {
       const issuedEquivalent = calculateIssuedEquivalent(line.issued_full, line.issued_partial, ratio)
       const isOverQuota = line.quota_cones !== null && issuedEquivalent > line.quota_cones
 
-      // Check over-quota has notes
       if (isOverQuota && !line.over_quota_notes?.trim()) {
         const { data: threadType } = await supabase
           .from('thread_types')
@@ -1749,7 +1827,6 @@ issuesV2.post('/:id/confirm', async (c) => {
         errors.push(`${threadType?.name || 'Loai chi'}: Vuot dinh muc nhung chua co ghi chu`)
       }
 
-      // Check stock
       const stock = await getStockAvailability(line.thread_type_id)
       if (line.issued_full > stock.full_cones || line.issued_partial > stock.partial_cones) {
         const { data: threadType } = await supabase
@@ -1766,6 +1843,11 @@ issuesV2.post('/:id/confirm', async (c) => {
     }
 
     if (errors.length > 0) {
+      await supabase
+        .from('issue_operations_log')
+        .update({ status: 'FAILED', error_info: errors.join('. '), completed_at: new Date().toISOString() })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'CONFIRM')
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -1775,27 +1857,37 @@ issuesV2.post('/:id/confirm', async (c) => {
       )
     }
 
-    // Deduct stock for each line
+    const succeededLineIds: number[] = []
     for (const line of lines) {
-      const result = await deductStock(line.thread_type_id, line.issued_full, line.issued_partial)
+      const result = await deductStock(line.thread_type_id, line.issued_full, line.issued_partial, line.id, performedBy)
       if (!result.success) {
-        return c.json<ThreadApiResponse<null>>(
+        await supabase
+          .from('issue_operations_log')
+          .update({
+            status: 'FAILED',
+            succeeded_line_ids: succeededLineIds,
+            error_info: result.message || 'Loi tru ton kho',
+            completed_at: new Date().toISOString(),
+          })
+          .eq('idempotency_key', idempotency_key)
+          .eq('operation_type', 'CONFIRM')
+        return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
           {
-            data: null,
+            data: { succeeded_line_ids: succeededLineIds },
             error: result.message || 'Loi tru ton kho',
           },
           500
         )
       }
+      succeededLineIds.push(line.id)
     }
 
-    // Update issue status
     const { data: updatedIssue, error: updateError } = await supabase
       .from('thread_issues')
       .update({
         status: 'CONFIRMED',
         updated_at: new Date().toISOString(),
-        notes: confirmedBy ? `${issue.notes || ''}\nXac nhan boi: ${confirmedBy}`.trim() : issue.notes,
+        notes: confirmed_by ? `${issue.notes || ''}\nXac nhan boi: ${confirmed_by}`.trim() : issue.notes,
       })
       .eq('id', issueId)
       .select('*')
@@ -1803,6 +1895,16 @@ issuesV2.post('/:id/confirm', async (c) => {
 
     if (updateError) {
       console.error('Error updating issue status:', updateError)
+      await supabase
+        .from('issue_operations_log')
+        .update({
+          status: 'FAILED',
+          succeeded_line_ids: succeededLineIds,
+          error_info: 'Khong the cap nhat trang thai phieu xuat',
+          completed_at: new Date().toISOString(),
+        })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'CONFIRM')
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -1811,6 +1913,16 @@ issuesV2.post('/:id/confirm', async (c) => {
         500
       )
     }
+
+    await supabase
+      .from('issue_operations_log')
+      .update({
+        status: 'COMPLETED',
+        succeeded_line_ids: succeededLineIds,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('idempotency_key', idempotency_key)
+      .eq('operation_type', 'CONFIRM')
 
     return c.json({
       data: updatedIssue,
@@ -1832,10 +1944,10 @@ issuesV2.post('/:id/confirm', async (c) => {
 /**
  * POST /api/issues/v2/:id/return - Return items and add stock back
  *
- * Body: { lines: [{ line_id, returned_full, returned_partial }] }
+ * Body: { lines: [{ line_id, returned_full, returned_partial }], idempotency_key: string }
  * Validates: returned_full <= issued_full AND (returned_full + returned_partial) <= (issued_full + issued_partial)
- * Best-effort inventory update: flips HARD_ALLOCATED cones to AVAILABLE when found; skips if not found
- * Adds stock back and updates line returned quantities
+ * Uses RPC fn_return_cones_with_movements for atomic operation with movement logging
+ * Updates line returned quantities
  * If all returned (total_returned >= total_issued) → set status=RETURNED
  */
 issuesV2.post('/:id/return', async (c) => {
@@ -1869,7 +1981,68 @@ issuesV2.post('/:id/return', async (c) => {
       throw err
     }
 
-    // Get issue
+    const { idempotency_key } = validated
+    const performedBy = getPerformedBy(c)
+    const requestHash = hashPayload({ issueId, ...body })
+
+    const { data: existingOp, error: opCheckError } = await supabase
+      .from('issue_operations_log')
+      .select('*')
+      .eq('operation_type', 'RETURN')
+      .eq('idempotency_key', idempotency_key)
+      .single()
+
+    if (existingOp && !opCheckError) {
+      if (existingOp.request_hash !== requestHash) {
+        return c.json<ThreadApiResponse<null>>(
+          {
+            data: null,
+            error: 'Idempotency key da duoc su dung voi payload khac',
+          },
+          409
+        )
+      }
+
+      if (existingOp.status === 'COMPLETED') {
+        const { data: cachedIssue } = await supabase
+          .from('thread_issues')
+          .select('*')
+          .eq('id', issueId)
+          .single()
+        return c.json({
+          data: cachedIssue,
+          error: null,
+          message: 'Tra hang thanh cong (cached)',
+        })
+      }
+
+      if (existingOp.status === 'IN_PROGRESS') {
+        return c.json<ThreadApiResponse<null>>(
+          {
+            data: null,
+            error: 'Operation dang xu ly, vui long doi',
+          },
+          409
+        )
+      }
+    }
+
+    const { error: insertOpError } = await supabase.from('issue_operations_log').upsert(
+      {
+        idempotency_key,
+        operation_type: 'RETURN',
+        request_hash: requestHash,
+        request_payload: body,
+        status: 'IN_PROGRESS',
+        succeeded_line_ids: [],
+      },
+      { onConflict: 'operation_type,idempotency_key' }
+    )
+
+    if (insertOpError) {
+      console.error('[return] Failed to create operation log:', insertOpError)
+    }
+
     const { data: issue, error: issueError } = await supabase
       .from('thread_issues')
       .select('*')
@@ -1877,6 +2050,11 @@ issuesV2.post('/:id/return', async (c) => {
       .single()
 
     if (issueError || !issue) {
+      await supabase
+        .from('issue_operations_log')
+        .update({ status: 'FAILED', error_info: 'Khong tim thay phieu xuat', completed_at: new Date().toISOString() })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'RETURN')
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -1887,6 +2065,11 @@ issuesV2.post('/:id/return', async (c) => {
     }
 
     if (issue.status !== 'CONFIRMED') {
+      await supabase
+        .from('issue_operations_log')
+        .update({ status: 'FAILED', error_info: 'Chi co the tra hang tu phieu da xac nhan', completed_at: new Date().toISOString() })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'RETURN')
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -1896,13 +2079,17 @@ issuesV2.post('/:id/return', async (c) => {
       )
     }
 
-    // Get all lines for this issue
     const { data: existingLines, error: linesError } = await supabase
       .from('thread_issue_lines')
       .select('*')
       .eq('issue_id', issueId)
 
     if (linesError) {
+      await supabase
+        .from('issue_operations_log')
+        .update({ status: 'FAILED', error_info: 'Khong the tai chi tiet phieu xuat', completed_at: new Date().toISOString() })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'RETURN')
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -1916,11 +2103,13 @@ issuesV2.post('/:id/return', async (c) => {
       existingLines?.map((l) => [l.id, l as IssueLine]) || []
     )
 
-    // ========================================================================
-    // PHASE 1: VALIDATE return quantities (quantity-based, not inventory-based)
-    // ========================================================================
     const validation = validateReturnQuantities(validated.lines, lineMap)
     if (!validation.valid) {
+      await supabase
+        .from('issue_operations_log')
+        .update({ status: 'FAILED', error_info: validation.errors.join('. '), completed_at: new Date().toISOString() })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'RETURN')
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -1930,93 +2119,63 @@ issuesV2.post('/:id/return', async (c) => {
       )
     }
 
-    // ========================================================================
-    // PHASE 2: TRY FIND HARD_ALLOCATED cones (best-effort)
-    // Continue even if cones not found - just update counters
-    // ========================================================================
-    interface StockOperation {
-      lineId: number
-      threadTypeId: number
-      returnedFull: number
-      returnedPartial: number
-      fullConeIds: number[]
-      partialConeIds: number[]
-    }
-
-    const stockOperations: StockOperation[] = []
-    const selectedConeIds = new Set<number>()
+    const succeededLineIds: number[] = []
 
     for (const returnLine of validated.lines) {
       const line = lineMap.get(returnLine.line_id)!
 
-      const operation: StockOperation = {
-        lineId: returnLine.line_id,
-        threadTypeId: line.thread_type_id,
-        returnedFull: returnLine.returned_full,
-        returnedPartial: returnLine.returned_partial,
-        fullConeIds: [],
-        partialConeIds: [],
-      }
+      const { data: fullCones } = await supabase
+        .from('thread_inventory')
+        .select('id')
+        .eq('issued_line_id', returnLine.line_id)
+        .eq('status', 'HARD_ALLOCATED')
+        .eq('is_partial', false)
+        .limit(returnLine.returned_full)
 
-      const fullResult = await tryFindHardAllocatedCones(
-        line.thread_type_id,
-        returnLine.returned_full,
-        false,
-        selectedConeIds
-      )
-      operation.fullConeIds = fullResult.ids
-      fullResult.ids.forEach((id) => selectedConeIds.add(id))
+      const { data: partialCones } = await supabase
+        .from('thread_inventory')
+        .select('id')
+        .eq('issued_line_id', returnLine.line_id)
+        .eq('status', 'HARD_ALLOCATED')
+        .eq('is_partial', true)
+        .limit(returnLine.returned_partial)
 
-      const partialResult = await tryFindHardAllocatedCones(
-        line.thread_type_id,
-        returnLine.returned_partial,
-        true,
-        selectedConeIds
-      )
-      operation.partialConeIds = partialResult.ids
-      partialResult.ids.forEach((id) => selectedConeIds.add(id))
+      const fullConeIds = fullCones?.map((c) => c.id) || []
+      const partialConeIds = partialCones?.map((c) => c.id) || []
+      const allConeIds = [...fullConeIds, ...partialConeIds]
 
-      stockOperations.push(operation)
-    }
+      if (allConeIds.length > 0) {
+        const { data: rpcResult, error: rpcError } = await supabase.rpc('fn_return_cones_with_movements', {
+          p_cone_ids: allConeIds,
+          p_line_id: returnLine.line_id,
+          p_performed_by: performedBy,
+          p_partial_returns: null,
+        })
 
-    // ========================================================================
-    // PHASE 3: EXECUTE inventory updates (only for found cones)
-    // Skip if no cones found - this is the fallback behavior
-    // ========================================================================
-    for (const op of stockOperations) {
-      if (op.fullConeIds.length > 0) {
-        const { error } = await supabase
-          .from('thread_inventory')
-          .update({ status: 'AVAILABLE', updated_at: new Date().toISOString() })
-          .eq('status', 'HARD_ALLOCATED')
-          .in('id', op.fullConeIds)
-
-        if (error) {
-          console.error('[return] Error returning full cones:', error)
+        if (rpcError) {
+          console.error('[return] RPC error for line', returnLine.line_id, ':', rpcError)
+          await supabase
+            .from('issue_operations_log')
+            .update({
+              status: 'FAILED',
+              succeeded_line_ids: succeededLineIds,
+              error_info: rpcError.message || 'Loi xu ly tra hang',
+              completed_at: new Date().toISOString(),
+            })
+            .eq('idempotency_key', idempotency_key)
+            .eq('operation_type', 'RETURN')
+          return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
+            {
+              data: { succeeded_line_ids: succeededLineIds },
+              error: rpcError.message || 'Loi xu ly tra hang',
+            },
+            500
+          )
         }
       }
 
-      if (op.partialConeIds.length > 0) {
-        const { error } = await supabase
-          .from('thread_inventory')
-          .update({ status: 'AVAILABLE', updated_at: new Date().toISOString() })
-          .eq('status', 'HARD_ALLOCATED')
-          .in('id', op.partialConeIds)
-
-        if (error) {
-          console.error('[return] Error returning partial cones:', error)
-        }
-      }
-    }
-
-    // ========================================================================
-    // PHASE 4: UPDATE counters (ALWAYS runs regardless of inventory result)
-    // ========================================================================
-    for (const op of stockOperations) {
-      const line = lineMap.get(op.lineId)!
-
-      const newReturnedFull = (line.returned_full || 0) + op.returnedFull
-      const newReturnedPartial = (line.returned_partial || 0) + op.returnedPartial
+      const newReturnedFull = (line.returned_full || 0) + returnLine.returned_full
+      const newReturnedPartial = (line.returned_partial || 0) + returnLine.returned_partial
 
       const { error: updateError } = await supabase
         .from('thread_issue_lines')
@@ -2024,15 +2183,27 @@ issuesV2.post('/:id/return', async (c) => {
           returned_full: newReturnedFull,
           returned_partial: newReturnedPartial,
         })
-        .eq('id', op.lineId)
+        .eq('id', returnLine.line_id)
 
       if (updateError) {
         console.error('[return] Error updating line:', updateError)
+        await supabase
+          .from('issue_operations_log')
+          .update({
+            status: 'FAILED',
+            succeeded_line_ids: succeededLineIds,
+            error_info: 'Khong the cap nhat dong tra',
+            completed_at: new Date().toISOString(),
+          })
+          .eq('idempotency_key', idempotency_key)
+          .eq('operation_type', 'RETURN')
         return c.json<ThreadApiResponse<null>>(
           { data: null, error: 'Khong the cap nhat dong tra' },
           500
         )
       }
+
+      succeededLineIds.push(returnLine.line_id)
     }
 
     try {
@@ -2074,6 +2245,16 @@ issuesV2.post('/:id/return', async (c) => {
       .select('*')
       .eq('id', issueId)
       .single()
+
+    await supabase
+      .from('issue_operations_log')
+      .update({
+        status: 'COMPLETED',
+        succeeded_line_ids: succeededLineIds,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('idempotency_key', idempotency_key)
+      .eq('operation_type', 'RETURN')
 
     return c.json({
       data: finalIssue,

@@ -114,6 +114,7 @@ export const ReturnLineSchema = z.object({
 export const ReturnIssueV2Schema = z
   .object({
     lines: z.array(ReturnLineSchema).min(1, 'Phai co it nhat 1 dong tra'),
+    idempotency_key: z.string().uuid('idempotency_key phai la UUID'),
   })
   .refine(
     (data) => {
@@ -132,6 +133,7 @@ export type ReturnIssueV2DTO = z.infer<typeof ReturnIssueV2Schema>
 
 export const ConfirmIssueV2Schema = z.object({
   confirmed_by: z.string().optional(),
+  idempotency_key: z.string().uuid('idempotency_key phai la UUID'),
 })
 
 export type ConfirmIssueV2DTO = z.infer<typeof ConfirmIssueV2Schema>

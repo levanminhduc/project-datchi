@@ -202,11 +202,14 @@ export const issueV2Service = {
   /**
    * Xac nhan phieu xuat (Confirm issue and deduct stock)
    * @param issueId - Issue ID
+   * @param idempotencyKey - UUID for idempotent request
    * @returns Updated issue with CONFIRMED status
    */
-  async confirm(issueId: number): Promise<IssueV2WithLines> {
+  async confirm(issueId: number, idempotencyKey?: string): Promise<IssueV2WithLines> {
+    const key = idempotencyKey || crypto.randomUUID()
     const response = await fetchApi<ApiResponse<IssueV2WithLines>>(`${BASE}/${issueId}/confirm`, {
       method: 'POST',
+      body: JSON.stringify({ idempotency_key: key }),
     })
 
     if (response.error || !response.data) {
@@ -265,12 +268,15 @@ export const issueV2Service = {
    * Tra hang va them lai ton kho (Return items and add stock back)
    * @param issueId - Issue ID
    * @param data - ReturnIssueV2DTO with lines to return
+   * @param idempotencyKey - UUID for idempotent request
    * @returns Updated issue
    */
-  async returnItems(issueId: number, data: ReturnIssueV2DTO): Promise<IssueV2> {
+  async returnItems(issueId: number, data: ReturnIssueV2DTO, idempotencyKey?: string): Promise<IssueV2> {
+    const key = idempotencyKey || crypto.randomUUID()
+    const payload = { ...data, idempotency_key: key }
     const response = await fetchApi<ApiResponse<IssueV2>>(`${BASE}/${issueId}/return`, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     })
 
     if (response.error || !response.data) {

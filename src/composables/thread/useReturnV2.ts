@@ -9,6 +9,7 @@
 
 import { ref, computed } from 'vue'
 import { fetchApi } from '@/services/api'
+import { issueV2Service } from '@/services/issueV2Service'
 import type { ApiResponse } from '@/types'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
@@ -16,7 +17,6 @@ import { getErrorMessage } from '@/utils/errorMessages'
 import type {
   IssueV2,
   IssueV2WithLines,
-  ReturnIssueV2DTO,
   ReturnLog,
 } from '@/types/thread/issueV2'
 
@@ -126,20 +126,9 @@ export function useReturnV2() {
 
     try {
       await loading.withLoading(async () => {
-        const dto: ReturnIssueV2DTO = { lines: linesToSubmit }
-        const response = await fetchApi<ApiResponse<IssueV2WithLines>>(
-          `/api/issues/v2/${issueId}/return`,
-          {
-            method: 'POST',
-            body: JSON.stringify(dto),
-          }
-        )
-        if (response.error) {
-          throw new Error(response.error)
-        }
-        if (response.data) {
-          selectedIssue.value = response.data
-        }
+        await issueV2Service.returnItems(issueId, { lines: linesToSubmit })
+        const updatedIssue = await issueV2Service.getById(issueId)
+        selectedIssue.value = updatedIssue
       })
 
       snackbar.success('Đã nhập lại thành công')
