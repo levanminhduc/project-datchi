@@ -16,6 +16,26 @@ export class ApiError extends Error {
 let refreshPromise: Promise<Session> | null = null
 let isLoggingOut = false
 
+function clearSupabaseTokens() {
+  if (typeof window === 'undefined') return
+
+  const keysToRemove: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && key.startsWith('sb-') && key.includes('auth-token')) {
+      keysToRemove.push(key)
+    }
+  }
+  keysToRemove.forEach((key) => localStorage.removeItem(key))
+}
+
+async function forceBackToLogin() {
+  if (typeof window === 'undefined') return
+  if (window.location.pathname !== '/login') {
+    window.location.replace('/login')
+  }
+}
+
 function isAuthError(error: AuthError): boolean {
   if (error.message?.includes('Auth session missing')) return true
   if (error.name === 'AuthSessionMissingError') return true
@@ -36,20 +56,16 @@ export async function getRefreshedSession(): Promise<Session> {
 
       if (error) {
         if (isAuthError(error)) {
-          if (!isLoggingOut) {
-            isLoggingOut = true
-            supabase.auth.signOut({ scope: 'local' })
-          }
+          await clearAuthSessionLocal()
+          await forceBackToLogin()
           throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại')
         }
         throw new Error('Lỗi kết nối, vui lòng thử lại')
       }
 
       if (!data.session) {
-        if (!isLoggingOut) {
-          isLoggingOut = true
-          supabase.auth.signOut({ scope: 'local' })
-        }
+        await clearAuthSessionLocal()
+        await forceBackToLogin()
         throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại')
       }
 
@@ -69,6 +85,16 @@ export function resetLogoutFlag() {
 
 export function isLogoutInProgress(): boolean {
   return isLoggingOut
+}
+
+export async function clearAuthSessionLocal(): Promise<void> {
+  isLoggingOut = true
+  try {
+    await supabase.auth.signOut({ scope: 'local' })
+  } catch {
+  } finally {
+    clearSupabaseTokens()
+  }
 }
 
 export async function fetchApi<T>(

@@ -25,7 +25,7 @@ function onPasswordChanged() {
   }
 }
 
-const showSidebar = computed(() => route.path !== "/login");
+const showSidebar = computed(() => route.path !== "/login" && isAuthenticated.value);
 
 watch(showSidebar, (show) => {
   if (show) {

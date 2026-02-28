@@ -2,7 +2,11 @@ import { ref, computed, readonly } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import { authService } from '@/services/authService'
-import { resetLogoutFlag, isLogoutInProgress } from '@/services/api'
+import {
+  clearAuthSessionLocal,
+  resetLogoutFlag,
+  isLogoutInProgress,
+} from '@/services/api'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type {
   AuthState,
@@ -25,17 +29,6 @@ let loggedOut = false
 let authListenerUnsubscribe: (() => void) | null = null
 
 const tempPassword = ref<string | null>(null)
-
-function clearSupabaseTokens() {
-  const keysToRemove: string[] = []
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i)
-    if (key && key.startsWith('sb-') && key.includes('auth-token')) {
-      keysToRemove.push(key)
-    }
-  }
-  keysToRemove.forEach((key) => localStorage.removeItem(key))
-}
 
 export function useAuth() {
   const router = useRouter()
@@ -70,13 +63,14 @@ export function useAuth() {
         const isSessionMissing = getUserError.message?.includes('Auth session missing') ||
           getUserError.name === 'AuthSessionMissingError'
         const authErrorCodes = ['invalid_grant', 'session_not_found', 'refresh_token_not_found', 'bad_jwt']
-        const isAuthError = isSessionMissing || authErrorCodes.some(code =>
+        const isTokenError = authErrorCodes.some(code =>
           getUserError.message?.includes(code) || getUserError.code === code
         )
 
-        if (isAuthError) {
-          await supabase.auth.signOut({ scope: 'local' })
-        } else {
+        // Session missing is expected after timeout/logout, avoid firing extra SIGNED_OUT loops.
+        if (isTokenError) {
+          await clearAuthSessionLocal()
+        } else if (!isSessionMissing) {
           initialized = false
         }
         resetState()
@@ -126,10 +120,17 @@ export function useAuth() {
           if (signingOut) return
           resetState()
           initialized = false
-          if (!isLogoutInProgress()) {
+          const isOnLoginPage = router.currentRoute.value.path === '/login'
+
+          if (!isOnLoginPage && !isLogoutInProgress()) {
             snackbar.error('Phiên đăng nhập đã hết hạn')
           }
-          router.push('/login')
+
+          if (!isOnLoginPage) {
+            await router.replace('/login').catch(() => {
+              window.location.replace('/login')
+            })
+          }
         }
 
         if (event === 'TOKEN_REFRESHED') {
@@ -213,7 +214,7 @@ export function useAuth() {
       await authService.signOut()
     } catch {
     }
-    clearSupabaseTokens()
+    await clearAuthSessionLocal()
     snackbar.success('Đã đăng xuất')
     resetState()
     initialized = false
