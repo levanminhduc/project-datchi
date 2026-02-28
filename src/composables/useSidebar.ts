@@ -13,12 +13,13 @@ const navItems: NavItem[] = [
       { label: 'Danh Sách Nhân Viên', icon: 'o_list', to: '/nhan-su/danh-sach' }
     ]
   },
-  { 
-    label: 'Kế Hoạch', 
-    icon: 'o_event_note', 
+  {
+    label: 'Kế Hoạch',
+    icon: 'o_event_note',
     to: '/ke-hoach#top',
     children: [
       { label: 'Tính Toán Chỉ', icon: 'o_calculate', to: '/thread/calculation' },
+      { label: 'Đơn Hàng (PO)', icon: 'o_receipt_long', to: '/thread/purchase-orders' },
       { label: 'Đặt Hàng Chỉ Tuần', icon: 'o_shopping_cart', to: '/thread/weekly-order' },
       { label: 'Lịch Sử Đặt Hàng', icon: 'o_history', to: '/thread/weekly-order/history' }
     ]

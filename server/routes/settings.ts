@@ -13,6 +13,7 @@ const rootOnlySettingsKeys = new Set([
   'employee_detail_fields',
   'import_supplier_tex_mapping',
   'import_supplier_color_mapping',
+  'import_po_items_mapping',
 ])
 
 /**

@@ -56,6 +56,7 @@ async function validatePOQuantityLimits(
       .select('quantity')
       .eq('po_id', group.po_id)
       .eq('style_id', group.style_id)
+      .is('deleted_at', null)
       .single()
 
     if (!poItem) continue
@@ -781,6 +782,7 @@ weeklyOrder.get('/ordered-quantities', requirePermission('thread.allocations.vie
         .select('quantity')
         .eq('po_id', pair.po_id)
         .eq('style_id', pair.style_id)
+        .is('deleted_at', null)
         .single()
 
       const poQuantity = poItem?.quantity || 0
@@ -957,6 +959,7 @@ weeklyOrder.get('/history-by-week', requirePermission('thread.allocations.view')
         .select('quantity')
         .eq('po_id', pair.po_id)
         .eq('style_id', pair.style_id)
+        .is('deleted_at', null)
         .single()
 
       const poQuantity = poItem?.quantity || 0

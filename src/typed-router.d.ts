@@ -51,6 +51,9 @@ declare module 'vue-router/auto-routes' {
     '/thread/mobile/issue': RouteRecordInfo<'/thread/mobile/issue', '/thread/mobile/issue', Record<never, never>, Record<never, never>>,
     '/thread/mobile/receive': RouteRecordInfo<'/thread/mobile/receive', '/thread/mobile/receive', Record<never, never>, Record<never, never>>,
     '/thread/mobile/recovery': RouteRecordInfo<'/thread/mobile/recovery', '/thread/mobile/recovery', Record<never, never>, Record<never, never>>,
+    '/thread/purchase-orders/': RouteRecordInfo<'/thread/purchase-orders/', '/thread/purchase-orders', Record<never, never>, Record<never, never>>,
+    '/thread/purchase-orders/[id]': RouteRecordInfo<'/thread/purchase-orders/[id]', '/thread/purchase-orders/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
+    '/thread/purchase-orders/import': RouteRecordInfo<'/thread/purchase-orders/import', '/thread/purchase-orders/import', Record<never, never>, Record<never, never>>,
     '/thread/recovery': RouteRecordInfo<'/thread/recovery', '/thread/recovery', Record<never, never>, Record<never, never>>,
     '/thread/requests': RouteRecordInfo<'/thread/requests', '/thread/requests', Record<never, never>, Record<never, never>>,
     '/thread/stocktake': RouteRecordInfo<'/thread/stocktake', '/thread/stocktake', Record<never, never>, Record<never, never>>,
@@ -205,6 +208,18 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/thread/mobile/recovery.vue': {
       routes: '/thread/mobile/recovery'
+      views: never
+    }
+    'src/pages/thread/purchase-orders/index.vue': {
+      routes: '/thread/purchase-orders/'
+      views: never
+    }
+    'src/pages/thread/purchase-orders/[id].vue': {
+      routes: '/thread/purchase-orders/[id]'
+      views: never
+    }
+    'src/pages/thread/purchase-orders/import.vue': {
+      routes: '/thread/purchase-orders/import'
       views: never
     }
     'src/pages/thread/recovery.vue': {

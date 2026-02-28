@@ -13,6 +13,15 @@ import type {
   ImportMappingConfig,
   ImportApiResponse,
 } from '../types/import'
+import type {
+  POImportRow,
+  POImportErrorRow,
+  POImportPreview,
+  POImportResult,
+  POImportMappingConfig,
+} from '../types/purchaseOrder'
+import type { AuthContext } from '../types/auth'
+import { POImportParseRequestSchema, POImportExecuteRequestSchema } from '../validation/purchaseOrder'
 
 const importRouter = new Hono()
 
@@ -31,6 +40,20 @@ const DEFAULT_COLOR_MAPPING: ImportMappingConfig = {
   header_row: 1,
   data_start_row: 2,
   columns: { color_name: 'A', supplier_color_code: 'B' }
+}
+
+const DEFAULT_PO_ITEMS_MAPPING: POImportMappingConfig = {
+  sheet_index: 0,
+  header_row: 1,
+  data_start_row: 2,
+  columns: {
+    po_number: 'A',
+    style_code: 'B',
+    quantity: 'C',
+    customer_name: 'D',
+    order_date: 'E',
+    notes: 'F'
+  }
 }
 
 const normalizeText = (value: string | null | undefined): string =>
@@ -639,6 +662,384 @@ importRouter.get('/template/supplier-colors', requirePermission('thread.supplier
     return c.body(buffer as ArrayBuffer)
   } catch (err) {
     console.error('Template supplier-colors error:', err)
+    return c.json<ImportApiResponse<null>>({
+      data: null,
+      error: 'Lỗi khi tạo file mẫu'
+    }, 500)
+  }
+})
+
+const getPOImportMappingConfig = async (): Promise<POImportMappingConfig> => {
+  const { data: setting } = await supabase
+    .from('system_settings')
+    .select('value')
+    .eq('key', 'import_po_items_mapping')
+    .single()
+
+  return setting?.value || DEFAULT_PO_ITEMS_MAPPING
+}
+
+importRouter.get('/mapping/po-items', requirePermission('thread.purchase-orders.import'), async (c) => {
+  try {
+    const config = await getPOImportMappingConfig()
+    return c.json<ImportApiResponse<POImportMappingConfig>>({
+      data: config,
+      error: null
+    })
+  } catch (err) {
+    console.error('Get po-items mapping error:', err)
+    return c.json<ImportApiResponse<null>>({
+      data: null,
+      error: 'Lỗi khi tải cấu hình import'
+    }, 500)
+  }
+})
+
+importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.import'), async (c) => {
+  try {
+    const body = await c.req.json()
+    const parseResult = POImportParseRequestSchema.safeParse(body)
+
+    if (!parseResult.success) {
+      return c.json<ImportApiResponse<null>>({
+        data: null,
+        error: parseResult.error.issues.map(i => i.message).join(', ')
+      }, 400)
+    }
+
+    const { rows } = parseResult.data
+
+    const { data: styles } = await supabase
+      .from('styles')
+      .select('id, style_code, style_name')
+      .is('deleted_at', null)
+
+    const styleMap = new Map<string, { id: number; style_code: string; style_name: string }>()
+    styles?.forEach(s => styleMap.set(s.style_code.toLowerCase(), s))
+
+    const { data: existingPOs } = await supabase
+      .from('purchase_orders')
+      .select('id, po_number')
+      .is('deleted_at', null)
+
+    const poMap = new Map<string, number>()
+    existingPOs?.forEach(po => poMap.set(po.po_number.toLowerCase(), po.id))
+
+    const { data: existingItems } = await supabase
+      .from('po_items')
+      .select('po_id, style_id, quantity')
+      .is('deleted_at', null)
+
+    const itemMap = new Map<string, { quantity: number }>()
+    existingItems?.forEach(item => {
+      const key = `${item.po_id}-${item.style_id}`
+      itemMap.set(key, { quantity: item.quantity })
+    })
+
+    const validRows: POImportRow[] = []
+    const errorRows: POImportErrorRow[] = []
+    const newPOsSet = new Set<string>()
+    let updateCount = 0
+    let skipCount = 0
+
+    for (const row of rows) {
+      const poNumber = String(row.po_number || '').trim()
+      const styleCode = String(row.style_code || '').trim()
+      const quantity = Number(row.quantity) || 0
+
+      const errors: string[] = []
+
+      if (!poNumber) errors.push('Thiếu số PO')
+      if (!styleCode) errors.push('Thiếu mã hàng')
+      if (quantity <= 0) errors.push('Số lượng phải lớn hơn 0')
+
+      const style = styleMap.get(styleCode.toLowerCase())
+      if (styleCode && !style) {
+        errors.push('Mã hàng không tồn tại')
+      }
+
+      if (errors.length > 0) {
+        errorRows.push({
+          row_number: row.row_number,
+          data: row,
+          error_message: errors.join(', ')
+        })
+        continue
+      }
+
+      const poId = poMap.get(poNumber.toLowerCase())
+      let status: POImportRow['status']
+
+      if (!poId) {
+        status = 'new'
+        newPOsSet.add(poNumber.toLowerCase())
+      } else {
+        const itemKey = `${poId}-${style!.id}`
+        const existingItem = itemMap.get(itemKey)
+
+        if (!existingItem) {
+          status = 'new'
+        } else if (existingItem.quantity !== quantity) {
+          status = 'update'
+          updateCount++
+        } else {
+          status = 'skip'
+          skipCount++
+        }
+      }
+
+      validRows.push({
+        row_number: row.row_number,
+        po_number: poNumber,
+        style_code: styleCode,
+        style_name: style!.style_name,
+        style_id: style!.id,
+        quantity,
+        customer_name: row.customer_name,
+        order_date: row.order_date,
+        notes: row.notes,
+        status
+      })
+    }
+
+    const preview: POImportPreview = {
+      valid_rows: validRows,
+      error_rows: errorRows,
+      summary: {
+        total: rows.length,
+        valid: validRows.length,
+        errors: errorRows.length,
+        new_pos: newPOsSet.size,
+        update_items: updateCount,
+        skip_items: skipCount
+      }
+    }
+
+    return c.json<ImportApiResponse<POImportPreview>>({
+      data: preview,
+      error: null
+    })
+  } catch (err) {
+    console.error('Parse PO items error:', err)
+    return c.json<ImportApiResponse<null>>({
+      data: null,
+      error: 'Lỗi khi phân tích file import'
+    }, 500)
+  }
+})
+
+importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders.import'), async (c) => {
+  try {
+    const body = await c.req.json()
+    const parseResult = POImportExecuteRequestSchema.safeParse(body)
+
+    if (!parseResult.success) {
+      return c.json<ImportApiResponse<null>>({
+        data: null,
+        error: parseResult.error.issues.map(i => i.message).join(', ')
+      }, 400)
+    }
+
+    const { rows } = parseResult.data
+    const auth = c.get('auth') as AuthContext & { permissions: string[] }
+
+    let createdPOs = 0
+    let createdItems = 0
+    let updatedItems = 0
+    let skippedItems = 0
+
+    const { data: existingPOs } = await supabase
+      .from('purchase_orders')
+      .select('id, po_number')
+      .is('deleted_at', null)
+
+    const poMap = new Map<string, number>()
+    existingPOs?.forEach(po => poMap.set(po.po_number.toLowerCase(), po.id))
+
+    const poCustomerMap = new Map<string, string>()
+    const poDateMap = new Map<string, string>()
+    rows.forEach(row => {
+      const key = row.po_number.toLowerCase()
+      if (row.customer_name) poCustomerMap.set(key, row.customer_name)
+      if (row.order_date) poDateMap.set(key, row.order_date)
+    })
+
+    for (const row of rows) {
+      if (row.status === 'skip') {
+        skippedItems++
+        continue
+      }
+
+      let poId = poMap.get(row.po_number.toLowerCase())
+
+      if (!poId) {
+        const { data: newPO, error: poError } = await supabase
+          .from('purchase_orders')
+          .insert({
+            po_number: row.po_number,
+            customer_name: poCustomerMap.get(row.po_number.toLowerCase()) || null,
+            order_date: poDateMap.get(row.po_number.toLowerCase()) || null,
+            status: 'PENDING'
+          })
+          .select('id')
+          .single()
+
+        if (poError) {
+          if (poError.code === '23505') {
+            const { data: existingPO } = await supabase
+              .from('purchase_orders')
+              .select('id')
+              .eq('po_number', row.po_number)
+              .is('deleted_at', null)
+              .single()
+            poId = existingPO?.id
+          } else {
+            throw poError
+          }
+        } else {
+          poId = newPO.id
+          poMap.set(row.po_number.toLowerCase(), poId)
+          createdPOs++
+        }
+      }
+
+      if (!poId) continue
+
+      const { data: existingItem } = await supabase
+        .from('po_items')
+        .select('id, quantity')
+        .eq('po_id', poId)
+        .eq('style_id', row.style_id)
+        .is('deleted_at', null)
+        .maybeSingle()
+
+      if (!existingItem) {
+        const { data: newItem, error: insertError } = await supabase
+          .from('po_items')
+          .insert({
+            po_id: poId,
+            style_id: row.style_id,
+            quantity: row.quantity,
+            notes: row.notes || null
+          })
+          .select('id')
+          .single()
+
+        if (insertError) {
+          if (insertError.code !== '23505') {
+            console.error('Insert PO item error:', insertError)
+          }
+          continue
+        }
+
+        await supabase.from('po_item_history').insert({
+          po_item_id: newItem.id,
+          change_type: 'CREATE',
+          previous_quantity: null,
+          new_quantity: row.quantity,
+          changed_by: auth.employeeId,
+          notes: 'Import từ Excel'
+        })
+
+        createdItems++
+      } else if (existingItem.quantity !== row.quantity) {
+        await supabase
+          .from('po_items')
+          .update({ quantity: row.quantity, updated_at: new Date().toISOString() })
+          .eq('id', existingItem.id)
+
+        await supabase.from('po_item_history').insert({
+          po_item_id: existingItem.id,
+          change_type: 'UPDATE',
+          previous_quantity: existingItem.quantity,
+          new_quantity: row.quantity,
+          changed_by: auth.employeeId,
+          notes: 'Import từ Excel'
+        })
+
+        updatedItems++
+      } else {
+        skippedItems++
+      }
+    }
+
+    const result: POImportResult = {
+      created_pos: createdPOs,
+      created_items: createdItems,
+      updated_items: updatedItems,
+      skipped_items: skippedItems
+    }
+
+    return c.json<ImportApiResponse<POImportResult>>({
+      data: result,
+      error: null,
+      message: `Import thành công: ${createdPOs} PO mới, ${createdItems} mặt hàng mới, ${updatedItems} cập nhật, ${skippedItems} bỏ qua`
+    })
+  } catch (err) {
+    console.error('Execute PO import error:', err)
+    return c.json<ImportApiResponse<null>>({
+      data: null,
+      error: 'Lỗi khi thực hiện import'
+    }, 500)
+  }
+})
+
+importRouter.get('/template/po-items', requirePermission('thread.purchase-orders.import'), async (c) => {
+  try {
+    const config = await getPOImportMappingConfig()
+
+    const ExcelJSModule = await import('exceljs')
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet('Import Đơn Hàng PO')
+
+    const headerLabels: Record<string, string> = {
+      po_number: 'Số PO',
+      style_code: 'Mã hàng',
+      quantity: 'Số lượng SP',
+      customer_name: 'Khách hàng',
+      order_date: 'Ngày đặt',
+      notes: 'Ghi chú'
+    }
+
+    const exampleData: Record<string, string | number> = {
+      po_number: 'PO-2024-001',
+      style_code: 'STYLE-001',
+      quantity: 1000,
+      customer_name: 'Công ty ABC',
+      order_date: '2024-01-15',
+      notes: 'Giao hàng gấp'
+    }
+
+    for (const [field, colLetter] of Object.entries(config.columns)) {
+      if (!colLetter) continue
+      const col = colLetter.toUpperCase()
+      const headerCell = sheet.getCell(`${col}${config.header_row}`)
+      headerCell.value = headerLabels[field] || field
+      headerCell.font = { bold: true }
+      headerCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD9E1F2' }
+      }
+
+      const dataCell = sheet.getCell(`${col}${config.data_start_row}`)
+      dataCell.value = exampleData[field] ?? ''
+    }
+
+    for (const colLetter of Object.values(config.columns)) {
+      if (!colLetter) continue
+      const col = sheet.getColumn(colLetter.toUpperCase())
+      col.width = 18
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer()
+
+    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    c.header('Content-Disposition', 'attachment; filename="template-import-po-items.xlsx"')
+    return c.body(buffer as ArrayBuffer)
+  } catch (err) {
+    console.error('Template po-items error:', err)
     return c.json<ImportApiResponse<null>>({
       data: null,
       error: 'Lỗi khi tạo file mẫu'

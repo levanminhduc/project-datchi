@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ActiveConflictsWidget: typeof import('./components/thread/ActiveConflictsWidget.vue')['default']
+    AddPOItemDialog: typeof import('./components/thread/AddPOItemDialog.vue')['default']
     AlertsWidget: typeof import('./components/thread/AlertsWidget.vue')['default']
     AllocationFormDialog: typeof import('./components/thread/AllocationFormDialog.vue')['default']
     AllocationStatusBadge: typeof import('./components/thread/AllocationStatusBadge.vue')['default']
@@ -92,6 +93,8 @@ declare module 'vue' {
     PartialConeIndicator: typeof import('./components/thread/PartialConeIndicator.vue')['default']
     PendingAllocationsWidget: typeof import('./components/thread/PendingAllocationsWidget.vue')['default']
     PercentageSelector: typeof import('./components/thread/PercentageSelector.vue')['default']
+    POFormDialog: typeof import('./components/thread/POFormDialog.vue')['default']
+    POItemHistoryDialog: typeof import('./components/thread/POItemHistoryDialog.vue')['default']
     POOrderCard: typeof import('./components/thread/weekly-order/POOrderCard.vue')['default']
     PopupEdit: typeof import('./components/ui/dialogs/PopupEdit.vue')['default']
     PullToRefresh: typeof import('./components/ui/scroll/PullToRefresh.vue')['default']

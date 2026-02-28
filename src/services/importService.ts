@@ -6,6 +6,8 @@ import type {
   ImportTexResponse,
   ImportColorRow,
   ImportColorResponse,
+  POImportPreview,
+  POImportResult,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -90,5 +92,46 @@ export const importService = {
 
   async downloadColorTemplate(): Promise<void> {
     await authenticatedDownload('/api/import/template/supplier-colors', 'template-import-mau-ncc.xlsx')
+  },
+
+  // ================== PO Items Import ==================
+
+  async getPOImportMapping(): Promise<ImportMappingConfig> {
+    const response = await fetchApi<ApiResponse<ImportMappingConfig>>('/api/import/mapping/po-items')
+    if (!response.data) throw new Error(response.error || 'Không tìm thấy cấu hình import PO')
+    return response.data
+  },
+
+  async parsePOItems(rows: Array<{
+    row_number: number
+    po_number: string
+    style_code: string
+    quantity: number
+    customer_name?: string
+    order_date?: string
+    notes?: string
+  }>): Promise<POImportPreview> {
+    const response = await fetchApi<ApiResponse<POImportPreview>>('/api/import/po-items/parse', {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    })
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không nhận được dữ liệu preview')
+    return response.data
+  },
+
+  async executePOImport(validRows: POImportPreview['valid_rows']): Promise<POImportResult> {
+    const response = await fetchApi<ApiResponse<POImportResult>>('/api/import/po-items/execute', {
+      method: 'POST',
+      body: JSON.stringify({ rows: validRows }),
+    })
+
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không nhận được kết quả import')
+    return response.data
+  },
+
+  async downloadPOTemplate(): Promise<void> {
+    await authenticatedDownload('/api/import/template/po-items', 'template-import-po.xlsx')
   },
 }

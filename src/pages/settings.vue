@@ -310,6 +310,148 @@
         </div>
       </q-card-section>
     </q-card>
+
+    <!-- Import PO Mapping (ROOT only) -->
+    <q-card
+      v-if="isRoot && hasLoaded"
+      flat
+      bordered
+      class="settings-card q-mt-lg"
+    >
+      <q-card-section>
+        <div class="text-subtitle1 text-weight-medium q-mb-md">
+          Cài đặt Import Đơn Hàng (PO)
+        </div>
+
+        <div class="row q-col-gutter-md">
+          <div class="col-12 col-md-4">
+            <AppInput
+              v-model.number="poMapping.sheet_index"
+              label="Sheet"
+              type="number"
+              min="0"
+              hint="Vị trí sheet (bắt đầu từ 0)"
+              :disable="isLoading"
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-12 col-md-4">
+            <AppInput
+              v-model.number="poMapping.header_row"
+              label="Dòng header"
+              type="number"
+              min="1"
+              hint="Dòng chứa tiêu đề cột"
+              :disable="isLoading"
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-12 col-md-4">
+            <AppInput
+              v-model.number="poMapping.data_start_row"
+              label="Dòng data bắt đầu"
+              type="number"
+              min="1"
+              hint="Dòng bắt đầu dữ liệu"
+              :disable="isLoading"
+              outlined
+              dense
+            />
+          </div>
+        </div>
+
+        <div class="row q-col-gutter-md q-mt-sm">
+          <div class="col-6 col-md-2">
+            <AppSelect
+              v-model="poMapping.columns.po_number"
+              label="Cột Số PO"
+              :options="columnOptions"
+              :disable="isLoading"
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-6 col-md-2">
+            <AppSelect
+              v-model="poMapping.columns.style_code"
+              label="Cột Mã hàng"
+              :options="columnOptions"
+              :disable="isLoading"
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-6 col-md-2">
+            <AppSelect
+              v-model="poMapping.columns.quantity"
+              label="Cột SL SP"
+              :options="columnOptions"
+              :disable="isLoading"
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-6 col-md-2">
+            <AppSelect
+              v-model="poMapping.columns.customer_name"
+              label="Cột Khách hàng"
+              :options="columnOptions"
+              :disable="isLoading"
+              clearable
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-6 col-md-2">
+            <AppSelect
+              v-model="poMapping.columns.order_date"
+              label="Cột Ngày đặt"
+              :options="columnOptions"
+              :disable="isLoading"
+              clearable
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-6 col-md-2">
+            <AppSelect
+              v-model="poMapping.columns.notes"
+              label="Cột Ghi chú"
+              :options="columnOptions"
+              :disable="isLoading"
+              clearable
+              outlined
+              dense
+            />
+          </div>
+        </div>
+
+        <div class="row q-col-gutter-md q-mt-md items-center">
+          <div class="col-auto">
+            <AppButton
+              label="Lưu"
+              color="primary"
+              icon="save"
+              :loading="isSavingPOMapping"
+              :disable="isLoading"
+              @click="handleSavePOMapping"
+            />
+          </div>
+          <div class="col-auto">
+            <AppButton
+              label="Tải file mẫu"
+              color="secondary"
+              icon="download"
+              variant="outlined"
+              :disable="isLoading"
+              @click="handleDownloadPOTemplate"
+            />
+          </div>
+        </div>
+      </q-card-section>
+    </q-card>
   </q-page>
 </template>
 
@@ -323,6 +465,7 @@ import { importService } from '@/services/importService'
 const PARTIAL_CONE_RATIO_KEY = 'partial_cone_ratio'
 const TEX_MAPPING_KEY = 'import_supplier_tex_mapping'
 const COLOR_MAPPING_KEY = 'import_supplier_color_mapping'
+const PO_MAPPING_KEY = 'import_po_items_mapping'
 
 const { isLoading, getSetting, updateSetting } = useSettings()
 const { isRoot } = usePermission()
@@ -333,6 +476,7 @@ const originalValue = ref<number>(0.5)
 const hasLoaded = ref(false)
 const isSavingTexMapping = ref(false)
 const isSavingColorMapping = ref(false)
+const isSavingPOMapping = ref(false)
 
 const columnOptions = Array.from({ length: 26 }, (_, i) => ({
   label: String.fromCharCode(65 + i),
@@ -359,6 +503,20 @@ const colorMapping = reactive({
   columns: {
     color_name: 'A',
     supplier_color_code: 'B',
+  } as Record<string, string>,
+})
+
+const poMapping = reactive({
+  sheet_index: 0,
+  header_row: 1,
+  data_start_row: 2,
+  columns: {
+    po_number: 'A',
+    style_code: 'B',
+    quantity: 'C',
+    customer_name: 'D',
+    order_date: 'E',
+    notes: 'F',
   } as Record<string, string>,
 })
 
@@ -401,6 +559,17 @@ async function loadImportMappings() {
     if (typeof val.data_start_row === 'number') colorMapping.data_start_row = val.data_start_row
     if (val.columns && typeof val.columns === 'object') {
       Object.assign(colorMapping.columns, val.columns)
+    }
+  }
+
+  const poSetting = await getSetting(PO_MAPPING_KEY)
+  if (poSetting?.value && typeof poSetting.value === 'object') {
+    const val = poSetting.value as Record<string, unknown>
+    if (typeof val.sheet_index === 'number') poMapping.sheet_index = val.sheet_index
+    if (typeof val.header_row === 'number') poMapping.header_row = val.header_row
+    if (typeof val.data_start_row === 'number') poMapping.data_start_row = val.data_start_row
+    if (val.columns && typeof val.columns === 'object') {
+      Object.assign(poMapping.columns, val.columns)
     }
   }
 }
@@ -459,6 +628,31 @@ async function handleDownloadColorTemplate() {
     await importService.downloadColorTemplate()
   } catch (e) {
     snackbar.error('Không thể tải file mẫu Màu NCC')
+  }
+}
+
+async function handleSavePOMapping() {
+  isSavingPOMapping.value = true
+  try {
+    const result = await updateSetting(PO_MAPPING_KEY, {
+      sheet_index: poMapping.sheet_index,
+      header_row: poMapping.header_row,
+      data_start_row: poMapping.data_start_row,
+      columns: { ...poMapping.columns },
+    })
+    if (result) {
+      snackbar.success('Đã lưu cấu hình Import PO')
+    }
+  } finally {
+    isSavingPOMapping.value = false
+  }
+}
+
+async function handleDownloadPOTemplate() {
+  try {
+    await importService.downloadPOTemplate()
+  } catch (e) {
+    snackbar.error('Không thể tải file mẫu PO')
   }
 }
 
