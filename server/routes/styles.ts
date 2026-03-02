@@ -9,18 +9,33 @@ styles.use('*', requirePermission('thread.types.view'))
 
 /**
  * GET /api/styles - List all styles with optional filtering
+ * Query params:
+ *   - search: unified search on style_code OR style_name
+ *   - style_code: filter by style_code (legacy)
+ *   - style_name: filter by style_name (legacy)
+ *   - fabric_type: filter by fabric_type
+ *   - exclude_ids: comma-separated IDs to exclude (e.g., "1,2,3")
+ *   - limit: max results (1-100, default: no limit)
  */
 styles.get('/', async (c) => {
   try {
     const query = c.req.query()
-    
+
     let dbQuery = supabase
       .from('styles')
       .select('*')
       .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+      .order('style_code', { ascending: true })
 
-    // Apply filters
+    // Unified search (style_code OR style_name)
+    if (query.search) {
+      const search = query.search.trim()
+      if (search) {
+        dbQuery = dbQuery.or(`style_code.ilike.%${search}%,style_name.ilike.%${search}%`)
+      }
+    }
+
+    // Legacy individual filters (backwards compat)
     if (query.style_code) {
       dbQuery = dbQuery.ilike('style_code', `%${query.style_code}%`)
     }
@@ -29,6 +44,22 @@ styles.get('/', async (c) => {
     }
     if (query.fabric_type) {
       dbQuery = dbQuery.ilike('fabric_type', `%${query.fabric_type}%`)
+    }
+
+    // Exclude specific IDs (for dropdowns with existing selections)
+    if (query.exclude_ids) {
+      const ids = query.exclude_ids.split(',').map(Number).filter((n: number) => !isNaN(n))
+      if (ids.length > 0) {
+        dbQuery = dbQuery.not('id', 'in', `(${ids.join(',')})`)
+      }
+    }
+
+    // Limit results
+    if (query.limit) {
+      const limit = parseInt(query.limit)
+      if (!isNaN(limit) && limit > 0 && limit <= 100) {
+        dbQuery = dbQuery.limit(limit)
+      }
     }
 
     const { data, error } = await dbQuery

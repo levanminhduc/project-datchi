@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
+import { useDebounceFn } from '@vueuse/core'
 import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -26,23 +27,11 @@ const snackbar = useSnackbar()
 const loading = ref(false)
 const loadingStyles = ref(false)
 const styles = ref<Style[]>([])
-const filterText = ref('')
+const searchText = ref('')
 
 const form = ref({
   style_id: null as number | null,
   quantity: 1
-})
-
-const filteredStyles = computed(() => {
-  let result = styles.value.filter(s => !props.existingStyleIds.includes(s.id))
-  if (filterText.value) {
-    const search = filterText.value.toLowerCase()
-    result = result.filter(s =>
-      s.style_code.toLowerCase().includes(search) ||
-      s.style_name.toLowerCase().includes(search)
-    )
-  }
-  return result
 })
 
 function resetForm() {
@@ -50,14 +39,33 @@ function resetForm() {
     style_id: null,
     quantity: 1
   }
-  filterText.value = ''
+  searchText.value = ''
+  styles.value = []
 }
 
-async function loadStyles() {
-  if (styles.value.length > 0) return
+const searchStyles = useDebounceFn(async (query: string) => {
   loadingStyles.value = true
   try {
-    styles.value = await styleService.getAll()
+    styles.value = await styleService.search({
+      search: query,
+      limit: 50,
+      excludeIds: props.existingStyleIds
+    })
+  } catch (err) {
+    console.error('Error searching styles:', err)
+    styles.value = []
+  } finally {
+    loadingStyles.value = false
+  }
+}, 300)
+
+async function loadInitialStyles() {
+  loadingStyles.value = true
+  try {
+    styles.value = await styleService.search({
+      limit: 50,
+      excludeIds: props.existingStyleIds
+    })
   } finally {
     loadingStyles.value = false
   }
@@ -66,13 +74,18 @@ async function loadStyles() {
 watch(() => props.modelValue, (newVal) => {
   if (newVal) {
     resetForm()
-    loadStyles()
+    loadInitialStyles()
   }
 })
 
 function handleFilter(val: string, update: (fn: () => void) => void) {
   update(() => {
-    filterText.value = val
+    searchText.value = val
+    if (val.length >= 1) {
+      searchStyles(val)
+    } else if (val === '') {
+      loadInitialStyles()
+    }
   })
 }
 
@@ -121,7 +134,7 @@ function onCancel() {
       <div class="col-12">
         <q-select
           v-model="form.style_id"
-          :options="filteredStyles"
+          :options="styles"
           option-value="id"
           :option-label="(opt: Style) => `${opt.style_code} - ${opt.style_name}`"
           label="Mã hàng"
@@ -145,7 +158,7 @@ function onCancel() {
           <template #no-option>
             <q-item>
               <q-item-section class="text-grey">
-                Không tìm thấy mã hàng
+                {{ searchText ? 'Không tìm thấy mã hàng' : 'Nhập để tìm kiếm...' }}
               </q-item-section>
             </q-item>
           </template>

@@ -19,6 +19,12 @@ interface ApiResponse<T> {
   message?: string
 }
 
+export interface StyleSearchParams {
+  search?: string
+  limit?: number
+  excludeIds?: number[]
+}
+
 const BASE = '/api/styles'
 
 function buildQueryString(filters?: StyleFilter): string {
@@ -35,6 +41,34 @@ function buildQueryString(filters?: StyleFilter): string {
 }
 
 export const styleService = {
+  /**
+   * Search styles với server-side filtering
+   * @param params - Search parameters
+   * @returns Array of matching styles
+   */
+  async search(params: StyleSearchParams = {}): Promise<Style[]> {
+    const queryParts: string[] = []
+
+    if (params.search?.trim()) {
+      queryParts.push(`search=${encodeURIComponent(params.search.trim())}`)
+    }
+    if (params.limit && params.limit > 0) {
+      queryParts.push(`limit=${Math.min(params.limit, 100)}`)
+    }
+    if (params.excludeIds && params.excludeIds.length > 0) {
+      queryParts.push(`exclude_ids=${params.excludeIds.join(',')}`)
+    }
+
+    const queryString = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
+    const response = await fetchApi<ApiResponse<Style[]>>(`${BASE}${queryString}`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
+  },
+
   /**
    * Lấy danh sách tất cả mã hàng
    * @param filters - Optional filters
