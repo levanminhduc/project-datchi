@@ -7,6 +7,7 @@ import {
   resetLogoutFlag,
   isLogoutInProgress,
 } from '@/services/api'
+import { isAuthError } from '@/services/auth-error-utils'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type {
   AuthState,
@@ -24,11 +25,64 @@ const state = ref<AuthState>({
 })
 
 let initialized = false
+let initPromise: Promise<void> | null = null
 let signingOut = false
 let loggedOut = false
 let authListenerUnsubscribe: (() => void) | null = null
 
+let verifiedPermissionsSnapshot: string[] | null = null
+
 const tempPassword = ref<string | null>(null)
+
+const RETRY_DELAYS = [0, 500, 1000]
+const GET_USER_TIMEOUT = 5000
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))
+  return Promise.race([promise, timeout])
+}
+
+async function retryGetUser(): Promise<{
+  user: unknown | null
+  errorType: 'auth' | 'network' | null
+}> {
+  for (let attempt = 0; attempt < RETRY_DELAYS.length; attempt++) {
+    const delay = RETRY_DELAYS[attempt]
+    if (attempt > 0 && delay) {
+      await sleep(delay)
+    }
+
+    const result = await withTimeout(supabase.auth.getUser(), GET_USER_TIMEOUT)
+
+    // Timeout - treat as network error
+    if (result === null) {
+      continue
+    }
+
+    const { data, error } = result
+
+    // No session = auth error (user needs to login)
+    if (!data.user && !error) {
+      return { user: null, errorType: 'auth' }
+    }
+
+    if (!error && data.user) {
+      return { user: data.user, errorType: null }
+    }
+
+    if (error) {
+      if (isAuthError(error)) {
+        return { user: null, errorType: 'auth' }
+      }
+    }
+  }
+
+  return { user: null, errorType: 'network' }
+}
 
 export function useAuth() {
   const router = useRouter()
@@ -42,6 +96,12 @@ export function useAuth() {
   const isRoot = computed(() => state.value.isRoot)
 
   async function init() {
+    // If already initializing, wait for that promise
+    if (initPromise) {
+      await initPromise
+      return
+    }
+
     if (initialized || signingOut) {
       return
     }
@@ -51,63 +111,129 @@ export function useAuth() {
       return
     }
 
+    // Create promise for this init
+    initPromise = doInit()
+    try {
+      await initPromise
+    } finally {
+      initPromise = null
+    }
+  }
+
+  async function doInit() {
     initialized = true
     setupAuthListener()
 
     state.value.isLoading = true
 
     try {
-      const { data: { user }, error: getUserError } = await supabase.auth.getUser()
+      const { user, errorType: getUserErrorType } = await retryGetUser()
 
-      if (getUserError) {
-        const isSessionMissing = getUserError.message?.includes('Auth session missing') ||
-          getUserError.name === 'AuthSessionMissingError'
-        const authErrorCodes = ['invalid_grant', 'session_not_found', 'refresh_token_not_found', 'bad_jwt']
-        const isTokenError = authErrorCodes.some(code =>
-          getUserError.message?.includes(code) || getUserError.code === code
-        )
-
-        // Session missing is expected after timeout/logout, avoid firing extra SIGNED_OUT loops.
-        if (isTokenError) {
-          await clearAuthSessionLocal()
-        } else if (!isSessionMissing) {
-          initialized = false
-        }
+      if (getUserErrorType === 'auth') {
+        // Don't call clearAuthSessionLocal() here - it triggers SIGNED_OUT event
+        // which causes router navigation → deadlock with initPromise
+        // Guard will redirect to /login since isAuthenticated=false
         resetState()
         return
       }
 
-      if (user) {
-        const emp = await authService.fetchCurrentEmployee()
-        const perms = await authService.fetchPermissions()
+      if (getUserErrorType === 'network') {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
 
-        if (emp) {
-          if (emp.mustChangePassword) {
-            await supabase.auth.signOut()
-            resetState()
-            initialized = false
-            router.push('/login')
-            return
+        if (session) {
+          state.value.isAuthenticated = true
+          state.value.error = 'network'
+          state.value.isLoading = false
+          if (verifiedPermissionsSnapshot) {
+            state.value.permissions = verifiedPermissionsSnapshot
+            state.value.isRoot = verifiedPermissionsSnapshot.includes('*')
           }
-
-          state.value = {
-            employee: emp,
-            permissions: perms ?? [],
-            isAuthenticated: true,
-            isRoot: emp.isRoot || (perms ?? []).includes('*'),
-            isLoading: false,
-            error: null,
-          }
-        } else {
-          await supabase.auth.signOut()
-          resetState()
+          initialized = false
+          snackbar.error('Lỗi kết nối mạng. Đang thử khôi phục phiên...')
+          return
         }
-      } else {
+
         resetState()
+        initialized = false
+        return
+      }
+
+      if (!user) {
+        resetState()
+        return
+      }
+
+      const { data: emp, errorType: empErrorType } =
+        await authService.fetchCurrentEmployee()
+
+      if (empErrorType === 'auth') {
+        resetState()
+        return
+      }
+
+      if (empErrorType === 'network') {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (session) {
+          state.value.isAuthenticated = true
+          state.value.error = 'network'
+          state.value.isLoading = false
+          if (verifiedPermissionsSnapshot) {
+            state.value.permissions = verifiedPermissionsSnapshot
+            state.value.isRoot = verifiedPermissionsSnapshot.includes('*')
+          }
+          initialized = false
+          snackbar.error('Lỗi kết nối mạng. Đang thử khôi phục phiên...')
+          return
+        }
+
+        resetState()
+        initialized = false
+        return
+      }
+
+      if (!emp) {
+        await supabase.auth.signOut()
+        resetState()
+        return
+      }
+
+      if (emp.mustChangePassword) {
+        await supabase.auth.signOut()
+        resetState()
+        initialized = false
+        router.push('/login')
+        return
+      }
+
+      const { data: perms, errorType: permsErrorType } =
+        await authService.fetchPermissions()
+
+      const finalPerms =
+        permsErrorType === 'network' && verifiedPermissionsSnapshot
+          ? verifiedPermissionsSnapshot
+          : perms ?? []
+
+      if (perms) {
+        verifiedPermissionsSnapshot = perms
+      }
+
+      state.value = {
+        employee: emp,
+        permissions: finalPerms,
+        isAuthenticated: true,
+        isRoot: emp.isRoot || finalPerms.includes('*'),
+        isLoading: false,
+        error: permsErrorType === 'network' ? 'network' : null,
       }
     } catch {
       resetState()
       state.value.error = 'Không thể khởi tạo phiên đăng nhập'
+      initialized = false
     }
   }
 
@@ -134,14 +260,18 @@ export function useAuth() {
         }
 
         if (event === 'TOKEN_REFRESHED') {
-          const emp = await authService.fetchCurrentEmployee()
-          const perms = await authService.fetchPermissions()
+          const { data: emp } = await authService.fetchCurrentEmployee()
+          const { data: perms } = await authService.fetchPermissions()
           if (emp) {
             state.value.employee = emp
           }
           if (perms !== null) {
             state.value.permissions = perms
+            verifiedPermissionsSnapshot = perms
             state.value.isRoot = (emp?.isRoot ?? state.value.employee?.isRoot ?? false) || perms.includes('*')
+          }
+          if (state.value.error === 'network') {
+            state.value.error = null
           }
         }
       }
@@ -175,7 +305,11 @@ export function useAuth() {
         return false
       }
 
-      const perms = await authService.fetchPermissions()
+      const { data: perms } = await authService.fetchPermissions()
+
+      if (perms) {
+        verifiedPermissionsSnapshot = perms
+      }
 
       state.value = {
         employee: data.employee,
@@ -210,6 +344,7 @@ export function useAuth() {
   async function signOut() {
     signingOut = true
     loggedOut = true
+    verifiedPermissionsSnapshot = null
     try {
       await authService.signOut()
     } catch {
@@ -269,9 +404,10 @@ export function useAuth() {
   async function refreshPermissions() {
     if (!state.value.isAuthenticated) return
 
-    const perms = await authService.fetchPermissions()
+    const { data: perms } = await authService.fetchPermissions()
     if (perms !== null) {
       state.value.permissions = perms
+      verifiedPermissionsSnapshot = perms
       state.value.isRoot = perms.includes('*') || hasRole('root')
     }
   }

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { fetchApi, fetchApiRaw } from './api'
+import { fetchApi, fetchApiRaw, ApiError } from './api'
 import type {
   LoginCredentials,
   LoginResponse,
@@ -17,6 +17,13 @@ interface AuthActionResponse {
   error?: boolean | string | null
   message?: string
   success?: boolean
+}
+
+export type AuthErrorType = 'auth' | 'network' | null
+
+export interface FetchResult<T> {
+  data: T | null
+  errorType: AuthErrorType
 }
 
 class AuthService {
@@ -38,9 +45,12 @@ class AuthService {
         return { data: null, error: signInError.message || 'Đăng nhập thất bại' }
       }
 
-      const employee = await this.fetchCurrentEmployee()
+      const { data: employee, errorType } = await this.fetchCurrentEmployee()
       if (!employee) {
-        return { data: null, error: 'Không thể lấy thông tin nhân viên' }
+        const msg = errorType === 'network'
+          ? 'Không thể kết nối đến máy chủ'
+          : 'Không thể lấy thông tin nhân viên'
+        return { data: null, error: msg }
       }
 
       return { data: { employee }, error: null }
@@ -54,23 +64,33 @@ class AuthService {
     await supabase.auth.signOut()
   }
 
-  async fetchCurrentEmployee(): Promise<EmployeeAuth | null> {
+  async fetchCurrentEmployee(): Promise<FetchResult<EmployeeAuth>> {
     try {
       const response = await fetchApi<AuthDataResponse<EmployeeAuth>>('/api/auth/me')
-      if (response.error === true || !response.data) return null
-      return response.data
-    } catch {
-      return null
+      if (response.error === true || !response.data) {
+        return { data: null, errorType: 'auth' }
+      }
+      return { data: response.data, errorType: null }
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        return { data: null, errorType: 'auth' }
+      }
+      return { data: null, errorType: 'network' }
     }
   }
 
-  async fetchPermissions(): Promise<string[] | null> {
+  async fetchPermissions(): Promise<FetchResult<string[]>> {
     try {
       const response = await fetchApi<AuthDataResponse<string[]>>('/api/auth/permissions')
-      if (response.error === true || !response.data) return null
-      return response.data
-    } catch {
-      return null
+      if (response.error === true || !response.data) {
+        return { data: null, errorType: 'auth' }
+      }
+      return { data: response.data, errorType: null }
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        return { data: null, errorType: 'auth' }
+      }
+      return { data: null, errorType: 'network' }
     }
   }
 

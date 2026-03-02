@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
-import type { Session, AuthError } from '@supabase/supabase-js'
+import type { Session } from '@supabase/supabase-js'
+import { isAuthError } from './auth-error-utils'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 const REQUEST_TIMEOUT_MS = 10000
@@ -77,15 +78,6 @@ function getErrorMessageFromPayload(payload: unknown): string | null {
     return record.message
   }
   return null
-}
-
-function isAuthError(error: AuthError): boolean {
-  if (error.message?.includes('Auth session missing')) return true
-  if (error.name === 'AuthSessionMissingError') return true
-  const authErrorCodes = ['invalid_grant', 'refresh_token_revoked', 'refresh_token_already_used', 'session_not_found', 'session_expired', 'refresh_token_not_found', 'bad_jwt']
-  return authErrorCodes.some(code =>
-    error.message?.includes(code) || error.code === code
-  )
 }
 
 export async function getRefreshedSession(): Promise<Session> {

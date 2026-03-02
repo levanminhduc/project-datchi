@@ -44,7 +44,12 @@
       "mcp__playwright__browser_snapshot",
       "mcp__playwright__browser_close",
       "mcp__tavily__tavily-crawl",
-      "mcp__auggie__codebase-retrieval"
+      "mcp__auggie__codebase-retrieval",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_network_requests",
+      "mcp__playwright__browser_click"
     ]
   }
 }
