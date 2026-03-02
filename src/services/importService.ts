@@ -1,5 +1,4 @@
-import { fetchApi } from './api'
-import { supabase } from '@/lib/supabase'
+import { fetchApi, fetchApiRaw } from './api'
 import type {
   ImportMappingConfig,
   ImportTexRow,
@@ -16,17 +15,8 @@ interface ApiResponse<T> {
   message?: string
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || ''
-
 async function authenticatedDownload(endpoint: string, filename: string): Promise<void> {
-  const { data: { session } } = await supabase.auth.getSession()
-  const token = session?.access_token
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    headers: {
-      ...(token && { Authorization: `Bearer ${token}` }),
-    },
-  })
+  const response = await fetchApiRaw(endpoint)
 
   if (!response.ok) {
     throw new Error('Không thể tải file mẫu')

@@ -13,6 +13,7 @@ import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+import { dateRules } from '@/utils'
 import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
 import type { QTableColumn, QTableProps } from 'quasar'
 import type {
@@ -1030,6 +1031,7 @@ onMounted(async () => {
                     v-model="localFilters.from"
                     label="Từ ngày"
                     placeholder="DD/MM/YYYY"
+                    :rules="[dateRules.date]"
                     dense
                     clearable
                     hide-bottom-space
@@ -1056,6 +1058,7 @@ onMounted(async () => {
                     v-model="localFilters.to"
                     label="Đến ngày"
                     placeholder="DD/MM/YYYY"
+                    :rules="[dateRules.date]"
                     dense
                     clearable
                     hide-bottom-space

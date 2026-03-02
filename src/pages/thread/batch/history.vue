@@ -67,6 +67,7 @@
               v-model="filters.from_date"
               label="Từ ngày"
               placeholder="DD/MM/YYYY"
+              :rules="[dateRules.date]"
               dense
               clearable
               hide-bottom-space
@@ -92,6 +93,7 @@
               v-model="filters.to_date"
               label="Đến ngày"
               placeholder="DD/MM/YYYY"
+              :rules="[dateRules.date]"
               dense
               clearable
               hide-bottom-space
@@ -446,6 +448,7 @@ import AppWarehouseSelect from '@/components/ui/inputs/AppWarehouseSelect.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+import { dateRules } from '@/utils'
 import type { BatchTransaction, BatchOperationType, BatchTransactionFilters } from '@/types/thread/batch'
 import type { QTableColumn } from 'quasar'
 

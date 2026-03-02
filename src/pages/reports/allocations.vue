@@ -21,6 +21,7 @@
               v-model="filters.from_date"
               label="Từ ngày"
               placeholder="DD/MM/YYYY"
+              :rules="[dateRules.date]"
               dense
               clearable
             >
@@ -47,6 +48,7 @@
               v-model="filters.to_date"
               label="Đến ngày"
               placeholder="DD/MM/YYYY"
+              :rules="[dateRules.date]"
               dense
               clearable
             >
@@ -295,6 +297,7 @@ import { useThreadTypes } from '@/composables/thread/useThreadTypes'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+import { dateRules } from '@/utils'
 import type { QTableColumn } from 'quasar'
 
 // Composables

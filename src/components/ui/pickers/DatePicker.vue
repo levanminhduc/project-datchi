@@ -2,12 +2,14 @@
 /**
  * DatePicker - Date picker wrapper
  * Wraps QDate with Vietnamese locale defaults
- * 
- * When autoClose is true (default), selecting a date will:
- * - Emit 'update:modelValue' with the selected date
- * - Emit 'date-selected' event for parent to handle (e.g., close popup)
+ *
+ * When autoClose is true (default), selecting a date will close the popup.
+ * Navigating months/years will NOT close the popup.
+ *
+ * Uses QDate's @update:model-value event with reason parameter to distinguish
+ * between day selection (close) vs month/year navigation (keep open).
  */
-import { computed } from 'vue'
+import { computed, getCurrentInstance } from 'vue'
 import { useQuasar } from 'quasar'
 import type { Color } from '@/types/ui'
 
@@ -33,7 +35,6 @@ interface Props {
   emitImmediately?: boolean
   defaultYearMonth?: string
   defaultView?: 'Calendar' | 'Months' | 'Years'
-  /** When true, emits 'date-selected' event after date selection for auto-close behavior */
   autoClose?: boolean
 }
 
@@ -58,26 +59,42 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   'update:modelValue': [value: string | null]
-  /** Emitted when a date is selected and autoClose is true - use to close popup */
   'date-selected': [value: string | null]
 }>()
 
 const $q = useQuasar()
 const isDark = computed(() => props.dark ?? $q.dark.isActive)
 
-const dateValue = computed({
-  get: () => props.modelValue,
-  set: (val) => {
-    const value = val ?? null
+const instance = getCurrentInstance()
+
+const closeParentPopup = () => {
+  if (!instance) return
+
+  let parent = instance.parent
+  while (parent) {
+    const proxy = parent.proxy as { hide?: () => void } | null
+    if (proxy && typeof proxy.hide === 'function' && parent.type.name === 'QPopupProxy') {
+      proxy.hide()
+      return
+    }
+    parent = parent.parent
+  }
+}
+
+const handleDateUpdate = (value: string | null, reason: string, _details: unknown) => {
+  const isDaySelection = reason === 'add-day' || reason === 'remove-day'
+
+  // Only update model when user selects a day, not when navigating months/years
+  if (isDaySelection) {
     emit('update:modelValue', value)
-    // Emit date-selected for auto-close behavior when not in multiple/range mode
+
     if (props.autoClose && !props.multiple && !props.range) {
       emit('date-selected', value)
+      setTimeout(closeParentPopup, 0)
     }
   }
-})
+}
 
-// Vietnamese locale
 const viLocale = {
   days: ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'],
   daysShort: ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'],
@@ -88,8 +105,7 @@ const viLocale = {
 
 <template>
   <q-date
-    v-model="dateValue"
-    v-close-popup="autoClose && !multiple && !range"
+    :model-value="modelValue"
     :mask="mask"
     :locale="viLocale"
     :landscape="landscape"
@@ -113,8 +129,8 @@ const viLocale = {
     :default-view="defaultView"
     class="bg-surface"
     :class="{ 'dark': isDark }"
+    @update:model-value="handleDateUpdate"
   >
-    <!-- Forward slots to q-date -->
     <template
       v-for="(_, name) in $slots"
       #[name]="slotData"

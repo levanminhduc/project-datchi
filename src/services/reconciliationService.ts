@@ -6,7 +6,7 @@
  * Uses fetchApi for consistent error handling
  */
 
-import { fetchApi } from './api'
+import { fetchApi, fetchApiRaw } from './api'
 import type { ApiResponse } from '@/types'
 import type { ReconciliationReport, ReconciliationFilters } from '@/types/thread/reconciliation'
 
@@ -54,9 +54,7 @@ export const reconciliationService = {
       ? `/api/issues/reconciliation/export?${queryString}`
       : '/api/issues/reconciliation/export'
 
-    // Use raw fetch for blob response (fetchApi expects JSON)
-    const API_BASE_URL = import.meta.env.VITE_API_URL || ''
-    const response = await fetch(`${API_BASE_URL}${url}`)
+    const response = await fetchApiRaw(url)
 
     if (!response.ok) {
       throw new Error('Không thể xuất Excel')

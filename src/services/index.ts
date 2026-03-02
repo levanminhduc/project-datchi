@@ -4,7 +4,7 @@
 
 export { employeeService } from './employeeService'
 export { positionService } from './positionService'
-export { fetchApi, ApiError } from './api'
+export { fetchApi, fetchApiRaw, ApiError } from './api'
 
 // Thread management services
 export { threadService } from './threadService'

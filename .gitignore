@@ -43,3 +43,11 @@ opencode.json
 
 # Claude Code
 .claude/
+
+# Playwright
+playwright-report/
+test-results/
+plans/
+docs/
+playwright.config.ts
+tests/e2e/auth-session-expired.spec.ts

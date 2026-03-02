@@ -1,12 +1,14 @@
 /**
  * Utility Functions
- * 
+ *
  * Barrel export for shared utilities
  */
 
-export { 
-  getErrorMessage, 
-  createErrorHandler, 
+export {
+  getErrorMessage,
+  createErrorHandler,
   COMMON_ERROR_MESSAGES,
-  type ErrorMessageMap 
+  type ErrorMessageMap
 } from './errorMessages'
+
+export { dateRules } from './validation'

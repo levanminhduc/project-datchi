@@ -8,6 +8,7 @@ import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+import { dateRules } from '@/utils'
 
 interface Props {
   allocation?: Allocation | null
@@ -274,6 +275,7 @@ const onCancel = () => {
           v-model="form.due_date"
           label="Ngày cần hàng"
           placeholder="DD/MM/YYYY"
+          :rules="[dateRules.date]"
           hint="Thời hạn sản xuất cần chỉ"
         >
           <template #append>

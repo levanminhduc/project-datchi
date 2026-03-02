@@ -10,6 +10,9 @@
     "build-only": "vite build",
     "type-check": "vue-tsc --build --force",
     "lint": "eslint . --fix",
+    "e2e": "npx playwright test",
+    "e2e:ui": "npx playwright test --ui",
+    "e2e:headed": "npx playwright test --headed",
     "server": "npx tsx server/index.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\""
   },

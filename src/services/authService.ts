@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { getRefreshedSession } from '@/services/api'
+import { fetchApi, fetchApiRaw } from './api'
 import type {
   LoginCredentials,
   LoginResponse,
@@ -7,7 +7,17 @@ import type {
   ChangePasswordData,
 } from '@/types/auth'
 
-const API_URL = import.meta.env.VITE_API_URL || ''
+interface AuthDataResponse<T> {
+  data: T | null
+  error?: boolean | string | null
+  message?: string
+}
+
+interface AuthActionResponse {
+  error?: boolean | string | null
+  message?: string
+  success?: boolean
+}
 
 class AuthService {
   async signIn(
@@ -46,38 +56,9 @@ class AuthService {
 
   async fetchCurrentEmployee(): Promise<EmployeeAuth | null> {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) return null
-
-      const response = await fetch(`${API_URL}/api/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      })
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          const newSession = await getRefreshedSession()
-          const retryResponse = await fetch(`${API_URL}/api/auth/me`, {
-            headers: {
-              Authorization: `Bearer ${newSession.access_token}`,
-            },
-          })
-          if (!retryResponse.ok) {
-            const errorBody = await retryResponse.json().catch(() => null)
-            console.error('fetchCurrentEmployee retry failed:', retryResponse.status, errorBody)
-            return null
-          }
-          const { data } = await retryResponse.json()
-          return data as EmployeeAuth
-        }
-        const errorBody = await response.json().catch(() => null)
-        console.error('fetchCurrentEmployee failed:', response.status, errorBody)
-        return null
-      }
-
-      const { data } = await response.json()
-      return data as EmployeeAuth
+      const response = await fetchApi<AuthDataResponse<EmployeeAuth>>('/api/auth/me')
+      if (response.error === true || !response.data) return null
+      return response.data
     } catch {
       return null
     }
@@ -85,32 +66,9 @@ class AuthService {
 
   async fetchPermissions(): Promise<string[] | null> {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) return null
-
-      const response = await fetch(`${API_URL}/api/auth/permissions`, {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      })
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          const newSession = await getRefreshedSession()
-          const retryResponse = await fetch(`${API_URL}/api/auth/permissions`, {
-            headers: {
-              Authorization: `Bearer ${newSession.access_token}`,
-            },
-          })
-          if (!retryResponse.ok) return null
-          const { data } = await retryResponse.json()
-          return data as string[]
-        }
-        return null
-      }
-
-      const { data } = await response.json()
-      return data as string[]
+      const response = await fetchApi<AuthDataResponse<string[]>>('/api/auth/permissions')
+      if (response.error === true || !response.data) return null
+      return response.data
     } catch {
       return null
     }
@@ -118,59 +76,37 @@ class AuthService {
 
   async changePassword(data: ChangePasswordData): Promise<{ error: string | null }> {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      if (!(await this.hasSession())) {
         return { error: 'Phiên đăng nhập đã hết hạn' }
       }
 
-      const response = await fetch(`${API_URL}/api/auth/change-password`, {
+      const response = await fetchApi<AuthActionResponse>('/api/auth/change-password', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
         body: JSON.stringify({
           currentPassword: data.currentPassword,
           newPassword: data.newPassword,
         }),
       })
 
-      const result = await response.json()
-
-      if (!response.ok || result.error) {
-        return { error: result.message || 'Đổi mật khẩu thất bại' }
+      if (response.error === true || typeof response.error === 'string') {
+        return {
+          error:
+            response.message ||
+            (typeof response.error === 'string' ? response.error : 'Đổi mật khẩu thất bại'),
+        }
       }
 
       return { error: null }
-    } catch {
-      return { error: 'Không thể kết nối đến máy chủ' }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Không thể kết nối đến máy chủ'
+      return { error: message }
     }
   }
 
   async authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token
-
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        ...options.headers,
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+    return fetchApiRaw(url, options, {
+      includeJsonContentType: typeof options.body === 'string',
     })
-
-    if (response.status === 401) {
-      const newSession = await getRefreshedSession()
-      return fetch(url, {
-        ...options,
-        headers: {
-          ...options.headers,
-          Authorization: `Bearer ${newSession.access_token}`,
-        },
-      })
-    }
-
-    return response
   }
 
   async hasSession(): Promise<boolean> {

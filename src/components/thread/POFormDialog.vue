@@ -174,17 +174,51 @@ function onCancel() {
       </div>
 
       <div class="col-12 col-sm-6">
-        <DatePicker
+        <AppInput
           v-model="form.order_date"
           label="Ngày đặt"
-        />
+          placeholder="DD/MM/YYYY"
+          readonly
+        >
+          <template #append>
+            <q-icon
+              name="event"
+              class="cursor-pointer"
+            >
+              <q-popup-proxy
+                cover
+                transition-show="scale"
+                transition-hide="scale"
+              >
+                <DatePicker v-model="form.order_date" />
+              </q-popup-proxy>
+            </q-icon>
+          </template>
+        </AppInput>
       </div>
 
       <div class="col-12 col-sm-6">
-        <DatePicker
+        <AppInput
           v-model="form.delivery_date"
           label="Ngày giao"
-        />
+          placeholder="DD/MM/YYYY"
+          readonly
+        >
+          <template #append>
+            <q-icon
+              name="event"
+              class="cursor-pointer"
+            >
+              <q-popup-proxy
+                cover
+                transition-show="scale"
+                transition-hide="scale"
+              >
+                <DatePicker v-model="form.delivery_date" />
+              </q-popup-proxy>
+            </q-icon>
+          </template>
+        </AppInput>
       </div>
 
       <div class="col-12 col-sm-6">

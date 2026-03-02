@@ -84,6 +84,7 @@
               v-model="filters.from_date"
               label="Từ ngày"
               placeholder="DD/MM/YYYY"
+              :rules="[dateRules.date]"
               dense
               clearable
               hide-bottom-space
@@ -109,6 +110,7 @@
               v-model="filters.to_date"
               label="Đến ngày"
               placeholder="DD/MM/YYYY"
+              :rules="[dateRules.date]"
               dense
               clearable
               hide-bottom-space
@@ -338,6 +340,7 @@ import { useQuasar } from "quasar";
 import { usePurchaseOrders, useStyles, useSnackbar } from "@/composables";
 import { weeklyOrderService } from "@/services/weeklyOrderService";
 import DatePicker from "@/components/ui/pickers/DatePicker.vue";
+import { dateRules } from '@/utils'
 import type { WeekHistoryGroup, HistoryByWeekFilter } from "@/types/thread";
 
 definePage({

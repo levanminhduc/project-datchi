@@ -83,6 +83,12 @@ npm run dev:all    # Cả hai cùng lúc
 npm run build      # Includes type-check
 npm run type-check # vue-tsc only
 npm run lint       # ESLint fix
+npm run e2e        # Playwright end-to-end tests
+```
+
+Lần đầu chạy Playwright cần cài browser:
+```bash
+npx playwright install
 ```
 
 ## ✨ Tính năng chính
