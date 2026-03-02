@@ -91,14 +91,38 @@ docker compose --env-file .env.docker down -v
 
 ```
 project-datchi/
-├── docker-compose.yml          # Chỉ 2 services: frontend + backend
-├── Dockerfile.frontend         # Multi-stage: node build → nginx serve
-├── Dockerfile.backend          # Node + tsx chạy server/index.ts
-├── nginx.conf                  # Proxy /api/ + /supabase/ + SPA fallback
+├── docker-compose.yml          # 2 services: frontend + backend
+├── Dockerfile.frontend         # Multi-stage: node build → alpine + nginx-brotli
+├── Dockerfile.backend          # 3-stage: build → deps → runtime (esbuild bundle)
+├── nginx.conf                  # Dev config
+├── nginx.docker.conf           # Docker config: brotli + gzip + security headers
 ├── .env.docker                 # Env cho Docker (KHÔNG commit lên git)
 ├── .env                        # Env cho dev local (KHÔNG commit lên git)
 └── .dockerignore               # Loại bỏ node_modules, dist, .env...
 ```
+
+---
+
+## Tối ưu Image Size (2026-03)
+
+| Image | Trước | Sau | Giảm |
+|-------|-------|-----|------|
+| Frontend | 105MB | **40MB** | -62% |
+| Backend | 1.23GB | **555MB** | -55% |
+
+### Kỹ thuật áp dụng
+
+**Frontend:**
+- Multi-stage build: `node:22-alpine` → `alpine:3.20 + nginx-brotli`
+- Brotli compression (giảm 20-30% so với gzip)
+- npm cache mount (`--mount=type=cache`)
+- Security headers: X-Frame-Options, X-Content-Type-Options, etc.
+
+**Backend:**
+- 3-stage build: builder → deps → runtime
+- esbuild bundle code (minify, tree-shaking)
+- Separate production dependencies (`npm install --omit=dev`)
+- Non-root user (security)
 
 ---
 
