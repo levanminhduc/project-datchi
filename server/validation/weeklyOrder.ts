@@ -86,3 +86,21 @@ export const HistoryByWeekQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
 })
+
+// ============ LOAN SCHEMAS ============
+
+export const CreateLoanSchema = z.object({
+  from_week_id: z
+    .number({ required_error: 'from_week_id là bắt buộc' })
+    .int()
+    .positive('from_week_id phải là số nguyên dương'),
+  thread_type_id: z
+    .number({ required_error: 'thread_type_id là bắt buộc' })
+    .int()
+    .positive('thread_type_id phải là số nguyên dương'),
+  quantity_cones: z
+    .number({ required_error: 'Số lượng cuộn là bắt buộc' })
+    .int()
+    .positive('Số lượng cuộn phải lớn hơn 0'),
+  reason: z.string().max(500, 'Lý do tối đa 500 ký tự').optional(),
+})

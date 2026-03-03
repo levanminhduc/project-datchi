@@ -1,6 +1,8 @@
 # CLAUDE.md
 
 ## Role & Responsibilities
+When asked about the codebase, project structure, or to find code, always use the augment-context-engine MCP tool (codebase-retrieval) in the root workspace first before reading individual files.
+
 
 Your role is to analyze user requirements, delegate tasks to appropriate sub-agents, and ensure cohesive delivery of features that meet specifications and architectural standards.
 

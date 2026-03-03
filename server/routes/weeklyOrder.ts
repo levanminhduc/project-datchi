@@ -15,6 +15,7 @@ import {
   UpdateQuotaConesSchema,
   OrderedQuantitiesQuerySchema,
   HistoryByWeekQuerySchema,
+  CreateLoanSchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
 
@@ -573,10 +574,7 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
 
     const { data: delivery, error: deliveryError } = await supabase
       .from('thread_order_deliveries')
-      .select(`
-        *,
-        thread_type:thread_types(id, name, tex_number, meters_per_cone)
-      `)
+      .select('id, status, week_id, thread_type_id')
       .eq('id', deliveryId)
       .single()
 
@@ -591,136 +589,27 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
       return c.json({ data: null, error: 'Chỉ có thể nhập kho cho đơn đã giao' }, 400)
     }
 
-    const { data: warehouse, error: warehouseError } = await supabase
-      .from('warehouses')
-      .select('id, name')
-      .eq('id', warehouse_id)
-      .single()
+    const { data: result, error: rpcError } = await supabase.rpc('fn_receive_delivery', {
+      p_delivery_id: deliveryId,
+      p_received_qty: quantity,
+      p_warehouse_id: warehouse_id,
+      p_received_by: received_by,
+      p_expiry_date: expiry_date || null,
+    })
 
-    if (warehouseError || !warehouse) {
-      return c.json({ data: null, error: 'Kho không tồn tại' }, 400)
+    if (rpcError) {
+      console.error('fn_receive_delivery error:', rpcError)
+      return c.json({ data: null, error: rpcError.message }, 500)
     }
-
-    const threadTypeId = delivery.thread_type_id
-    const metersPerCone = (delivery as any).thread_type?.meters_per_cone || 0
-
-    const now = new Date()
-    const lotNumber = `LOT-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
-    const receivedDate = now.toISOString().split('T')[0]
-
-    const { data: lotRecord, error: lotError } = await supabase
-      .from('lots')
-      .insert({
-        lot_number: lotNumber,
-        thread_type_id: threadTypeId,
-        warehouse_id: warehouse_id,
-        supplier_id: delivery.supplier_id || null,
-        expiry_date: expiry_date || null,
-        total_cones: quantity,
-        available_cones: quantity,
-        status: 'ACTIVE',
-      })
-      .select('id')
-      .single()
-
-    if (lotError || !lotRecord) {
-      console.error('Lot creation error:', lotError)
-      throw lotError || new Error('Không thể tạo lô hàng')
-    }
-
-    const lotId = lotRecord.id
-    const timestamp = Date.now()
-    const cones: Array<{
-      cone_id: string
-      thread_type_id: number
-      warehouse_id: number
-      quantity_cones: number
-      quantity_meters: number
-      is_partial: boolean
-      status: string
-      lot_number: string
-      lot_id: number
-      received_date: string
-      expiry_date: string | null
-    }> = []
-
-    for (let i = 0; i < quantity; i++) {
-      cones.push({
-        cone_id: `DLV-${timestamp}-${String(i + 1).padStart(4, '0')}`,
-        thread_type_id: threadTypeId,
-        warehouse_id: warehouse_id,
-        quantity_cones: 1,
-        quantity_meters: metersPerCone,
-        is_partial: false,
-        status: 'AVAILABLE',
-        lot_number: lotNumber,
-        lot_id: lotId,
-        received_date: receivedDate,
-        expiry_date: expiry_date || null,
-      })
-    }
-
-    const { data: insertedCones, error: insertError } = await supabase
-      .from('thread_inventory')
-      .insert(cones)
-      .select('cone_id')
-
-    if (insertError) {
-      console.error('Cone insert error:', insertError)
-      throw insertError
-    }
-
-    const newReceivedQuantity = (delivery.received_quantity || 0) + quantity
-
-    const { data: results } = await supabase
-      .from('thread_order_results')
-      .select('summary_data')
-      .eq('week_id', delivery.week_id)
-      .single()
-
-    let totalFinal = 0
-    if (results?.summary_data) {
-      const summaryRows = results.summary_data as any[]
-      const matchingRow = summaryRows.find((row: any) => row.thread_type_id === threadTypeId)
-      if (matchingRow) {
-        totalFinal = matchingRow.total_final || matchingRow.total_cones || 0
-      }
-    }
-
-    let inventoryStatus: 'PENDING' | 'PARTIAL' | 'RECEIVED' = 'PENDING'
-    if (newReceivedQuantity > 0 && newReceivedQuantity < totalFinal) {
-      inventoryStatus = 'PARTIAL'
-    } else if (newReceivedQuantity >= totalFinal && totalFinal > 0) {
-      inventoryStatus = 'RECEIVED'
-    } else if (newReceivedQuantity > 0) {
-      inventoryStatus = 'PARTIAL'
-    }
-
-    const { data: updatedDelivery, error: updateError } = await supabase
-      .from('thread_order_deliveries')
-      .update({
-        received_quantity: newReceivedQuantity,
-        inventory_status: inventoryStatus,
-        warehouse_id: warehouse_id,
-        received_by: received_by,
-        received_at: now.toISOString(),
-        updated_at: now.toISOString(),
-      })
-      .eq('id', deliveryId)
-      .select()
-      .single()
-
-    if (updateError) throw updateError
 
     return c.json({
       data: {
-        delivery: updatedDelivery,
-        cones_created: quantity,
-        lot_number: lotNumber,
-        cone_ids: (insertedCones || []).map((r: { cone_id: string }) => r.cone_id),
+        cones_created: result?.cones_created ?? quantity,
+        cones_reserved: result?.cones_reserved ?? 0,
+        remaining_shortage: result?.remaining_shortage ?? 0,
       },
       error: null,
-      message: `Đã nhập ${quantity} cuộn chỉ vào kho ${warehouse.name}`,
+      message: `Đã nhập ${quantity} cuộn chỉ vào kho`,
     })
   } catch (err) {
     console.error('Error receiving delivery:', err)
@@ -1471,6 +1360,7 @@ weeklyOrder.delete('/:id', requirePermission('thread.allocations.manage'), async
 
 /**
  * PATCH /api/weekly-orders/:id/status - Update status with transition validation
+ * Tasks 6.1-6.5: Atomic confirm with reserve, cancel with loan check
  */
 weeklyOrder.patch('/:id/status', requirePermission('thread.allocations.manage'), async (c) => {
   try {
@@ -1521,6 +1411,102 @@ weeklyOrder.patch('/:id/status', requirePermission('thread.allocations.manage'),
       )
     }
 
+    // Task 6.1: When CONFIRMED, call fn_confirm_week_with_reserve (atomic)
+    if (newStatus === 'CONFIRMED') {
+      // Task 6.2: Retry logic for SKIP LOCKED
+      let result = null
+      let lastError = null
+      const maxRetries = 3
+      const retryDelay = 100
+
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const { data: rpcResult, error: rpcError } = await supabase.rpc('fn_confirm_week_with_reserve', {
+          p_week_id: id,
+        })
+
+        if (rpcError) {
+          lastError = rpcError
+          break
+        }
+
+        result = rpcResult
+        // Check if we need to retry (skipped_locked > 0 in any summary)
+        const summaries = result?.reservation_summary || []
+        const hasSkipped = summaries.some((s: any) => s.skipped_locked > 0)
+
+        if (!hasSkipped) {
+          break // Success, no need to retry
+        }
+
+        // Wait before retry
+        if (attempt < maxRetries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay))
+        }
+      }
+
+      if (lastError) {
+        return c.json({ data: null, error: lastError.message }, 500)
+      }
+
+      // Task 6.3: Return response with reservation_summary
+      const { data: week } = await supabase
+        .from('thread_order_weeks')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+      const statusLabels: Record<string, string> = { CONFIRMED: 'xác nhận', CANCELLED: 'hủy' }
+      const warehouseIds = await getWarehouseEmployeeIds()
+      broadcastNotification({
+        employeeIds: warehouseIds,
+        type: 'WEEKLY_ORDER',
+        title: `Đơn đặt hàng tuần #${id} đã được ${statusLabels[newStatus] || newStatus}`,
+        actionUrl: '/thread/weekly-order',
+        metadata: { weekly_order_id: id, new_status: newStatus },
+      })
+
+      return c.json({
+        data: {
+          week,
+          reservation_summary: result?.reservation_summary || [],
+        },
+        error: null,
+        message: 'Xác nhận và đặt trước thành công',
+      })
+    }
+
+    // Task 6.4: When CANCELLED, check for active loans first
+    if (newStatus === 'CANCELLED') {
+      const { data: activeLoans, error: loansError } = await supabase
+        .from('thread_order_loans')
+        .select('id')
+        .or(`from_week_id.eq.${id},to_week_id.eq.${id}`)
+        .is('deleted_at', null)
+        .limit(1)
+
+      if (loansError) throw loansError
+
+      if (activeLoans && activeLoans.length > 0) {
+        return c.json(
+          {
+            data: null,
+            error: 'Không thể hủy khi còn khoản mượn/cho mượn chưa thanh toán',
+          },
+          400,
+        )
+      }
+
+      // Task 6.5: Call fn_release_week_reservations
+      const { error: releaseError } = await supabase.rpc('fn_release_week_reservations', {
+        p_week_id: id,
+      })
+
+      if (releaseError) {
+        return c.json({ data: null, error: releaseError.message }, 500)
+      }
+    }
+
+    // Update status (for CANCELLED case, or fallback)
     const { data, error } = await supabase
       .from('thread_order_weeks')
       .update({ status: newStatus, updated_at: new Date().toISOString() })
@@ -1855,6 +1841,7 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
                   requested_meters: shortageForThisType * metersPerCone,
                   priority: 'NORMAL',
                   status: 'PENDING',
+                  week_id: id, // Task 5.2: Store week_id on allocation for WO context
                 })
               }
             }
@@ -1909,6 +1896,198 @@ weeklyOrder.get('/:id/results', requirePermission('thread.allocations.view'), as
     return c.json({ data, error: null })
   } catch (err) {
     console.error('Error fetching weekly order results:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+// ============================================================================
+// LOAN & RESERVATION ENDPOINTS (Tasks 8.1-8.3)
+// ============================================================================
+
+/**
+ * Task 8.1: POST /api/weekly-orders/:id/loans - Create manual borrow
+ * Uses fn_borrow_thread RPC, created_by from auth context
+ */
+weeklyOrder.post('/:id/loans', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const toWeekId = parseInt(c.req.param('id'))
+
+    if (isNaN(toWeekId)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = CreateLoanSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    // Get created_by from auth context (NOT from client)
+    const user = c.get('user') as { employee_id?: string; name?: string } | undefined
+    const createdBy = user?.employee_id || user?.name || 'unknown'
+
+    const { data: result, error: rpcError } = await supabase.rpc('fn_borrow_thread', {
+      p_from_week_id: validated.from_week_id,
+      p_to_week_id: toWeekId,
+      p_thread_type_id: validated.thread_type_id,
+      p_quantity: validated.quantity_cones,
+      p_reason: validated.reason || null,
+      p_user: createdBy,
+    })
+
+    if (rpcError) {
+      return c.json({ data: null, error: rpcError.message }, 400)
+    }
+
+    return c.json({
+      data: result,
+      error: null,
+      message: 'Mượn chỉ thành công',
+    })
+  } catch (err) {
+    console.error('Error creating loan:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * Task 8.2: GET /api/weekly-orders/:id/loans - Get loan history (given and received)
+ * Filters deleted_at IS NULL
+ */
+weeklyOrder.get('/:id/loans', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    // Get loans where this week is either lender or borrower
+    const { data: loans, error } = await supabase
+      .from('thread_order_loans')
+      .select(
+        `
+        *,
+        from_week:thread_order_weeks!thread_order_loans_from_week_id_fkey(id, week_name),
+        to_week:thread_order_weeks!thread_order_loans_to_week_id_fkey(id, week_name),
+        thread_type:thread_types(id, code, name)
+      `,
+      )
+      .or(`from_week_id.eq.${id},to_week_id.eq.${id}`)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    // Categorize loans
+    const given = (loans || []).filter((l: any) => l.from_week_id === id)
+    const received = (loans || []).filter((l: any) => l.to_week_id === id)
+
+    return c.json({
+      data: { all: loans, given, received },
+      error: null,
+    })
+  } catch (err) {
+    console.error('Error fetching loans:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * Task 8.3: GET /api/weekly-orders/:id/reservations - Get reserved cones list
+ * Queries thread_inventory WHERE reserved_week_id = :id (no deleted_at filter)
+ */
+weeklyOrder.get('/:id/reservations', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data: cones, error } = await supabase
+      .from('thread_inventory')
+      .select(
+        `
+        id,
+        cone_id,
+        thread_type_id,
+        quantity_meters,
+        warehouse_id,
+        lot_number,
+        expiry_date,
+        received_date,
+        thread_type:thread_types(id, code, name),
+        warehouse:warehouses(id, code, name)
+      `,
+      )
+      .eq('reserved_week_id', id)
+      .eq('status', 'RESERVED_FOR_ORDER')
+      .order('thread_type_id')
+      .order('expiry_date', { ascending: true, nullsFirst: false })
+
+    if (error) throw error
+
+    // Aggregate summary by thread_type_id
+    const summaryMap = new Map<number, { thread_type_id: number; count: number; total_meters: number }>()
+    for (const cone of cones || []) {
+      const existing = summaryMap.get(cone.thread_type_id)
+      if (existing) {
+        existing.count++
+        existing.total_meters += cone.quantity_meters || 0
+      } else {
+        summaryMap.set(cone.thread_type_id, {
+          thread_type_id: cone.thread_type_id,
+          count: 1,
+          total_meters: cone.quantity_meters || 0,
+        })
+      }
+    }
+
+    return c.json({
+      data: {
+        cones,
+        summary: Array.from(summaryMap.values()),
+        total_cones: cones?.length || 0,
+      },
+      error: null,
+    })
+  } catch (err) {
+    console.error('Error fetching reservations:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * GET /api/weekly-orders/loans/all - Get all loans across all weeks
+ */
+weeklyOrder.get('/loans/all', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const { data: loans, error } = await supabase
+      .from('thread_order_loans')
+      .select(
+        `
+        *,
+        from_week:thread_order_weeks!thread_order_loans_from_week_id_fkey(id, week_name),
+        to_week:thread_order_weeks!thread_order_loans_to_week_id_fkey(id, week_name),
+        thread_type:thread_types(id, code, name)
+      `,
+      )
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(500)
+
+    if (error) throw error
+
+    return c.json({ data: loans, error: null })
+  } catch (err) {
+    console.error('Error fetching all loans:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

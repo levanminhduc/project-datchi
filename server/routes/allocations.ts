@@ -441,7 +441,7 @@ allocations.post('/:id/execute', requirePermission('thread.allocations.manage'),
     // Check if allocation exists and is in correct state
     const { data: allocation, error: fetchError } = await supabase
       .from('thread_allocations')
-      .select('id, status, thread_type_id, requested_meters')
+      .select('id, status, thread_type_id, requested_meters, week_id')
       .eq('id', id)
       .single()
 
@@ -463,6 +463,7 @@ allocations.post('/:id/execute', requirePermission('thread.allocations.manage'),
     const { data: result, error: rpcError } = await supabase
       .rpc('fn_allocate_thread', {
         p_allocation_id: id,
+        p_week_id: allocation.week_id || null,
       })
 
     if (rpcError) {
@@ -751,7 +752,7 @@ allocations.post('/:id/ready', requirePermission('thread.allocations.manage'), a
     // Check allocation exists and is approved
     const { data: allocation, error: fetchError } = await supabase
       .from('thread_allocations')
-      .select('id, status')
+      .select('id, status, week_id')
       .eq('id', id)
       .single()
 
@@ -773,6 +774,7 @@ allocations.post('/:id/ready', requirePermission('thread.allocations.manage'), a
     const { data: result, error: rpcError } = await supabase
       .rpc('fn_allocate_thread', {
         p_allocation_id: id,
+        p_week_id: allocation.week_id || null,
       })
 
     if (rpcError) {
@@ -1123,22 +1125,17 @@ allocations.post('/:id/cancel', requirePermission('thread.allocations.manage'), 
 
     const allocatedCones = (allocation as AllocationWithRelations).thread_allocation_cones || []
 
-    // Release allocated cones back to AVAILABLE status
+    // Release allocated cones - use fn_restore_reservation to restore RESERVED_FOR_ORDER if applicable
     if (allocatedCones.length > 0) {
       const coneIds = allocatedCones.map((ac) => ac.cone_id)
 
-      const { error: releaseError } = await supabase
-        .from('thread_inventory')
-        .update({
-          status: 'AVAILABLE',
-          updated_at: new Date().toISOString(),
+      for (const coneId of coneIds) {
+        const { error: restoreError } = await supabase.rpc('fn_restore_reservation', {
+          p_cone_id: coneId,
         })
-        .in('id', coneIds)
-        .in('status', ['SOFT_ALLOCATED', 'HARD_ALLOCATED'])
-
-      if (releaseError) {
-        console.error('Release error:', releaseError)
-        // Continue with cancellation even if release fails
+        if (restoreError) {
+          console.error('Restore reservation error for cone', coneId, ':', restoreError)
+        }
       }
 
       // Delete allocation-cone junction records

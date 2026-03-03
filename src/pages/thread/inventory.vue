@@ -800,6 +800,7 @@ const statusLabels: Record<ConeStatus, string> = {
   [ConeStatus.CONSUMED]: 'Đã hết',
   [ConeStatus.WRITTEN_OFF]: 'Loại bỏ',
   [ConeStatus.QUARANTINE]: 'Cách ly',
+  [ConeStatus.RESERVED_FOR_ORDER]: 'Đặt trước đơn hàng',
 }
 
 const getStatusColor = (status: string): string => {

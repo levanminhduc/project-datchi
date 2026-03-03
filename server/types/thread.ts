@@ -6,6 +6,7 @@ export type ConeStatus =
   | 'RECEIVED'
   | 'INSPECTED'
   | 'AVAILABLE'
+  | 'RESERVED_FOR_ORDER'
   | 'SOFT_ALLOCATED'
   | 'HARD_ALLOCATED'
   | 'IN_PRODUCTION'

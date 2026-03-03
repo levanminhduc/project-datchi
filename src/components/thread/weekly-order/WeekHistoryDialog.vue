@@ -37,6 +37,16 @@
           >
             <AppTooltip>Tải tuần này</AppTooltip>
           </AppButton>
+          <AppButton
+            flat
+            dense
+            icon="open_in_new"
+            color="grey"
+            size="sm"
+            @click="router.push(`/thread/weekly-order/${props.row.id}`)"
+          >
+            <AppTooltip>Xem chi tiết</AppTooltip>
+          </AppButton>
         </q-td>
       </template>
       <template #no-data>
@@ -57,6 +67,7 @@
 </template>
 
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
 import type { QTableColumn } from 'quasar'
 import type { ThreadOrderWeek } from '@/types/thread'
 
@@ -70,6 +81,8 @@ defineEmits<{
   'update:modelValue': [value: boolean]
   load: [weekId: number]
 }>()
+
+const router = useRouter()
 
 function statusLabel(status: string): string {
   const map: Record<string, string> = {

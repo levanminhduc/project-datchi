@@ -93,3 +93,55 @@ export interface WeekHistoryGroup {
   total_quantity: number
   po_groups: PoGroup[]
 }
+
+// ============ RESERVE & LOAN TYPES ============
+
+export interface ThreadOrderLoan {
+  id: number
+  from_week_id: number
+  to_week_id: number
+  thread_type_id: number
+  quantity_cones: number
+  quantity_meters: number | null
+  reason: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+  // Joined data
+  from_week?: { id: number; week_name: string }
+  to_week?: { id: number; week_name: string }
+  thread_type?: { id: number; code: string; name: string }
+}
+
+export interface ReservationSummary {
+  thread_type_id: number
+  needed: number
+  reserved: number
+  shortage: number
+}
+
+export interface CreateLoanDTO {
+  from_week_id: number
+  thread_type_id: number
+  quantity_cones: number
+  reason?: string
+}
+
+export interface ConfirmWithReserveResult {
+  week: ThreadOrderWeek
+  reservation_summary: ReservationSummary[]
+}
+
+export interface ReservedCone {
+  id: number
+  cone_id: string
+  thread_type_id: number
+  quantity_meters: number
+  warehouse_id: number
+  lot_number: string | null
+  expiry_date: string | null
+  received_date: string
+  thread_type?: { id: number; code: string; name: string }
+  warehouse?: { id: number; code: string; name: string }
+}

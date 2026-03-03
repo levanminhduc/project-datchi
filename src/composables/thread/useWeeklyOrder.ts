@@ -17,6 +17,8 @@ import type {
   WeeklyOrderResults,
   CalculationResult,
   AggregatedRow,
+  ThreadOrderLoan,
+  CreateLoanDTO,
 } from '@/types/thread'
 
 const MESSAGES = {
@@ -236,6 +238,49 @@ export function useWeeklyOrder() {
     }
   }
 
+  /**
+   * Create a loan (borrow thread from another week)
+   */
+  const createLoan = async (toWeekId: number, dto: CreateLoanDTO): Promise<ThreadOrderLoan | null> => {
+    clearError()
+
+    try {
+      const result = await loading.withLoading(async () => {
+        return await weeklyOrderService.createLoan(toWeekId, dto)
+      })
+
+      snackbar.success('Mượn chỉ thành công')
+      return result
+    } catch (err) {
+      const errorMessage = getErrorMessage(err)
+      error.value = errorMessage
+      snackbar.error(errorMessage)
+      console.error('[useWeeklyOrder] createLoan error:', err)
+      return null
+    }
+  }
+
+  /**
+   * Fetch loan history for a week (given and received)
+   */
+  const fetchLoans = async (weekId: number): Promise<{ all: ThreadOrderLoan[]; given: ThreadOrderLoan[]; received: ThreadOrderLoan[] } | null> => {
+    clearError()
+
+    try {
+      const data = await loading.withLoading(async () => {
+        return await weeklyOrderService.getLoans(weekId)
+      })
+
+      return data
+    } catch (err) {
+      const errorMessage = getErrorMessage(err)
+      error.value = errorMessage
+      snackbar.error(errorMessage)
+      console.error('[useWeeklyOrder] fetchLoans error:', err)
+      return null
+    }
+  }
+
   return {
     // State
     weeks,
@@ -252,5 +297,7 @@ export function useWeeklyOrder() {
     loadWeek,
     saveResults,
     loadResults,
+    createLoan,
+    fetchLoans,
   }
 }

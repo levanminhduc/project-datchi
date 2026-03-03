@@ -71,7 +71,7 @@ const getMappingConfig = async (key: string, fallback: ImportMappingConfig): Pro
 
 const buildSupplierAndTexCaches = async () => {
   const supplierCache = new Map<string, number>()
-  const threadTypeCache = new Map<number, number>()
+  const threadTypeCache = new Map<string, number>()
 
   const { data: existingSuppliers } = await supabase
     .from('suppliers')
@@ -86,14 +86,15 @@ const buildSupplierAndTexCaches = async () => {
 
   const { data: existingThreadTypes } = await supabase
     .from('thread_types')
-    .select('id, tex_number')
+    .select('id, tex_number, supplier_id')
     .not('tex_number', 'is', null)
     .is('deleted_at', null)
 
   if (existingThreadTypes) {
     for (const t of existingThreadTypes) {
-      if (t.tex_number !== null) {
-        threadTypeCache.set(Number(t.tex_number), t.id)
+      if (t.tex_number !== null && t.supplier_id !== null) {
+        const key = `${t.supplier_id}-${Number(t.tex_number)}`
+        threadTypeCache.set(key, t.id)
       }
     }
   }
@@ -104,7 +105,7 @@ const buildSupplierAndTexCaches = async () => {
 const toTexPreviewRow = (
   row: Partial<ImportTexPreviewRow>,
   supplierCache: Map<string, number>,
-  threadTypeCache: Map<number, number>
+  threadTypeCache: Map<string, number>
 ): ImportTexPreviewRow => {
   const supplierName = String(row.supplier_name || '').trim()
   const texNumber = Number(row.tex_number) || 0
@@ -119,12 +120,15 @@ const toTexPreviewRow = (
   if (unitPrice == null || Number.isNaN(unitPrice)) errors.push('Thiếu đơn giá')
   else if (unitPrice < 0) errors.push('Giá không được âm')
 
+  const supplierId = supplierCache.get(normalizeText(supplierName))
+  const texCacheKey = supplierId ? `${supplierId}-${texNumber}` : ''
+
   let status: ImportTexPreviewRow['status'] = 'valid'
   if (errors.length > 0) {
     status = 'error'
-  } else if (!supplierCache.has(normalizeText(supplierName))) {
+  } else if (!supplierId) {
     status = 'new_supplier'
-  } else if (!threadTypeCache.has(texNumber)) {
+  } else if (!threadTypeCache.has(texCacheKey)) {
     status = 'new_tex'
   }
 
@@ -262,13 +266,15 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
         suppliers_created++
       }
 
-      let threadTypeId = threadTypeCache.get(previewRow.tex_number)
+      const texCacheKey = `${supplierId}-${previewRow.tex_number}`
+      let threadTypeId = threadTypeCache.get(texCacheKey)
       if (!threadTypeId) {
         const densityGramsPerMeter = previewRow.tex_number / 1000
+        const uniqueCode = `T-${supplierId}-TEX${previewRow.tex_number}`
         const { data: newThreadType, error: threadTypeError } = await supabase
           .from('thread_types')
           .insert({
-            code: `T-TEX${previewRow.tex_number}`,
+            code: uniqueCode,
             name: `Chỉ TEX ${previewRow.tex_number}`,
             tex_number: previewRow.tex_number,
             density_grams_per_meter: densityGramsPerMeter,
@@ -284,6 +290,7 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
             .from('thread_types')
             .select('id')
             .eq('tex_number', previewRow.tex_number)
+            .eq('supplier_id', supplierId)
             .is('deleted_at', null)
             .limit(1)
 
@@ -298,7 +305,7 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
           thread_types_created++
         }
 
-        threadTypeCache.set(previewRow.tex_number, threadTypeId)
+        threadTypeCache.set(texCacheKey, threadTypeId)
       }
 
       const supplierItemCode = previewRow.supplier_item_code || `${previewRow.supplier_name}-TEX${previewRow.tex_number}`

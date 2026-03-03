@@ -15,6 +15,11 @@ import type {
   OrderedQuantityInfo,
   WeekHistoryGroup,
   HistoryByWeekFilter,
+  ThreadOrderLoan,
+  ReservationSummary,
+  ReservedCone,
+  CreateLoanDTO,
+  ConfirmWithReserveResult,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -132,8 +137,8 @@ export const weeklyOrderService = {
    * @param status - New status
    * @returns Updated weekly order
    */
-  async updateStatus(id: number, status: string): Promise<ThreadOrderWeek> {
-    const response = await fetchApi<ApiResponse<ThreadOrderWeek>>(`${BASE}/${id}/status`, {
+  async updateStatus(id: number, status: string): Promise<ConfirmWithReserveResult | ThreadOrderWeek> {
+    const response = await fetchApi<ApiResponse<ConfirmWithReserveResult | ThreadOrderWeek>>(`${BASE}/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     })
@@ -268,5 +273,55 @@ export const weeklyOrderService = {
       data: response.data || [],
       pagination: response.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 },
     }
+  },
+
+  async createLoan(toWeekId: number, data: CreateLoanDTO): Promise<ThreadOrderLoan> {
+    const response = await fetchApi<ApiResponse<ThreadOrderLoan>>(`${BASE}/${toWeekId}/loans`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    if (!response.data) {
+      throw new Error('Không thể tạo khoản mượn chỉ')
+    }
+
+    return response.data
+  },
+
+  async getLoans(weekId: number): Promise<{ all: ThreadOrderLoan[]; given: ThreadOrderLoan[]; received: ThreadOrderLoan[] }> {
+    const response = await fetchApi<ApiResponse<{ all: ThreadOrderLoan[]; given: ThreadOrderLoan[]; received: ThreadOrderLoan[] }>>(`${BASE}/${weekId}/loans`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || { all: [], given: [], received: [] }
+  },
+
+  async getReservations(weekId: number): Promise<{ by_thread_type: ReservationSummary[]; cones: ReservedCone[] }> {
+    const response = await fetchApi<ApiResponse<{ by_thread_type: ReservationSummary[]; cones: ReservedCone[] }>>(`${BASE}/${weekId}/reservations`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || { by_thread_type: [], cones: [] }
+  },
+
+  /**
+   * Get all loans across all weeks
+   */
+  async getAllLoans(): Promise<ThreadOrderLoan[]> {
+    const response = await fetchApi<ApiResponse<ThreadOrderLoan[]>>(`${BASE}/loans/all`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
   },
 }

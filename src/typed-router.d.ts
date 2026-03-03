@@ -46,6 +46,7 @@ declare module 'vue-router/auto-routes' {
     '/thread/issues/v2/': RouteRecordInfo<'/thread/issues/v2/', '/thread/issues/v2', Record<never, never>, Record<never, never>>,
     '/thread/issues/v2/[id]': RouteRecordInfo<'/thread/issues/v2/[id]', '/thread/issues/v2/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     '/thread/issues/v2/return': RouteRecordInfo<'/thread/issues/v2/return', '/thread/issues/v2/return', Record<never, never>, Record<never, never>>,
+    '/thread/loans': RouteRecordInfo<'/thread/loans', '/thread/loans', Record<never, never>, Record<never, never>>,
     '/thread/lots/': RouteRecordInfo<'/thread/lots/', '/thread/lots', Record<never, never>, Record<never, never>>,
     '/thread/lots/[id]': RouteRecordInfo<'/thread/lots/[id]', '/thread/lots/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     '/thread/mobile/issue': RouteRecordInfo<'/thread/mobile/issue', '/thread/mobile/issue', Record<never, never>, Record<never, never>>,
@@ -63,6 +64,7 @@ declare module 'vue-router/auto-routes' {
     '/thread/suppliers/import-colors': RouteRecordInfo<'/thread/suppliers/import-colors', '/thread/suppliers/import-colors', Record<never, never>, Record<never, never>>,
     '/thread/suppliers/import-tex': RouteRecordInfo<'/thread/suppliers/import-tex', '/thread/suppliers/import-tex', Record<never, never>, Record<never, never>>,
     '/thread/weekly-order/': RouteRecordInfo<'/thread/weekly-order/', '/thread/weekly-order', Record<never, never>, Record<never, never>>,
+    '/thread/weekly-order/[id]': RouteRecordInfo<'/thread/weekly-order/[id]', '/thread/weekly-order/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     '/thread/weekly-order/deliveries': RouteRecordInfo<'/thread/weekly-order/deliveries', '/thread/weekly-order/deliveries', Record<never, never>, Record<never, never>>,
     '/thread/weekly-order/history': RouteRecordInfo<'/thread/weekly-order/history', '/thread/weekly-order/history', Record<never, never>, Record<never, never>>,
   }
@@ -190,6 +192,10 @@ declare module 'vue-router/auto-routes' {
       routes: '/thread/issues/v2/return'
       views: never
     }
+    'src/pages/thread/loans.vue': {
+      routes: '/thread/loans'
+      views: never
+    }
     'src/pages/thread/lots/index.vue': {
       routes: '/thread/lots/'
       views: never
@@ -256,6 +262,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/thread/weekly-order/index.vue': {
       routes: '/thread/weekly-order/'
+      views: never
+    }
+    'src/pages/thread/weekly-order/[id].vue': {
+      routes: '/thread/weekly-order/[id]'
       views: never
     }
     'src/pages/thread/weekly-order/deliveries.vue': {

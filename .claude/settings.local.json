@@ -49,7 +49,9 @@
       "mcp__playwright__browser_wait_for",
       "mcp__playwright__browser_evaluate",
       "mcp__playwright__browser_network_requests",
-      "mcp__playwright__browser_click"
+      "mcp__playwright__browser_click",
+      "mcp__tavily__tavily_extract",
+      "mcp__tavily__tavily_search"
     ]
   }
 }

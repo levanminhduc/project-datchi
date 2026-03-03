@@ -236,6 +236,7 @@ CREATE TRIGGER trigger_update_issue_request_status
 -- Standard updated_at trigger for thread_issue_requests
 -- ============================================================================
 
+DROP TRIGGER IF EXISTS trigger_thread_issue_requests_updated_at ON thread_issue_requests;
 CREATE TRIGGER trigger_thread_issue_requests_updated_at
     BEFORE UPDATE ON thread_issue_requests
     FOR EACH ROW
