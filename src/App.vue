@@ -7,7 +7,6 @@ import { useDarkMode } from "./composables/useDarkMode";
 import { useSidebar } from "./composables/useSidebar";
 import { useNotifications } from "./composables/useNotifications";
 import { useAuth } from "./composables/useAuth";
-import { useSessionHealth } from "./composables/use-session-health";
 
 const route = useRoute();
 const router = useRouter();
@@ -15,7 +14,6 @@ const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
 const { startPolling, stopPolling } = useNotifications();
 const { employee, isAuthenticated, tempPassword } = useAuth();
-const { sessionReady, showSpinner } = useSessionHealth();
 
 const showChangePasswordModal = computed(
   () => employee.value?.mustChangePassword === true && isAuthenticated.value
@@ -43,23 +41,6 @@ onMounted(() => {
 </script>
 
 <template>
-  <!-- Session validation overlay -->
-  <div
-    v-if="showSpinner"
-    class="fixed-full flex flex-center bg-dark"
-    style="z-index: 9999"
-  >
-    <div class="text-center">
-      <q-spinner-gears
-        size="50px"
-        color="primary"
-      />
-      <div class="q-mt-md text-white">
-        Đang kiểm tra phiên đăng nhập...
-      </div>
-    </div>
-  </div>
-
   <q-layout
     view="hHh Lpr fFf"
   >

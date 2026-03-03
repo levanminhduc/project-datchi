@@ -2,7 +2,6 @@
 
 import type { Router } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import { authService } from '@/services/authService'
 import type { RouteMeta } from '@/types/auth'
 
 /**
@@ -25,7 +24,6 @@ export function setupRouterGuards(router: Router) {
 
     // Initialize auth state if not done (restores session from Supabase Auth)
     await auth.init()
-    const hasSession = await authService.hasSession()
 
     // Check if route is public (explicitly marked as public: true)
     // Also support legacy requiresAuth: false for backward compatibility
@@ -34,14 +32,14 @@ export function setupRouterGuards(router: Router) {
     if (isPublicRoute) {
       // Public route - allow access
       // But redirect to home if already authenticated and trying to access login
-      if (to.path === '/login' && auth.isAuthenticated.value && hasSession) {
+      if (to.path === '/login' && auth.isAuthenticated.value) {
         return next('/')
       }
       return next()
     }
 
     // All other routes require authentication by default
-    if (!auth.isAuthenticated.value || !hasSession) {
+    if (!auth.isAuthenticated.value) {
       return next({
         path: '/login',
         query: { redirect: to.fullPath },

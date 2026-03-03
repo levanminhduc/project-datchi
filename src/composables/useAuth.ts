@@ -1,5 +1,6 @@
 import { ref, computed, readonly } from 'vue'
 import { useRouter } from 'vue-router'
+import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { authService } from '@/services/authService'
 import {
@@ -36,6 +37,7 @@ const tempPassword = ref<string | null>(null)
 
 const RETRY_DELAYS = [0, 500, 1000]
 const GET_USER_TIMEOUT = 5000
+const GET_SESSION_TIMEOUT = 3000
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -82,6 +84,23 @@ async function retryGetUser(): Promise<{
   }
 
   return { user: null, errorType: 'network' }
+}
+
+async function getSessionSafe(): Promise<Session | null> {
+  try {
+    const result = await withTimeout(
+      supabase.auth.getSession(),
+      GET_SESSION_TIMEOUT
+    )
+
+    if (!result) {
+      return null
+    }
+
+    return result.data.session ?? null
+  } catch {
+    return null
+  }
 }
 
 export function useAuth() {
@@ -138,9 +157,7 @@ export function useAuth() {
       }
 
       if (getUserErrorType === 'network') {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
+        const session = await getSessionSafe()
 
         if (session) {
           state.value.isAuthenticated = true
@@ -174,9 +191,7 @@ export function useAuth() {
       }
 
       if (empErrorType === 'network') {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
+        const session = await getSessionSafe()
 
         if (session) {
           state.value.isAuthenticated = true
@@ -265,12 +280,11 @@ export function useAuth() {
       }
     }
 
-    const handleTokenRefreshedEvent = async () => {
+    const handleTokenRefreshedEvent = async (session: Session | null) => {
       if (handlingTokenRefresh) return
       handlingTokenRefresh = true
 
       try {
-        const { data: { session } } = await supabase.auth.getSession()
         if (!session?.access_token) {
           return
         }
@@ -317,14 +331,14 @@ export function useAuth() {
       }
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         void handleSignedOutEvent()
       }
 
       if (event === 'TOKEN_REFRESHED') {
         // Keep callback synchronous to avoid Supabase auth lock deadlocks.
-        void handleTokenRefreshedEvent()
+        void handleTokenRefreshedEvent(session)
       }
     })
 

@@ -26,6 +26,18 @@ export interface FetchResult<T> {
   errorType: AuthErrorType
 }
 
+const HAS_SESSION_TIMEOUT_MS = 3000
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number
+): Promise<T | null> {
+  const timeout = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), timeoutMs)
+  })
+  return Promise.race([promise, timeout])
+}
+
 class AuthService {
   async signIn(
     credentials: LoginCredentials
@@ -148,8 +160,24 @@ class AuthService {
   }
 
   async hasSession(): Promise<boolean> {
-    const { data: { session } } = await supabase.auth.getSession()
-    return !!session?.access_token
+    try {
+      const result = await withTimeout(
+        supabase.auth.getSession(),
+        HAS_SESSION_TIMEOUT_MS
+      )
+
+      if (!result) {
+        return false
+      }
+
+      const {
+        data: { session },
+      } = result
+
+      return !!session?.access_token
+    } catch {
+      return false
+    }
   }
 }
 
