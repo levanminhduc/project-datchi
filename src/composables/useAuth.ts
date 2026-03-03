@@ -213,6 +213,13 @@ export function useAuth() {
       const { data: perms, errorType: permsErrorType } =
         await authService.fetchPermissions()
 
+      if (permsErrorType === 'auth') {
+        await clearAuthSessionLocal()
+        resetState()
+        initialized = false
+        return
+      }
+
       const finalPerms =
         permsErrorType === 'network' && verifiedPermissionsSnapshot
           ? verifiedPermissionsSnapshot
@@ -239,43 +246,87 @@ export function useAuth() {
 
   function setupAuthListener() {
     if (authListenerUnsubscribe) return
+    let handlingTokenRefresh = false
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event) => {
-        if (event === 'SIGNED_OUT') {
-          if (signingOut) return
+    const handleSignedOutEvent = async () => {
+      if (signingOut) return
+      resetState()
+      initialized = false
+      const isOnLoginPage = router.currentRoute.value.path === '/login'
+
+      if (!isOnLoginPage && !isLogoutInProgress()) {
+        snackbar.error('Phiên đăng nhập đã hết hạn')
+      }
+
+      if (!isOnLoginPage) {
+        await router.replace('/login').catch(() => {
+          window.location.replace('/login')
+        })
+      }
+    }
+
+    const handleTokenRefreshedEvent = async () => {
+      if (handlingTokenRefresh) return
+      handlingTokenRefresh = true
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) {
+          return
+        }
+
+        const { data: emp, errorType: empErrorType } = await authService.fetchCurrentEmployee()
+        if (empErrorType === 'auth') {
+          await clearAuthSessionLocal()
           resetState()
           initialized = false
-          const isOnLoginPage = router.currentRoute.value.path === '/login'
-
-          if (!isOnLoginPage && !isLogoutInProgress()) {
-            snackbar.error('Phiên đăng nhập đã hết hạn')
-          }
-
-          if (!isOnLoginPage) {
+          if (router.currentRoute.value.path !== '/login') {
             await router.replace('/login').catch(() => {
               window.location.replace('/login')
             })
           }
+          return
         }
 
-        if (event === 'TOKEN_REFRESHED') {
-          const { data: emp } = await authService.fetchCurrentEmployee()
-          const { data: perms } = await authService.fetchPermissions()
-          if (emp) {
-            state.value.employee = emp
+        const { data: perms, errorType: permsErrorType } = await authService.fetchPermissions()
+        if (permsErrorType === 'auth') {
+          await clearAuthSessionLocal()
+          resetState()
+          initialized = false
+          if (router.currentRoute.value.path !== '/login') {
+            await router.replace('/login').catch(() => {
+              window.location.replace('/login')
+            })
           }
-          if (perms !== null) {
-            state.value.permissions = perms
-            verifiedPermissionsSnapshot = perms
-            state.value.isRoot = (emp?.isRoot ?? state.value.employee?.isRoot ?? false) || perms.includes('*')
-          }
-          if (state.value.error === 'network') {
-            state.value.error = null
-          }
+          return
         }
+
+        if (emp) {
+          state.value.employee = emp
+        }
+        if (perms !== null) {
+          state.value.permissions = perms
+          verifiedPermissionsSnapshot = perms
+          state.value.isRoot = (emp?.isRoot ?? state.value.employee?.isRoot ?? false) || perms.includes('*')
+        }
+        if (state.value.error === 'network') {
+          state.value.error = null
+        }
+      } finally {
+        handlingTokenRefresh = false
       }
-    )
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        void handleSignedOutEvent()
+      }
+
+      if (event === 'TOKEN_REFRESHED') {
+        // Keep callback synchronous to avoid Supabase auth lock deadlocks.
+        void handleTokenRefreshedEvent()
+      }
+    })
 
     authListenerUnsubscribe = () => subscription.unsubscribe()
   }

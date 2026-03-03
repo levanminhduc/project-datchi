@@ -33,20 +33,38 @@ class AuthService {
     try {
       const email = `${credentials.employeeId.toLowerCase()}@internal.datchi.local`
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password: credentials.password,
       })
 
       if (signInError) {
+        console.error('[authService] Supabase signIn error:', signInError)
+
+        // Handle specific error cases
         if (signInError.message === 'Invalid login credentials') {
           return { data: null, error: 'Mã nhân viên hoặc mật khẩu không đúng' }
         }
+
+        // Handle 400 Bad Request (invalid email format, missing fields, etc.)
+        if (signInError.status === 400) {
+          return { data: null, error: 'Thông tin đăng nhập không hợp lệ' }
+        }
+
         return { data: null, error: signInError.message || 'Đăng nhập thất bại' }
+      }
+
+      // Verify we got a valid session
+      if (!authData?.session?.access_token) {
+        console.error('[authService] No session after signIn')
+        return { data: null, error: 'Không thể tạo phiên đăng nhập' }
       }
 
       const { data: employee, errorType } = await this.fetchCurrentEmployee()
       if (!employee) {
+        // Sign out if we can't fetch employee data
+        await supabase.auth.signOut()
+
         const msg = errorType === 'network'
           ? 'Không thể kết nối đến máy chủ'
           : 'Không thể lấy thông tin nhân viên'
@@ -55,7 +73,7 @@ class AuthService {
 
       return { data: { employee }, error: null }
     } catch (err) {
-      console.error('Sign in error:', err)
+      console.error('[authService] Sign in error:', err)
       return { data: null, error: 'Không thể kết nối đến máy chủ' }
     }
   }

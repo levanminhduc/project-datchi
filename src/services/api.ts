@@ -178,7 +178,15 @@ export async function fetchApiRaw(
       throw new ApiError(401, 'Vui lòng đăng nhập')
     }
     const newSession = await getRefreshedSession()
-    return makeRequest(newSession.access_token)
+    const retriedResponse = await makeRequest(newSession.access_token)
+
+    if (retriedResponse.status === 401) {
+      await clearAuthSessionLocal()
+      await forceBackToLogin()
+      throw new ApiError(401, 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại')
+    }
+
+    return retriedResponse
   }
 
   return response

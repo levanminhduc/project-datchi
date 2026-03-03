@@ -1,13 +1,48 @@
 import { Context, Next } from 'hono'
-import { jwtVerify } from 'jose'
+import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from 'jose'
 import { supabaseAdmin } from '../db/supabase'
 import type { JwtPayload, AuthContext } from '../types/auth'
 
 export type { JwtPayload, AuthContext }
 
-const SUPABASE_JWT_SECRET = new TextEncoder().encode(
-  process.env.SUPABASE_JWT_SECRET!
-)
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET
+  ? new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET)
+  : null
+
+function resolveSupabaseBaseUrl(): string {
+  const fromEnv =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    ''
+
+  if (fromEnv && !fromEnv.startsWith('/')) {
+    return fromEnv.replace(/\/$/, '')
+  }
+
+  return 'http://127.0.0.1:54321'
+}
+
+const supabaseJwksUrl = new URL('/auth/v1/.well-known/jwks.json', `${resolveSupabaseBaseUrl()}/`)
+const supabaseJwks = createRemoteJWKSet(supabaseJwksUrl)
+
+async function verifySupabaseToken(token: string): Promise<JWTPayload> {
+  const protectedHeader = decodeProtectedHeader(token)
+
+  if (protectedHeader.alg === 'HS256') {
+    if (!SUPABASE_JWT_SECRET) {
+      throw new Error('SUPABASE_JWT_SECRET is missing for HS256 verification')
+    }
+    const { payload } = await jwtVerify(token, SUPABASE_JWT_SECRET, {
+      algorithms: ['HS256'],
+    })
+    return payload
+  }
+
+  const { payload } = await jwtVerify(token, supabaseJwks, {
+    algorithms: ['RS256', 'ES256'],
+  })
+  return payload
+}
 
 export async function authMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header('Authorization')
@@ -19,10 +54,7 @@ export async function authMiddleware(c: Context, next: Next) {
   const token = authHeader.slice(7)
 
   try {
-    const { payload } = await jwtVerify(token, SUPABASE_JWT_SECRET, {
-      algorithms: ['HS256'],
-    })
-
+    const payload = await verifySupabaseToken(token)
     const jwtPayload = payload as unknown as JwtPayload
 
     if (!jwtPayload.employee_id || !jwtPayload.employee_code) {
