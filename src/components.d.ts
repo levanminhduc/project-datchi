@@ -106,6 +106,7 @@ declare module 'vue' {
     QrScannerStream: typeof import('./components/qr/QrScannerStream.vue')['default']
     ReconciliationTable: typeof import('./components/thread/ReconciliationTable.vue')['default']
     RecoveryTimeline: typeof import('./components/thread/RecoveryTimeline.vue')['default']
+    ReserveFromStockDialog: typeof import('./components/thread/weekly-order/ReserveFromStockDialog.vue')['default']
     ResultsDetailView: typeof import('./components/thread/weekly-order/ResultsDetailView.vue')['default']
     ResultsSummaryTable: typeof import('./components/thread/weekly-order/ResultsSummaryTable.vue')['default']
     ReturnInitiateDialog: typeof import('./components/thread/ReturnInitiateDialog.vue')['default']

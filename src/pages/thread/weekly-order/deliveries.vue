@@ -107,7 +107,7 @@
             </q-td>
           </template>
 
-          <!-- inventory_status badge (tracking tab) -->
+          <!-- inventory_status badge (tracking tab) - Task 7.1: Use quantity_cones -->
           <template #body-cell-inventory_status="props">
             <q-td :props="props">
               <template v-if="props.row.status === DeliveryStatus.DELIVERED">
@@ -119,12 +119,12 @@
                 <q-badge
                   v-else-if="props.row.inventory_status === InventoryReceiptStatus.PARTIAL"
                   color="orange"
-                  :label="`Chờ nhập (${getPendingQuantity(props.row)}/${props.row.total_cones || 0})`"
+                  :label="`Chờ nhập (${getPendingQuantity(props.row)}/${props.row.quantity_cones || 0})`"
                 />
                 <q-badge
                   v-else
                   color="grey"
-                  :label="`Chờ nhập (${props.row.total_cones || 0})`"
+                  :label="`Chờ nhập (${props.row.quantity_cones || 0})`"
                 />
               </template>
               <span
@@ -273,7 +273,7 @@
               Tuần: {{ selectedReceiveDelivery.week_name }}
             </p>
             <p class="q-mb-none">
-              Số đặt: {{ selectedReceiveDelivery.total_cones || 0 }} cuộn |
+              Số đặt: {{ selectedReceiveDelivery.quantity_cones || 0 }} cuộn |
               Đã nhập: {{ selectedReceiveDelivery.received_quantity || 0 }} cuộn |
               <strong class="text-negative">Còn thiếu: {{ getPendingQuantity(selectedReceiveDelivery) }} cuộn</strong>
             </p>
@@ -402,7 +402,7 @@ const trackingColumns: QTableColumn[] = [
   { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
   { name: 'tex_number', label: 'TEX', field: 'tex_number', align: 'center' },
   { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
-  { name: 'total_cones', label: 'Số cuộn', field: 'total_cones', align: 'center' },
+  { name: 'quantity_cones', label: 'Số cuộn', field: 'quantity_cones', align: 'center' }, // Task 7.1: Use quantity_cones
   { name: 'delivery_date', label: 'Ngày giao dự kiến', field: 'delivery_date', align: 'center', sortable: true },
   { name: 'days_remaining', label: 'Còn lại', field: 'days_remaining', align: 'center', sortable: true },
   { name: 'status', label: 'Giao hàng', field: 'status', align: 'center' },
@@ -414,7 +414,7 @@ const receiveColumns: QTableColumn[] = [
   { name: 'week_name', label: 'Tuần', field: 'week_name', align: 'left', sortable: true },
   { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
   { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
-  { name: 'total_cones', label: 'Số đặt', field: 'total_cones', align: 'center' },
+  { name: 'quantity_cones', label: 'Số đặt', field: 'quantity_cones', align: 'center' }, // Task 7.3: Use quantity_cones
   { name: 'received_quantity', label: 'Đã nhập', field: 'received_quantity', align: 'center' },
   { name: 'pending_quantity', label: 'Còn thiếu', field: 'pending_quantity', align: 'center' },
   { name: 'inventory_status', label: 'Trạng thái', field: 'inventory_status', align: 'center' },
@@ -446,10 +446,12 @@ function fromDatePickerFormat(dateStr: string): string {
   return `${year}-${month}-${day}`
 }
 
+// Task 7.2: Use quantity_cones for pending calculation
+// ISSUE-8: Allow negative values to indicate over-receipt per spec
 function getPendingQuantity(delivery: DeliveryRecord): number {
-  const total = delivery.total_cones || 0
+  const total = delivery.quantity_cones || 0
   const received = delivery.received_quantity || 0
-  return Math.max(0, total - received)
+  return total - received
 }
 
 function getInventoryStatusColor(status: string): string {

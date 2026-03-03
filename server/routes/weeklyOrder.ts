@@ -16,6 +16,7 @@ import {
   OrderedQuantitiesQuerySchema,
   HistoryByWeekQuerySchema,
   CreateLoanSchema,
+  ReserveFromStockSchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
 
@@ -1651,24 +1652,28 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
         [key: string]: unknown
       }>
 
-      // Get existing delivery records for this week
+      // Get existing delivery records for this week (Task 3.5: include quantity_cones)
       const { data: existingDeliveries } = await supabase
         .from('thread_order_deliveries')
-        .select('id, thread_type_id, supplier_id, delivery_date, status, received_quantity')
+        .select('id, thread_type_id, supplier_id, delivery_date, status, received_quantity, quantity_cones')
         .eq('week_id', id)
 
       // Build desired delivery rows from current summary data.
       // Deduplicate by thread_type_id to prevent repeated rows in tracking tab.
+      // Task 3.1-3.3: Include quantity_cones from total_final
       const desiredDeliveryMap = new Map<number, {
         week_id: number
         thread_type_id: number
         supplier_id: number
         delivery_date: string
         status: 'PENDING'
+        quantity_cones: number
       }>()
 
       for (const row of summaryRows) {
+        // Task 3.1: Read total_final from each summary_data row
         const plannedCones = row.total_final ?? row.total_cones ?? 0
+        // Task 3.2: Filter - only process rows with valid supplier_id (skip aggregated rows)
         if (!row.supplier_id || plannedCones < 1) continue
 
         if (!desiredDeliveryMap.has(row.thread_type_id)) {
@@ -1685,7 +1690,12 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
             supplier_id: row.supplier_id!,
             delivery_date: deliveryDate,
             status: 'PENDING',
+            quantity_cones: plannedCones, // Task 3.3: Include quantity_cones
           })
+        } else {
+          // Accumulate quantity_cones for same thread_type_id
+          const existing = desiredDeliveryMap.get(row.thread_type_id)!
+          existing.quantity_cones += plannedCones
         }
       }
 
@@ -1700,6 +1710,11 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
         .filter((row) => !existingThreadTypeIds.has(row.thread_type_id))
 
       if (newDeliveryRows.length > 0) {
+        // Task 3.5: Log delivery creation for audit trail
+        for (const row of newDeliveryRows) {
+          console.info(`[saveResults] Creating delivery for week=${id} thread_type=${row.thread_type_id}: quantity_cones=${row.quantity_cones}`)
+        }
+
         const { error: deliveryError } = await supabase
           .from('thread_order_deliveries')
           .insert(newDeliveryRows)
@@ -1712,6 +1727,7 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
 
       // Sync existing pending rows with the latest summary data.
       // Keep delivered/received rows unchanged to preserve execution history.
+      // Task 3.4: Also update quantity_cones when syncing
       const existingByThreadType = new Map(
         (existingDeliveries || []).map((row: {
           id: number
@@ -1720,6 +1736,7 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
           delivery_date: string
           status: string
           received_quantity: number | null
+          quantity_cones: number | null
         }) => [row.thread_type_id, row])
       )
 
@@ -1730,8 +1747,9 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
         if ((existing.received_quantity || 0) > 0) return false
 
         const sameSupplier = (existing.supplier_id ?? null) === (row.supplier_id ?? null)
-        const sameDate = existing.delivery_date === row.delivery_date
-        return !(sameSupplier && sameDate)
+        const sameQuantity = (existing.quantity_cones ?? 0) === row.quantity_cones
+        // Task 3.4: Only sync supplier_id and quantity_cones, preserve manual delivery_date edits
+        return !(sameSupplier && sameQuantity)
       })
 
       if (rowsToSync.length > 0) {
@@ -1740,43 +1758,28 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
           const existing = existingByThreadType.get(row.thread_type_id)
           if (!existing) continue
 
+          // Task 3.5: Log delivery quantity changes for audit trail
+          console.info(`[saveResults] Syncing delivery for week=${id} thread_type=${row.thread_type_id}: quantity_cones ${existing.quantity_cones ?? 0} -> ${row.quantity_cones}`)
+
           const { error: syncError } = await supabase
             .from('thread_order_deliveries')
             .update({
               supplier_id: row.supplier_id,
-              delivery_date: row.delivery_date,
+              // Note: delivery_date is NOT updated to preserve manual edits (per spec)
+              quantity_cones: row.quantity_cones, // Task 3.4: Sync quantity_cones
               updated_at: nowIso,
             })
             .eq('id', existing.id)
 
           if (syncError) {
             console.warn('Error syncing existing pending delivery row:', syncError)
-            // Don't throw - delivery sync is secondary to results saving
           }
         }
       }
 
-      // Remove stale pending rows no longer in current summary
-      // (keep delivered/received rows for audit history).
-      const stalePendingIds = (existingDeliveries || [])
-        .filter((row: { id: number; thread_type_id: number; status: string; received_quantity: number | null }) =>
-          !desiredThreadTypeIds.has(row.thread_type_id)
-          && row.status === 'PENDING'
-          && (row.received_quantity || 0) === 0
-        )
-        .map((row: { id: number }) => row.id)
-
-      if (stalePendingIds.length > 0) {
-        const { error: cleanupError } = await supabase
-          .from('thread_order_deliveries')
-          .delete()
-          .in('id', stalePendingIds)
-
-        if (cleanupError) {
-          console.warn('Error cleaning stale pending deliveries:', cleanupError)
-          // Don't throw - cleanup is secondary to results saving
-        }
-      }
+      // Task 3.4: Unmatched summary rows - keep existing delivery records unchanged (no delete)
+      // Stale pending rows that are no longer in current summary are left as-is per spec.
+      // This preserves delivery tracking history even when thread types are removed from results.
     }
 
     // Create allocation records for shortage items from calculation_data
@@ -1928,9 +1931,17 @@ weeklyOrder.post('/:id/loans', requirePermission('thread.allocations.manage'), a
       throw err
     }
 
-    // Get created_by from auth context (NOT from client)
-    const user = c.get('user') as { employee_id?: string; name?: string } | undefined
-    const createdBy = user?.employee_id || user?.name || 'unknown'
+    // ISSUE-1 FIX: Use c.get('auth') pattern and lookup employee full_name
+    const auth = c.get('auth')
+    let createdBy = 'unknown'
+    if (auth?.employeeId) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', auth.employeeId)
+        .single()
+      createdBy = emp?.full_name || auth.employeeCode || 'unknown'
+    }
 
     const { data: result, error: rpcError } = await supabase.rpc('fn_borrow_thread', {
       p_from_week_id: validated.from_week_id,
@@ -2060,6 +2071,219 @@ weeklyOrder.get('/:id/reservations', requirePermission('thread.allocations.view'
     })
   } catch (err) {
     console.error('Error fetching reservations:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+// ============================================================================
+// RESERVE FROM STOCK ENDPOINTS (Tasks 4 & 4B)
+// ============================================================================
+
+/**
+ * Task 4B: GET /api/weekly-orders/:id/reservation-summary - Get reservation summary
+ * Returns per-thread summary with needed, reserved, shortage, available_stock
+ * ISSUE-2 FIX: Also include thread types from summary_data that don't have delivery rows
+ */
+weeklyOrder.get('/:id/reservation-summary', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    // 4B.2: Get delivery records for this week (needed = quantity_cones)
+    const { data: deliveries, error: deliveryError } = await supabase
+      .from('thread_order_deliveries')
+      .select('thread_type_id, quantity_cones, thread_type:thread_types(id, name)')
+      .eq('week_id', id)
+      .is('deleted_at', null)
+
+    if (deliveryError) throw deliveryError
+
+    // Build delivery map: thread_type_id -> quantity_cones
+    const deliveryMap = new Map<number, number>()
+    const threadTypeNameMap = new Map<number, string>()
+    for (const d of deliveries || []) {
+      deliveryMap.set(d.thread_type_id, d.quantity_cones || 0)
+      if (d.thread_type && typeof d.thread_type === 'object' && 'name' in d.thread_type) {
+        threadTypeNameMap.set(d.thread_type_id, (d.thread_type as { id: number; name: string }).name)
+      }
+    }
+
+    // ISSUE-2 FIX: Also get thread types from summary_data that may not have delivery rows
+    const { data: resultsData, error: resultsError } = await supabase
+      .from('thread_order_results')
+      .select('summary_data')
+      .eq('week_id', id)
+      .single()
+
+    if (resultsError && resultsError.code !== 'PGRST116') throw resultsError
+
+    // Extract thread types from summary_data (fallback when no delivery row)
+    type SummaryRow = { thread_type_id?: number; thread_type_name?: string; total_final?: number }
+    const summaryData: SummaryRow[] = resultsData?.summary_data || []
+    const summaryMap = new Map<number, { name: string; totalFinal: number }>()
+    for (const row of summaryData) {
+      if (row.thread_type_id && row.total_final != null) {
+        summaryMap.set(row.thread_type_id, {
+          name: row.thread_type_name || '',
+          totalFinal: row.total_final,
+        })
+        // Also populate name if missing from delivery
+        if (!threadTypeNameMap.has(row.thread_type_id) && row.thread_type_name) {
+          threadTypeNameMap.set(row.thread_type_id, row.thread_type_name)
+        }
+      }
+    }
+
+    // Combine thread types: from deliveries + from summary_data (no duplicates)
+    const allThreadTypeIds = new Set<number>([...deliveryMap.keys(), ...summaryMap.keys()])
+
+    if (allThreadTypeIds.size === 0) {
+      return c.json({ data: [], error: null })
+    }
+
+    const threadTypeIds = Array.from(allThreadTypeIds)
+
+    // 4B.4: Get reserved counts per thread_type
+    const { data: reservedCounts, error: reservedError } = await supabase
+      .from('thread_inventory')
+      .select('thread_type_id')
+      .eq('reserved_week_id', id)
+      .eq('status', 'RESERVED_FOR_ORDER')
+      .in('thread_type_id', threadTypeIds)
+
+    if (reservedError) throw reservedError
+
+    const reservedMap = new Map<number, number>()
+    for (const r of reservedCounts || []) {
+      const count = reservedMap.get(r.thread_type_id) || 0
+      reservedMap.set(r.thread_type_id, count + 1)
+    }
+
+    // 4B.6: Get available stock per thread_type
+    const { data: availableCounts, error: availableError } = await supabase
+      .from('thread_inventory')
+      .select('thread_type_id')
+      .eq('status', 'AVAILABLE')
+      .is('reserved_week_id', null)
+      .in('thread_type_id', threadTypeIds)
+
+    if (availableError) throw availableError
+
+    const availableMap = new Map<number, number>()
+    for (const a of availableCounts || []) {
+      const count = availableMap.get(a.thread_type_id) || 0
+      availableMap.set(a.thread_type_id, count + 1)
+    }
+
+    // Build summary array
+    const summary = threadTypeIds.map((threadTypeId) => {
+      const hasDeliveryRow = deliveryMap.has(threadTypeId)
+      // 4B.3: needed = quantity_cones if delivery exists, else total_final from summary_data
+      const needed = hasDeliveryRow
+        ? (deliveryMap.get(threadTypeId) || 0)
+        : (summaryMap.get(threadTypeId)?.totalFinal || 0)
+      const reserved = reservedMap.get(threadTypeId) || 0
+      const availableStock = availableMap.get(threadTypeId) || 0
+      const shortage = Math.max(0, needed)
+      // 4B.7: can_reserve = true only if delivery row exists
+      const canReserve = hasDeliveryRow
+      const cannotReserveReason = hasDeliveryRow ? undefined : 'Không có dữ liệu giao hàng cho loại chỉ này'
+      const threadTypeName = threadTypeNameMap.get(threadTypeId) || ''
+
+      return {
+        thread_type_id: threadTypeId,
+        thread_type_name: threadTypeName,
+        needed,
+        reserved,
+        shortage,
+        available_stock: availableStock,
+        can_reserve: canReserve,
+        cannot_reserve_reason: cannotReserveReason,
+      }
+    })
+
+    return c.json({ data: summary, error: null })
+  } catch (err) {
+    console.error('Error fetching reservation summary:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * Task 4.2-4.5: POST /api/weekly-orders/:id/reserve-from-stock - Reserve available stock
+ * Calls fn_reserve_from_stock RPC
+ */
+weeklyOrder.post('/:id/reserve-from-stock', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const weekId = parseInt(c.req.param('id'))
+
+    if (isNaN(weekId)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = ReserveFromStockSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    // Task 4.3: Validate week exists and is CONFIRMED
+    const { data: week, error: weekError } = await supabase
+      .from('thread_order_weeks')
+      .select('id, status')
+      .eq('id', weekId)
+      .single()
+
+    if (weekError || !week) {
+      return c.json({ data: null, error: 'Không tìm thấy tuần đơn hàng' }, 404)
+    }
+
+    if (week.status !== 'CONFIRMED') {
+      return c.json({ data: null, error: 'Chỉ có thể lấy từ tồn kho cho tuần đã xác nhận' }, 400)
+    }
+
+    // ISSUE-1 FIX: Use c.get('auth') pattern and lookup employee full_name
+    const auth = c.get('auth')
+    let createdBy = 'unknown'
+    if (auth?.employeeId) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', auth.employeeId)
+        .single()
+      createdBy = emp?.full_name || auth.employeeCode || 'unknown'
+    }
+
+    // Task 4.4: Call fn_reserve_from_stock RPC
+    const { data: result, error: rpcError } = await supabase.rpc('fn_reserve_from_stock', {
+      p_week_id: weekId,
+      p_thread_type_id: validated.thread_type_id,
+      p_quantity: validated.quantity,
+      p_reason: validated.reason || null,
+      p_user: createdBy,
+    })
+
+    if (rpcError) {
+      return c.json({ data: null, error: rpcError.message }, 400)
+    }
+
+    // Task 4.5: Return result with loan_id
+    return c.json({
+      data: result,
+      error: null,
+      message: `Đã lấy ${result?.reserved || 0} cuộn từ tồn kho`,
+    })
+  } catch (err) {
+    console.error('Error reserving from stock:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

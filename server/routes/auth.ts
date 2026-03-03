@@ -10,6 +10,20 @@ import { sanitizeFilterValue } from '../utils/sanitize'
 
 const auth = new Hono()
 
+auth.get('/health', async (c) => {
+  const authContext = c.get('auth') as AuthContext
+
+  return c.json({
+    data: {
+      employeeId: authContext.employeeId,
+      employeeCode: authContext.employeeCode,
+      isRoot: authContext.isRoot,
+      valid: true,
+    },
+    error: false,
+  })
+})
+
 auth.get('/me', async (c) => {
   const { employeeId } = c.get('auth') as AuthContext
 

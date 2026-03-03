@@ -15,12 +15,16 @@ export function useWeeklyOrderReservations() {
 
   const fetchReservations = async (weekId: number): Promise<void> => {
     try {
-      const data = await loading.withLoading(async () => {
-        return await weeklyOrderService.getReservations(weekId)
+      // Task 8.5: Use new reservation-summary endpoint which includes available_stock and can_reserve
+      const [summaryData, reservationsData] = await loading.withLoading(async () => {
+        return Promise.all([
+          weeklyOrderService.getReservationSummary(weekId),
+          weeklyOrderService.getReservations(weekId),
+        ])
       })
 
-      reservationSummary.value = data.by_thread_type
-      reservedCones.value = data.cones
+      reservationSummary.value = summaryData
+      reservedCones.value = reservationsData.cones || []
     } catch (err) {
       snackbar.error('Không thể tải danh sách đặt trước')
       console.error('[useWeeklyOrderReservations] fetchReservations error:', err)

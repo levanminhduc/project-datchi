@@ -167,6 +167,7 @@ export interface DeliveryRecord {
   warehouse_id: number | null
   received_by: string | null
   received_at: string | null
+  quantity_cones: number // Task 5.1: Add quantity_cones
   days_remaining?: number
   is_overdue?: boolean
   supplier_name?: string
@@ -199,7 +200,7 @@ export interface DeliveryFilter {
 
 export interface ThreadOrderLoan {
   id: number
-  from_week_id: number
+  from_week_id: number | null // Task 5.2: Allow null for stock reserves
   to_week_id: number
   thread_type_id: number
   quantity_cones: number
@@ -210,16 +211,35 @@ export interface ThreadOrderLoan {
   updated_at: string
   deleted_at: string | null
   // Joined data
-  from_week?: { id: number; week_name: string }
+  from_week?: { id: number; week_name: string } | null
   to_week?: { id: number; week_name: string }
   thread_type?: { id: number; code: string; name: string }
 }
 
 export interface ReservationSummary {
   thread_type_id: number
+  thread_type_name?: string // ISSUE-7: Add thread type name for display
   needed: number
   reserved: number
   shortage: number
+  available_stock: number // Task 5.5: Add available_stock
+  can_reserve: boolean // Task 5.5: Add can_reserve
+  cannot_reserve_reason?: string // Task 5.5: Add cannot_reserve_reason
+}
+
+// Task 5.3: Add ReserveFromStockDTO
+export interface ReserveFromStockDTO {
+  thread_type_id: number
+  quantity: number
+  reason?: string
+}
+
+// Task 5.4: Add ReserveFromStockResult
+export interface ReserveFromStockResult {
+  success: boolean
+  reserved: number
+  shortage: number
+  loan_id: number | null
 }
 
 export interface CreateLoanDTO {

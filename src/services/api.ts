@@ -173,6 +173,10 @@ export async function fetchApiRaw(
 
   const response = await makeRequest(token)
   if (response.status === 401) {
+    if (!token) {
+      await forceBackToLogin()
+      throw new ApiError(401, 'Vui lòng đăng nhập')
+    }
     const newSession = await getRefreshedSession()
     return makeRequest(newSession.access_token)
   }

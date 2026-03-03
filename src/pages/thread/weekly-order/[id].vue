@@ -172,6 +172,19 @@
                 />
               </q-td>
             </template>
+            <template #body-cell-actions="props">
+              <q-td :props="props">
+                <AppButton
+                  v-if="week?.status === 'CONFIRMED' && props.row.shortage > 0 && props.row.available_stock > 0 && props.row.can_reserve"
+                  size="sm"
+                  color="primary"
+                  label="Lấy từ tồn kho"
+                  flat
+                  dense
+                  @click="openReserveFromStockDialog(props.row, props.row.thread_type_name || String(props.row.thread_type_id))"
+                />
+              </q-td>
+            </template>
           </q-table>
 
           <!-- Reserved cones list -->
@@ -225,6 +238,12 @@
             <template #body-cell-direction="props">
               <q-td :props="props">
                 <AppBadge
+                  v-if="props.row.from_week_id === null"
+                  label="Tồn kho"
+                  color="info"
+                />
+                <AppBadge
+                  v-else
                   :label="props.row.to_week_id === weekId ? 'Nhận' : 'Cho'"
                   :color="props.row.to_week_id === weekId ? 'positive' : 'warning'"
                 />
@@ -265,6 +284,16 @@
       :to-week-name="week.week_name"
       @created="onLoanCreated"
     />
+
+    <!-- Reserve from Stock Dialog -->
+    <ReserveFromStockDialog
+      v-if="week"
+      v-model="showReserveFromStockDialog"
+      :week-id="weekId"
+      :summary-item="selectedReservationSummary"
+      :thread-type-name="selectedThreadTypeName"
+      @reserved="onReserveFromStockComplete"
+    />
   </q-page>
 </template>
 
@@ -273,12 +302,13 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useWeeklyOrderReservations } from '@/composables/thread/useWeeklyOrderReservations'
-import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone } from '@/types/thread'
+import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone, ReservationSummary } from '@/types/thread'
 import type { QTableColumn } from 'quasar'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppBadge from '@/components/ui/cards/AppBadge.vue'
 import LoanDialog from '@/components/thread/weekly-order/LoanDialog.vue'
+import ReserveFromStockDialog from '@/components/thread/weekly-order/ReserveFromStockDialog.vue'
 
 definePage({
   meta: {
@@ -298,6 +328,9 @@ const isLoading = ref(false)
 
 const activeTab = ref('overview')
 const showLoanDialog = ref(false)
+const showReserveFromStockDialog = ref(false)
+const selectedReservationSummary = ref<ReservationSummary | null>(null)
+const selectedThreadTypeName = ref('')
 
 const loans = ref<ThreadOrderLoan[]>([])
 const loansLoading = ref(false)
@@ -339,6 +372,18 @@ const loadLoans = async () => {
 
 const onLoanCreated = async () => {
   showLoanDialog.value = false
+  await loadLoans()
+}
+
+const openReserveFromStockDialog = (summary: ReservationSummary, threadTypeName: string) => {
+  selectedReservationSummary.value = summary
+  selectedThreadTypeName.value = threadTypeName
+  showReserveFromStockDialog.value = true
+}
+
+const onReserveFromStockComplete = async () => {
+  showReserveFromStockDialog.value = false
+  await loadReservations()
   await loadLoans()
 }
 
@@ -389,7 +434,9 @@ const reservationSummaryColumns: QTableColumn[] = [
   { name: 'needed', label: 'Cần (cuộn)', field: 'needed', align: 'right' },
   { name: 'reserved', label: 'Đã đặt trước (cuộn)', field: 'reserved', align: 'right' },
   { name: 'shortage', label: 'Thiếu (cuộn)', field: 'shortage', align: 'right' },
+  { name: 'available_stock', label: 'Tồn kho', field: 'available_stock', align: 'right' },
   { name: 'status', label: 'Trạng thái', field: 'shortage', align: 'center' },
+  { name: 'actions', label: '', field: 'actions', align: 'center' },
 ]
 
 const reservedConesColumns: QTableColumn[] = [
@@ -403,7 +450,7 @@ const reservedConesColumns: QTableColumn[] = [
 
 const loanColumns: QTableColumn[] = [
   { name: 'direction', label: 'Chiều', field: 'to_week_id', align: 'center' },
-  { name: 'from_week', label: 'Tuần cho', field: (row: ThreadOrderLoan) => row.from_week?.week_name || '-', align: 'left' },
+  { name: 'from_week', label: 'Nguồn', field: (row: ThreadOrderLoan) => row.from_week_id === null ? 'Tồn kho' : (row.from_week?.week_name || '-'), align: 'left' },
   { name: 'to_week', label: 'Tuần nhận', field: (row: ThreadOrderLoan) => row.to_week?.week_name || '-', align: 'left' },
   { name: 'thread_type', label: 'Loại chỉ', field: (row: ThreadOrderLoan) => row.thread_type?.name || '-', align: 'left' },
   { name: 'quantity_cones', label: 'Cuộn', field: 'quantity_cones', align: 'right' },

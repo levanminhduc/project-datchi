@@ -20,6 +20,8 @@ import type {
   ReservedCone,
   CreateLoanDTO,
   ConfirmWithReserveResult,
+  ReserveFromStockDTO,
+  ReserveFromStockResult,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -302,14 +304,14 @@ export const weeklyOrderService = {
     return response.data || { all: [], given: [], received: [] }
   },
 
-  async getReservations(weekId: number): Promise<{ by_thread_type: ReservationSummary[]; cones: ReservedCone[] }> {
-    const response = await fetchApi<ApiResponse<{ by_thread_type: ReservationSummary[]; cones: ReservedCone[] }>>(`${BASE}/${weekId}/reservations`)
+  async getReservations(weekId: number): Promise<{ cones: ReservedCone[]; summary: Array<{ thread_type_id: number; count: number; total_meters: number }>; total_cones: number }> {
+    const response = await fetchApi<ApiResponse<{ cones: ReservedCone[]; summary: Array<{ thread_type_id: number; count: number; total_meters: number }>; total_cones: number }>>(`${BASE}/${weekId}/reservations`)
 
     if (response.error) {
       throw new Error(response.error)
     }
 
-    return response.data || { by_thread_type: [], cones: [] }
+    return response.data || { cones: [], summary: [], total_cones: 0 }
   },
 
   /**
@@ -323,5 +325,40 @@ export const weeklyOrderService = {
     }
 
     return response.data || []
+  },
+
+  /**
+   * Task 6.2: Get reservation summary for a week
+   * Returns per-thread summary with needed, reserved, shortage, available_stock
+   */
+  async getReservationSummary(weekId: number): Promise<ReservationSummary[]> {
+    const response = await fetchApi<ApiResponse<ReservationSummary[]>>(`${BASE}/${weekId}/reservation-summary`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
+  },
+
+  /**
+   * Task 6.1: Reserve available stock for a confirmed week
+   * Creates loan record with from_week_id = NULL
+   */
+  async reserveFromStock(weekId: number, dto: ReserveFromStockDTO): Promise<ReserveFromStockResult> {
+    const response = await fetchApi<ApiResponse<ReserveFromStockResult>>(`${BASE}/${weekId}/reserve-from-stock`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    if (!response.data) {
+      throw new Error('Không thể lấy từ tồn kho')
+    }
+
+    return response.data
   },
 }
