@@ -33,7 +33,34 @@ interface ApiResponse<T> {
 
 const BASE = '/api/weekly-orders'
 
+export interface CheckNameResult {
+  exists: boolean
+  week?: { id: number; week_name: string; status: string }
+}
+
 export const weeklyOrderService = {
+  /**
+   * Kiểm tra tên tuần đã tồn tại chưa
+   * @param name - Tên tuần cần kiểm tra
+   * @returns { exists: boolean, week?: { id, week_name, status } }
+   */
+  async checkWeekNameExists(name: string): Promise<CheckNameResult> {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      return { exists: false }
+    }
+
+    const response = await fetchApi<ApiResponse<CheckNameResult>>(
+      `${BASE}/check-name?name=${encodeURIComponent(trimmed)}`
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || { exists: false }
+  },
+
   /**
    * Lấy danh sách tất cả tuần đặt hàng
    * @param params - Optional filters (status)

@@ -955,6 +955,38 @@ weeklyOrder.get('/history-by-week', requirePermission('thread.allocations.view')
 })
 
 /**
+ * GET /api/weekly-orders/check-name - Check if week name exists
+ * Returns { exists: boolean, week?: { id, week_name, status } }
+ */
+weeklyOrder.get('/check-name', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const rawName = c.req.query('name')
+    const name = rawName?.trim()
+
+    if (!name) {
+      return c.json({ data: null, error: 'Thiếu tên tuần' }, 400)
+    }
+
+    const { data: week, error } = await supabase
+      .from('thread_order_weeks')
+      .select('id, week_name, status')
+      .eq('week_name', name)
+      .maybeSingle()
+
+    if (error) throw error
+
+    if (week) {
+      return c.json({ data: { exists: true, week }, error: null })
+    }
+
+    return c.json({ data: { exists: false }, error: null })
+  } catch (err) {
+    console.error('Error checking week name:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * GET /api/weekly-orders/:id/deliveries - List deliveries for a specific week
  */
 weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'), async (c) => {
@@ -1086,7 +1118,7 @@ weeklyOrder.post('/', requirePermission('thread.allocations.manage'), async (c) 
       .from('thread_order_weeks')
       .insert([
         {
-          week_name: validated.week_name,
+          week_name: validated.week_name.trim(),
           start_date: validated.start_date || null,
           end_date: validated.end_date || null,
           status: 'DRAFT',
@@ -1201,7 +1233,7 @@ weeklyOrder.put('/:id', requirePermission('thread.allocations.manage'), async (c
     const updateFields: Record<string, any> = {
       updated_at: new Date().toISOString(),
     }
-    if (validated.week_name !== undefined) updateFields.week_name = validated.week_name
+    if (validated.week_name !== undefined) updateFields.week_name = validated.week_name.trim()
     if (validated.start_date !== undefined) updateFields.start_date = validated.start_date || null
     if (validated.end_date !== undefined) updateFields.end_date = validated.end_date || null
     if (validated.notes !== undefined) updateFields.notes = validated.notes || null
@@ -1427,6 +1459,11 @@ weeklyOrder.patch('/:id/status', requirePermission('thread.allocations.manage'),
 
         if (rpcError) {
           lastError = rpcError
+          // If function doesn't exist or has issues, fallback to simple update
+          if (rpcError.code === '42883' || rpcError.message?.includes('does not exist')) {
+            lastError = null
+            break
+          }
           break
         }
 
@@ -1446,34 +1483,39 @@ weeklyOrder.patch('/:id/status', requirePermission('thread.allocations.manage'),
       }
 
       if (lastError) {
+        console.error('[PATCH status] fn_confirm_week_with_reserve error:', lastError)
         return c.json({ data: null, error: lastError.message }, 500)
       }
 
-      // Task 6.3: Return response with reservation_summary
-      const { data: week } = await supabase
-        .from('thread_order_weeks')
-        .select('*')
-        .eq('id', id)
-        .single()
+      // If RPC succeeded, return with reservation_summary
+      if (result) {
+        // Task 6.3: Return response with reservation_summary
+        const { data: week } = await supabase
+          .from('thread_order_weeks')
+          .select('*')
+          .eq('id', id)
+          .single()
 
-      const statusLabels: Record<string, string> = { CONFIRMED: 'xác nhận', CANCELLED: 'hủy' }
-      const warehouseIds = await getWarehouseEmployeeIds()
-      broadcastNotification({
-        employeeIds: warehouseIds,
-        type: 'WEEKLY_ORDER',
-        title: `Đơn đặt hàng tuần #${id} đã được ${statusLabels[newStatus] || newStatus}`,
-        actionUrl: '/thread/weekly-order',
-        metadata: { weekly_order_id: id, new_status: newStatus },
-      })
+        const statusLabels: Record<string, string> = { CONFIRMED: 'xác nhận', CANCELLED: 'hủy' }
+        const warehouseIds = await getWarehouseEmployeeIds()
+        broadcastNotification({
+          employeeIds: warehouseIds,
+          type: 'WEEKLY_ORDER',
+          title: `Đơn đặt hàng tuần #${id} đã được ${statusLabels[newStatus] || newStatus}`,
+          actionUrl: '/thread/weekly-order',
+          metadata: { weekly_order_id: id, new_status: newStatus },
+        })
 
-      return c.json({
-        data: {
-          week,
-          reservation_summary: result?.reservation_summary || [],
-        },
-        error: null,
-        message: 'Xác nhận và đặt trước thành công',
-      })
+        return c.json({
+          data: {
+            week,
+            reservation_summary: result?.reservation_summary || [],
+          },
+          error: null,
+          message: 'Xác nhận và đặt trước thành công',
+        })
+      }
+      // else: fallback to simple update below
     }
 
     // Task 6.4: When CANCELLED, check for active loans first

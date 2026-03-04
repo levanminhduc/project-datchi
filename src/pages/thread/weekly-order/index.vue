@@ -17,6 +17,7 @@
 
     <!-- Week Info -->
     <WeekInfoCard
+      ref="weekInfoCardRef"
       v-model="weekName"
       :start-date="startDate"
       :end-date="endDate"
@@ -25,18 +26,8 @@
       @update:start-date="startDate = $event"
       @update:end-date="endDate = $event"
       @update:notes="notes = $event"
-    >
-      <template #actions>
-        <AppButton
-          color="primary"
-          icon="save"
-          label="Lưu"
-          :loading="weekLoading"
-          :disable="!weekName || !canSave || hasOverLimitEntries"
-          @click="handleSave"
-        />
-      </template>
-    </WeekInfoCard>
+      @blur:week-name="handleWeekNameBlur"
+    />
 
     <!-- PO Selection Section -->
     <AppCard
@@ -221,6 +212,14 @@
       <!-- Result Actions -->
       <div class="row q-gutter-sm q-mt-md">
         <AppButton
+          color="primary"
+          icon="save"
+          label="Lưu tuần"
+          :loading="weekLoading"
+          :disable="!hasResults"
+          @click="handleSave"
+        />
+        <AppButton
           color="positive"
           icon="check_circle"
           label="Xác nhận tuần"
@@ -256,6 +255,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useQuasar } from 'quasar'
 import {
   useWeeklyOrder,
   useWeeklyOrderCalculation,
@@ -276,6 +276,7 @@ definePage({
 })
 
 // Composables
+const $q = useQuasar()
 const snackbar = useSnackbar()
 const {
   weeks,
@@ -326,6 +327,7 @@ const {
 } = usePurchaseOrders()
 
 // Local state
+const weekInfoCardRef = ref<{ focusWeekName: () => void } | null>(null)
 const weekName = ref('')
 const startDate = ref('')
 const endDate = ref('')
@@ -476,8 +478,8 @@ const handleSave = async () => {
 
     if (hasResults.value) {
       await saveResults(selectedWeek.value.id, perStyleResults.value, aggregatedResults.value)
-      resultsSaved.value = true
     }
+    resultsSaved.value = true
   } else {
     const created = await createWeek({
       week_name: weekName.value,
@@ -487,8 +489,11 @@ const handleSave = async () => {
       items,
     })
 
-    if (created && hasResults.value) {
-      await saveResults(created.id, perStyleResults.value, aggregatedResults.value)
+    if (created) {
+      selectedWeek.value = created
+      if (hasResults.value) {
+        await saveResults(created.id, perStyleResults.value, aggregatedResults.value)
+      }
       resultsSaved.value = true
     }
   }
@@ -546,6 +551,40 @@ const handleLoadWeek = async (weekId: number) => {
     snackbar.info('Đã tải kết quả tính toán đã lưu')
   } else {
     resultsSaved.value = false
+  }
+}
+
+const handleWeekNameBlur = async () => {
+  const trimmedName = weekName.value.trim()
+  if (!trimmedName) return
+
+  try {
+    const result = await weeklyOrderService.checkWeekNameExists(trimmedName)
+    if (!result.exists || !result.week) return
+
+    if (selectedWeek.value && result.week.id === selectedWeek.value.id) return
+
+    $q.dialog({
+      title: 'Tuần đã tồn tại',
+      message: `Tuần "${result.week.week_name}" đã tồn tại. Bạn muốn làm gì?`,
+      persistent: true,
+      options: {
+        type: 'radio',
+        model: 'load',
+        items: [
+          { label: 'Tải và cập nhật tuần này', value: 'load' },
+          { label: 'Đổi tên mới', value: 'rename' },
+        ],
+      },
+    }).onOk(async (action: string) => {
+      if (action === 'load' && result.week) {
+        await handleLoadWeek(result.week.id)
+      } else if (action === 'rename') {
+        weekInfoCardRef.value?.focusWeekName()
+      }
+    })
+  } catch {
+    // Graceful degradation: silently continue, save-time validation will catch duplicates
   }
 }
 

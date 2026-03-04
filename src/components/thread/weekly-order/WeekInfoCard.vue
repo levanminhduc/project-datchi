@@ -10,12 +10,14 @@
       <div class="row q-col-gutter-md">
         <div class="col-12 col-sm-4">
           <AppInput
+            ref="weekNameInputRef"
             :model-value="modelValue"
             label="Thông tin đơn hàng*"
             dense
             hide-bottom-space
             placeholder="Nhập thông tin đơn hàng"
             @update:model-value="$emit('update:modelValue', String($event ?? ''))"
+            @blur="$emit('blur:weekName')"
           />
         </div>
         <div class="col-12 col-sm-3">
@@ -96,8 +98,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import DatePicker from "@/components/ui/pickers/DatePicker.vue";
+import type { QInput } from 'quasar'
 
 const props = defineProps<{
   modelValue: string;
@@ -111,7 +114,16 @@ const emit = defineEmits<{
   "update:startDate": [value: string];
   "update:endDate": [value: string];
   "update:notes": [value: string];
+  "blur:weekName": [];
 }>();
+
+const weekNameInputRef = ref<QInput | null>(null)
+
+function focusWeekName() {
+  weekNameInputRef.value?.focus()
+}
+
+defineExpose({ focusWeekName })
 
 // Convert YYYY-MM-DD (DB) ↔ DD/MM/YYYY (DatePicker)
 function toDisplay(isoDate: string): string {
