@@ -34,6 +34,7 @@
           flat
           round
           dense
+          aria-label="Đóng dialog"
         />
       </q-card-section>
 

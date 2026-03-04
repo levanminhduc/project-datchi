@@ -22,6 +22,7 @@ import type {
   ConfirmWithReserveResult,
   ReserveFromStockDTO,
   ReserveFromStockResult,
+  AssignmentSummaryRow,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -387,5 +388,15 @@ export const weeklyOrderService = {
     }
 
     return response.data
+  },
+
+  async getAssignmentSummary(status?: string): Promise<AssignmentSummaryRow[]> {
+    const params = new URLSearchParams()
+    if (status) params.append('status', status)
+    const queryString = params.toString()
+    const url = queryString ? `${BASE}/assignment-summary?${queryString}` : `${BASE}/assignment-summary`
+    const response = await fetchApi<ApiResponse<AssignmentSummaryRow[]>>(url)
+    if (response.error) throw new Error(response.error)
+    return response.data || []
   },
 }

@@ -1022,6 +1022,136 @@ weeklyOrder.get('/check-name', requirePermission('thread.allocations.view'), asy
 })
 
 /**
+ * GET /api/weekly-orders/assignment-summary - Aggregate assignment data across weeks
+ * Query params:
+ *   status - filter by week status (DRAFT, CONFIRMED, COMPLETED, CANCELLED)
+ */
+weeklyOrder.get('/assignment-summary', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const statusFilter = c.req.query('status')
+
+    // 1. Get weeks with optional status filter
+    let weeksQuery = supabase
+      .from('thread_order_weeks')
+      .select('id, week_name, status')
+      .order('created_at', { ascending: false })
+
+    if (statusFilter) {
+      weeksQuery = weeksQuery.eq('status', statusFilter)
+    }
+
+    const { data: weeks, error: weeksError } = await weeksQuery
+    if (weeksError) throw weeksError
+    if (!weeks || weeks.length === 0) {
+      return c.json({ data: [], error: null })
+    }
+
+    const weekIds = weeks.map((w: any) => w.id)
+
+    // 2. Get planned cones from thread_order_results.summary_data JSONB
+    const { data: resultsData, error: resultsError } = await supabase
+      .from('thread_order_results')
+      .select('week_id, summary_data')
+      .in('week_id', weekIds)
+
+    if (resultsError) throw resultsError
+
+    // Build map: week_id -> thread_type_id -> planned_cones
+    const plannedMap = new Map<number, Map<number, { planned: number; code: string; name: string }>>()
+    for (const result of resultsData || []) {
+      const summaryRows: any[] = result.summary_data || []
+      const typeMap = new Map<number, { planned: number; code: string; name: string }>()
+      for (const row of summaryRows) {
+        if (row.thread_type_id) {
+          typeMap.set(row.thread_type_id, {
+            planned: row.total_final ?? row.sl_can_dat ?? row.total_cones ?? 0,
+            code: row.thread_type_code || row.code || '',
+            name: row.thread_type_name || row.name || '',
+          })
+        }
+      }
+      plannedMap.set(result.week_id, typeMap)
+    }
+
+    // 3. Count reserved cones from thread_inventory by reserved_week_id
+    const { data: reservedData, error: reservedError } = await supabase
+      .from('thread_inventory')
+      .select('reserved_week_id, thread_type_id')
+      .in('reserved_week_id', weekIds)
+      .eq('status', 'RESERVED_FOR_ORDER')
+
+    if (reservedError) throw reservedError
+
+    // Build map: week_id -> thread_type_id -> count
+    const reservedMap = new Map<number, Map<number, number>>()
+    for (const cone of reservedData || []) {
+      if (!reservedMap.has(cone.reserved_week_id)) {
+        reservedMap.set(cone.reserved_week_id, new Map())
+      }
+      const typeMap = reservedMap.get(cone.reserved_week_id)!
+      typeMap.set(cone.thread_type_id, (typeMap.get(cone.thread_type_id) || 0) + 1)
+    }
+
+    // 4. Sum allocated cones from thread_allocations by week_id
+    // Join with thread_types to get meters_per_cone
+    // ISSUED = đã cấp phát, HARD = đã confirm cứng
+    const { data: allocData, error: allocError } = await supabase
+      .from('thread_allocations')
+      .select('week_id, thread_type_id, allocated_meters, thread_type:thread_types(meters_per_cone)')
+      .in('week_id', weekIds)
+      .in('status', ['ISSUED', 'HARD'])
+
+    if (allocError) throw allocError
+
+    // Build map: week_id -> thread_type_id -> allocated_cones
+    const allocMap = new Map<number, Map<number, number>>()
+    for (const alloc of allocData || []) {
+      if (!alloc.week_id) continue
+      if (!allocMap.has(alloc.week_id)) {
+        allocMap.set(alloc.week_id, new Map())
+      }
+      const typeMap = allocMap.get(alloc.week_id)!
+      const metersPerCone = (alloc.thread_type as any)?.meters_per_cone || 0
+      const cones = metersPerCone > 0
+        ? Number(alloc.allocated_meters) / metersPerCone
+        : 0
+      typeMap.set(alloc.thread_type_id, (typeMap.get(alloc.thread_type_id) || 0) + cones)
+    }
+
+    // 5. Aggregate results
+    const rows: any[] = []
+    for (const week of weeks) {
+      const typeMap = plannedMap.get(week.id)
+      if (!typeMap) continue
+
+      for (const [threadTypeId, { planned, code, name }] of typeMap) {
+        const reserved = reservedMap.get(week.id)?.get(threadTypeId) || 0
+        const allocated = Math.round(allocMap.get(week.id)?.get(threadTypeId) || 0)
+        const gap = reserved - planned
+
+        rows.push({
+          week_id: week.id,
+          week_name: week.week_name,
+          week_status: week.status,
+          thread_type_id: threadTypeId,
+          thread_type_code: code,
+          thread_type_name: name,
+          planned_cones: planned,
+          reserved_cones: reserved,
+          allocated_cones: allocated,
+          gap,
+        })
+      }
+    }
+
+    return c.json({ data: rows, error: null })
+  } catch (err) {
+    console.error('Error fetching assignment summary:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * GET /api/weekly-orders/:id/deliveries - List deliveries for a specific week
  */
 weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'), async (c) => {

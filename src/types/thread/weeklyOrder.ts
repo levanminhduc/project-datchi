@@ -266,3 +266,16 @@ export interface ReservedCone {
   thread_type?: { id: number; code: string; name: string }
   warehouse?: { id: number; code: string; name: string }
 }
+
+export interface AssignmentSummaryRow {
+  week_id: number
+  week_name: string
+  week_status: string
+  thread_type_id: number
+  thread_type_code: string
+  thread_type_name: string
+  planned_cones: number
+  reserved_cones: number
+  allocated_cones: number
+  gap: number
+}

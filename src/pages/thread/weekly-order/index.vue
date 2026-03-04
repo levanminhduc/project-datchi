@@ -8,6 +8,12 @@
       <template #actions>
         <AppButton
           flat
+          icon="assignment_turned_in"
+          label="Kiểm soát chỉ đã gán"
+          @click="showAssignmentControl = true"
+        />
+        <AppButton
+          flat
           icon="history"
           label="Lịch sử"
           @click="showHistory = true"
@@ -250,6 +256,11 @@
       :loading="weekLoading"
       @load="handleLoadWeek"
     />
+
+    <!-- Assignment Control Dialog -->
+    <AssignmentControlDialog
+      v-model="showAssignmentControl"
+    />
   </q-page>
 </template>
 
@@ -267,6 +278,7 @@ import { weeklyOrderService } from '@/services/weeklyOrderService'
 import type { PurchaseOrderWithItems, CalculationResult } from '@/types/thread'
 import { OrderWeekStatus } from '@/types/thread/enums'
 import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
+import AssignmentControlDialog from '@/components/thread/weekly-order/AssignmentControlDialog.vue'
 
 definePage({
   meta: {
@@ -337,6 +349,7 @@ const loadingPOId = ref<number | null>(null)
 const loadedPOs = ref<PurchaseOrderWithItems[]>([])
 const resultView = ref<'detail' | 'summary'>('summary')
 const showHistory = ref(false)
+const showAssignmentControl = ref(false)
 const confirmingWeek = ref(false)
 const resultsSaved = ref(false)
 
