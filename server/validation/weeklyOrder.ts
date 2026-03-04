@@ -57,6 +57,7 @@ export const EnrichInventorySchema = z.object({
         .passthrough(),
     )
     .min(1, 'Cần ít nhất một dòng tổng hợp'),
+  current_week_id: z.number().int().positive().optional(),
 })
 
 export const ReceiveDeliverySchema = z.object({

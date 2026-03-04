@@ -349,8 +349,9 @@ export function useWeeklyOrderCalculation() {
   /**
    * Run calculations for all style entries using batch endpoint (1 request)
    * Falls back to N parallel requests if batch fails
+   * @param currentWeekId - Optional week ID to exclude from committed cones calculation
    */
-  const calculateAll = async () => {
+  const calculateAll = async (currentWeekId?: number) => {
     isCalculating.value = true
     calculationErrors.value = []
     perStyleResults.value = []
@@ -399,7 +400,7 @@ export function useWeeklyOrderCalculation() {
 
     // Enrich with inventory data
     try {
-      const enriched = await weeklyOrderService.enrichInventory(aggregatedResults.value)
+      const enriched = await weeklyOrderService.enrichInventory(aggregatedResults.value, currentWeekId)
       aggregatedResults.value = enriched
     } catch (err) {
       console.warn('[weekly-order] enrich inventory failed, using unenriched data:', err)

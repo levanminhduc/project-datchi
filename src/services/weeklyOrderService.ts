@@ -228,10 +228,10 @@ export const weeklyOrderService = {
     return response.data
   },
 
-  async enrichInventory(rows: AggregatedRow[]): Promise<AggregatedRow[]> {
+  async enrichInventory(rows: AggregatedRow[], currentWeekId?: number): Promise<AggregatedRow[]> {
     const response = await fetchApi<ApiResponse<AggregatedRow[]>>(`${BASE}/enrich-inventory`, {
       method: 'POST',
-      body: JSON.stringify({ summary_rows: rows }),
+      body: JSON.stringify({ summary_rows: rows, current_week_id: currentWeekId }),
     })
 
     if (response.error) {

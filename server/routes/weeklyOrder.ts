@@ -192,16 +192,17 @@ weeklyOrder.post('/enrich-inventory', requirePermission('thread.allocations.mana
       throw err
     }
 
-    const { summary_rows } = validated
+    const { summary_rows, current_week_id } = validated
 
     // Extract unique thread_type_ids
     const threadTypeIds = [...new Set(summary_rows.map((r) => r.thread_type_id))]
 
-    // Query available inventory
+    // Query available inventory (exclude reserved cones)
     const { data: inventory, error: invError } = await supabase
       .from('thread_inventory')
       .select('thread_type_id, is_partial')
       .eq('status', 'AVAILABLE')
+      .is('reserved_week_id', null)
       .in('thread_type_id', threadTypeIds)
 
     if (invError) throw invError
@@ -213,9 +214,42 @@ weeklyOrder.post('/enrich-inventory', requirePermission('thread.allocations.mana
       inventoryMap.set(row.thread_type_id, current + 1)
     }
 
+    // Query committed cones from other CONFIRMED weeks via their saved summary_data
+    const committedMap = new Map<number, number>()
+    if (threadTypeIds.length > 0) {
+      // Get total_cones from summary_data of other CONFIRMED weeks
+      let confirmedQuery = supabase
+        .from('thread_order_results')
+        .select('week_id, summary_data, thread_order_weeks!inner(status)')
+        .eq('thread_order_weeks.status', 'CONFIRMED')
+
+      if (current_week_id) {
+        confirmedQuery = confirmedQuery.neq('week_id', current_week_id)
+      }
+
+      const { data: confirmedData, error: confirmedError } = await confirmedQuery
+
+      if (confirmedError) {
+        console.error('[enrich-inventory] confirmedError:', confirmedError)
+      }
+
+      for (const result of confirmedData || []) {
+        const summaryRows = result.summary_data as Array<{ thread_type_id: number; total_cones: number }> | null
+        if (!summaryRows) continue
+        for (const row of summaryRows) {
+          if (threadTypeIds.includes(row.thread_type_id)) {
+            const current = committedMap.get(row.thread_type_id) || 0
+            committedMap.set(row.thread_type_id, current + (row.total_cones || 0))
+          }
+        }
+      }
+    }
+
     // Enrich each summary row
     const enrichedRows = summary_rows.map((row) => {
-      const inventory_cones = inventoryMap.get(row.thread_type_id) || 0
+      const raw_inventory = inventoryMap.get(row.thread_type_id) || 0
+      const committed_cones = committedMap.get(row.thread_type_id) || 0
+      const inventory_cones = Math.max(0, raw_inventory - committed_cones)
       const sl_can_dat = Math.max(0, row.total_cones - inventory_cones)
       const additional_order = 0
       const total_final = sl_can_dat
@@ -223,6 +257,7 @@ weeklyOrder.post('/enrich-inventory', requirePermission('thread.allocations.mana
       return {
         ...row,
         inventory_cones,
+        committed_cones,
         sl_can_dat,
         additional_order,
         total_final,

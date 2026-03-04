@@ -431,7 +431,7 @@ const handleUpdateQuotaCones = async (threadTypeId: number, value: number) => {
 
 const handleCalculate = async () => {
   resultsSaved.value = false
-  await calculateAll()
+  await calculateAll(selectedWeek.value?.id)
 }
 
 const handleUpdateDeliveryDate = (specId: number, date: string) => {
