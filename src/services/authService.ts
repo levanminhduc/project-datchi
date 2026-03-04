@@ -102,7 +102,7 @@ class AuthService {
       }
       return { data: response.data, errorType: null }
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403 || err.status === 404)) {
         return { data: null, errorType: 'auth' }
       }
       return { data: null, errorType: 'network' }

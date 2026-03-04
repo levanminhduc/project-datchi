@@ -62,6 +62,25 @@ export async function authMiddleware(c: Context, next: Next) {
       return c.json({ error: true, message: 'Token thiếu thông tin nhân viên. Vui lòng đăng nhập lại.' }, 401)
     }
 
+    const { data: employeeStatus, error: employeeStatusError } = await supabaseAdmin
+      .from('employees')
+      .select('id, is_active, deleted_at')
+      .eq('id', jwtPayload.employee_id)
+      .maybeSingle()
+
+    if (employeeStatusError) {
+      console.error('Auth middleware: failed to fetch employee status:', employeeStatusError)
+      return c.json({ error: true, message: 'Xác thực thất bại' }, 401)
+    }
+
+    if (!employeeStatus || employeeStatus.deleted_at) {
+      return c.json({ error: true, message: 'Tài khoản không tồn tại hoặc đã bị xóa' }, 403)
+    }
+
+    if (!employeeStatus.is_active) {
+      return c.json({ error: true, message: 'Tài khoản đã bị vô hiệu hóa' }, 403)
+    }
+
     let permissions: string[]
     if (jwtPayload.is_root) {
       permissions = ['*']

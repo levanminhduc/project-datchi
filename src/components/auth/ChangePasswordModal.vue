@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, computed } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import type { QForm } from 'quasar'
 
@@ -24,8 +24,10 @@ const formRef = ref<QForm>()
 const loading = ref(false)
 const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
+const needsCurrentPasswordInput = computed(() => !props.currentPassword)
 
 const form = reactive({
+  currentPassword: '',
   newPassword: '',
   confirmPassword: '',
 })
@@ -37,6 +39,7 @@ const rules = {
 }
 
 function resetForm() {
+  form.currentPassword = ''
   form.newPassword = ''
   form.confirmPassword = ''
   showNewPassword.value = false
@@ -50,8 +53,9 @@ watch(() => props.modelValue, (val) => {
 
 async function onSubmit() {
   loading.value = true
+  const currentPassword = props.currentPassword || form.currentPassword
   const success = await changePassword({
-    currentPassword: props.currentPassword || '',
+    currentPassword,
     newPassword: form.newPassword,
     confirmPassword: form.confirmPassword,
   })
@@ -92,6 +96,16 @@ async function onSubmit() {
             </template>
             Bạn cần đổi mật khẩu trước khi tiếp tục sử dụng hệ thống.
           </q-banner>
+
+          <AppInput
+            v-if="needsCurrentPasswordInput"
+            v-model="form.currentPassword"
+            label="Mật khẩu hiện tại"
+            type="password"
+            prepend-icon="lock"
+            :rules="[rules.required]"
+            autocomplete="current-password"
+          />
 
           <AppInput
             v-model="form.newPassword"

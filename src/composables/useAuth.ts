@@ -411,15 +411,22 @@ export function useAuth() {
     loggedOut = true
     verifiedPermissionsSnapshot = null
     try {
-      await authService.signOut()
-    } catch {
+      try {
+        await authService.signOut()
+      } catch {
+      }
+
+      await clearAuthSessionLocal()
+      snackbar.success('Đã đăng xuất')
+      resetState()
+      initialized = false
+
+      await router.push('/login').catch(() => {
+        window.location.replace('/login')
+      })
+    } finally {
+      signingOut = false
     }
-    await clearAuthSessionLocal()
-    snackbar.success('Đã đăng xuất')
-    resetState()
-    initialized = false
-    await router.push('/login')
-    signingOut = false
   }
 
   async function changePassword(data: ChangePasswordData): Promise<boolean> {

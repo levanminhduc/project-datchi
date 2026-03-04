@@ -45,7 +45,7 @@ auth.get('/me', async (c) => {
       .single()
 
     if (error || !employee) {
-      return c.json({ error: true, message: 'Nhân viên không tồn tại' }, 404)
+      return c.json({ error: true, message: 'Phiên đăng nhập không hợp lệ' }, 401)
     }
 
     const { data: employeeRoles } = await supabaseAdmin
