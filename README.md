@@ -28,24 +28,24 @@ Hệ thống quản lý toàn diện cho:
 ```
 project-datchi/
 ├── server/                    # Hono API backend (port 3000)
-│   ├── routes/               # 25 API route handlers
+│   ├── routes/               # 26 API route handlers
 │   ├── db/                   # Supabase clients (admin)
 │   ├── middleware/           # Auth JWT verification
-│   ├── types/                # 11 backend-specific types
-│   ├── validation/           # 6 Zod validation schemas
+│   ├── types/                # 13 backend-specific types
+│   ├── validation/           # 7 Zod validation schemas
 │   ├── utils/                # Error helpers, sanitize, notification
 │   └── scripts/              # Utility scripts
 ├── src/
 │   ├── components/
-│   │   ├── ui/               # 67 UI components (13 categories)
-│   │   ├── thread/           # 41 domain-specific components
+│   │   ├── ui/               # 67 UI components (16 categories)
+│   │   ├── thread/           # 47 domain-specific components
 │   │   ├── qr/               # QR scanning components
 │   │   └── hardware/         # Scanner/scale integration
-│   ├── composables/          # 46 composables
+│   ├── composables/          # 45 composables
 │   │   ├── thread/           # 20 domain composables
 │   │   └── hardware/         # Scanner, scale, audio feedback
-│   ├── services/             # 28 API clients (fetchApi pattern)
-│   ├── pages/                # 41 pages (file-based routing)
+│   ├── services/             # 30 API clients (fetchApi pattern)
+│   ├── pages/                # 49 pages (file-based routing)
 │   │   ├── thread/           # Thread management module
 │   │   │   ├── batch/        # Batch operations (4 pages)
 │   │   │   ├── calculation/  # Thread calculation
@@ -57,15 +57,15 @@ project-datchi/
 │   │   │   └── weekly-order/ # Weekly ordering & deliveries
 │   │   ├── nhan-su/          # HR module
 │   │   └── reports/          # Reporting module
-│   ├── types/                # 40 TypeScript definitions
-│   │   ├── ui/               # 13 UI component interfaces
-│   │   ├── thread/           # 18 thread domain types
+│   ├── types/                # 37 TypeScript definitions
+│   │   ├── ui/               # 11 UI component interfaces
+│   │   ├── thread/           # 19 thread domain types
 │   │   └── auth/             # Authentication types
 │   ├── stores/               # Pinia stores
 │   └── utils/                # Shared utilities
 ├── .claude/
-│   └── agents/               # 9 AI agent definitions
-└── supabase/                 # 55 migrations + seed data
+│   └── agents/               # 30 AI agent definitions
+└── supabase/                 # 83 migrations + seed data
 ```
 
 ## 💻 Cài đặt
