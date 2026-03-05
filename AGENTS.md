@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-06
-**Commit:** 9e70538
+**Generated:** 2026-03-05
+**Commit:** d37f2ef
 **Branch:** main
 
 ## OVERVIEW
@@ -49,23 +49,32 @@ delegate_task(
 ```
 project-datchi/
 ├── server/           # Hono API backend (port 3000)
-│   ├── routes/       # 19 API route files
+│   ├── routes/       # 26 API route files
 │   ├── db/           # Supabase clients (anon + admin)
-│   └── middleware/   # Auth JWT verification
+│   ├── middleware/   # Auth JWT verification
+│   ├── types/        # 13 backend-specific types
+│   ├── validation/   # 7 Zod validation schemas
+│   ├── utils/        # 3 error helpers, sanitize, notification
+│   └── scripts/      # 2 utility scripts
 ├── src/
 │   ├── components/
-│   │   ├── thread/   # 31 domain components (widgets, dialogs)
-│   │   ├── ui/       # Quasar wrappers (13 subdirs, 66 components)
+│   │   ├── thread/   # 47 domain components (widgets, dialogs)
+│   │   ├── ui/       # Quasar wrappers (16 subdirs, 67 components)
+│   │   ├── auth/     # 1 auth component
+│   │   ├── offline/  # 2 offline sync components
 │   │   ├── qr/       # QR scanning components
 │   │   └── hardware/ # Scanner/scale integration
-│   ├── composables/  # 39 composables (state + logic)
-│   │   ├── thread/   # Domain: inventory, allocations, recovery
+│   ├── composables/  # 45 composables (state + logic)
+│   │   ├── thread/   # 20 domain composables
 │   │   └── hardware/ # Scanner, scale, audio feedback
-│   ├── services/     # 21 API clients (fetchApi pattern)
-│   ├── pages/        # 34 pages, file-based routing (unplugin-vue-router)
-│   │   └── thread/   # 9 pages + batch/ + mobile/ subdirs
-│   └── types/        # 35 TypeScript files (ui/, thread/, auth/)
-└── supabase/         # 36 migrations, seed data
+│   ├── services/     # 30 API clients (fetchApi pattern)
+│   ├── pages/        # 49 pages, file-based routing (unplugin-vue-router)
+│   │   └── thread/   # Thread management + batch/ + mobile/ subdirs
+│   ├── types/        # 37 TypeScript files (ui/, thread/, auth/)
+│   └── layouts/      # 1 main layout
+├── .claude/
+│   └── agents/       # 30 AI agent definitions
+└── supabase/         # 83 migrations, seed data
 ```
 
 ## CODEBASE SEARCH (MCP Context Engine)
@@ -138,7 +147,7 @@ augment-context-engine_codebase-retrieval({
 })
 ```
 
-**Thư viện UI có sẵn (66 components):**
+**Thư viện UI có sẵn (67 components):**
 | Category | Components |
 |----------|------------|
 | `buttons/` | AppButton, IconButton, ButtonGroup, ButtonToggle, ButtonDropdown |
@@ -232,17 +241,16 @@ catch (err) {
 }
 ```
 
-## ANTI-PATTERNS (THIS PROJECT)
+## ANTI-PATTERNS
+
+See `CLAUDE.md` → "Anti-patterns" section. Additional project-specific anti-patterns:
 
 | ❌ Forbidden | ✅ Use Instead |
 |--------------|----------------|
-| `$q.notify()` direct | `useSnackbar()` composable |
 | `$q.dialog()` direct | `useConfirm()` composable |
-| `supabase` in frontend | Service → Hono API → `supabaseAdmin` |
 | Duplicate notifications | Composables already notify on CRUD |
 | `createEmployee(formData)` | `createEmployee({ ...formData })` (spread reactive) |
 | `as any`, `@ts-ignore` | Fix types properly |
-| `supabase db reset` without consent | Apply single migration via `psql` (see NOTES) |
 
 ## UNIQUE STYLES
 
@@ -269,21 +277,12 @@ realtime.subscribe({ table: 'thread_inventory', event: '*' }, callback)
 
 ## COMMANDS
 
-```bash
-npm run dev        # Frontend (5173)
-npm run server     # Backend (3000)
-npm run dev:all    # Both concurrently
-npm run build      # Prod build (includes type-check)
-npm run type-check # vue-tsc only
-npm run lint       # ESLint fix
-```
+See `CLAUDE.md` → "Commands" section.
 
 ## NOTES
 
 ### Critical Safety
-- NEVER run `supabase db reset` without explicit user consent
-- Backup before migrations with DROP/TRUNCATE
-- Check migration content for data-destructive operations
+See `CLAUDE.md` → "CRITICAL SAFETY RULES" section.
 - To apply a single migration safely:
   ```bash
   docker exec -i supabase_db_project-datchi psql -U postgres -d postgres < supabase/migrations/YYYYMMDD_name.sql
