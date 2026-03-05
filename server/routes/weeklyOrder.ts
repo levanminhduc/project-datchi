@@ -2112,11 +2112,40 @@ weeklyOrder.get('/:id/results', requirePermission('thread.allocations.view'), as
 })
 
 // ============================================================================
-// LOAN & RESERVATION ENDPOINTS (Tasks 8.1-8.3)
+// LOAN & RESERVATION ENDPOINTS
 // ============================================================================
 
 /**
- * Task 8.1: POST /api/weekly-orders/:id/loans - Create manual borrow
+ * GET /api/weekly-orders/loans/all - Get all loans across all weeks
+ * Static route MUST be before /:id/loans
+ */
+weeklyOrder.get('/loans/all', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const { data: loans, error } = await supabase
+      .from('thread_order_loans')
+      .select(
+        `
+        *,
+        from_week:thread_order_weeks!thread_order_loans_from_week_id_fkey(id, week_name),
+        to_week:thread_order_weeks!thread_order_loans_to_week_id_fkey(id, week_name),
+        thread_type:thread_types(id, code, name)
+      `,
+      )
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(500)
+
+    if (error) throw error
+
+    return c.json({ data: loans, error: null })
+  } catch (err) {
+    console.error('Error fetching all loans:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * POST /api/weekly-orders/:id/loans - Create manual borrow
  * Uses fn_borrow_thread RPC, created_by from auth context
  */
 weeklyOrder.post('/:id/loans', requirePermission('thread.allocations.manage'), async (c) => {
@@ -2492,34 +2521,6 @@ weeklyOrder.post('/:id/reserve-from-stock', requirePermission('thread.allocation
     })
   } catch (err) {
     console.error('Error reserving from stock:', err)
-    return c.json({ data: null, error: getErrorMessage(err) }, 500)
-  }
-})
-
-/**
- * GET /api/weekly-orders/loans/all - Get all loans across all weeks
- */
-weeklyOrder.get('/loans/all', requirePermission('thread.allocations.view'), async (c) => {
-  try {
-    const { data: loans, error } = await supabase
-      .from('thread_order_loans')
-      .select(
-        `
-        *,
-        from_week:thread_order_weeks!thread_order_loans_from_week_id_fkey(id, week_name),
-        to_week:thread_order_weeks!thread_order_loans_to_week_id_fkey(id, week_name),
-        thread_type:thread_types(id, code, name)
-      `,
-      )
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(500)
-
-    if (error) throw error
-
-    return c.json({ data: loans, error: null })
-  } catch (err) {
-    console.error('Error fetching all loans:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

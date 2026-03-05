@@ -35,7 +35,7 @@
           :filter="filter"
         >
           <template #top-right>
-            <q-input
+            <AppInput
               v-model="filter"
               dense
               outlined
@@ -44,7 +44,7 @@
               <template #append>
                 <q-icon name="search" />
               </template>
-            </q-input>
+            </AppInput>
           </template>
 
           <template #body-cell-from_week="props">
@@ -76,6 +76,15 @@
             </q-td>
           </template>
 
+          <template #body-cell-status="props">
+            <q-td :props="props">
+              <q-badge
+                :label="props.row.status === 'SETTLED' ? 'Đã trả' : 'Đang mượn'"
+                :color="props.row.status === 'SETTLED' ? 'green' : 'orange'"
+              />
+            </q-td>
+          </template>
+
           <template #no-data>
             <div class="text-center text-grey q-pa-xl">
               <q-icon
@@ -99,9 +108,10 @@ import { ref, onMounted } from 'vue'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import type { ThreadOrderLoan } from '@/types/thread'
 import type { QTableColumn } from 'quasar'
-import { useQuasar } from 'quasar'
+import { useSnackbar } from '@/composables/useSnackbar'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
+import AppInput from '@/components/ui/inputs/AppInput.vue'
 
 definePage({
   meta: {
@@ -110,7 +120,7 @@ definePage({
   },
 })
 
-const $q = useQuasar()
+const snackbar = useSnackbar()
 
 const loans = ref<ThreadOrderLoan[]>([])
 const isLoading = ref(false)
@@ -160,6 +170,12 @@ const columns: QTableColumn[] = [
     align: 'left',
   },
   {
+    name: 'status',
+    label: 'Trạng thái',
+    field: 'status',
+    align: 'center',
+  },
+  {
     name: 'created_at',
     label: 'Ngày tạo',
     field: 'created_at',
@@ -174,10 +190,7 @@ async function loadLoans() {
   try {
     loans.value = await weeklyOrderService.getAllLoans()
   } catch (err) {
-    $q.notify({
-      type: 'negative',
-      message: err instanceof Error ? err.message : 'Lỗi tải dữ liệu',
-    })
+    snackbar.error(err instanceof Error ? err.message : 'Lỗi tải dữ liệu')
   } finally {
     isLoading.value = false
   }

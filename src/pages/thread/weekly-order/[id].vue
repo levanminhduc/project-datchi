@@ -249,6 +249,14 @@
                 />
               </q-td>
             </template>
+            <template #body-cell-status="props">
+              <q-td :props="props">
+                <AppBadge
+                  :label="props.row.status === 'SETTLED' ? 'Đã trả' : 'Đang mượn'"
+                  :color="props.row.status === 'SETTLED' ? 'positive' : 'warning'"
+                />
+              </q-td>
+            </template>
             <template #no-data>
               <div class="text-center text-grey q-pa-md">
                 Chưa có khoản mượn chỉ nào
@@ -450,6 +458,7 @@ const reservedConesColumns: QTableColumn[] = [
 
 const loanColumns: QTableColumn[] = [
   { name: 'direction', label: 'Chiều', field: 'to_week_id', align: 'center' },
+  { name: 'status', label: 'Trạng thái', field: 'status', align: 'center' },
   { name: 'from_week', label: 'Nguồn', field: (row: ThreadOrderLoan) => row.from_week_id === null ? 'Tồn kho' : (row.from_week?.week_name || '-'), align: 'left' },
   { name: 'to_week', label: 'Tuần nhận', field: (row: ThreadOrderLoan) => row.to_week?.week_name || '-', align: 'left' },
   { name: 'thread_type', label: 'Loại chỉ', field: (row: ThreadOrderLoan) => row.thread_type?.name || '-', align: 'left' },

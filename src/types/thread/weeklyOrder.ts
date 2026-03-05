@@ -198,19 +198,21 @@ export interface DeliveryFilter {
 
 // ============ RESERVE & LOAN TYPES ============
 
+export type LoanStatus = 'ACTIVE' | 'SETTLED'
+
 export interface ThreadOrderLoan {
   id: number
-  from_week_id: number | null // Task 5.2: Allow null for stock reserves
+  from_week_id: number | null
   to_week_id: number
   thread_type_id: number
   quantity_cones: number
   quantity_meters: number | null
   reason: string | null
+  status: LoanStatus
   created_by: string
   created_at: string
   updated_at: string
   deleted_at: string | null
-  // Joined data
   from_week?: { id: number; week_name: string } | null
   to_week?: { id: number; week_name: string }
   thread_type?: { id: number; code: string; name: string }
