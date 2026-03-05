@@ -200,6 +200,22 @@ export interface DeliveryFilter {
 
 export type LoanStatus = 'ACTIVE' | 'SETTLED'
 
+export interface LoanDashboardSummary {
+  week_id: number
+  week_name: string
+  week_status: string
+  total_needed: number
+  total_reserved: number
+  shortage: number
+  ncc_ordered: number
+  ncc_received: number
+  ncc_pending: number
+  borrowed_cones: number
+  borrowed_count: number
+  lent_cones: number
+  lent_count: number
+}
+
 export interface ThreadOrderLoan {
   id: number
   from_week_id: number | null

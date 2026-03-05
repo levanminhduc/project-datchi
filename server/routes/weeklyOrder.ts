@@ -2116,6 +2116,23 @@ weeklyOrder.get('/:id/results', requirePermission('thread.allocations.view'), as
 // ============================================================================
 
 /**
+ * GET /api/weekly-orders/loans/summary
+ * Aggregate: per-week cones needed, reserved, shortage, NCC delivery, active loans
+ */
+weeklyOrder.get('/loans/summary', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const { data, error } = await supabase.rpc('fn_loan_dashboard_summary')
+
+    if (error) throw error
+
+    return c.json({ data, error: null })
+  } catch (err) {
+    console.error('Error fetching loan dashboard summary:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * GET /api/weekly-orders/loans/all - Get all loans across all weeks
  * Static route MUST be before /:id/loans
  */

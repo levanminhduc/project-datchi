@@ -16,6 +16,7 @@ import type {
   WeekHistoryGroup,
   HistoryByWeekFilter,
   ThreadOrderLoan,
+  LoanDashboardSummary,
   ReservationSummary,
   ReservedCone,
   CreateLoanDTO,
@@ -347,6 +348,16 @@ export const weeklyOrderService = {
    */
   async getAllLoans(): Promise<ThreadOrderLoan[]> {
     const response = await fetchApi<ApiResponse<ThreadOrderLoan[]>>(`${BASE}/loans/all`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
+  },
+
+  async getLoanSummary(): Promise<LoanDashboardSummary[]> {
+    const response = await fetchApi<ApiResponse<LoanDashboardSummary[]>>(`${BASE}/loans/summary`)
 
     if (response.error) {
       throw new Error(response.error)

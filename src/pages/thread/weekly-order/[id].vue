@@ -4,7 +4,7 @@
       title="Chi Tiết Tuần Đặt Hàng"
       :subtitle="week ? week.week_name : ''"
       show-back
-      back-to="/thread/weekly-order"
+      :back-to="hasHistory ? undefined : '/thread/loans'"
     />
 
     <template v-if="isLoading">
@@ -35,7 +35,7 @@
           label="Quay lại danh sách"
           icon="arrow_back"
           class="q-mt-md"
-          @click="router.push('/thread/weekly-order')"
+          @click="goBack"
         />
       </q-card>
     </template>
@@ -329,6 +329,16 @@ const route = useRoute()
 const router = useRouter()
 
 const weekId = computed(() => Number((route.params as { id?: string }).id || '0'))
+
+const hasHistory = Boolean(window.history.state?.back)
+
+const goBack = () => {
+  if (hasHistory) {
+    router.back()
+  } else {
+    router.push('/thread/loans')
+  }
+}
 
 const week = ref<ThreadOrderWeek | null>(null)
 const notFound = ref(false)
