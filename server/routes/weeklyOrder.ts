@@ -643,6 +643,7 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
         cones_created: result?.cones_created ?? quantity,
         cones_reserved: result?.cones_reserved ?? 0,
         remaining_shortage: result?.remaining_shortage ?? 0,
+        lot_number: result?.lot_number ?? null,
       },
       error: null,
       message: `Đã nhập ${quantity} cuộn chỉ vào kho`,

@@ -319,7 +319,8 @@ BEGIN
     'success', true,
     'cones_created', v_cones_created,
     'cones_reserved', v_cones_reserved,
-    'remaining_shortage', GREATEST(0, v_current_shortage - v_cones_reserved)
+    'remaining_shortage', GREATEST(0, v_current_shortage - v_cones_reserved),
+    'lot_number', 'WO-' || v_week_id
   );
 END;
 $$ LANGUAGE plpgsql;

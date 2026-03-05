@@ -23,6 +23,8 @@
         :options="threadTypeOptions"
         label="Loại chỉ *"
         :loading="typesLoading"
+        :disable="!form.from_week_id"
+        :hint="!form.from_week_id ? 'Chọn tuần nguồn trước' : undefined"
         :rules="[val => !!val || 'Vui lòng chọn loại chỉ']"
         emit-value
         map-options
@@ -33,7 +35,12 @@
         label="Số cuộn *"
         type="number"
         :min="1"
-        :rules="[val => val > 0 || 'Số cuộn phải lớn hơn 0']"
+        :max="selectedMaxCones ?? undefined"
+        :hint="selectedMaxCones !== null ? `Tối đa ${selectedMaxCones} cuộn` : undefined"
+        :rules="[
+          val => val > 0 || 'Số cuộn phải lớn hơn 0',
+          val => !selectedMaxCones || val <= selectedMaxCones || `Tối đa ${selectedMaxCones} cuộn`,
+        ]"
       />
 
       <AppInput
@@ -63,15 +70,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
-import { useThreadTypes } from '@/composables/thread/useThreadTypes'
 import { useSnackbar } from '@/composables/useSnackbar'
 import AppDialog from '@/components/ui/dialogs/AppDialog.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import type { ThreadOrderWeek } from '@/types/thread'
+
+interface ThreadTypeSummary {
+  thread_type_id: number
+  code: string
+  name: string
+  available_cones: number
+}
 
 const props = defineProps<{
   modelValue: boolean
@@ -85,12 +98,12 @@ const emit = defineEmits<{
 }>()
 
 const snackbar = useSnackbar()
-const { activeThreadTypes, fetchThreadTypes } = useThreadTypes()
 
 const loading = ref(false)
 const weeksLoading = ref(false)
 const typesLoading = ref(false)
 const weeks = ref<ThreadOrderWeek[]>([])
+const availableThreadTypes = ref<ThreadTypeSummary[]>([])
 
 const form = ref({
   from_week_id: null as number | null,
@@ -112,11 +125,20 @@ const weekOptions = computed(() =>
 )
 
 const threadTypeOptions = computed(() =>
-  activeThreadTypes.value.map((t) => ({ label: `${t.code} - ${t.name}`, value: t.id }))
+  availableThreadTypes.value.map((t) => ({
+    label: `${t.code} - ${t.name} (${t.available_cones} cuộn)`,
+    value: t.thread_type_id,
+  }))
 )
+
+const selectedMaxCones = computed(() => {
+  if (!form.value.thread_type_id) return null
+  return availableThreadTypes.value.find((t) => t.thread_type_id === form.value.thread_type_id)?.available_cones ?? null
+})
 
 const resetForm = () => {
   form.value = { from_week_id: null, thread_type_id: null, quantity_cones: 1, reason: '' }
+  availableThreadTypes.value = []
 }
 
 const loadWeeks = async () => {
@@ -127,6 +149,29 @@ const loadWeeks = async () => {
     weeks.value = []
   } finally {
     weeksLoading.value = false
+  }
+}
+
+const loadAvailableThreadTypes = async (weekId: number) => {
+  typesLoading.value = true
+  try {
+    const { cones } = await weeklyOrderService.getReservations(weekId)
+    const map = new Map<number, ThreadTypeSummary>()
+    for (const cone of cones) {
+      const tt = cone.thread_type as { id: number; code: string; name: string } | undefined
+      if (!tt) continue
+      const existing = map.get(tt.id)
+      if (existing) {
+        existing.available_cones++
+      } else {
+        map.set(tt.id, { thread_type_id: tt.id, code: tt.code, name: tt.name, available_cones: 1 })
+      }
+    }
+    availableThreadTypes.value = Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code))
+  } catch {
+    availableThreadTypes.value = []
+  } finally {
+    typesLoading.value = false
   }
 }
 
@@ -152,6 +197,19 @@ const handleSubmit = async () => {
 }
 
 watch(
+  () => form.value.from_week_id,
+  (weekId) => {
+    form.value.thread_type_id = null
+    form.value.quantity_cones = 1
+    if (weekId) {
+      loadAvailableThreadTypes(weekId)
+    } else {
+      availableThreadTypes.value = []
+    }
+  }
+)
+
+watch(
   () => props.modelValue,
   (val) => {
     if (val) {
@@ -160,11 +218,4 @@ watch(
     }
   }
 )
-
-onMounted(() => {
-  typesLoading.value = true
-  fetchThreadTypes().finally(() => {
-    typesLoading.value = false
-  })
-})
 </script>

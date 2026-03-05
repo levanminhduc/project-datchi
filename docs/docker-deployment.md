@@ -92,8 +92,8 @@ docker compose --env-file .env.docker down -v
 ```
 project-datchi/
 ├── docker-compose.yml          # 2 services: frontend + backend
-├── Dockerfile.frontend         # Multi-stage: node build → alpine + nginx-brotli
-├── Dockerfile.backend          # 3-stage: build → deps → runtime (esbuild bundle)
+├── Dockerfile.frontend         # 3-stage: deps → builder → production (nginx-brotli)
+├── Dockerfile.backend          # 3-stage: builder → deps → production (esbuild bundle)
 ├── nginx.conf                  # Dev config
 ├── nginx.docker.conf           # Docker config: brotli + gzip + security headers
 ├── .env.docker                 # Env cho Docker (KHÔNG commit lên git)
@@ -103,26 +103,37 @@ project-datchi/
 
 ---
 
-## Tối ưu Image Size (2026-03)
+## Tối ưu Image Size
 
-| Image | Trước | Sau | Giảm |
-|-------|-------|-----|------|
-| Frontend | 105MB | **40MB** | -62% |
-| Backend | 1.23GB | **555MB** | -55% |
+### Lịch sử tối ưu
+
+| Thời điểm | Image | Trước | Sau | Giảm |
+|-----------|-------|-------|-----|------|
+| 2026-03 (lần 1) | Frontend | 105MB | 40MB | -62% |
+| 2026-03 (lần 1) | Backend | 1.23GB | 555MB | -55% |
+| 2026-03-05 (lần 2) | Frontend | 40MB | 47.6MB | +7.5MB (thêm HEALTHCHECK) |
+| 2026-03-05 (lần 2) | Backend | 555MB | 555MB | Giữ nguyên |
 
 ### Kỹ thuật áp dụng
 
-**Frontend:**
-- Multi-stage build: `node:22-alpine` → `alpine:3.20 + nginx-brotli`
-- Brotli compression (giảm 20-30% so với gzip)
-- npm cache mount (`--mount=type=cache`)
+**Frontend (3 stages: deps → builder → production):**
+- Stage 1 `deps`: `node:22-alpine`, `npm install` (resolve đúng platform)
+- Stage 2 `builder`: Selective COPY (`index.html`, `src/`, `public/`, config files) — không `COPY . .`
+- Stage 3 `production`: `alpine:3.20` + nginx + brotli + gzip compression
+- HEALTHCHECK via `curl` (interval 30s)
+- Non-root user (`nginx`)
 - Security headers: X-Frame-Options, X-Content-Type-Options, etc.
 
-**Backend:**
-- 3-stage build: builder → deps → runtime
-- esbuild bundle code (minify, tree-shaking)
-- Separate production dependencies (`npm install --omit=dev`)
-- Non-root user (security)
+**Backend (3 stages: builder → deps → production):**
+- Stage 1 `builder`: `npm ci` + esbuild bundle → 1 file `server.mjs` (minify, tree-shaking, 301KB)
+- Stage 2 `deps`: `npm ci --omit=dev` (chỉ production dependencies)
+- Stage 3 `production`: `node:22-alpine`, non-root user (`nodejs`)
+- HEALTHCHECK via `wget` đến `/health` endpoint (interval 30s)
+- npm cache mount (`--mount=type=cache`) cho cả builder và deps stages
+
+**Lưu ý quan trọng:**
+- Frontend dùng `npm install` (KHÔNG `npm ci`) vì `package-lock.json` từ Windows không resolve được `@rollup/rollup-linux-x64-musl` cho Alpine
+- Backend dùng `npm ci` được vì esbuild và runtime deps không có native binary conflict
 
 ---
 
@@ -291,3 +302,21 @@ Các file chứa secrets đã được thêm vào `.gitignore`:
 | Truy cập LAN | Không (localhost only) | Có (IP nào cũng được) |
 
 Cả 2 chế độ **chạy song song được**, không conflict ports.
+
+---
+
+## HEALTHCHECK
+
+Cả 2 containers đều có Docker HEALTHCHECK tự động:
+
+| Container | Command | Interval | Start period |
+|-----------|---------|----------|--------------|
+| Frontend | `curl -f http://localhost:80/` | 30s | 5s |
+| Backend | `wget -qO- http://localhost:3000/health` | 30s | 10s |
+
+Kiểm tra trạng thái:
+
+```bash
+docker compose --env-file .env.docker ps
+# STATUS column hiện "healthy" hoặc "unhealthy"
+```

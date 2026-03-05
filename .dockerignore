@@ -4,6 +4,7 @@ dist
 .env.local
 .env.production
 .env.*.local
+.env.docker
 .git
 .gitignore
 .vscode
@@ -13,6 +14,14 @@ dist
 .claude
 openspec
 supabase
+plans
+docs
+tests
 *.md
 *.log
 server-debug.log
+backend-esbuild-example
+coverage
+.nyc_output
+.playwright
+playwright-report

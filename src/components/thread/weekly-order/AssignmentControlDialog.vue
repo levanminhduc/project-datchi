@@ -45,43 +45,46 @@
         </div>
       </div>
 
-      <div :aria-busy="loading" aria-live="polite">
-        <q-table
-        :rows="rowsWithKey"
-        :columns="columns"
-        row-key="row_key"
-        flat
-        bordered
-        dense
-        :loading="loading"
-        :rows-per-page-options="[0]"
-        hide-pagination
-        title="Thống kê chỉ đã gán"
+      <div
+        :aria-busy="loading"
+        aria-live="polite"
       >
-        <template #loading>
-          <q-inner-loading showing>
-            <q-spinner-dots
-              size="40px"
-              color="primary"
-            />
-          </q-inner-loading>
-        </template>
+        <q-table
+          :rows="rowsWithKey"
+          :columns="columns"
+          row-key="row_key"
+          flat
+          bordered
+          dense
+          :loading="loading"
+          :rows-per-page-options="[0]"
+          hide-pagination
+          title="Thống kê chỉ đã gán"
+        >
+          <template #loading>
+            <q-inner-loading showing>
+              <q-spinner-dots
+                size="40px"
+                color="primary"
+              />
+            </q-inner-loading>
+          </template>
 
-        <template #no-data>
-          <div class="full-width text-center text-grey q-pa-md">
-            {{ emptyMessage }}
-          </div>
-        </template>
+          <template #no-data>
+            <div class="full-width text-center text-grey q-pa-md">
+              {{ emptyMessage }}
+            </div>
+          </template>
 
-        <template #body-cell-gap="cellProps">
-          <q-td
-            :props="cellProps"
-            :class="cellProps.row.gap < 0 ? 'text-negative' : ''"
-          >
-            {{ cellProps.row.gap }}
-          </q-td>
-        </template>
-      </q-table>
+          <template #body-cell-gap="cellProps">
+            <q-td
+              :props="cellProps"
+              :class="cellProps.row.gap < 0 ? 'text-negative' : ''"
+            >
+              {{ cellProps.row.gap }}
+            </q-td>
+          </template>
+        </q-table>
       </div>
 
       <div

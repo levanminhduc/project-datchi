@@ -1,45 +1,49 @@
 # ============================================
-# Stage 1: Build Vue app
+# Stage 1: Install dependencies
 # ============================================
-FROM node:22-alpine AS builder
+FROM node:22-alpine AS deps
 
 WORKDIR /app
 
 COPY package.json ./
 
-RUN --mount=type=cache,target=/root/.npm \
-    npm install
+RUN npm install
 
-COPY . .
+# ============================================
+# Stage 2: Build Vue app
+# ============================================
+FROM deps AS builder
 
 ARG VITE_API_URL
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
 
+COPY index.html vite.config.mts tsconfig.json tsconfig.app.json tsconfig.node.json ./
+COPY src/ ./src/
+COPY public/ ./public/
+
 RUN npm run build-only
 
 # ============================================
-# Stage 2: Serve với Nginx Alpine + Brotli
+# Stage 3: Serve với Nginx Alpine + Brotli
 # ============================================
-FROM alpine:3.20 AS runtime
+FROM alpine:3.20 AS production
 
-# Install nginx với brotli module
-RUN apk add --no-cache nginx nginx-mod-http-brotli
+RUN apk add --no-cache nginx nginx-mod-http-brotli curl
 
-# Create nginx directories
 RUN mkdir -p /run/nginx /var/cache/nginx
 
-# Copy built assets
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx config
 COPY nginx.docker.conf /etc/nginx/nginx.conf
 
-# Security: non-root
 RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /run/nginx
 
 EXPOSE 80
 
 USER nginx
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:80/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
