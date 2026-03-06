@@ -10,7 +10,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ||
   import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
-  'http://127.0.0.1:54321'
+  'http://127.0.0.1:55421'
 
 // Docker mode: VITE_SUPABASE_URL="/supabase" → resolve to full URL using current origin
 const resolvedSupabaseUrl = supabaseUrl.startsWith('/')
