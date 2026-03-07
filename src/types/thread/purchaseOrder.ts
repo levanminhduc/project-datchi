@@ -76,7 +76,7 @@ export interface PurchaseOrderWithItems extends PurchaseOrder {
 }
 
 // PO Import types
-export type POImportRowStatus = 'new' | 'update' | 'skip'
+export type POImportRowStatus = 'new' | 'update' | 'skip' | 'new_style'
 
 export interface POImportRow {
   po_number: string
@@ -116,4 +116,5 @@ export interface POImportResult {
   created_items: number
   updated_items: number
   skipped_items: number
+  failed_items: number
 }

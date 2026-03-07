@@ -48,7 +48,7 @@ export interface POItemApiResponse<T> {
   message?: string
 }
 
-export type POImportRowStatus = 'new' | 'update' | 'skip'
+export type POImportRowStatus = 'new' | 'update' | 'skip' | 'new_style'
 
 export interface POImportRow {
   row_number: number
@@ -89,6 +89,7 @@ export interface POImportResult {
   created_items: number
   updated_items: number
   skipped_items: number
+  failed_items: number
 }
 
 export interface POImportMappingConfig {

@@ -106,6 +106,28 @@ export const CreateLoanSchema = z.object({
   reason: z.string().max(500, 'Lý do tối đa 500 ký tự').optional(),
 })
 
+export const BatchLoanItemSchema = z.object({
+  thread_type_id: z
+    .number({ required_error: 'thread_type_id là bắt buộc' })
+    .int()
+    .positive('thread_type_id phải là số nguyên dương'),
+  quantity_cones: z
+    .number({ required_error: 'Số lượng cuộn là bắt buộc' })
+    .int()
+    .positive('Số lượng cuộn phải lớn hơn 0'),
+})
+
+export const CreateBatchLoanSchema = z.object({
+  from_week_id: z
+    .number({ required_error: 'from_week_id là bắt buộc' })
+    .int()
+    .positive('from_week_id phải là số nguyên dương'),
+  items: z
+    .array(BatchLoanItemSchema)
+    .min(1, 'Cần ít nhất một loại chỉ'),
+  reason: z.string().max(500, 'Lý do tối đa 500 ký tự').optional(),
+})
+
 // ============ RESERVE FROM STOCK SCHEMA ============
 
 export const ReserveFromStockSchema = z.object({

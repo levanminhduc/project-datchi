@@ -461,6 +461,7 @@ import { useSettings } from '@/composables/useSettings'
 import { usePermission } from '@/composables/usePermission'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { importService } from '@/services/importService'
+import { settingsService } from '@/services/settingsService'
 
 const PARTIAL_CONE_RATIO_KEY = 'partial_cone_ratio'
 const TEX_MAPPING_KEY = 'import_supplier_tex_mapping'
@@ -539,39 +540,35 @@ async function loadSettings() {
   hasLoaded.value = true
 }
 
+async function getSettingSilent(key: string) {
+  try {
+    return await settingsService.get(key)
+  } catch {
+    return null
+  }
+}
+
+function applyMappingValues(target: Record<string, unknown>, setting: { value: unknown } | null) {
+  if (!setting?.value || typeof setting.value !== 'object') return
+  const val = setting.value as Record<string, unknown>
+  if (typeof val.sheet_index === 'number') target.sheet_index = val.sheet_index
+  if (typeof val.header_row === 'number') target.header_row = val.header_row
+  if (typeof val.data_start_row === 'number') target.data_start_row = val.data_start_row
+  if (val.columns && typeof val.columns === 'object') {
+    Object.assign(target.columns as Record<string, string>, val.columns)
+  }
+}
+
 async function loadImportMappings() {
-  const texSetting = await getSetting(TEX_MAPPING_KEY)
-  if (texSetting?.value && typeof texSetting.value === 'object') {
-    const val = texSetting.value as Record<string, unknown>
-    if (typeof val.sheet_index === 'number') texMapping.sheet_index = val.sheet_index
-    if (typeof val.header_row === 'number') texMapping.header_row = val.header_row
-    if (typeof val.data_start_row === 'number') texMapping.data_start_row = val.data_start_row
-    if (val.columns && typeof val.columns === 'object') {
-      Object.assign(texMapping.columns, val.columns)
-    }
-  }
+  const [texSetting, colorSetting, poSetting] = await Promise.all([
+    getSettingSilent(TEX_MAPPING_KEY),
+    getSettingSilent(COLOR_MAPPING_KEY),
+    getSettingSilent(PO_MAPPING_KEY),
+  ])
 
-  const colorSetting = await getSetting(COLOR_MAPPING_KEY)
-  if (colorSetting?.value && typeof colorSetting.value === 'object') {
-    const val = colorSetting.value as Record<string, unknown>
-    if (typeof val.sheet_index === 'number') colorMapping.sheet_index = val.sheet_index
-    if (typeof val.header_row === 'number') colorMapping.header_row = val.header_row
-    if (typeof val.data_start_row === 'number') colorMapping.data_start_row = val.data_start_row
-    if (val.columns && typeof val.columns === 'object') {
-      Object.assign(colorMapping.columns, val.columns)
-    }
-  }
-
-  const poSetting = await getSetting(PO_MAPPING_KEY)
-  if (poSetting?.value && typeof poSetting.value === 'object') {
-    const val = poSetting.value as Record<string, unknown>
-    if (typeof val.sheet_index === 'number') poMapping.sheet_index = val.sheet_index
-    if (typeof val.header_row === 'number') poMapping.header_row = val.header_row
-    if (typeof val.data_start_row === 'number') poMapping.data_start_row = val.data_start_row
-    if (val.columns && typeof val.columns === 'object') {
-      Object.assign(poMapping.columns, val.columns)
-    }
-  }
+  applyMappingValues(texMapping, texSetting)
+  applyMappingValues(colorMapping, colorSetting)
+  applyMappingValues(poMapping, poSetting)
 }
 
 async function handleSave() {

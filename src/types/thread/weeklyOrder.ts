@@ -267,6 +267,23 @@ export interface CreateLoanDTO {
   reason?: string
 }
 
+export interface BatchLoanItem {
+  thread_type_id: number
+  quantity_cones: number
+}
+
+export interface CreateBatchLoanDTO {
+  from_week_id: number
+  items: BatchLoanItem[]
+  reason?: string
+}
+
+export interface BatchLoanResult {
+  success: boolean
+  total_items: number
+  total_moved_cones: number
+}
+
 export interface ConfirmWithReserveResult {
   week: ThreadOrderWeek
   reservation_summary: ReservationSummary[]

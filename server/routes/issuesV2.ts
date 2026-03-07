@@ -98,6 +98,10 @@ function calculateIssuedEquivalent(
   return issuedFull + issuedPartial * ratio
 }
 
+function roundToTwoDecimals(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
 interface ReturnValidationResult {
   valid: boolean
   errors: string[]
@@ -261,35 +265,97 @@ async function getStockAvailability(
   return { full_cones: fullCones, partial_cones: partialCones }
 }
 
+async function getConfirmedIssuedEquivalent(
+  poId: number,
+  styleId: number,
+  colorId: number,
+  threadTypeId: number,
+  ratio: number
+): Promise<number> {
+  const { data: issuedLines, error } = await supabase
+    .from('thread_issue_lines')
+    .select(
+      `
+      issued_full,
+      issued_partial,
+      returned_full,
+      returned_partial,
+      thread_issues!inner(status)
+    `
+    )
+    .eq('po_id', poId)
+    .eq('style_id', styleId)
+    .eq('color_id', colorId)
+    .eq('thread_type_id', threadTypeId)
+    .eq('thread_issues.status', 'CONFIRMED')
+
+  if (error) {
+    console.error('Error fetching confirmed issued lines:', error)
+    return 0
+  }
+
+  return roundToTwoDecimals(
+    (issuedLines || []).reduce((total, line: any) => {
+      const issuedEquivalent = calculateIssuedEquivalent(
+        line.issued_full || 0,
+        line.issued_partial || 0,
+        ratio
+      )
+      const returnedEquivalent = calculateIssuedEquivalent(
+        line.returned_full || 0,
+        line.returned_partial || 0,
+        ratio
+      )
+      return total + Math.max(0, issuedEquivalent - returnedEquivalent)
+    }, 0)
+  )
+}
+
 /**
- * Get quota_cones from thread_order_items for a specific combination
+ * Get remaining quota_cones for a specific PO/style/color/thread_type combination.
+ * Remaining quota = confirmed weekly-order demand - net confirmed issued quantity.
  */
 async function getQuotaCones(
   poId: number | null | undefined,
   styleId: number | null | undefined,
   colorId: number | null | undefined,
-  threadTypeId: number
+  threadTypeId: number,
+  partialConeRatio?: number
 ): Promise<number | null> {
   if (!poId || !styleId || !colorId) {
     return null
   }
 
-  // First, find the week_id for this PO/style/color combination
-  const { data: orderItem, error } = await supabase
+  const ratio = partialConeRatio ?? (await getPartialConeRatio())
+
+  const { data: orderItems, error } = await supabase
     .from('thread_order_items')
-    .select('id, quantity')
+    .select(
+      `
+      quantity,
+      thread_order_weeks!inner(status)
+    `
+    )
     .eq('po_id', poId)
     .eq('style_id', styleId)
     .eq('color_id', colorId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+    .eq('thread_order_weeks.status', 'CONFIRMED')
 
-  if (error || !orderItem) {
+  if (error) {
+    console.error('Error fetching confirmed weekly-order items:', error)
     return null
   }
 
-  // Calculate quota based on BOM and quantity
+  const totalOrderedQuantity = (orderItems || []).reduce(
+    (sum, item: { quantity: number | null }) => sum + (item.quantity || 0),
+    0
+  )
+
+  if (totalOrderedQuantity <= 0) {
+    return null
+  }
+
+  // Calculate base quota based on total confirmed weekly-order quantity and BOM
   // Get the spec from style_color_thread_specs joined with style_thread_specs
   // style_color_thread_specs has: style_thread_spec_id, color_id, thread_type_id
   // style_thread_specs has: style_id, meters_per_unit (consumption)
@@ -331,10 +397,20 @@ async function getQuotaCones(
 
   // Calculate: total_meters = quantity × consumption_per_unit
   // quota_cones = CEIL(total_meters / meters_per_cone)
-  const totalMeters = orderItem.quantity * consumptionPerUnit
-  const quotaCones = Math.ceil(totalMeters / threadType.meters_per_cone)
+  const totalMeters = totalOrderedQuantity * consumptionPerUnit
+  const baseQuotaCones = Math.ceil(totalMeters / threadType.meters_per_cone)
 
-  return quotaCones
+  const confirmedIssuedEquivalent = await getConfirmedIssuedEquivalent(
+    poId,
+    styleId,
+    colorId,
+    threadTypeId,
+    ratio
+  )
+
+  const remainingQuotaCones = Math.max(0, baseQuotaCones - confirmedIssuedEquivalent)
+
+  return roundToTwoDecimals(remainingQuotaCones)
 }
 
 /**
@@ -756,7 +832,7 @@ issuesV2.post('/validate-line', async (c) => {
 
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
-    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id)
+    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id, ratio)
 
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
 
@@ -837,7 +913,7 @@ issuesV2.post('/create-with-lines', async (c) => {
     const ratio = await getPartialConeRatio()
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
-    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id)
+    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id, ratio)
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
 
     if (isOverQuota && !over_quota_notes?.trim()) {
@@ -1041,13 +1117,15 @@ issuesV2.get('/form-data', async (c) => {
     // Deduplicate by thread_type_id (same thread may appear in multiple specs)
     const uniqueThreadTypeIds = [...new Set(filteredSpecs.map((s: any) => s.thread_type_id))]
 
+    const ratio = await getPartialConeRatio()
+
     // Get stock for each unique thread type
     const threadTypes = await Promise.all(
       uniqueThreadTypeIds.map(async (threadTypeId) => {
         const spec = filteredSpecs.find((s: any) => s.thread_type_id === threadTypeId) as any
         const threadType = spec?.thread_types as any
         const stock = await getStockAvailability(threadTypeId)
-        const quotaCones = await getQuotaCones(po_id, style_id, color_id, threadTypeId)
+        const quotaCones = await getQuotaCones(po_id, style_id, color_id, threadTypeId, ratio)
 
         return {
           thread_type_id: threadTypeId,
@@ -1111,7 +1189,7 @@ issuesV2.post('/:id/lines/validate', async (c) => {
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
     // Get quota
-    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id)
+    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id, ratio)
 
     // Check if over quota
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
@@ -1235,10 +1313,9 @@ issuesV2.post('/:id/lines', async (c) => {
     } = validated
 
     // Get quota
-    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id)
-
     // Get partial cone ratio and calculate issued equivalent
     const ratio = await getPartialConeRatio()
+    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id, ratio)
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
     // Check if over quota

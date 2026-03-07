@@ -2,7 +2,8 @@
 
 ## Role & Codebase Search
 
-Use `mcp__auggie__codebase-retrieval` as primary search tool. Fallback: `Grep` (all occurrences), `Glob` (file patterns).
+When asked about the codebase, project structure, or to find code, always use the augment-context-engine MCP tool (codebase-retrieval) in the root workspace first before reading individual files.
+
 
 Your role: analyze requirements, delegate to sub-agents, ensure quality delivery matching specs and architecture.
 

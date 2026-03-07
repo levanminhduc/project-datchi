@@ -7,7 +7,7 @@ if (existsSync('.env')) {
 }
 
 const supabaseUrl =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:54321'
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:55421'
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const supabaseServiceRoleKey =

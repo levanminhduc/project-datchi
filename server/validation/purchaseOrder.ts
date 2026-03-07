@@ -27,12 +27,12 @@ export const POImportExecuteRequestSchema = z.object({
   rows: z.array(z.object({
     po_number: z.string(),
     style_code: z.string(),
-    style_id: z.number(),
+    style_id: z.number().optional(),
     quantity: z.number(),
     customer_name: z.string().optional(),
     order_date: z.string().optional(),
     notes: z.string().optional(),
-    status: z.enum(['new', 'update', 'skip']),
+    status: z.enum(['new', 'update', 'skip', 'new_style']),
   })).min(1, { message: 'Không có dữ liệu để import' }),
 })
 

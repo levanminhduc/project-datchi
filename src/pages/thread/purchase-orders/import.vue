@@ -148,6 +148,17 @@
                 :pagination="{ page: 1, rowsPerPage: 25 }"
                 dense
               >
+                <template #body-cell-style_code="props">
+                  <q-td :props="props">
+                    {{ props.value }}
+                    <q-badge
+                      v-if="props.row.status === 'new_style'"
+                      color="warning"
+                      label="Mới"
+                      class="q-ml-sm"
+                    />
+                  </q-td>
+                </template>
                 <template #body-cell-status="props">
                   <q-td :props="props">
                     <q-badge
@@ -224,6 +235,12 @@
             <div v-if="importResult.skipped_items > 0">
               Bỏ qua: {{ importResult.skipped_items }}
             </div>
+            <div
+              v-if="importResult.failed_items > 0"
+              class="text-negative"
+            >
+              Thất bại: {{ importResult.failed_items }}
+            </div>
           </div>
           <AppButton
             label="Về danh sách PO"
@@ -291,7 +308,8 @@ function getRowStatusColor(status: POImportRowStatus): string {
   const colors: Record<POImportRowStatus, string> = {
     new: 'positive',
     update: 'info',
-    skip: 'grey'
+    skip: 'grey',
+    new_style: 'warning'
   }
   return colors[status] || 'grey'
 }
@@ -300,7 +318,8 @@ function getRowStatusLabel(status: POImportRowStatus): string {
   const labels: Record<POImportRowStatus, string> = {
     new: 'Mới',
     update: 'Cập nhật',
-    skip: 'Bỏ qua'
+    skip: 'Bỏ qua',
+    new_style: 'Mã hàng mới'
   }
   return labels[status] || status
 }

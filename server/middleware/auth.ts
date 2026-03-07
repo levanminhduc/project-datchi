@@ -19,7 +19,7 @@ function resolveSupabaseBaseUrl(): string {
     return fromEnv.replace(/\/$/, '')
   }
 
-  return 'http://127.0.0.1:54321'
+  return 'http://127.0.0.1:55421'
 }
 
 const supabaseJwksUrl = new URL('/auth/v1/.well-known/jwks.json', `${resolveSupabaseBaseUrl()}/`)

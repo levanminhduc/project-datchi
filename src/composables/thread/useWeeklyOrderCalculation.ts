@@ -215,7 +215,7 @@ export function useWeeklyOrderCalculation() {
                 tex_number: cb.tex_number || calc.tex_number,
                 total_meters: cb.total_meters,
                 total_cones: 0,
-                meters_per_cone: calc.meters_per_cone ?? null,
+                meters_per_cone: cb.meters_per_cone ?? calc.meters_per_cone ?? null,
                 thread_color: cb.thread_color ?? calc.thread_color ?? null,
                 thread_color_code: cb.thread_color_code ?? calc.thread_color_code ?? null,
                 supplier_id: cb.supplier_id ?? calc.supplier_id ?? null,

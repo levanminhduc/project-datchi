@@ -16,6 +16,7 @@ import {
   OrderedQuantitiesQuerySchema,
   HistoryByWeekQuerySchema,
   CreateLoanSchema,
+  CreateBatchLoanSchema,
   ReserveFromStockSchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
@@ -2221,6 +2222,60 @@ weeklyOrder.post('/:id/loans', requirePermission('thread.allocations.manage'), a
   }
 })
 
+weeklyOrder.post('/:id/loans/batch', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const toWeekId = parseInt(c.req.param('id'))
+
+    if (isNaN(toWeekId)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = CreateBatchLoanSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    const auth = c.get('auth')
+    let createdBy = 'unknown'
+    if (auth?.employeeId) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', auth.employeeId)
+        .single()
+      createdBy = emp?.full_name || auth.employeeCode || 'unknown'
+    }
+
+    const { data: result, error: rpcError } = await supabase.rpc('fn_batch_borrow_thread', {
+      p_from_week_id: validated.from_week_id,
+      p_to_week_id: toWeekId,
+      p_items: JSON.stringify(validated.items),
+      p_reason: validated.reason || null,
+      p_user: createdBy,
+    })
+
+    if (rpcError) {
+      return c.json({ data: null, error: rpcError.message }, 400)
+    }
+
+    return c.json({
+      data: result,
+      error: null,
+      message: `Mượn ${validated.items.length} loại chỉ thành công`,
+    })
+  } catch (err) {
+    console.error('Error creating batch loan:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 /**
  * Task 8.2: GET /api/weekly-orders/:id/loans - Get loan history (given and received)
  * Filters deleted_at IS NULL
@@ -2351,7 +2406,6 @@ weeklyOrder.get('/:id/reservation-summary', requirePermission('thread.allocation
       .from('thread_order_deliveries')
       .select('thread_type_id, quantity_cones, thread_type:thread_types(id, name)')
       .eq('week_id', id)
-      .is('deleted_at', null)
 
     if (deliveryError) throw deliveryError
 

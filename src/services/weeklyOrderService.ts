@@ -20,6 +20,8 @@ import type {
   ReservationSummary,
   ReservedCone,
   CreateLoanDTO,
+  CreateBatchLoanDTO,
+  BatchLoanResult,
   ConfirmWithReserveResult,
   ReserveFromStockDTO,
   ReserveFromStockResult,
@@ -308,6 +310,23 @@ export const weeklyOrderService = {
 
   async createLoan(toWeekId: number, data: CreateLoanDTO): Promise<ThreadOrderLoan> {
     const response = await fetchApi<ApiResponse<ThreadOrderLoan>>(`${BASE}/${toWeekId}/loans`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    if (!response.data) {
+      throw new Error('Không thể tạo khoản mượn chỉ')
+    }
+
+    return response.data
+  },
+
+  async createBatchLoan(toWeekId: number, data: CreateBatchLoanDTO): Promise<BatchLoanResult> {
+    const response = await fetchApi<ApiResponse<BatchLoanResult>>(`${BASE}/${toWeekId}/loans/batch`, {
       method: 'POST',
       body: JSON.stringify(data),
     })

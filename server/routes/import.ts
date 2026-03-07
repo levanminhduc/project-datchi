@@ -761,9 +761,6 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
       if (quantity <= 0) errors.push('Số lượng phải lớn hơn 0')
 
       const style = styleMap.get(styleCode.toLowerCase())
-      if (styleCode && !style) {
-        errors.push('Mã hàng không tồn tại')
-      }
 
       if (errors.length > 0) {
         errorRows.push({
@@ -777,11 +774,13 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
       const poId = poMap.get(poNumber.toLowerCase())
       let status: POImportRow['status']
 
-      if (!poId) {
+      if (!style) {
+        status = 'new_style'
+      } else if (!poId) {
         status = 'new'
         newPOsSet.add(poNumber.toLowerCase())
       } else {
-        const itemKey = `${poId}-${style!.id}`
+        const itemKey = `${poId}-${style.id}`
         const existingItem = itemMap.get(itemKey)
 
         if (!existingItem) {
@@ -795,12 +794,16 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
         }
       }
 
+      if (!poId) {
+        newPOsSet.add(poNumber.toLowerCase())
+      }
+
       validRows.push({
         row_number: row.row_number,
         po_number: poNumber,
         style_code: styleCode,
-        style_name: style!.style_name,
-        style_id: style!.id,
+        style_name: style?.style_name || styleCode,
+        style_id: style?.id,
         quantity,
         customer_name: row.customer_name,
         order_date: row.order_date,
@@ -854,6 +857,7 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
     let createdItems = 0
     let updatedItems = 0
     let skippedItems = 0
+    let failedItems = 0
 
     const { data: existingPOs } = await supabase
       .from('purchase_orders')
@@ -871,10 +875,54 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
       if (row.order_date) poDateMap.set(key, row.order_date)
     })
 
+    const createdStyleMap = new Map<string, number>()
+
     for (const row of rows) {
       if (row.status === 'skip') {
         skippedItems++
         continue
+      }
+
+      if (row.status === 'new_style' && !row.style_id) {
+        const styleKey = row.style_code.toLowerCase()
+        let newStyleId = createdStyleMap.get(styleKey)
+
+        if (!newStyleId) {
+          const { data: newStyle, error: styleError } = await supabase
+            .from('styles')
+            .insert({ style_code: row.style_code, style_name: row.style_code })
+            .select('id')
+            .single()
+
+          if (styleError) {
+            if (styleError.code === '23505') {
+              const { data: existingStyle } = await supabase
+                .from('styles')
+                .select('id')
+                .eq('style_code', row.style_code)
+                .is('deleted_at', null)
+                .single()
+              newStyleId = existingStyle?.id
+            } else {
+              console.error('Create style error:', styleError)
+              failedItems++
+              continue
+            }
+          } else {
+            newStyleId = newStyle.id
+          }
+
+          if (newStyleId) {
+            createdStyleMap.set(styleKey, newStyleId)
+          }
+        }
+
+        if (!newStyleId) {
+          failedItems++
+          continue
+        }
+        row.style_id = newStyleId
+        row.status = 'new'
       }
 
       let poId = poMap.get(row.po_number.toLowerCase())
@@ -910,7 +958,10 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
         }
       }
 
-      if (!poId) continue
+      if (!poId) {
+        failedItems++
+        continue
+      }
 
       const { data: existingItem } = await supabase
         .from('po_items')
@@ -974,7 +1025,8 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
       created_pos: createdPOs,
       created_items: createdItems,
       updated_items: updatedItems,
-      skipped_items: skippedItems
+      skipped_items: skippedItems,
+      failed_items: failedItems
     }
 
     return c.json<ImportApiResponse<POImportResult>>({
