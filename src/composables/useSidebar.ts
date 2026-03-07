@@ -19,14 +19,24 @@ const navItems: NavItem[] = [
     to: '/ke-hoach#top',
     children: [
       { label: 'Tính Toán Chỉ', icon: 'o_calculate', to: '/thread/calculation' },
-      { label: 'Đơn Hàng (PO)', icon: 'o_receipt_long', to: '/thread/purchase-orders' },
       { label: 'Đặt Hàng Chỉ Tuần', icon: 'o_shopping_cart', to: '/thread/weekly-order' },
       { label: 'Lịch Sử Đặt Hàng', icon: 'o_history', to: '/thread/weekly-order/history' }
     ]
   },
-  { 
-    label: 'Kỹ Thuật', 
-    icon: 'o_engineering', 
+  {
+    label: 'Danh Mục',
+    icon: 'o_folder_open',
+    to: '/danh-muc#top',
+    children: [
+      { label: 'Đơn Hàng (PO)', icon: 'o_receipt_long', to: '/thread/purchase-orders' },
+      { label: 'Loại Chỉ', icon: 'o_category', to: '/thread' },
+      { label: 'Màu Sắc', icon: 'o_palette', to: '/thread/colors' },
+      { label: 'Nhà Cung Cấp', icon: 'o_store', to: '/thread/suppliers' }
+    ]
+  },
+  {
+    label: 'Kỹ Thuật',
+    icon: 'o_engineering',
     to: '/ky-thuat#top',
     children: [
       { label: 'Mã Hàng', icon: 'o_checkroom', to: '/thread/styles' }
@@ -39,14 +49,11 @@ const navItems: NavItem[] = [
     to: '/thread#top',
     children: [
       { label: 'Dashboard', icon: 'o_dashboard', to: '/thread/dashboard' },
-      { label: 'Loại Chỉ', icon: 'o_category', to: '/thread' },
       { label: 'Tồn Kho', icon: 'o_inventory', to: '/thread/inventory' },
       { label: 'Xuất Kho', icon: 'o_output', to: '/thread/issues/v2' },
       { label: 'Trả Kho V2', icon: 'o_assignment_return', to: '/thread/issues/v2/return' },
       { label: 'Theo Dõi Giao Hàng', icon: 'o_local_shipping', to: '/thread/weekly-order/deliveries' },
-      { label: 'Mượn Chỉ', icon: 'o_swap_horiz', to: '/thread/loans' },
-      { label: 'Màu Sắc', icon: 'o_palette', to: '/thread/colors' },
-      { label: 'Nhà Cung Cấp', icon: 'o_store', to: '/thread/suppliers' }
+      { label: 'Mượn Chỉ', icon: 'o_swap_horiz', to: '/thread/loans' }
     ]
   },
   { label: 'Phân Quyền', icon: 'o_admin_panel_settings', to: '/phan-quyen#top' },

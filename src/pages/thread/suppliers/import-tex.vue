@@ -343,7 +343,7 @@ async function parseFile() {
 
       if (!supplierName && !texRaw) continue
 
-      const texNumber = Number(texRaw) || 0
+      const texNumber = String(texRaw || '').trim()
       const metersPerCone = Number(metersRaw) || 0
       const unitPrice = Number(priceRaw) || 0
 

@@ -36,7 +36,7 @@ export interface ThreadTypeSummary {
   code: string
   name: string
   material: string
-  tex_number: number | null
+  tex_number: string | null
   color_id: number | null
   color_data?: { id: number; name: string; hex_code: string } | null
 }

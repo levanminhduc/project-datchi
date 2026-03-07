@@ -523,14 +523,14 @@ const supplierOptions = computed(() =>
 const getTexOptionsForRow = (row: StyleThreadSpec): { label: string; value: number }[] => {
   if (!row.supplier_id) return []
   const supplierThreads = threadTypes.value.filter(t => t.supplier_id === row.supplier_id)
-  const uniqueTexMap = new Map<number, number>()
+  const uniqueTexMap = new Map<string, number>()
   for (const t of supplierThreads) {
     if (t.tex_number !== null && !uniqueTexMap.has(t.tex_number)) {
       uniqueTexMap.set(t.tex_number, t.id)
     }
   }
   return Array.from(uniqueTexMap.entries())
-    .sort((a, b) => a[0] - b[0])
+    .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([tex, id]) => ({ label: `${tex}`, value: id }))
 }
 const isSaving = ref(false)

@@ -93,7 +93,7 @@ const buildSupplierAndTexCaches = async () => {
   if (existingThreadTypes) {
     for (const t of existingThreadTypes) {
       if (t.tex_number !== null && t.supplier_id !== null) {
-        const key = `${t.supplier_id}-${Number(t.tex_number)}`
+        const key = `${t.supplier_id}-${t.tex_number}`
         threadTypeCache.set(key, t.id)
       }
     }
@@ -108,14 +108,14 @@ const toTexPreviewRow = (
   threadTypeCache: Map<string, number>
 ): ImportTexPreviewRow => {
   const supplierName = String(row.supplier_name || '').trim()
-  const texNumber = Number(row.tex_number) || 0
+  const texNumber = String(row.tex_number || '').trim()
   const metersPerCone = Number(row.meters_per_cone) || 0
   const unitPrice = row.unit_price == null ? null : Number(row.unit_price)
   const supplierItemCode = row.supplier_item_code ? String(row.supplier_item_code).trim() : undefined
 
   const errors: string[] = []
   if (!supplierName) errors.push('Thiếu tên NCC')
-  if (texNumber <= 0) errors.push('Tex phải > 0')
+  if (!texNumber) errors.push('Thiếu Tex')
   if (metersPerCone <= 0) errors.push('Mét/cuộn phải > 0')
   if (unitPrice == null || Number.isNaN(unitPrice)) errors.push('Thiếu đơn giá')
   else if (unitPrice < 0) errors.push('Giá không được âm')
@@ -232,7 +232,7 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
         skipped_details.push({
           row_number: rowNum,
           supplier_name: previewRow.supplier_name || '',
-          tex_number: previewRow.tex_number || 0,
+          tex_number: previewRow.tex_number || '',
           reason
         })
       }
@@ -269,7 +269,8 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
       const texCacheKey = `${supplierId}-${previewRow.tex_number}`
       let threadTypeId = threadTypeCache.get(texCacheKey)
       if (!threadTypeId) {
-        const densityGramsPerMeter = previewRow.tex_number / 1000
+        const texNumeric = parseFloat(previewRow.tex_number) || 0
+        const densityGramsPerMeter = texNumeric / 1000
         const uniqueCode = `T-${supplierId}-TEX${previewRow.tex_number}`
         const { data: newThreadType, error: threadTypeError } = await supabase
           .from('thread_types')
@@ -583,7 +584,7 @@ importRouter.get('/template/supplier-tex', requirePermission('thread.suppliers.v
 
     const exampleData: Record<string, string | number> = {
       supplier_name: 'Công ty ABC',
-      tex_number: 40,
+      tex_number: '20/9',
       meters_per_cone: 5000,
       unit_price: 25000,
       supplier_item_code: 'ABC-TEX40'

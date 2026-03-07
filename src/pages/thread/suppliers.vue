@@ -63,6 +63,17 @@
 
             <div class="col-12 col-sm-auto">
               <q-btn
+                color="secondary"
+                icon="palette"
+                label="Import Màu NCC"
+                outline
+                class="full-width-xs"
+                @click="router.push('/thread/suppliers/import-colors')"
+              />
+            </div>
+
+            <div class="col-12 col-sm-auto">
+              <q-btn
                 color="primary"
                 icon="add"
                 label="Thêm NCC"

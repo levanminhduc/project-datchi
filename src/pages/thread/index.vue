@@ -370,9 +370,9 @@
         </div>
         <div class="col-12 col-sm-6">
           <AppInput
-            v-model.number="formData.tex_number"
-            label="Số Tex"
-            type="number"
+            v-model="formData.tex_number"
+            label="Tex"
+            placeholder="VD: 20/9, 40/3"
           />
         </div>
 

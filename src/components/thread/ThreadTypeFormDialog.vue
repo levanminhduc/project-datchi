@@ -217,9 +217,9 @@ const onCancel = () => {
       </div>
       <div class="col-12 col-sm-6">
         <AppInput
-          v-model.number="form.tex_number"
-          type="number"
-          label="Số Tex"
+          v-model="form.tex_number"
+          label="Tex"
+          placeholder="VD: 20/9, 40/3"
         />
       </div>
 

@@ -11,7 +11,7 @@ export interface ThreadType {
   supplier_id: number | null
   color_supplier_id: number | null
   material: ThreadMaterial
-  tex_number: number | null
+  tex_number: string | null
   density_grams_per_meter: number
   meters_per_cone: number | null
   reorder_level_meters: number
@@ -39,7 +39,7 @@ export interface ThreadTypeFormData {
   supplier_id?: number | null
   color_supplier_id?: number | null
   material: ThreadMaterial
-  tex_number?: number
+  tex_number?: string
   density_grams_per_meter: number
   meters_per_cone?: number
   reorder_level_meters?: number

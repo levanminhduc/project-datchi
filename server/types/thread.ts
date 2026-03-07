@@ -62,7 +62,7 @@ export interface ThreadTypeRow {
   code: string
   name: string
   material: ThreadMaterial
-  tex_number: number | null
+  tex_number: string | null
   density_grams_per_meter: number
   meters_per_cone: number | null
   reorder_level_meters: number
@@ -195,7 +195,7 @@ export interface CreateThreadTypeDTO {
   code: string
   name: string
   material?: ThreadMaterial
-  tex_number?: number
+  tex_number?: string
   density_grams_per_meter: number
   meters_per_cone?: number
   reorder_level_meters?: number
@@ -343,7 +343,7 @@ export interface ConeSummaryRow {
   thread_name: string
   color_data: { name: string; hex_code: string | null } | null
   material: ThreadMaterial
-  tex_number: number | null
+  tex_number: string | null
   meters_per_cone: number | null
   full_cones: number
   partial_cones: number

@@ -8,7 +8,7 @@ export interface ImportMappingConfig {
 export interface ImportTexRow {
   row_number: number
   supplier_name: string
-  tex_number: number
+  tex_number: string
   meters_per_cone: number
   unit_price: number
   supplier_item_code?: string
@@ -36,7 +36,7 @@ export interface ImportTexPreviewResponse {
 export interface ImportTexSkipDetail {
   row_number: number
   supplier_name: string
-  tex_number: number
+  tex_number: string
   reason: string
 }
 

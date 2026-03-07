@@ -1080,7 +1080,7 @@ let manualSupplierRequestId = 0
 
 const manualEntryForm = reactive({
   supplier_id: null as number | null,
-  tex_number: null as number | null,
+  tex_number: null as string | null,
   thread_type_id: null as number | null,
   warehouse_id: null as number | null,
   qty_full_cones: 0,
@@ -1105,7 +1105,7 @@ const manualSupplierOptions = computed(() =>
 )
 
 const manualTexOptions = computed(() => {
-  const texSet = new Map<number, string>()
+  const texSet = new Map<string, string>()
   for (const tt of manualEntryThreadTypes.value) {
     if (tt.tex_number != null) {
       texSet.set(tt.tex_number, `Tex ${tt.tex_number}`)
