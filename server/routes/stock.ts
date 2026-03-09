@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import { requirePermission } from '../middleware/auth'
+import { getPartialConeRatio } from '../utils/settings-helper'
 import {
   StockFiltersSchema,
   StockSummaryFiltersSchema,
@@ -311,8 +312,7 @@ stock.post('/', requirePermission('thread.batch.receive'), async (c) => {
       }, 404)
     }
 
-    const { data: ratioResult } = await supabase.rpc('fn_get_partial_cone_ratio')
-    const partialConeRatio = Number(ratioResult) || 0.3
+    const partialConeRatio = await getPartialConeRatio()
 
     const metersPerCone = threadType.meters_per_cone || 0
     const partialMeters = metersPerCone * partialConeRatio
@@ -593,8 +593,7 @@ stock.post('/return', requirePermission('thread.batch.issue'), async (c) => {
       }, 404)
     }
 
-    const { data: ratioResult } = await supabase.rpc('fn_get_partial_cone_ratio')
-    const partialConeRatio = Number(ratioResult) || 0.3
+    const partialConeRatio = await getPartialConeRatio()
 
     const metersPerCone = threadType.meters_per_cone || 0
     const partialMeters = metersPerCone * partialConeRatio

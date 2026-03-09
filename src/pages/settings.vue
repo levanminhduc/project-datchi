@@ -78,6 +78,52 @@
           Tỷ lệ quy đổi cuộn lẻ được sử dụng để tính toán số lượng cuộn lẻ khi xuất kho sản xuất.
           Giá trị mặc định là 0.3 (tương đương 30% cuộn nguyên).
         </div>
+
+        <!-- Reserve Priority Setting -->
+        <q-separator class="q-my-lg" />
+
+        <div class="text-subtitle1 text-weight-medium q-mb-md">
+          Ưu tiên reserve cuộn
+        </div>
+
+        <div class="row q-col-gutter-md items-end">
+          <div class="col-12 col-md-6 col-lg-4">
+            <AppSelect
+              v-model="reservePriority"
+              label="Ưu tiên khi reserve cuộn cho tuần"
+              :options="reservePriorityOptions"
+              emit-value
+              map-options
+              :disable="isLoading"
+              outlined
+              dense
+            >
+              <template #prepend>
+                <q-icon name="sort" />
+              </template>
+            </AppSelect>
+          </div>
+
+          <div class="col-12 col-md-auto">
+            <AppButton
+              label="Lưu ưu tiên"
+              color="primary"
+              icon="save"
+              :loading="isSavingReservePriority"
+              :disable="!hasReservePriorityChanges"
+              @click="handleSaveReservePriority"
+            />
+          </div>
+        </div>
+
+        <div class="q-mt-md text-caption text-grey-7">
+          <q-icon
+            name="info"
+            size="xs"
+            class="q-mr-xs"
+          />
+          Khi xác nhận tuần đặt hàng, hệ thống sẽ ưu tiên reserve cuộn lẻ hoặc cuộn nguyên trước tùy theo cài đặt này.
+        </div>
       </q-card-section>
     </q-card>
 
@@ -464,6 +510,7 @@ import { importService } from '@/services/importService'
 import { settingsService } from '@/services/settingsService'
 
 const PARTIAL_CONE_RATIO_KEY = 'partial_cone_ratio'
+const RESERVE_PRIORITY_KEY = 'reserve_priority'
 const TEX_MAPPING_KEY = 'import_supplier_tex_mapping'
 const COLOR_MAPPING_KEY = 'import_supplier_color_mapping'
 const PO_MAPPING_KEY = 'import_po_items_mapping'
@@ -478,6 +525,18 @@ const hasLoaded = ref(false)
 const isSavingTexMapping = ref(false)
 const isSavingColorMapping = ref(false)
 const isSavingPOMapping = ref(false)
+const isSavingReservePriority = ref(false)
+
+const reservePriority = ref<string>('partial_first')
+const originalReservePriority = ref<string>('partial_first')
+const reservePriorityOptions = [
+  { label: 'Ưu tiên cuộn lẻ', value: 'partial_first' },
+  { label: 'Ưu tiên cuộn nguyên', value: 'full_first' },
+]
+
+const hasReservePriorityChanges = computed(() => {
+  return reservePriority.value !== originalReservePriority.value
+})
 
 const columnOptions = Array.from({ length: 26 }, (_, i) => ({
   label: String.fromCharCode(65 + i),
@@ -533,6 +592,13 @@ async function loadSettings() {
     originalValue.value = partialConeRatio.value
   }
 
+  const prioritySetting = await getSettingSilent(RESERVE_PRIORITY_KEY)
+  if (prioritySetting?.value) {
+    const val = typeof prioritySetting.value === 'string' ? prioritySetting.value : String(prioritySetting.value)
+    reservePriority.value = val === 'full_first' ? 'full_first' : 'partial_first'
+    originalReservePriority.value = reservePriority.value
+  }
+
   if (isRoot.value) {
     await loadImportMappings()
   }
@@ -575,6 +641,18 @@ async function handleSave() {
   const result = await updateSetting(PARTIAL_CONE_RATIO_KEY, partialConeRatio.value)
   if (result) {
     originalValue.value = partialConeRatio.value
+  }
+}
+
+async function handleSaveReservePriority() {
+  isSavingReservePriority.value = true
+  try {
+    const result = await updateSetting(RESERVE_PRIORITY_KEY, reservePriority.value)
+    if (result) {
+      originalReservePriority.value = reservePriority.value
+    }
+  } finally {
+    isSavingReservePriority.value = false
   }
 }
 

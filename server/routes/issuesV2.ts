@@ -15,6 +15,7 @@ import { createHash } from 'crypto'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
+import { getPartialConeRatio } from '../utils/settings-helper'
 import {
   CreateIssueV2Schema,
   CreateIssueWithLineSchema,
@@ -53,21 +54,6 @@ function hashPayload(payload: unknown): string {
  * Get partial cone ratio from system_settings
  * Default: 0.3 (30%)
  */
-async function getPartialConeRatio(): Promise<number> {
-  const { data, error } = await supabase
-    .from('system_settings')
-    .select('value')
-    .eq('key', 'partial_cone_ratio')
-    .single()
-
-  if (error || !data) {
-    console.log('Using default partial_cone_ratio: 0.3')
-    return 0.3
-  }
-
-  return parseFloat(data.value) || 0.3
-}
-
 /**
  * Get meters_per_cone from thread_types table
  */

@@ -75,6 +75,9 @@ export interface AggregatedRow {
   delivery_date?: string | null
   lead_time_days?: number | null
   inventory_cones?: number
+  full_cones?: number
+  partial_cones?: number
+  equivalent_cones?: number
   sl_can_dat?: number
   additional_order?: number
   total_final?: number

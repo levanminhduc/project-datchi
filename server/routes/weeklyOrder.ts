@@ -3,6 +3,7 @@ import { ZodError } from 'zod'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
+import { getPartialConeRatio } from '../utils/settings-helper'
 import { broadcastNotification, getWarehouseEmployeeIds } from '../utils/notificationService'
 import {
   CreateWeeklyOrderSchema,
@@ -198,6 +199,8 @@ weeklyOrder.post('/enrich-inventory', requirePermission('thread.allocations.mana
     // Extract unique thread_type_ids
     const threadTypeIds = [...new Set(summary_rows.map((r) => r.thread_type_id))]
 
+    const partialConeRatio = await getPartialConeRatio()
+
     // Query available inventory (exclude reserved cones)
     const { data: inventory, error: invError } = await supabase
       .from('thread_inventory')
@@ -208,11 +211,15 @@ weeklyOrder.post('/enrich-inventory', requirePermission('thread.allocations.mana
 
     if (invError) throw invError
 
-    // Aggregate counts per thread_type_id
-    const inventoryMap = new Map<number, number>()
+    // Task 2.2: Track full and partial cones separately
+    const fullMap = new Map<number, number>()
+    const partialMap = new Map<number, number>()
     for (const row of inventory || []) {
-      const current = inventoryMap.get(row.thread_type_id) || 0
-      inventoryMap.set(row.thread_type_id, current + 1)
+      if (row.is_partial) {
+        partialMap.set(row.thread_type_id, (partialMap.get(row.thread_type_id) || 0) + 1)
+      } else {
+        fullMap.set(row.thread_type_id, (fullMap.get(row.thread_type_id) || 0) + 1)
+      }
     }
 
     // Query committed cones from other CONFIRMED weeks via their saved summary_data
@@ -246,18 +253,26 @@ weeklyOrder.post('/enrich-inventory', requirePermission('thread.allocations.mana
       }
     }
 
-    // Enrich each summary row
+    // Task 2.3: Enrich each summary row with full/partial/equivalent
     const enrichedRows = summary_rows.map((row) => {
-      const raw_inventory = inventoryMap.get(row.thread_type_id) || 0
+      const full_cones_raw = fullMap.get(row.thread_type_id) || 0
+      const partial_cones_raw = partialMap.get(row.thread_type_id) || 0
+      const raw_inventory = full_cones_raw + partial_cones_raw
       const committed_cones = committedMap.get(row.thread_type_id) || 0
+      const full_cones = Math.max(0, full_cones_raw - Math.min(committed_cones, full_cones_raw))
+      const partial_cones = Math.max(0, partial_cones_raw - Math.max(0, committed_cones - full_cones_raw))
       const inventory_cones = Math.max(0, raw_inventory - committed_cones)
-      const sl_can_dat = Math.max(0, row.total_cones - inventory_cones)
+      const equivalent_cones = Math.round(full_cones + partial_cones * partialConeRatio)
+      const sl_can_dat = Math.max(0, row.total_cones - equivalent_cones)
       const additional_order = 0
       const total_final = sl_can_dat
 
       return {
         ...row,
+        full_cones,
+        partial_cones,
         inventory_cones,
+        equivalent_cones,
         committed_cones,
         sl_can_dat,
         additional_order,

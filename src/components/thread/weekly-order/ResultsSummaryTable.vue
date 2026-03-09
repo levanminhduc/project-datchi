@@ -165,6 +165,28 @@ const columns: QTableColumn[] = [
     format: (val: number | undefined) => (val && val > 0) ? val.toLocaleString('vi-VN') : '—',
   },
   {
+    name: 'full_cones',
+    label: 'Cuộn nguyên',
+    field: 'full_cones',
+    align: 'right',
+    format: (val: number | undefined) => (val != null && val > 0) ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
+    name: 'partial_cones',
+    label: 'Cuộn lẻ',
+    field: 'partial_cones',
+    align: 'right',
+    format: (val: number | undefined) => (val != null && val > 0) ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
+    name: 'equivalent_cones',
+    label: 'Tồn kho QĐ',
+    field: 'equivalent_cones',
+    align: 'right',
+    sortable: true,
+    format: (val: number | undefined) => (val != null && val > 0) ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
     name: 'sl_can_dat',
     label: 'SL cần đặt',
     field: 'sl_can_dat',
