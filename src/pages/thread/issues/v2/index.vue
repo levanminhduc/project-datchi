@@ -98,7 +98,7 @@ const availableThreadTypes = computed(() => {
 
 const columns: QTableColumn[] = [
   { name: 'thread', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
-  { name: 'quota', label: 'Định Mức', field: 'quota_cones', align: 'center', format: (v) => v !== null ? `${v} cuộn` : '-' },
+  { name: 'quota', label: 'Định Mức', field: 'quota_cones', align: 'center' },
   { name: 'stock', label: 'Tồn Kho', field: 'stock', align: 'center' },
   { name: 'issue', label: 'Xuất', field: 'issue', align: 'center' },
   { name: 'equivalent', label: 'Quy Đổi', field: 'issued_equivalent', align: 'center' },
@@ -799,6 +799,20 @@ onMounted(async () => {
                     <div class="text-caption text-grey">
                       {{ props.row.thread_name }}
                     </div>
+                  </q-td>
+                </template>
+
+                <template #body-cell-quota="props">
+                  <q-td :props="props">
+                    <template v-if="props.row.base_quota_cones !== null">
+                      <div class="text-weight-medium">
+                        {{ props.row.confirmed_issued_gross }}/{{ props.row.base_quota_cones }} cuộn
+                      </div>
+                      <div class="text-caption text-grey">
+                        Còn {{ props.row.quota_cones }} cuộn
+                      </div>
+                    </template>
+                    <span v-else>-</span>
                   </q-td>
                 </template>
 

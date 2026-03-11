@@ -297,6 +297,83 @@ async function getConfirmedIssuedEquivalent(
   )
 }
 
+async function getConfirmedIssuedGross(
+  poId: number,
+  styleId: number,
+  colorId: number,
+  threadTypeId: number,
+  ratio: number
+): Promise<number> {
+  const { data: issuedLines, error } = await supabase
+    .from('thread_issue_lines')
+    .select(
+      `
+      issued_full,
+      issued_partial,
+      thread_issues!inner(status)
+    `
+    )
+    .eq('po_id', poId)
+    .eq('style_id', styleId)
+    .eq('color_id', colorId)
+    .eq('thread_type_id', threadTypeId)
+    .eq('thread_issues.status', 'CONFIRMED')
+
+  if (error) {
+    console.error('Error fetching confirmed issued gross:', error)
+    return 0
+  }
+
+  return roundToTwoDecimals(
+    (issuedLines || []).reduce((total, line: any) => {
+      return total + calculateIssuedEquivalent(line.issued_full || 0, line.issued_partial || 0, ratio)
+    }, 0)
+  )
+}
+
+async function getBaseQuotaCones(
+  poId: number,
+  styleId: number,
+  colorId: number,
+  threadTypeId: number
+): Promise<number | null> {
+  const { data: orderItems, error } = await supabase
+    .from('thread_order_items')
+    .select(`quantity, thread_order_weeks!inner(status)`)
+    .eq('po_id', poId)
+    .eq('style_id', styleId)
+    .eq('color_id', colorId)
+    .eq('thread_order_weeks.status', 'CONFIRMED')
+
+  if (error) return null
+
+  const totalOrderedQuantity = (orderItems || []).reduce(
+    (sum, item: { quantity: number | null }) => sum + (item.quantity || 0),
+    0
+  )
+  if (totalOrderedQuantity <= 0) return null
+
+  const { data: specs } = await supabase
+    .from('style_color_thread_specs')
+    .select(`thread_type_id, style_thread_specs:style_thread_spec_id(style_id, meters_per_unit)`)
+    .eq('color_id', colorId)
+    .eq('thread_type_id', threadTypeId)
+
+  const matchingSpec = (specs || []).find((s: any) => s.style_thread_specs?.style_id === styleId) as any
+  if (!matchingSpec?.style_thread_specs?.meters_per_unit) return null
+
+  const { data: threadType } = await supabase
+    .from('thread_types')
+    .select('meters_per_cone')
+    .eq('id', threadTypeId)
+    .single()
+
+  if (!threadType?.meters_per_cone) return null
+
+  const totalMeters = totalOrderedQuantity * (matchingSpec.style_thread_specs.meters_per_unit as number)
+  return Math.ceil(totalMeters / threadType.meters_per_cone)
+}
+
 /**
  * Get remaining quota_cones for a specific PO/style/color/thread_type combination.
  * Remaining quota = confirmed weekly-order demand - net confirmed issued quantity.
@@ -1110,14 +1187,20 @@ issuesV2.get('/form-data', async (c) => {
       uniqueThreadTypeIds.map(async (threadTypeId) => {
         const spec = filteredSpecs.find((s: any) => s.thread_type_id === threadTypeId) as any
         const threadType = spec?.thread_types as any
-        const stock = await getStockAvailability(threadTypeId)
-        const quotaCones = await getQuotaCones(po_id, style_id, color_id, threadTypeId, ratio)
+        const [stock, quotaCones, baseQuota, confirmedGross] = await Promise.all([
+          getStockAvailability(threadTypeId),
+          getQuotaCones(po_id, style_id, color_id, threadTypeId, ratio),
+          getBaseQuotaCones(po_id, style_id, color_id, threadTypeId),
+          getConfirmedIssuedGross(po_id, style_id, color_id, threadTypeId, ratio),
+        ])
 
         return {
           thread_type_id: threadTypeId,
           thread_code: threadType?.code || '',
           thread_name: threadType?.name || '',
           quota_cones: quotaCones,
+          base_quota_cones: baseQuota,
+          confirmed_issued_gross: confirmedGross,
           stock_available_full: stock.full_cones,
           stock_available_partial: stock.partial_cones,
         }

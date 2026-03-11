@@ -181,6 +181,7 @@
           :key="week.week_id"
           group="weeks"
           header-class="text-weight-medium"
+          @show="loadThreadSummary(week.week_id)"
         >
           <template #header>
             <q-item-section>
@@ -313,6 +314,16 @@
                 </q-card-section>
               </q-card>
             </q-card-section>
+
+            <q-card-section v-if="expandedWeekId === week.week_id">
+              <div class="text-subtitle2 q-mb-sm">
+                Chi tiết loại chỉ
+              </div>
+              <ThreadSummaryTable
+                :rows="threadSummary"
+                :loading="threadSummaryLoading"
+              />
+            </q-card-section>
           </q-card>
         </q-expansion-item>
       </q-list>
@@ -339,9 +350,11 @@ import { ref, computed, watch, onMounted } from "vue";
 import { useQuasar } from "quasar";
 import { usePurchaseOrders, useStyles, useSnackbar } from "@/composables";
 import { weeklyOrderService } from "@/services/weeklyOrderService";
+import { deliveryService } from "@/services/deliveryService";
 import DatePicker from "@/components/ui/pickers/DatePicker.vue";
+import ThreadSummaryTable from "@/components/thread/weekly-order/ThreadSummaryTable.vue";
 import { dateRules } from '@/utils'
-import type { WeekHistoryGroup, HistoryByWeekFilter } from "@/types/thread";
+import type { WeekHistoryGroup, HistoryByWeekFilter, ThreadSummaryRow } from "@/types/thread";
 
 definePage({
   meta: {
@@ -364,6 +377,10 @@ const loading = ref(false);
 const currentPage = ref(1);
 const totalPages = ref(0);
 const totalItems = ref(0);
+
+const expandedWeekId = ref<number | null>(null);
+const threadSummary = ref<ThreadSummaryRow[]>([]);
+const threadSummaryLoading = ref(false);
 
 const filters = ref<HistoryByWeekFilter>({
   po_id: undefined,
@@ -431,6 +448,59 @@ function getProgressColor(pct: number): string {
   if (pct === 100) return "positive";
   if (pct >= 80) return "warning";
   return "primary";
+}
+
+async function loadThreadSummary(weekId: number) {
+  if (expandedWeekId.value === weekId && threadSummary.value.length > 0) return
+
+  expandedWeekId.value = weekId;
+  threadSummaryLoading.value = true;
+  threadSummary.value = [];
+
+  try {
+    const [resultsData, deliveries] = await Promise.all([
+      weeklyOrderService.getResults(weekId),
+      deliveryService.getByWeek(weekId),
+    ]);
+
+    if (!resultsData?.summary_data?.length) {
+      threadSummary.value = [];
+      return;
+    }
+
+    const enriched = await weeklyOrderService.enrichInventory(
+      resultsData.summary_data, weekId
+    );
+
+    if (expandedWeekId.value !== weekId) return;
+
+    const pendingByType = new Map<number, number>();
+    deliveries
+      .filter(d => d.status === 'PENDING')
+      .forEach(d => {
+        const current = pendingByType.get(d.thread_type_id) || 0;
+        pendingByType.set(d.thread_type_id, current + (d.quantity_cones || 0));
+      });
+
+    threadSummary.value = enriched.map(row => {
+      const pending = pendingByType.get(row.thread_type_id) || 0;
+      const available = row.equivalent_cones || 0;
+      return {
+        thread_type_id: row.thread_type_id,
+        thread_type_name: row.thread_type_name,
+        supplier_name: row.supplier_name,
+        tex_number: row.tex_number,
+        total_cones: row.total_cones,
+        equivalent_cones: available,
+        pending_cones: pending,
+        shortage: Math.max(0, row.total_cones - available - pending),
+      };
+    });
+  } catch {
+    snackbar.error('Không thể tải chi tiết loại chỉ');
+  } finally {
+    threadSummaryLoading.value = false;
+  }
 }
 
 async function fetchHistory() {

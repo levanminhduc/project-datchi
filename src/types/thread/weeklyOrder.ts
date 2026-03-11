@@ -305,6 +305,17 @@ export interface ReservedCone {
   warehouse?: { id: number; code: string; name: string }
 }
 
+export interface ThreadSummaryRow {
+  thread_type_id: number
+  thread_type_name: string
+  supplier_name: string
+  tex_number: string
+  total_cones: number
+  equivalent_cones: number
+  pending_cones: number
+  shortage: number
+}
+
 export interface AssignmentSummaryRow {
   week_id: number
   week_name: string

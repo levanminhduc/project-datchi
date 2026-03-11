@@ -172,6 +172,8 @@ export interface ThreadTypeForIssue {
   thread_code: string
   thread_name: string
   quota_cones: number | null
+  base_quota_cones: number | null
+  confirmed_issued_gross: number
   stock_available_full: number
   stock_available_partial: number
 }

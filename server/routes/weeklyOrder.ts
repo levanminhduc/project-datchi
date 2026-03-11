@@ -262,7 +262,7 @@ weeklyOrder.post('/enrich-inventory', requirePermission('thread.allocations.mana
       const full_cones = Math.max(0, full_cones_raw - Math.min(committed_cones, full_cones_raw))
       const partial_cones = Math.max(0, partial_cones_raw - Math.max(0, committed_cones - full_cones_raw))
       const inventory_cones = Math.max(0, raw_inventory - committed_cones)
-      const equivalent_cones = Math.round(full_cones + partial_cones * partialConeRatio)
+      const equivalent_cones = Math.round((full_cones + partial_cones * partialConeRatio) * 10) / 10
       const sl_can_dat = Math.max(0, row.total_cones - equivalent_cones)
       const additional_order = 0
       const total_final = sl_can_dat
