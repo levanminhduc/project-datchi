@@ -6,6 +6,7 @@ import { useIssueV2 } from '@/composables/thread/useIssueV2'
 import { issueV2Service } from '@/services/issueV2Service'
 import { employeeService } from '@/services/employeeService'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { useAuth } from '@/composables/useAuth'
 import { useConfirm } from '@/composables/useConfirm'
 import { IssueV2Status } from '@/types/thread/issueV2'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
@@ -28,6 +29,7 @@ import type {
 const route = useRoute()
 const router = useRouter()
 const snackbar = useSnackbar()
+const { employee } = useAuth()
 const { confirmWarning, confirmDelete } = useConfirm()
 
 const {
@@ -55,7 +57,7 @@ const activeTab = ref(route.query.tab === 'history' ? 'history' : 'create')
 const step2Visible = ref(false)
 
 const department = ref('')
-const createdBy = ref('')
+const createdBy = ref(employee.value?.fullName ?? '')
 
 const selectedPoId = ref<number | null>(null)
 const selectedStyleId = ref<number | null>(null)
@@ -415,7 +417,7 @@ function handleNewIssue() {
   clearIssue()
   step2Visible.value = false
   department.value = ''
-  createdBy.value = ''
+  createdBy.value = employee.value?.fullName ?? ''
   selectedPoId.value = null
   selectedStyleId.value = null
   selectedColorId.value = null
@@ -664,7 +666,7 @@ onMounted(async () => {
                     v-model="createdBy"
                     label="Người Tạo"
                     required
-                    placeholder="Nhập tên người tạo..."
+                    readonly
                   />
                 </div>
               </div>
