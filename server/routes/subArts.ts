@@ -117,4 +117,38 @@ subArts.post('/import', async (c) => {
   }
 })
 
+subArts.get('/template', async (c) => {
+  try {
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet('Import Sub-Art')
+
+    const headers = ['Mã Hàng (style_code)', 'Mã Sub-Art (sub_art_code)']
+    const headerRow = sheet.addRow(headers)
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true }
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD9E1F2' },
+      }
+    })
+
+    sheet.addRow(['KS L/S', 'SA-001'])
+    sheet.addRow(['KS L/S', 'SA-002'])
+    sheet.addRow(['AB S/S', 'SA-003'])
+
+    sheet.getColumn(1).width = 25
+    sheet.getColumn(2).width = 25
+
+    const buffer = await workbook.xlsx.writeBuffer()
+
+    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    c.header('Content-Disposition', 'attachment; filename=template-import-sub-art.xlsx')
+    return c.body(buffer as ArrayBuffer)
+  } catch (err) {
+    console.error('Error generating sub_arts template:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 export default subArts

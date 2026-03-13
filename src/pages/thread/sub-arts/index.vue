@@ -5,7 +5,17 @@
       subtitle="Nhập danh sách Sub-Art từ file Excel và liên kết với mã hàng"
       show-back
       back-to="/thread/styles"
-    />
+    >
+      <template #actions>
+        <AppButton
+          label="Tải mẫu Excel"
+          icon="download"
+          variant="outlined"
+          color="primary"
+          @click="downloadTemplate"
+        />
+      </template>
+    </PageHeader>
 
     <q-card
       flat
@@ -23,14 +33,14 @@
               v-model="selectedFile"
               accept=".xlsx"
               label="Chọn file Excel"
-              hint="Định dạng: .xlsx — Cột A: style_code, Cột B: sub_art_code"
+              :hint="undefined"
               dense
               hide-bottom-space
               :disable="importing"
               @update:model-value="onFileSelected"
             />
           </div>
-          <div class="col-12 col-sm-3">
+          <div class="col-auto">
             <AppButton
               label="Import"
               icon="upload"
@@ -147,6 +157,14 @@ function onFileSelected(file: File | File[] | null) {
   }
   importError.value = ''
   importResult.value = null
+}
+
+async function downloadTemplate() {
+  try {
+    await subArtService.downloadTemplate()
+  } catch (err) {
+    snackbar.error((err as Error).message || 'Không thể tải file mẫu')
+  }
 }
 
 async function doImport() {

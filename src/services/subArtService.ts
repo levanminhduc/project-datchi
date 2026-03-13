@@ -26,4 +26,20 @@ export const subArtService = {
     }
     return payload.data
   },
+
+  async downloadTemplate(): Promise<void> {
+    const response = await fetchApiRaw(`${BASE}/template`)
+    if (!response.ok) {
+      throw new Error('Không thể tải file mẫu')
+    }
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'template-import-sub-art.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  },
 }
