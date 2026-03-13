@@ -155,30 +155,30 @@
           </q-table>
         </div>
 
-          <div
-            v-if="importing"
-            class="q-pa-md q-mt-md"
-          >
-            <div class="text-subtitle2 q-mb-xs">
-              {{ importPhase }}: {{ importPhaseMessage }}
-            </div>
-            <q-linear-progress
-              :value="importProgress"
-              color="primary"
-              track-color="grey-3"
-              rounded
-              size="24px"
-              class="q-mb-xs"
-            >
-              <div class="absolute-full flex flex-center">
-                <q-badge
-                  color="white"
-                  text-color="primary"
-                  :label="`${Math.round(importProgress * 100)}%`"
-                />
-              </div>
-            </q-linear-progress>
+        <div
+          v-if="importing"
+          class="q-pa-md q-mt-md"
+        >
+          <div class="text-subtitle2 q-mb-xs">
+            {{ importPhase }}: {{ importPhaseMessage }}
           </div>
+          <q-linear-progress
+            :value="importProgress"
+            color="primary"
+            track-color="grey-3"
+            rounded
+            size="24px"
+            class="q-mb-xs"
+          >
+            <div class="absolute-full flex flex-center">
+              <q-badge
+                color="white"
+                text-color="primary"
+                :label="`${Math.round(importProgress * 100)}%`"
+              />
+            </div>
+          </q-linear-progress>
+        </div>
 
         <q-stepper-navigation>
           <AppButton
