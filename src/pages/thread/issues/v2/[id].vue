@@ -44,10 +44,11 @@ const loadIssue = async () => {
   }
 }
 
-const formatOrderInfo = (row: { po_number?: string; style_code?: string; color_name?: string }) => {
+const formatOrderInfo = (row: { po_number?: string; style_code?: string; sub_art_code?: string | null; color_name?: string }) => {
   const parts = []
   if (row.po_number) parts.push(row.po_number)
   if (row.style_code) parts.push(row.style_code)
+  if (row.sub_art_code) parts.push(row.sub_art_code)
   if (row.color_name) parts.push(row.color_name)
   return parts.length > 0 ? parts.join(' / ') : '-'
 }

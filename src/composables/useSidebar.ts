@@ -38,7 +38,8 @@ const navItems: NavItem[] = [
     icon: 'o_engineering',
     to: '/ky-thuat#top',
     children: [
-      { label: 'Mã Hàng', icon: 'o_checkroom', to: '/thread/styles' }
+      { label: 'Mã Hàng', icon: 'o_checkroom', to: '/thread/styles' },
+      { label: 'Import Sub-Art', icon: 'o_upload_file', to: '/thread/sub-arts' }
     ]
   },
   { label: 'Kho', icon: 'o_inventory_2', to: '/kho#top' },

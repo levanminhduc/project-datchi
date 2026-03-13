@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDebounceFn } from '@vueuse/core'
 import { useIssueV2 } from '@/composables/thread/useIssueV2'
 import { issueV2Service } from '@/services/issueV2Service'
+import { subArtService } from '@/services/subArtService'
+import type { SubArt } from '@/types/thread/subArt'
 import { employeeService } from '@/services/employeeService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useAuth } from '@/composables/useAuth'
@@ -61,15 +63,24 @@ const createdBy = ref(employee.value?.fullName ?? '')
 
 const selectedPoId = ref<number | null>(null)
 const selectedStyleId = ref<number | null>(null)
+const selectedSubArtId = ref<number | null>(null)
 const selectedColorId = ref<number | null>(null)
 
 const poOptions = ref<{ value: number; label: string }[]>([])
-const styleOptions = ref<{ value: number; label: string }[]>([])
+const styleOptions = ref<{ value: number; label: string; has_sub_arts?: boolean }[]>([])
+const subArtOptions = ref<{ value: number; label: string }[]>([])
 const colorOptions = ref<{ value: number; label: string }[]>([])
 const departmentOptions = ref<{ value: string; label: string }[]>([])
 
 const loadingOptions = ref(false)
 const loadingFormData = ref(false)
+const loadingSubArts = ref(false)
+
+const selectedStyleHasSubArts = computed(() => {
+  if (!selectedStyleId.value) return false
+  const opt = styleOptions.value.find((s) => s.value === selectedStyleId.value)
+  return opt?.has_sub_arts ?? false
+})
 
 const lineInputs = ref<Record<number, { full: number; partial: number; notes: string; validation: ValidateLineResponse | null }>>({})
 
@@ -78,7 +89,9 @@ const canCreateIssue = computed(() => {
 })
 
 const canLoadThreadTypes = computed(() => {
-  return selectedPoId.value && selectedStyleId.value && selectedColorId.value
+  if (!selectedPoId.value || !selectedStyleId.value || !selectedColorId.value) return false
+  if (selectedStyleHasSubArts.value && !selectedSubArtId.value) return false
+  return true
 })
 
 const canConfirm = computed(() => {
@@ -144,6 +157,7 @@ const addedLinesColumns: QTableColumn[] = [
   { name: 'thread', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
   { name: 'po', label: 'PO', field: 'po_number', align: 'left' },
   { name: 'style', label: 'Mã Hàng', field: 'style_code', align: 'left' },
+  { name: 'sub_art', label: 'Sub-Art', field: 'sub_art_code', align: 'left', format: (v: string | null) => v || '-' },
   { name: 'color', label: 'Màu', field: 'color_name', align: 'left' },
   { name: 'quota', label: 'Định Mức', field: 'quota_cones', align: 'center', format: (v: number | null) => v !== null ? `${v}` : '-' },
   { name: 'issued', label: 'Xuất', field: 'issued', align: 'center' },
@@ -160,8 +174,10 @@ function formatDate(dateStr: string): string {
 
 watch(selectedPoId, async (newPoId) => {
   selectedStyleId.value = null
+  selectedSubArtId.value = null
   selectedColorId.value = null
   styleOptions.value = []
+  subArtOptions.value = []
   colorOptions.value = []
 
   if (!newPoId) return
@@ -171,6 +187,7 @@ watch(selectedPoId, async (newPoId) => {
     styleOptions.value = (styles as OrderOptionStyle[]).map((s) => ({
       value: s.id,
       label: `${s.style_code} - ${s.style_name || ''}`.trim(),
+      has_sub_arts: s.has_sub_arts,
     }))
   } catch (err) {
     console.error('Failed to load styles:', err)
@@ -179,10 +196,28 @@ watch(selectedPoId, async (newPoId) => {
 })
 
 watch(selectedStyleId, async (newStyleId) => {
+  selectedSubArtId.value = null
   selectedColorId.value = null
+  subArtOptions.value = []
   colorOptions.value = []
 
   if (!newStyleId || !selectedPoId.value) return
+
+  if (selectedStyleHasSubArts.value) {
+    loadingSubArts.value = true
+    try {
+      const subArts = await subArtService.getByStyleId(newStyleId)
+      subArtOptions.value = subArts.map((sa: SubArt) => ({
+        value: sa.id,
+        label: sa.sub_art_code,
+      }))
+    } catch (err) {
+      console.error('Failed to load sub-arts:', err)
+      snackbar.error('Không thể tải danh sách Sub-Art')
+    } finally {
+      loadingSubArts.value = false
+    }
+  }
 
   try {
     const colors = await issueV2Service.getOrderOptions(selectedPoId.value, newStyleId)
@@ -196,8 +231,8 @@ watch(selectedStyleId, async (newStyleId) => {
   }
 })
 
-watch([selectedPoId, selectedStyleId, selectedColorId], async ([poId, styleId, colorId]) => {
-  if (poId && styleId && colorId) {
+watch([selectedPoId, selectedStyleId, selectedSubArtId, selectedColorId], async ([poId, styleId, _subArtId, colorId]) => {
+  if (poId && styleId && colorId && canLoadThreadTypes.value) {
     await handleLoadFormData()
   }
 })
@@ -271,6 +306,7 @@ const debouncedValidate = useDebounceFn(async (threadTypeId: number) => {
     po_id: selectedPoId.value,
     style_id: selectedStyleId.value,
     color_id: selectedColorId.value,
+    sub_art_id: selectedSubArtId.value,
   })
 
   if (result) {
@@ -366,6 +402,7 @@ async function handleAddLine(threadType: ThreadTypeForIssue) {
       po_id: selectedPoId.value,
       style_id: selectedStyleId.value,
       color_id: selectedColorId.value,
+      sub_art_id: selectedSubArtId.value,
       thread_type_id: threadType.thread_type_id,
       issued_full: input.full,
       issued_partial: input.partial,
@@ -385,6 +422,7 @@ async function handleAddLine(threadType: ThreadTypeForIssue) {
     po_id: selectedPoId.value,
     style_id: selectedStyleId.value,
     color_id: selectedColorId.value,
+    sub_art_id: selectedSubArtId.value,
     thread_type_id: threadType.thread_type_id,
     issued_full: input.full,
     issued_partial: input.partial,
@@ -420,7 +458,9 @@ function handleNewIssue() {
   createdBy.value = employee.value?.fullName ?? ''
   selectedPoId.value = null
   selectedStyleId.value = null
+  selectedSubArtId.value = null
   selectedColorId.value = null
+  subArtOptions.value = []
   lineInputs.value = {}
 }
 
@@ -737,12 +777,38 @@ onMounted(async () => {
                     </template>
                   </AppSelect>
                 </div>
+                <div
+                  v-if="selectedStyleHasSubArts"
+                  class="col-12 col-md-3"
+                >
+                  <AppSelect
+                    v-model="selectedSubArtId"
+                    label="Sub-Art"
+                    :options="subArtOptions"
+                    :disable="!selectedStyleId"
+                    :loading="loadingSubArts"
+                    emit-value
+                    map-options
+                    use-input
+                    fill-input
+                    hide-selected
+                    placeholder="Chọn Sub-Art..."
+                  >
+                    <template #no-option>
+                      <q-item>
+                        <q-item-section class="text-grey">
+                          Không có Sub-Art cho mã hàng này
+                        </q-item-section>
+                      </q-item>
+                    </template>
+                  </AppSelect>
+                </div>
                 <div class="col-12 col-md-3">
                   <AppSelect
                     v-model="selectedColorId"
                     label="Màu"
                     :options="colorOptions"
-                    :disable="!selectedStyleId"
+                    :disable="!selectedStyleId || (selectedStyleHasSubArts && !selectedSubArtId)"
                     emit-value
                     map-options
                     use-input

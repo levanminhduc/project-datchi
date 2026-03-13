@@ -251,6 +251,57 @@ async function getStockAvailability(
   return { full_cones: fullCones, partial_cones: partialCones }
 }
 
+async function validateSubArtId(
+  styleId: number | null | undefined,
+  subArtId: number | null | undefined
+): Promise<string | null> {
+  if (!styleId) {
+    if (subArtId) return 'Khong the chon sub-art khi chua chon ma hang'
+    return null
+  }
+
+  const { data: subArts } = await supabase
+    .from('sub_arts')
+    .select('id')
+    .eq('style_id', styleId)
+    .limit(1)
+
+  const hasSubArts = subArts && subArts.length > 0
+
+  if (hasSubArts && !subArtId) {
+    return 'Ma hang nay yeu cau chon sub-art'
+  }
+
+  if (!hasSubArts && subArtId) {
+    return 'Ma hang nay khong co sub-art'
+  }
+
+  if (subArtId) {
+    const { data: subArt } = await supabase
+      .from('sub_arts')
+      .select('id')
+      .eq('id', subArtId)
+      .eq('style_id', styleId)
+      .single()
+
+    if (!subArt) {
+      return 'Sub-art khong thuoc ma hang da chon'
+    }
+  }
+
+  return null
+}
+
+async function getSubArtCode(subArtId: number | null | undefined): Promise<string | null> {
+  if (!subArtId) return null
+  const { data } = await supabase
+    .from('sub_arts')
+    .select('sub_art_code')
+    .eq('id', subArtId)
+    .single()
+  return data?.sub_art_code || null
+}
+
 async function getConfirmedIssuedEquivalent(
   poId: number,
   styleId: number,
@@ -720,8 +771,25 @@ issuesV2.get('/order-options', async (c) => {
         }
       }
 
+      const styleIds = Array.from(uniqueStyles.keys())
+      const subArtStyleIds = new Set<number>()
+      if (styleIds.length > 0) {
+        const { data: subArtRows } = await supabase
+          .from('sub_arts')
+          .select('style_id')
+          .in('style_id', styleIds)
+        if (subArtRows) {
+          for (const row of subArtRows) {
+            subArtStyleIds.add(row.style_id)
+          }
+        }
+      }
+
       return c.json({
-        data: Array.from(uniqueStyles.values()),
+        data: Array.from(uniqueStyles.entries()).map(([styleId, style]) => ({
+          ...style,
+          has_sub_arts: subArtStyleIds.has(styleId),
+        })),
         error: null,
       })
     }
@@ -889,7 +957,15 @@ issuesV2.post('/validate-line', async (c) => {
       throw err
     }
 
-    const { thread_type_id, issued_full, issued_partial, po_id, style_id, color_id } = validated
+    const { thread_type_id, issued_full, issued_partial, po_id, style_id, color_id, sub_art_id } = validated
+
+    const subArtError = await validateSubArtId(style_id, sub_art_id)
+    if (subArtError) {
+      return c.json<ThreadApiResponse<null>>(
+        { data: null, error: subArtError },
+        400
+      )
+    }
 
     const ratio = await getPartialConeRatio()
 
@@ -967,11 +1043,20 @@ issuesV2.post('/create-with-lines', async (c) => {
       po_id,
       style_id,
       color_id,
+      sub_art_id,
       thread_type_id,
       issued_full,
       issued_partial,
       over_quota_notes,
     } = validated
+
+    const subArtError = await validateSubArtId(style_id, sub_art_id)
+    if (subArtError) {
+      return c.json<ThreadApiResponse<null>>(
+        { data: null, error: subArtError },
+        400
+      )
+    }
 
     const ratio = await getPartialConeRatio()
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
@@ -1036,6 +1121,7 @@ issuesV2.post('/create-with-lines', async (c) => {
         po_id: po_id || null,
         style_id: style_id || null,
         color_id: color_id || null,
+        sub_art_id: sub_art_id || null,
         thread_type_id,
         quota_cones: quotaCones,
         issued_full: issued_full || 0,
@@ -1080,6 +1166,8 @@ issuesV2.post('/create-with-lines', async (c) => {
       ? await supabase.from('colors').select('id, name').eq('id', color_id).single()
       : { data: null }
 
+    const subArtCode = await getSubArtCode(sub_art_id)
+
     const lineWithComputed = {
       ...line,
       issued_equivalent: issuedEquivalent,
@@ -1092,6 +1180,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       style_code: (styleData as any)?.style_code,
       style_name: (styleData as any)?.style_name,
       color_name: (colorData as any)?.name,
+      sub_art_code: subArtCode,
     }
 
     return c.json({
@@ -1249,7 +1338,15 @@ issuesV2.post('/:id/lines/validate', async (c) => {
       throw err
     }
 
-    const { thread_type_id, issued_full, issued_partial, po_id, style_id, color_id } = validated
+    const { thread_type_id, issued_full, issued_partial, po_id, style_id, color_id, sub_art_id: validateSubArt } = validated
+
+    const subArtValidateError = await validateSubArtId(style_id, validateSubArt)
+    if (subArtValidateError) {
+      return c.json<ThreadApiResponse<null>>(
+        { data: null, error: subArtValidateError },
+        400
+      )
+    }
 
     // Get partial cone ratio
     const ratio = await getPartialConeRatio()
@@ -1375,11 +1472,20 @@ issuesV2.post('/:id/lines', async (c) => {
       po_id,
       style_id,
       color_id,
+      sub_art_id,
       thread_type_id,
       issued_full,
       issued_partial,
       over_quota_notes,
     } = validated
+
+    const subArtError = await validateSubArtId(style_id, sub_art_id)
+    if (subArtError) {
+      return c.json<ThreadApiResponse<null>>(
+        { data: null, error: subArtError },
+        400
+      )
+    }
 
     // Get quota
     // Get partial cone ratio and calculate issued equivalent
@@ -1426,6 +1532,7 @@ issuesV2.post('/:id/lines', async (c) => {
         po_id: po_id || null,
         style_id: style_id || null,
         color_id: color_id || null,
+        sub_art_id: sub_art_id || null,
         thread_type_id,
         quota_cones: quotaCones,
         issued_full: issued_full || 0,
@@ -1456,6 +1563,8 @@ issuesV2.post('/:id/lines', async (c) => {
       .eq('id', thread_type_id)
       .single()
 
+    const lineSubArtCode = await getSubArtCode(sub_art_id)
+
     return c.json({
       data: {
         ...line,
@@ -1465,6 +1574,7 @@ issuesV2.post('/:id/lines', async (c) => {
         stock_available_partial: stock.partial_cones,
         thread_code: threadType?.code,
         thread_name: threadType?.name,
+        sub_art_code: lineSubArtCode,
       },
       error: null,
       message: 'Them dong thanh cong',
@@ -1622,7 +1732,8 @@ issuesV2.get('/:id', async (c) => {
         thread_types!inner(id, code, name),
         purchase_orders(id, po_number),
         styles(id, style_code, style_name),
-        colors(id, name)
+        colors(id, name),
+        sub_arts(id, sub_art_code)
       `
       )
       .eq('issue_id', issueId)
@@ -1665,11 +1776,13 @@ issuesV2.get('/:id', async (c) => {
           style_code: line.styles?.style_code,
           style_name: line.styles?.style_name,
           color_name: line.colors?.name,
+          sub_art_code: line.sub_arts?.sub_art_code || null,
           // Remove nested objects
           thread_types: undefined,
           purchase_orders: undefined,
           styles: undefined,
           colors: undefined,
+          sub_arts: undefined,
         }
       })
     )

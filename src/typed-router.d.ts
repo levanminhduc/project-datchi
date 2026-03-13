@@ -60,6 +60,7 @@ declare module 'vue-router/auto-routes' {
     '/thread/stocktake': RouteRecordInfo<'/thread/stocktake', '/thread/stocktake', Record<never, never>, Record<never, never>>,
     '/thread/styles/': RouteRecordInfo<'/thread/styles/', '/thread/styles', Record<never, never>, Record<never, never>>,
     '/thread/styles/[id]': RouteRecordInfo<'/thread/styles/[id]', '/thread/styles/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
+    '/thread/sub-arts/': RouteRecordInfo<'/thread/sub-arts/', '/thread/sub-arts', Record<never, never>, Record<never, never>>,
     '/thread/suppliers': RouteRecordInfo<'/thread/suppliers', '/thread/suppliers', Record<never, never>, Record<never, never>, '/thread/suppliers/import-colors' | '/thread/suppliers/import-tex'>,
     '/thread/suppliers/import-colors': RouteRecordInfo<'/thread/suppliers/import-colors', '/thread/suppliers/import-colors', Record<never, never>, Record<never, never>>,
     '/thread/suppliers/import-tex': RouteRecordInfo<'/thread/suppliers/import-tex', '/thread/suppliers/import-tex', Record<never, never>, Record<never, never>>,
@@ -246,6 +247,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/thread/styles/[id].vue': {
       routes: '/thread/styles/[id]'
+      views: never
+    }
+    'src/pages/thread/sub-arts/index.vue': {
+      routes: '/thread/sub-arts/'
       views: never
     }
     'src/pages/thread/suppliers.vue': {

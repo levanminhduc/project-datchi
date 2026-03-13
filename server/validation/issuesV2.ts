@@ -35,6 +35,7 @@ export const CreateIssueWithLineSchema = z.object({
   po_id: z.number().int().positive().optional().nullable(),
   style_id: z.number().int().positive().optional().nullable(),
   color_id: z.number().int().positive().optional().nullable(),
+  sub_art_id: z.number().int().positive().optional().nullable(),
   thread_type_id: z.number().int().positive('thread_type_id phai la so nguyen duong'),
   issued_full: z.number().int().min(0, 'So cuon nguyen phai >= 0').default(0),
   issued_partial: z.number().int().min(0, 'So cuon le phai >= 0').default(0),
@@ -51,6 +52,7 @@ export const AddIssueLineV2Schema = z.object({
   po_id: z.number().int().positive().optional().nullable(),
   style_id: z.number().int().positive().optional().nullable(),
   color_id: z.number().int().positive().optional().nullable(),
+  sub_art_id: z.number().int().positive().optional().nullable(),
   thread_type_id: z.number().int().positive('thread_type_id phai la so nguyen duong'),
   issued_full: z.number().int().min(0, 'So cuon nguyen phai >= 0').default(0),
   issued_partial: z.number().int().min(0, 'So cuon le phai >= 0').default(0),
@@ -70,6 +72,7 @@ export const ValidateIssueLineV2Schema = z.object({
   po_id: z.number().int().positive().optional().nullable(),
   style_id: z.number().int().positive().optional().nullable(),
   color_id: z.number().int().positive().optional().nullable(),
+  sub_art_id: z.number().int().positive().optional().nullable(),
 })
 
 export type ValidateIssueLineV2DTO = z.infer<typeof ValidateIssueLineV2Schema>
