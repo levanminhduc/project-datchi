@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { streamSSE } from 'hono/streaming'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import { requirePermission } from '../middleware/auth'
 import type {
@@ -24,6 +25,32 @@ import type { AuthContext } from '../types/auth'
 import { POImportParseRequestSchema, POImportExecuteRequestSchema } from '../validation/purchaseOrder'
 
 const importRouter = new Hono()
+
+const CHUNK_SIZE = 500
+
+async function fetchAllColors() {
+  const colorMap = new Map<string, number>()
+  let offset = 0
+  const batchSize = 1000
+
+  while (true) {
+    const { data } = await supabase
+      .from('colors')
+      .select('id, name')
+      .range(offset, offset + batchSize - 1)
+
+    if (!data || data.length === 0) break
+
+    for (const color of data) {
+      colorMap.set(color.name.toLowerCase(), color.id)
+    }
+
+    if (data.length < batchSize) break
+    offset += batchSize
+  }
+
+  return colorMap
+}
 
 const isSupplierItemCodeConflict = (error: { code?: string; message?: string }) =>
   error.code === '23505' && error.message?.includes('uq_thread_type_supplier_supplier_item')
@@ -326,7 +353,14 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
       const texNorm = normalizeTexNumber(previewRow.tex_number)
       const texCacheKey = `${supplierId}-${texNorm}`
       let threadTypeId = threadTypeCache.get(texCacheKey)
-      if (!threadTypeId) {
+      if (threadTypeId) {
+        if (previewRow.tex_number !== texNorm) {
+          await supabase
+            .from('thread_types')
+            .update({ tex_label: previewRow.tex_number })
+            .eq('id', threadTypeId)
+        }
+      } else {
         const texNumeric = parseFloat(texNorm) || 0
         const densityGramsPerMeter = texNumeric / 1000
         const uniqueCode = `T-${supplierId}-TEX${texNorm}`
@@ -360,6 +394,12 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
           }
 
           threadTypeId = existingTypes[0].id
+          if (previewRow.tex_number !== texNorm) {
+            await supabase
+              .from('thread_types')
+              .update({ tex_label: previewRow.tex_number })
+              .eq('id', threadTypeId)
+          }
         } else {
           threadTypeId = newThreadType.id
           thread_types_created++
@@ -498,6 +538,169 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
       error: 'Lỗi hệ thống khi import'
     }, 500)
   }
+})
+
+importRouter.post('/supplier-colors/stream', requirePermission('thread.suppliers.manage'), async (c) => {
+  const body = await c.req.json<ImportColorRequest>()
+
+  if (!body.supplier_id) {
+    return c.json<ImportApiResponse<null>>({ data: null, error: 'Thiếu supplier_id' }, 400)
+  }
+
+  if (!body.rows || !Array.isArray(body.rows) || body.rows.length === 0) {
+    return c.json<ImportApiResponse<null>>({ data: null, error: 'Không có dữ liệu' }, 400)
+  }
+
+  const { data: supplier } = await supabase
+    .from('suppliers')
+    .select('id')
+    .eq('id', body.supplier_id)
+    .is('deleted_at', null)
+    .single()
+
+  if (!supplier) {
+    return c.json<ImportApiResponse<null>>({ data: null, error: 'Không tìm thấy nhà cung cấp' }, 404)
+  }
+
+  return streamSSE(c, async (stream) => {
+    let imported = 0
+    let skipped = 0
+    let colors_created = 0
+    let aborted = false
+
+    stream.onAbort(() => { aborted = true })
+
+    try {
+      await stream.writeSSE({ event: 'progress', data: JSON.stringify({
+        phase: 'prepare', message: 'Đang chuẩn bị dữ liệu...', processed: 0, total: body.rows.length
+      })})
+
+      const colorCache = await fetchAllColors()
+
+      const uniqueNewColors: string[] = []
+      const seenNames = new Set<string>()
+
+      for (const row of body.rows) {
+        if (!row.color_name) continue
+        const lower = row.color_name.toLowerCase()
+        if (!colorCache.has(lower) && !seenNames.has(lower)) {
+          uniqueNewColors.push(row.color_name)
+          seenNames.add(lower)
+        }
+      }
+
+      const totalNewColors = uniqueNewColors.length
+      for (let i = 0; i < totalNewColors; i += CHUNK_SIZE) {
+        if (aborted) break
+        const chunk = uniqueNewColors.slice(i, i + CHUNK_SIZE)
+        const { data: inserted } = await supabase
+          .from('colors')
+          .upsert(
+            chunk.map(name => ({ name, hex_code: '#808080', is_active: true })),
+            { onConflict: 'name', ignoreDuplicates: true }
+          )
+          .select('id, name')
+
+        if (inserted) {
+          for (const color of inserted) {
+            colorCache.set(color.name.toLowerCase(), color.id)
+          }
+          colors_created += inserted.length
+        }
+
+        await stream.writeSSE({ event: 'progress', data: JSON.stringify({
+          phase: 'colors',
+          processed: Math.min(i + CHUNK_SIZE, totalNewColors),
+          total: totalNewColors,
+          colors_created
+        })})
+      }
+
+      if (aborted) return
+
+      if (uniqueNewColors.length > 0) {
+        const freshCache = await fetchAllColors()
+        for (const [k, v] of freshCache) {
+          colorCache.set(k, v)
+        }
+      }
+
+      const existingLinks = new Set<number>()
+      let linkOffset = 0
+      while (true) {
+        const { data: links } = await supabase
+          .from('color_supplier')
+          .select('color_id')
+          .eq('supplier_id', body.supplier_id)
+          .range(linkOffset, linkOffset + 999)
+
+        if (!links || links.length === 0) break
+        for (const link of links) existingLinks.add(link.color_id)
+        if (links.length < 1000) break
+        linkOffset += 1000
+      }
+
+      const addedColorIds = new Set<number>()
+      const newLinks: { color_id: number; supplier_id: number; is_active: boolean }[] = []
+      for (const row of body.rows) {
+        if (!row.color_name) {
+          skipped++
+          continue
+        }
+        const colorId = colorCache.get(row.color_name.toLowerCase())
+        if (!colorId) {
+          skipped++
+          continue
+        }
+        if (existingLinks.has(colorId)) {
+          skipped++
+          continue
+        }
+        if (addedColorIds.has(colorId)) {
+          skipped++
+          continue
+        }
+        addedColorIds.add(colorId)
+        newLinks.push({ color_id: colorId, supplier_id: body.supplier_id, is_active: true })
+      }
+
+      const totalLinks = newLinks.length
+      for (let i = 0; i < totalLinks; i += CHUNK_SIZE) {
+        if (aborted) break
+        const chunk = newLinks.slice(i, i + CHUNK_SIZE)
+        const { error: insertError } = await supabase
+          .from('color_supplier')
+          .insert(chunk)
+
+        if (insertError) {
+          console.error('Batch insert links error:', insertError)
+        } else {
+          imported += chunk.length
+        }
+
+        await stream.writeSSE({ event: 'progress', data: JSON.stringify({
+          phase: 'links',
+          processed: Math.min(i + CHUNK_SIZE, totalLinks),
+          total: totalLinks,
+          imported,
+          skipped
+        })})
+      }
+
+      if (totalLinks === 0) {
+        skipped = body.rows.length
+      }
+
+      await stream.writeSSE({ event: 'done', data: JSON.stringify({
+        imported, skipped, colors_created
+      })})
+    } catch (err) {
+      console.error('Import supplier-colors stream error:', err)
+      await stream.writeSSE({ event: 'error', data: JSON.stringify({
+        message: err instanceof Error ? err.message : 'Lỗi hệ thống khi import'
+      })})
+    }
+  })
 })
 
 importRouter.post('/supplier-colors', requirePermission('thread.suppliers.manage'), async (c) => {
