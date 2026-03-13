@@ -5,6 +5,7 @@ export interface POItem {
   po_id: number
   style_id: number
   quantity: number
+  finished_product_code: string | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -34,11 +35,13 @@ export interface POItemHistory {
 export interface CreatePOItemDTO {
   style_id: number
   quantity: number
+  finished_product_code?: string
   notes?: string
 }
 
 export interface UpdatePOItemDTO {
   quantity: number
+  finished_product_code?: string
   notes?: string
 }
 
@@ -52,14 +55,15 @@ export type POImportRowStatus = 'new' | 'update' | 'skip' | 'new_style'
 
 export interface POImportRow {
   row_number: number
+  customer_name?: string
   po_number: string
   style_code: string
+  week?: string
+  description?: string
   style_name?: string
   style_id?: number
+  finished_product_code?: string
   quantity: number
-  customer_name?: string
-  order_date?: string
-  notes?: string
   status: POImportRowStatus
 }
 
@@ -97,11 +101,12 @@ export interface POImportMappingConfig {
   header_row: number
   data_start_row: number
   columns: {
+    customer_name: string
     po_number: string
     style_code: string
+    week?: string
+    description?: string
+    finished_product_code?: string
     quantity: string
-    customer_name?: string
-    order_date?: string
-    notes?: string
   }
 }

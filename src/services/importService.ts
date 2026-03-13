@@ -94,12 +94,13 @@ export const importService = {
 
   async parsePOItems(rows: Array<{
     row_number: number
+    customer_name?: string
     po_number: string
     style_code: string
+    week?: string
+    description?: string
+    finished_product_code?: string
     quantity: number
-    customer_name?: string
-    order_date?: string
-    notes?: string
   }>): Promise<POImportPreview> {
     const response = await fetchApi<ApiResponse<POImportPreview>>('/api/import/po-items/parse', {
       method: 'POST',

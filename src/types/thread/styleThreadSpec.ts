@@ -19,6 +19,7 @@ export interface StyleThreadSpec {
   thread_types?: {
     id: number
     tex_number: string
+    tex_label: string | null
     name: string
   }
 }
@@ -41,6 +42,7 @@ export interface StyleColorThreadSpec {
     id: number
     name: string
     tex_number: string
+    tex_label: string | null
     color_data?: { name: string; hex_code: string } | null
     supplier_id?: number | null
     meters_per_cone?: number | null

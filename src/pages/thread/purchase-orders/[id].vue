@@ -68,6 +68,14 @@
                 </div>
                 <div class="col-6">
                   <div class="text-caption text-grey-6">
+                    Week
+                  </div>
+                  <div class="text-body1">
+                    {{ purchaseOrder.week || '-' }}
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="text-caption text-grey-6">
                     Ngày đặt
                   </div>
                   <div class="text-body1">
@@ -175,6 +183,12 @@
           <template #body-cell-style_name="props">
             <q-td :props="props">
               {{ props.row.style?.style_name || '-' }}
+            </q-td>
+          </template>
+
+          <template #body-cell-finished_product_code="props">
+            <q-td :props="props">
+              {{ props.row.finished_product_code || '-' }}
             </q-td>
           </template>
 
@@ -300,6 +314,7 @@ const existingStyleIds = computed(() => items.value.map(item => item.style_id))
 const itemColumns = [
   { name: 'style_code', label: 'Mã hàng', field: 'style_code', align: 'left' as const },
   { name: 'style_name', label: 'Tên mã hàng', field: 'style_name', align: 'left' as const },
+  { name: 'finished_product_code', label: 'Mã TP KT', field: 'finished_product_code', align: 'left' as const },
   { name: 'quantity', label: 'SL SP', field: 'quantity', align: 'center' as const },
   { name: 'ordered_quantity', label: 'Đã đặt', field: 'ordered_quantity', align: 'center' as const },
   { name: 'actions', label: 'Thao tác', field: 'actions', align: 'center' as const }

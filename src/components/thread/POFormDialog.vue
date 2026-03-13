@@ -33,6 +33,7 @@ const title = computed(() => isEdit.value ? 'Chỉnh sửa PO' : 'Tạo PO mới
 const form = ref<{
   po_number: string
   customer_name: string
+  week: string
   order_date: string | null
   delivery_date: string | null
   status: POStatus
@@ -41,6 +42,7 @@ const form = ref<{
 }>({
   po_number: '',
   customer_name: '',
+  week: '',
   order_date: null,
   delivery_date: null,
   status: POStatus.PENDING,
@@ -68,6 +70,7 @@ function resetForm() {
     form.value = {
       po_number: props.purchaseOrder.po_number,
       customer_name: props.purchaseOrder.customer_name || '',
+      week: props.purchaseOrder.week || '',
       order_date: props.purchaseOrder.order_date,
       delivery_date: props.purchaseOrder.delivery_date,
       status: props.purchaseOrder.status,
@@ -78,6 +81,7 @@ function resetForm() {
     form.value = {
       po_number: '',
       customer_name: '',
+      week: '',
       order_date: null,
       delivery_date: null,
       status: POStatus.PENDING,
@@ -111,6 +115,7 @@ async function onSubmit() {
       const updateData: UpdatePurchaseOrderDTO = {
         po_number: form.value.po_number,
         customer_name: form.value.customer_name || undefined,
+        week: form.value.week || undefined,
         order_date: form.value.order_date || undefined,
         delivery_date: form.value.delivery_date || undefined,
         status: form.value.status,
@@ -123,6 +128,7 @@ async function onSubmit() {
       const createData: CreatePurchaseOrderDTO = {
         po_number: form.value.po_number,
         customer_name: form.value.customer_name || undefined,
+        week: form.value.week || undefined,
         order_date: form.value.order_date || undefined,
         delivery_date: form.value.delivery_date || undefined,
         status: form.value.status,
@@ -170,6 +176,14 @@ function onCancel() {
         <AppInput
           v-model="form.customer_name"
           label="Khách hàng"
+        />
+      </div>
+
+      <div class="col-12 col-sm-6">
+        <AppInput
+          v-model="form.week"
+          label="Week"
+          placeholder="Ví dụ: W12-2026"
         />
       </div>
 

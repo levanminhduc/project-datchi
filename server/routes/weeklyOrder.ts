@@ -34,6 +34,26 @@ const VALID_STATUS_TRANSITIONS: Record<WeeklyOrderStatus, WeeklyOrderStatus[]> =
   CANCELLED: [],
 }
 
+async function validateSubArtIds(
+  items: Array<{ style_id: number; sub_art_id?: number | null }>,
+): Promise<string | null> {
+  for (const item of items) {
+    if (!item.sub_art_id) continue
+
+    const { data: subArt } = await supabase
+      .from('sub_arts')
+      .select('id')
+      .eq('id', item.sub_art_id)
+      .eq('style_id', item.style_id)
+      .single()
+
+    if (!subArt) {
+      return `Sub-art ID ${item.sub_art_id} không tồn tại hoặc không thuộc mã hàng ID ${item.style_id}`
+    }
+  }
+  return null
+}
+
 async function validatePOQuantityLimits(
   items: Array<{ po_id?: number | null; style_id: number; quantity: number }>,
   excludeWeekId?: number,
@@ -1236,10 +1256,12 @@ weeklyOrder.get('/:id', requirePermission('thread.allocations.view'), async (c) 
           style_id,
           color_id,
           quantity,
+          sub_art_id,
           created_at,
           style:styles (id, style_code, style_name),
           color:colors (id, name, hex_code),
-          po:purchase_orders (id, po_number)
+          po:purchase_orders (id, po_number),
+          sub_art:sub_arts (id, sub_art_code)
         )
       `,
       )
@@ -1285,6 +1307,11 @@ weeklyOrder.post('/', requirePermission('thread.allocations.manage'), async (c) 
       }, 400)
     }
 
+    const subArtError = await validateSubArtIds(validated.items)
+    if (subArtError) {
+      return c.json({ data: null, error: subArtError }, 400)
+    }
+
     const auth = c.get('auth')
     let createdBy: string | null = null
     if (auth?.employeeId) {
@@ -1325,6 +1352,7 @@ weeklyOrder.post('/', requirePermission('thread.allocations.manage'), async (c) 
       style_id: item.style_id,
       color_id: item.color_id,
       quantity: item.quantity,
+      sub_art_id: item.sub_art_id || null,
     }))
 
     const { data: items, error: itemsError } = await supabase
@@ -1338,10 +1366,12 @@ weeklyOrder.post('/', requirePermission('thread.allocations.manage'), async (c) 
         style_id,
         color_id,
         quantity,
+        sub_art_id,
         created_at,
         style:styles (id, style_code, style_name),
         color:colors (id, name, hex_code),
-        po:purchase_orders (id, po_number)
+        po:purchase_orders (id, po_number),
+        sub_art:sub_arts (id, sub_art_code)
       `,
       )
 
@@ -1409,6 +1439,11 @@ weeklyOrder.put('/:id', requirePermission('thread.allocations.manage'), async (c
           error: `Số lượng vượt quá PO:\n${poValidation.errors.join('\n')}`,
         }, 400)
       }
+
+      const subArtError = await validateSubArtIds(validated.items)
+      if (subArtError) {
+        return c.json({ data: null, error: subArtError }, 400)
+      }
     }
 
     // Update the week record
@@ -1463,6 +1498,7 @@ weeklyOrder.put('/:id', requirePermission('thread.allocations.manage'), async (c
           style_id: item.style_id,
           color_id: item.color_id,
           quantity: item.quantity,
+          sub_art_id: item.sub_art_id || null,
         }))
 
         const { data: newItems, error: insertError } = await supabase
@@ -1476,10 +1512,12 @@ weeklyOrder.put('/:id', requirePermission('thread.allocations.manage'), async (c
             style_id,
             color_id,
             quantity,
+            sub_art_id,
             created_at,
             style:styles (id, style_code, style_name),
             color:colors (id, name, hex_code),
-            po:purchase_orders (id, po_number)
+            po:purchase_orders (id, po_number),
+            sub_art:sub_arts (id, sub_art_code)
           `,
           )
 

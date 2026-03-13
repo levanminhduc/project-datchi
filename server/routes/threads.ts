@@ -32,7 +32,7 @@ threads.get('/', requirePermission('thread.types.view'), async (c) => {
         *,
         color_data:colors(id, name, hex_code, pantone_code),
         supplier_data:suppliers(id, code, name),
-        suppliers:thread_type_supplier(id, supplier_item_code, unit_price, is_active, supplier:suppliers(id, code, name))
+        suppliers:thread_type_supplier(id, thread_type_id, supplier_id, supplier_item_code, unit_price, is_active, supplier:suppliers(id, code, name))
       `)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -119,7 +119,7 @@ threads.get('/:id', requirePermission('thread.types.view'), async (c) => {
         *,
         color_data:colors(id, name, hex_code, pantone_code),
         supplier_data:suppliers(id, code, name),
-        suppliers:thread_type_supplier(id, supplier_item_code, unit_price, is_active, supplier:suppliers(id, code, name))
+        suppliers:thread_type_supplier(id, thread_type_id, supplier_id, supplier_item_code, unit_price, is_active, supplier:suppliers(id, code, name))
       `)
       .eq('id', id)
       .single()

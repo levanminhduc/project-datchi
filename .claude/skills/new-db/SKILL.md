@@ -14,8 +14,14 @@ Khi user goi `/new-db [mo ta]`, tuan thu TOAN BO huong dan ben duoi.
 ## File location
 
 ```
-supabase/migrations/YYYYMMDD_ten_tinh_nang.sql
+supabase/migrations/YYYYMMDDHHMMSS_action_table.sql
 ```
+
+> **Naming format:** `YYYYMMDDHHMMSS_action_table.sql`
+> - `YYYYMMDDHHMMSS` = timestamp khi tạo (VD: `20260313093000`)
+> - `action` = `create`, `alter`, `add`, `drop` (mô tả hành động)
+> - `table` = tên bảng chính bị ảnh hưởng
+> - VD: `20260313093000_create_sub_arts.sql`, `20260314100000_alter_threads_add_color.sql`
 
 ---
 
@@ -69,7 +75,7 @@ CREATE TABLE IF NOT EXISTS ten_bang (
     deleted_at TIMESTAMPTZ DEFAULT NULL
 );
 
-COMMENT ON TABLE ten_bang IS 'Mo ta bang bang tieng Viet';
+COMMENT ON TABLE ten_bang IS 'Mô tả bảng bằng tiếng Việt';
 
 CREATE TRIGGER trigger_ten_bang_updated_at
     BEFORE UPDATE ON ten_bang
@@ -104,69 +110,9 @@ ALTER TYPE ten_status ADD VALUE IF NOT EXISTS 'NEW_VALUE';
 
 ---
 
-## Template - RPC Function
+## Advanced Templates
 
-```sql
-CREATE OR REPLACE FUNCTION fn_verb_noun(
-    p_param1 INTEGER,
-    p_param2 TEXT DEFAULT NULL
-)
-RETURNS JSON
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-    v_result RECORD;
-    v_count INTEGER;
-BEGIN
-    SELECT * INTO v_result
-    FROM ten_bang
-    WHERE id = p_param1
-    FOR UPDATE;
-
-    IF NOT FOUND THEN
-        RETURN json_build_object('success', false, 'message', 'Khong tim thay');
-    END IF;
-
-    UPDATE ten_bang SET status = 'CONFIRMED' WHERE id = p_param1;
-
-    RETURN json_build_object('success', true, 'data', row_to_json(v_result), 'message', 'Thanh cong');
-
-EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'fn_verb_noun error: %', SQLERRM;
-    RETURN json_build_object('success', false, 'message', 'Loi xu ly yeu cau');
-END;
-$$;
-```
-
----
-
-## Template - View
-
-```sql
-CREATE OR REPLACE VIEW v_ten_summary AS
-WITH base AS (
-    SELECT t.*, tt.name AS type_name
-    FROM ten_bang t
-    LEFT JOIN thread_types tt ON t.thread_type_id = tt.id
-    WHERE t.deleted_at IS NULL
-)
-SELECT * FROM base;
-
-COMMENT ON VIEW v_ten_summary IS 'View tong hop';
-```
-
----
-
-## Template - Audit Trigger
-
-```sql
-CREATE TRIGGER trigger_ten_bang_audit
-    AFTER INSERT OR UPDATE OR DELETE ON ten_bang
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_thread_audit_trigger_func();
-```
+> Load `references/01-advanced-templates.md` khi cần RPC, View, hoặc Audit trigger.
 
 ---
 

@@ -411,6 +411,16 @@
         <div class="row q-col-gutter-md q-mt-sm">
           <div class="col-6 col-md-2">
             <AppSelect
+              v-model="poMapping.columns.customer_name"
+              label="Cột Khách hàng"
+              :options="columnOptions"
+              :disable="isLoading"
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-6 col-md-2">
+            <AppSelect
               v-model="poMapping.columns.po_number"
               label="Cột Số PO"
               :options="columnOptions"
@@ -431,43 +441,43 @@
           </div>
           <div class="col-6 col-md-2">
             <AppSelect
+              v-model="poMapping.columns.week"
+              label="Cột Week"
+              :options="columnOptions"
+              :disable="isLoading"
+              clearable
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-6 col-md-2">
+            <AppSelect
+              v-model="poMapping.columns.description"
+              label="Cột Mô tả"
+              :options="columnOptions"
+              :disable="isLoading"
+              clearable
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-6 col-md-2">
+            <AppSelect
+              v-model="poMapping.columns.finished_product_code"
+              label="Cột Mã TP KT"
+              :options="columnOptions"
+              :disable="isLoading"
+              clearable
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-6 col-md-2">
+            <AppSelect
               v-model="poMapping.columns.quantity"
               label="Cột SL SP"
               :options="columnOptions"
               :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-2">
-            <AppSelect
-              v-model="poMapping.columns.customer_name"
-              label="Cột Khách hàng"
-              :options="columnOptions"
-              :disable="isLoading"
-              clearable
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-2">
-            <AppSelect
-              v-model="poMapping.columns.order_date"
-              label="Cột Ngày đặt"
-              :options="columnOptions"
-              :disable="isLoading"
-              clearable
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-2">
-            <AppSelect
-              v-model="poMapping.columns.notes"
-              label="Cột Ghi chú"
-              :options="columnOptions"
-              :disable="isLoading"
-              clearable
               outlined
               dense
             />
@@ -571,14 +581,47 @@ const poMapping = reactive({
   header_row: 1,
   data_start_row: 2,
   columns: {
-    po_number: 'A',
-    style_code: 'B',
-    quantity: 'C',
-    customer_name: 'D',
-    order_date: 'E',
-    notes: 'F',
+    customer_name: 'A',
+    po_number: 'B',
+    style_code: 'C',
+    week: 'D',
+    description: 'E',
+    finished_product_code: 'F',
+    quantity: 'G',
   } as Record<string, string>,
 })
+
+function normalizePOMappingSettingValue(setting: { value: unknown } | null) {
+  if (!setting?.value || typeof setting.value !== 'object') return null
+
+  const val = setting.value as Record<string, unknown>
+  const columns = val.columns && typeof val.columns === 'object'
+    ? val.columns as Record<string, unknown>
+    : {}
+
+  const hasLegacyShape = 'order_date' in columns || 'notes' in columns
+  if (hasLegacyShape) {
+    return null
+  }
+
+  return {
+    sheet_index: typeof val.sheet_index === 'number' ? val.sheet_index : poMapping.sheet_index,
+    header_row: typeof val.header_row === 'number' ? val.header_row : poMapping.header_row,
+    data_start_row: typeof val.data_start_row === 'number' ? val.data_start_row : poMapping.data_start_row,
+    columns: {
+      customer_name: typeof columns.customer_name === 'string' ? columns.customer_name : poMapping.columns.customer_name,
+      po_number: typeof columns.po_number === 'string' ? columns.po_number : poMapping.columns.po_number,
+      style_code: typeof columns.style_code === 'string' ? columns.style_code : poMapping.columns.style_code,
+      week: typeof columns.week === 'string' ? columns.week : poMapping.columns.week,
+      description: typeof columns.description === 'string' ? columns.description : poMapping.columns.description,
+      finished_product_code:
+        typeof columns.finished_product_code === 'string'
+          ? columns.finished_product_code
+          : poMapping.columns.finished_product_code,
+      quantity: typeof columns.quantity === 'string' ? columns.quantity : poMapping.columns.quantity,
+    }
+  }
+}
 
 const hasChanges = computed(() => {
   return partialConeRatio.value !== originalValue.value
@@ -634,7 +677,10 @@ async function loadImportMappings() {
 
   applyMappingValues(texMapping, texSetting)
   applyMappingValues(colorMapping, colorSetting)
-  applyMappingValues(poMapping, poSetting)
+  const normalizedPOMapping = normalizePOMappingSettingValue(poSetting)
+  if (normalizedPOMapping) {
+    applyMappingValues(poMapping, { value: normalizedPOMapping })
+  }
 }
 
 async function handleSave() {

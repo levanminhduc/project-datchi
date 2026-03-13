@@ -354,6 +354,7 @@ interface ColorSpecRow {
     color_data?: { name: string; hex_code: string } | null
     meters_per_cone: number | null
     tex_number: string
+    tex_label: string | null
   } | null
 }
 
@@ -404,6 +405,12 @@ const getThreadDisplayName = (row: ColorSpecRow): string => {
   return row.threadType.color_data?.name || row.threadType.name || '-'
 }
 
+const matchesSupplier = (threadType: ThreadType, supplierId: number): boolean => {
+  if (threadType.supplier_id === supplierId) return true
+
+  return threadType.suppliers?.some(link => link.supplier_id === supplierId && link.is_active) ?? false
+}
+
 /**
  * Get thread type dropdown options for a given spec row.
  * Filters by BOTH supplier_id AND tex_number (bug fix from previous version).
@@ -416,7 +423,7 @@ const getThreadOptionsForSpec = (spec: StyleThreadSpec): { label: string; value:
 
   return props.threadTypes
     .filter(t =>
-      t.supplier_id === spec.supplier_id &&
+      matchesSupplier(t, spec.supplier_id) &&
       t.tex_number !== null &&
       String(t.tex_number) === String(specTexNumber) &&
       t.is_active
@@ -460,6 +467,7 @@ const colorGroups = computed<ColorGroup[]>(() => {
               color_data: match.thread_types.color_data ?? null,
               meters_per_cone: match.thread_types.meters_per_cone ?? null,
               tex_number: match.thread_types.tex_number,
+              tex_label: match.thread_types.tex_label ?? null,
             }
           : null,
       }
@@ -502,7 +510,7 @@ const colorTableColumns: QTableColumn[] = [
   {
     name: 'tex',
     label: 'Tex',
-    field: (row: ColorSpecRow) => row.spec.thread_types?.tex_number || '-',
+    field: (row: ColorSpecRow) => row.spec.thread_types?.tex_label || row.spec.thread_types?.tex_number || '-',
     align: 'left',
   },
   {

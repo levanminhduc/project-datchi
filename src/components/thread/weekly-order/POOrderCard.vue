@@ -80,15 +80,17 @@
       <!-- Style cards within this PO -->
       <StyleOrderCard
         v-for="entry in poEntries"
-        :key="`${entry.po_id}_${entry.style_id}`"
+        :key="`${entry.po_id}_${entry.style_id}_${entry.sub_art_id ?? 'null'}`"
         :entry="entry"
         :color-options="getColorOptionsForStyle(entry.style_id)"
         :po-quantity="getPoQuantity(entry.style_id)"
         :already-ordered="getAlreadyOrdered(entry.style_id)"
-        @remove="(styleId, poId) => $emit('remove-style', styleId, poId)"
-        @add-color="(styleId, color, poId) => $emit('add-color', styleId, color, poId)"
-        @remove-color="(styleId, colorId, poId) => $emit('remove-color', styleId, colorId, poId)"
-        @update-quantity="(styleId, colorId, qty, poId) => $emit('update-quantity', styleId, colorId, qty, poId)"
+        :sub-art-required="subArtRequired"
+        @remove="(styleId, poId, subArtId) => $emit('remove-style', styleId, poId, subArtId)"
+        @add-color="(styleId, color, poId, subArtId) => $emit('add-color', styleId, color, poId, subArtId)"
+        @remove-color="(styleId, colorId, poId, subArtId) => $emit('remove-color', styleId, colorId, poId, subArtId)"
+        @update-quantity="(styleId, colorId, qty, poId, subArtId) => $emit('update-quantity', styleId, colorId, qty, poId, subArtId)"
+        @update-sub-art="(styleId, poId, subArtId, subArtCode, oldSubArtId) => $emit('update-sub-art', styleId, poId, subArtId, subArtCode, oldSubArtId)"
       />
 
       <EmptyState
@@ -113,17 +115,20 @@ const props = withDefaults(defineProps<{
   po: PurchaseOrderWithItems
   entries: StyleOrderEntry[]
   orderedQuantities?: Map<string, OrderedQuantityInfo>
+  subArtRequired?: Map<number, boolean>
 }>(), {
   orderedQuantities: () => new Map(),
+  subArtRequired: () => new Map(),
 })
 
 const emit = defineEmits<{
   'remove-po': [poId: number]
   'add-style': [style: { id: number; style_code: string; style_name: string; po_id: number; po_number: string }]
-  'remove-style': [styleId: number, poId: number | null]
-  'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string }, poId: number | null]
-  'remove-color': [styleId: number, colorId: number, poId: number | null]
-  'update-quantity': [styleId: number, colorId: number, quantity: number, poId: number | null]
+  'remove-style': [styleId: number, poId: number | null, subArtId?: number | null]
+  'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string }, poId: number | null, subArtId?: number | null]
+  'remove-color': [styleId: number, colorId: number, poId: number | null, subArtId?: number | null]
+  'update-quantity': [styleId: number, colorId: number, quantity: number, poId: number | null, subArtId?: number | null]
+  'update-sub-art': [styleId: number, poId: number | null, subArtId: number | null, subArtCode: string | undefined, oldSubArtId: number | null | undefined]
 }>()
 
 const selectedStyleId = ref<number | null>(null)

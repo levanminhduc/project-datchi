@@ -23,10 +23,12 @@ export interface ThreadOrderItem {
   style_id: number
   color_id: number
   quantity: number
+  sub_art_id?: number | null
   created_at: string
   style?: { id: number; style_code: string; style_name: string }
   color?: { id: number; name: string; hex_code: string }
   po?: { id: number; po_number: string }
+  sub_art?: { id: number; sub_art_code: string }
 }
 
 export interface CreateWeeklyOrderDTO {
@@ -39,6 +41,7 @@ export interface CreateWeeklyOrderDTO {
     style_id: number
     color_id: number
     quantity: number
+    sub_art_id?: number | null
   }>
 }
 
@@ -52,6 +55,7 @@ export interface UpdateWeeklyOrderDTO {
     style_id: number
     color_id: number
     quantity: number
+    sub_art_id?: number | null
   }>
 }
 
@@ -98,6 +102,8 @@ export interface StyleOrderEntry {
   }>
   po_quantity?: number
   already_ordered?: number
+  sub_art_id?: number | null
+  sub_art_code?: string
 }
 
 export interface OrderedQuantityInfo {

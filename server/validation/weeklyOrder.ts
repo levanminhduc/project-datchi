@@ -5,6 +5,7 @@ const OrderItemSchema = z.object({
   style_id: z.number().int().positive('style_id phải là số nguyên dương'),
   color_id: z.number().int().positive('color_id phải là số nguyên dương'),
   quantity: z.number().positive('Số lượng phải lớn hơn 0'),
+  sub_art_id: z.number().int().positive('sub_art_id phải là số nguyên dương').nullable().optional(),
 })
 
 export const CreateWeeklyOrderSchema = z.object({

@@ -2,7 +2,7 @@
   <q-page padding>
     <PageHeader
       title="Import Đơn Hàng (PO)"
-      subtitle="Nhập danh sách PO và mã hàng từ file Excel"
+      subtitle="Nhập khách hàng, PO, mã hàng, week, mô tả, mã TP KT và số lượng từ file Excel"
       show-back
       back-to="/thread/purchase-orders"
     >
@@ -143,7 +143,7 @@
                 bordered
                 :rows="preview?.valid_rows || []"
                 :columns="validColumns"
-                row-key="po_number"
+                row-key="row_number"
                 :rows-per-page-options="[10, 25, 50, 0]"
                 :pagination="{ page: 1, rowsPerPage: 25 }"
                 dense
@@ -291,11 +291,14 @@ const steps = [
 ]
 
 const validColumns = [
+  { name: 'customer_name', label: 'Khách hàng', field: 'customer_name', align: 'left' as const },
   { name: 'po_number', label: 'Số PO', field: 'po_number', align: 'left' as const },
   { name: 'style_code', label: 'Mã hàng', field: 'style_code', align: 'left' as const },
+  { name: 'week', label: 'Week', field: 'week', align: 'left' as const },
+  { name: 'description', label: 'Mô tả', field: 'description', align: 'left' as const },
+  { name: 'finished_product_code', label: 'Mã TP KT', field: 'finished_product_code', align: 'left' as const },
   { name: 'style_name', label: 'Tên mã hàng', field: 'style_name', align: 'left' as const },
   { name: 'quantity', label: 'Số lượng', field: 'quantity', align: 'center' as const },
-  { name: 'customer_name', label: 'Khách hàng', field: 'customer_name', align: 'left' as const },
   { name: 'status', label: 'Trạng thái', field: 'status', align: 'center' as const }
 ]
 
@@ -366,22 +369,26 @@ async function parseFile() {
     const cols = config.columns
     const rows: Array<{
       row_number: number
+      customer_name?: string
       po_number: string
       style_code: string
+      week?: string
+      description?: string
+      finished_product_code?: string
       quantity: number
-      customer_name?: string
-      order_date?: string
-      notes?: string
     }> = []
 
     for (let rowIdx = config.data_start_row; rowIdx <= sheet.rowCount; rowIdx++) {
       const row = sheet.getRow(rowIdx)
-      const poNumber = String(row.getCell(cols.po_number || 'A').value || '').trim()
-      const styleCode = String(row.getCell(cols.style_code || 'B').value || '').trim()
-      const quantityRaw = row.getCell(cols.quantity || 'C').value
       const customerName = cols.customer_name ? String(row.getCell(cols.customer_name).value || '').trim() : undefined
-      const orderDate = cols.order_date ? String(row.getCell(cols.order_date).value || '').trim() : undefined
-      const notes = cols.notes ? String(row.getCell(cols.notes).value || '').trim() : undefined
+      const poNumber = String(row.getCell(cols.po_number || 'B').value || '').trim()
+      const styleCode = String(row.getCell(cols.style_code || 'C').value || '').trim()
+      const week = cols.week ? String(row.getCell(cols.week).value || '').trim() : undefined
+      const description = cols.description ? String(row.getCell(cols.description).value || '').trim() : undefined
+      const finishedProductCode = cols.finished_product_code
+        ? String(row.getCell(cols.finished_product_code).value || '').trim()
+        : undefined
+      const quantityRaw = row.getCell(cols.quantity || 'G').value
 
       if (!poNumber && !styleCode) continue
 
@@ -389,12 +396,13 @@ async function parseFile() {
 
       rows.push({
         row_number: rowIdx,
+        customer_name: customerName || undefined,
         po_number: poNumber,
         style_code: styleCode,
+        week: week || undefined,
+        description: description || undefined,
+        finished_product_code: finishedProductCode || undefined,
         quantity,
-        customer_name: customerName || undefined,
-        order_date: orderDate || undefined,
-        notes: notes || undefined
       })
     }
 

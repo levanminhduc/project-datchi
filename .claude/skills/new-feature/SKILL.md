@@ -135,9 +135,14 @@ Frontend KHONG BAO GIO goi Supabase truc tiep cho CRUD. Ngoai le: Realtime subsc
 **KHONG dung** `{ success, data, error }`.
 
 ### Auth
-- Global auth da co qua `except()` trong `server/index.ts`
-- Dung `requirePermission()` cho tung endpoint
+- Global auth applied via `app.use('/api/*', authMiddleware)` trong `server/index.ts`
+- Tat ca routes duoi `/api/*` deu protected. Auth routes (`/api/auth/*`) tu handle logic rieng
+- Dung `requirePermission()` per-route hoac group middleware
 - `fetchApi()` tu dong gui `Authorization: Bearer <token>`
+
+### Backend Error Helper
+- Dùng `import { getErrorMessage } from '../utils/errorHelper'` trong mọi catch block
+- KHÔNG hard-code error messages trong route files
 
 ---
 

@@ -63,6 +63,7 @@ export interface ThreadTypeRow {
   name: string
   material: ThreadMaterial
   tex_number: string | null
+  tex_label: string | null
   density_grams_per_meter: number
   meters_per_cone: number | null
   reorder_level_meters: number
@@ -80,6 +81,8 @@ export interface ThreadTypeRow {
  */
 export interface ThreadTypeSupplierLink {
   id: number
+  thread_type_id: number
+  supplier_id: number
   supplier_item_code: string
   unit_price: number | null
   is_active: boolean
@@ -196,6 +199,7 @@ export interface CreateThreadTypeDTO {
   name: string
   material?: ThreadMaterial
   tex_number?: string
+  tex_label?: string
   density_grams_per_meter: number
   meters_per_cone?: number
   reorder_level_meters?: number

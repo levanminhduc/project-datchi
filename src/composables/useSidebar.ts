@@ -30,7 +30,8 @@ const navItems: NavItem[] = [
       { label: 'Đơn Hàng (PO)', icon: 'o_receipt_long', to: '/thread/purchase-orders' },
       { label: 'Loại Chỉ', icon: 'o_category', to: '/thread' },
       { label: 'Màu Sắc', icon: 'o_palette', to: '/thread/colors' },
-      { label: 'Nhà Cung Cấp', icon: 'o_store', to: '/thread/suppliers' }
+      { label: 'Nhà Cung Cấp', icon: 'o_store', to: '/thread/suppliers' },
+      { label: 'Import Sub-Art', icon: 'o_upload_file', to: '/thread/sub-arts' }
     ]
   },
   {
@@ -38,8 +39,7 @@ const navItems: NavItem[] = [
     icon: 'o_engineering',
     to: '/ky-thuat#top',
     children: [
-      { label: 'Mã Hàng', icon: 'o_checkroom', to: '/thread/styles' },
-      { label: 'Import Sub-Art', icon: 'o_upload_file', to: '/thread/sub-arts' }
+      { label: 'Mã Hàng', icon: 'o_checkroom', to: '/thread/styles' }
     ]
   },
   { label: 'Kho', icon: 'o_inventory_2', to: '/kho#top' },

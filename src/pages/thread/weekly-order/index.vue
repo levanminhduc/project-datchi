@@ -96,12 +96,14 @@
           :po="po"
           :entries="orderEntries"
           :ordered-quantities="orderedQuantities"
+          :sub-art-required="subArtRequired"
           @remove-po="handleRemovePO"
           @add-style="handleAddStyleFromPO"
-          @remove-style="(styleId, poId) => removeStyle(styleId, poId)"
-          @add-color="(styleId, color, poId) => addColorToStyle(styleId, color, poId)"
-          @remove-color="(styleId, colorId, poId) => removeColorFromStyle(styleId, colorId, poId)"
-          @update-quantity="(styleId, colorId, qty, poId) => updateColorQuantity(styleId, colorId, qty, poId)"
+          @remove-style="(styleId, poId, subArtId) => removeStyle(styleId, poId, subArtId)"
+          @add-color="(styleId, color, poId, subArtId) => addColorToStyle(styleId, color, poId, subArtId)"
+          @remove-color="(styleId, colorId, poId, subArtId) => removeColorFromStyle(styleId, colorId, poId, subArtId)"
+          @update-quantity="(styleId, colorId, qty, poId, subArtId) => updateColorQuantity(styleId, colorId, qty, poId, subArtId)"
+          @update-sub-art="(styleId, poId, subArtId, subArtCode, oldSubArtId) => updateSubArt(styleId, poId, subArtId, subArtCode, oldSubArtId)"
         />
 
         <EmptyState
@@ -140,7 +142,11 @@
         :loading="isCalculating"
         :disable="!canCalculate || hasOverLimitEntries"
         @click="handleCalculate"
-      />
+      >
+        <AppTooltip v-if="!canCalculate && canCalculateReason">
+          {{ canCalculateReason }}
+        </AppTooltip>
+      </AppButton>
       <span
         v-if="isResultsStale"
         class="text-caption text-warning"
@@ -311,16 +317,19 @@ const {
   calculationProgress,
   calculationErrors,
   canCalculate,
+  canCalculateReason,
   hasResults,
   isResultsStale,
   hasOverLimitEntries,
   orderedQuantities,
+  subArtRequired,
   addStyle,
   removeStyle,
   removePO,
   addColorToStyle,
   removeColorFromStyle,
   updateColorQuantity,
+  updateSubArt,
   calculateAll,
   clearAll,
   setFromWeekItems,
@@ -477,6 +486,7 @@ const handleSave = async () => {
         style_id: entry.style_id,
         color_id: c.color_id,
         quantity: c.quantity,
+        sub_art_id: entry.sub_art_id ?? null,
       }))
   )
 

@@ -4,6 +4,7 @@ export interface PurchaseOrder {
   id: number
   po_number: string
   customer_name: string | null
+  week: string | null
   order_date: string | null
   delivery_date: string | null
   status: POStatus
@@ -16,6 +17,7 @@ export interface PurchaseOrder {
 export interface CreatePurchaseOrderDTO {
   po_number: string
   customer_name?: string
+  week?: string
   order_date?: string
   delivery_date?: string
   status?: POStatus
@@ -26,6 +28,7 @@ export interface CreatePurchaseOrderDTO {
 export interface UpdatePurchaseOrderDTO {
   po_number?: string
   customer_name?: string
+  week?: string
   order_date?: string
   delivery_date?: string
   status?: POStatus
@@ -45,8 +48,9 @@ export interface POItem {
   po_id: number
   style_id: number
   quantity: number
+  finished_product_code?: string | null
   deleted_at?: string | null
-  style?: { id: number; style_code: string; style_name: string }
+  style?: { id: number; style_code: string; style_name: string; description?: string | null }
   ordered_quantity?: number // Sum of weekly order quantities for this PO/style
 }
 
@@ -65,10 +69,12 @@ export interface POItemHistory {
 export interface CreatePOItemDTO {
   style_id: number
   quantity: number
+  finished_product_code?: string
 }
 
 export interface UpdatePOItemDTO {
   quantity: number
+  finished_product_code?: string
 }
 
 export interface PurchaseOrderWithItems extends PurchaseOrder {
@@ -79,13 +85,15 @@ export interface PurchaseOrderWithItems extends PurchaseOrder {
 export type POImportRowStatus = 'new' | 'update' | 'skip' | 'new_style'
 
 export interface POImportRow {
+  row_number?: number
+  customer_name?: string
   po_number: string
   style_code: string
+  week?: string
+  description?: string
   style_name?: string
+  finished_product_code?: string
   quantity: number
-  customer_name?: string
-  order_date?: string
-  notes?: string
   status: POImportRowStatus
   style_id?: number
 }

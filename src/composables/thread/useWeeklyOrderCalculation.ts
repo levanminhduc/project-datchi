@@ -18,10 +18,10 @@ import type {
 } from '@/types/thread'
 
 /**
- * Generate a unique key for an order entry (po_id + style_id)
+ * Generate a unique key for an order entry (po_id + style_id + sub_art_id)
  */
-function entryKey(poId: number | null, styleId: number): string {
-  return `${poId ?? 'null'}_${styleId}`
+function entryKey(poId: number | null, styleId: number, subArtId?: number | null): string {
+  return `${poId ?? 'null'}_${styleId}_${subArtId ?? 'null'}`
 }
 
 export function useWeeklyOrderCalculation() {
@@ -44,11 +44,34 @@ export function useWeeklyOrderCalculation() {
   // Ordered quantities from previous weeks: "po_id_style_id" → info
   const orderedQuantities = ref<Map<string, OrderedQuantityInfo>>(new Map())
 
+  // Track which styles require sub-art selection: styleId → boolean
+  const subArtRequired = reactive(new Map<number, boolean>())
   // Computed
   const canCalculate = computed(() => {
-    return orderEntries.value.some((entry) =>
+    const hasQuantity = orderEntries.value.some((entry) =>
       entry.colors.some((c) => c.quantity > 0)
     )
+    if (!hasQuantity) return false
+
+    const missingSubArt = orderEntries.value.some(
+      (entry) => subArtRequired.get(entry.style_id) && !entry.sub_art_id
+    )
+    return !missingSubArt
+  })
+
+  const subArtMissing = computed(() => {
+    return orderEntries.value.some(
+      (entry) => subArtRequired.get(entry.style_id) && !entry.sub_art_id
+    )
+  })
+
+  const canCalculateReason = computed<string | null>(() => {
+    const hasQuantity = orderEntries.value.some((entry) =>
+      entry.colors.some((c) => c.quantity > 0)
+    )
+    if (!hasQuantity) return 'Chưa có số lượng nào được nhập'
+    if (subArtMissing.value) return 'Vui lòng chọn Sub-art cho tất cả mã hàng yêu cầu'
+    return null
   })
 
   const hasResults = computed(() => perStyleResults.value.length > 0)
@@ -80,11 +103,14 @@ export function useWeeklyOrderCalculation() {
     style_name: string
     po_id?: number | null
     po_number?: string
+    sub_art_id?: number | null
+    sub_art_code?: string
   }) => {
     const poId = style.po_id ?? null
-    const key = entryKey(poId, style.id)
+    const subArtId = style.sub_art_id ?? null
+    const key = entryKey(poId, style.id, subArtId)
     const exists = orderEntries.value.some(
-      (e) => entryKey(e.po_id, e.style_id) === key
+      (e) => entryKey(e.po_id, e.style_id, e.sub_art_id) === key
     )
     if (exists) return
 
@@ -99,6 +125,8 @@ export function useWeeklyOrderCalculation() {
       colors: [],
       po_quantity: qtyInfo?.po_quantity,
       already_ordered: qtyInfo?.ordered_quantity,
+      sub_art_id: subArtId,
+      sub_art_code: style.sub_art_code,
     })
     lastModifiedAt.value = Date.now()
   }
@@ -106,11 +134,28 @@ export function useWeeklyOrderCalculation() {
   /**
    * Remove a style from orderEntries by po_id + style_id
    */
-  const removeStyle = (styleId: number, poId?: number | null) => {
+  const removeStyle = (styleId: number, poId?: number | null, subArtId?: number | null) => {
     const targetPoId = poId ?? null
+    const targetSubArtId = subArtId ?? null
     orderEntries.value = orderEntries.value.filter(
-      (e) => !(e.style_id === styleId && e.po_id === targetPoId)
+      (e) => !(e.style_id === styleId && e.po_id === targetPoId && (e.sub_art_id ?? null) === targetSubArtId)
     )
+    lastModifiedAt.value = Date.now()
+  }
+
+  const updateSubArt = (
+    styleId: number,
+    poId: number | null,
+    subArtId: number | null,
+    subArtCode?: string,
+    oldSubArtId?: number | null,
+  ) => {
+    const entry = orderEntries.value.find(
+      (e) => e.style_id === styleId && e.po_id === poId && e.sub_art_id === (oldSubArtId ?? e.sub_art_id)
+    )
+    if (!entry) return
+    entry.sub_art_id = subArtId
+    entry.sub_art_code = subArtCode
     lastModifiedAt.value = Date.now()
   }
 
@@ -129,10 +174,12 @@ export function useWeeklyOrderCalculation() {
     styleId: number,
     color: { color_id: number; color_name: string; hex_code: string },
     poId?: number | null,
+    subArtId?: number | null,
   ) => {
     const targetPoId = poId ?? null
+    const targetSubArtId = subArtId ?? null
     const entry = orderEntries.value.find(
-      (e) => e.style_id === styleId && e.po_id === targetPoId
+      (e) => e.style_id === styleId && e.po_id === targetPoId && (e.sub_art_id ?? null) === targetSubArtId
     )
     if (!entry) return
 
@@ -151,10 +198,11 @@ export function useWeeklyOrderCalculation() {
   /**
    * Remove a color from a style entry
    */
-  const removeColorFromStyle = (styleId: number, colorId: number, poId?: number | null) => {
+  const removeColorFromStyle = (styleId: number, colorId: number, poId?: number | null, subArtId?: number | null) => {
     const targetPoId = poId ?? null
+    const targetSubArtId = subArtId ?? null
     const entry = orderEntries.value.find(
-      (e) => e.style_id === styleId && e.po_id === targetPoId
+      (e) => e.style_id === styleId && e.po_id === targetPoId && (e.sub_art_id ?? null) === targetSubArtId
     )
     if (!entry) return
 
@@ -170,10 +218,12 @@ export function useWeeklyOrderCalculation() {
     colorId: number,
     qty: number,
     poId?: number | null,
+    subArtId?: number | null,
   ) => {
     const targetPoId = poId ?? null
+    const targetSubArtId = subArtId ?? null
     const entry = orderEntries.value.find(
-      (e) => e.style_id === styleId && e.po_id === targetPoId
+      (e) => e.style_id === styleId && e.po_id === targetPoId && (e.sub_art_id ?? null) === targetSubArtId
     )
     if (!entry) return
 
@@ -424,6 +474,7 @@ export function useWeeklyOrderCalculation() {
     lastModifiedAt.value = null
     deliveryDateOverrides.clear()
     orderedQuantities.value.clear()
+    subArtRequired.clear()
   }
 
   /**
@@ -434,7 +485,8 @@ export function useWeeklyOrderCalculation() {
 
     for (const item of items) {
       const poId = item.po_id ?? null
-      const key = entryKey(poId, item.style_id)
+      const subArtId = item.sub_art_id ?? null
+      const key = entryKey(poId, item.style_id, subArtId)
 
       if (!entryMap.has(key)) {
         entryMap.set(key, {
@@ -444,6 +496,8 @@ export function useWeeklyOrderCalculation() {
           style_code: item.style?.style_code || `Style #${item.style_id}`,
           style_name: item.style?.style_name || '',
           colors: [],
+          sub_art_id: subArtId,
+          sub_art_code: item.sub_art?.sub_art_code,
         })
       }
 
@@ -572,17 +626,21 @@ export function useWeeklyOrderCalculation() {
     lastModifiedAt,
     deliveryDateOverrides,
     orderedQuantities,
+    subArtRequired,
 
     // Computed
     canCalculate,
+    canCalculateReason,
     hasResults,
     isResultsStale,
     hasOverLimitEntries,
+    subArtMissing,
 
     // Actions
     addStyle,
     removeStyle,
     removePO,
+    updateSubArt,
     addColorToStyle,
     removeColorFromStyle,
     updateColorQuantity,

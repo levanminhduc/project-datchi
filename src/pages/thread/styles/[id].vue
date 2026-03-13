@@ -262,7 +262,7 @@
                     color="primary"
                   />
                   <template v-else>
-                    <span class="cell-value">{{ props.row.thread_types?.tex_number || '-' }}</span>
+                    <span class="cell-value">{{ props.row.thread_types?.tex_label || props.row.thread_types?.tex_number || '-' }}</span>
                     <q-icon
                       name="edit"
                       size="xs"
@@ -412,7 +412,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useThreadTypes, useColors, useSnackbar } from '@/composables'
 import StyleColorSpecsTab from '@/components/thread/StyleColorSpecsTab.vue'
 import type { QTableColumn } from 'quasar'
-import type { StyleThreadSpec } from '@/types/thread'
+import type { StyleThreadSpec, ThreadType } from '@/types/thread'
 
 definePage({
   meta: { requiresAuth: true }
@@ -516,22 +516,31 @@ const supplierOptions = computed(() =>
   suppliers.value.map(s => ({ label: s.name, value: s.id }))
 )
 
+const matchesSupplier = (threadType: ThreadType, supplierId: number): boolean => {
+  if (threadType.supplier_id === supplierId) return true
+
+  return threadType.suppliers?.some(link => link.supplier_id === supplierId && link.is_active) ?? false
+}
+
 /**
  * Get tex options for inline edit based on row's supplier_id
  * Returns unique tex_number per supplier (first thread_type_id for each tex)
  */
 const getTexOptionsForRow = (row: StyleThreadSpec): { label: string; value: number }[] => {
   if (!row.supplier_id) return []
-  const supplierThreads = threadTypes.value.filter(t => t.supplier_id === row.supplier_id)
-  const uniqueTexMap = new Map<string, number>()
+  const supplierThreads = threadTypes.value.filter(
+    t => t.is_active && matchesSupplier(t, row.supplier_id!)
+  )
+  const uniqueTexMap = new Map<string, { id: number; label: string }>()
   for (const t of supplierThreads) {
-    if (t.tex_number !== null && !uniqueTexMap.has(t.tex_number)) {
-      uniqueTexMap.set(t.tex_number, t.id)
+    const texKey = t.tex_number !== null ? String(t.tex_number) : null
+    if (texKey && !uniqueTexMap.has(texKey)) {
+      uniqueTexMap.set(texKey, { id: t.id, label: t.tex_label || String(t.tex_number) })
     }
   }
   return Array.from(uniqueTexMap.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([tex, id]) => ({ label: `${tex}`, value: id }))
+    .map(([, v]) => ({ label: v.label, value: v.id }))
 }
 const isSaving = ref(false)
 

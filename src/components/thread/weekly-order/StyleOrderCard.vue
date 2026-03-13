@@ -17,7 +17,7 @@
           icon="close"
           color="negative"
           size="sm"
-          @click="$emit('remove', entry.style_id, entry.po_id)"
+          @click="$emit('remove', entry.style_id, entry.po_id, entry.sub_art_id)"
         >
           <AppTooltip>Xóa mã hàng</AppTooltip>
         </AppButton>
@@ -55,6 +55,35 @@
           </template>
           Sắp đạt giới hạn SL PO (còn {{ remaining }} SP)
         </q-banner>
+      </div>
+
+      <!-- Sub-art dropdown -->
+      <div
+        v-if="subArts.length > 0 || entry.sub_art_id"
+        class="q-mb-sm"
+      >
+        <AppSelect
+          v-if="subArts.length > 0 && !isSubArtReadOnly"
+          :model-value="entry.sub_art_id"
+          :options="subArtOptions"
+          label="Sub-art"
+          dense
+          hide-bottom-space
+          clearable
+          option-value="value"
+          option-label="label"
+          emit-value
+          map-options
+          style="max-width: 300px"
+          @update:model-value="handleSubArtChange"
+        />
+        <div
+          v-else-if="isSubArtReadOnly"
+          class="text-caption text-grey-7"
+        >
+          Sub-art: <strong>{{ entry.sub_art_code || `ID #${entry.sub_art_id}` }}</strong>
+          <span class="text-orange-8"> (không còn tồn tại)</span>
+        </div>
       </div>
 
       <!-- Color entries -->
@@ -104,7 +133,7 @@
               icon="remove_circle_outline"
               color="negative"
               size="sm"
-              @click="$emit('remove-color', entry.style_id, color.color_id, entry.po_id)"
+              @click="$emit('remove-color', entry.style_id, color.color_id, entry.po_id, entry.sub_art_id)"
             />
           </div>
         </div>
@@ -146,27 +175,61 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import type { StyleOrderEntry } from '@/types/thread'
+import type { SubArt } from '@/types/thread/subArt'
+import { subArtService } from '@/services/subArtService'
 
 const props = withDefaults(defineProps<{
   entry: StyleOrderEntry
   colorOptions: Array<{ id: number; name: string; hex_code: string }>
   poQuantity?: number | null
   alreadyOrdered?: number
+  subArtRequired?: Map<number, boolean>
 }>(), {
   poQuantity: null,
   alreadyOrdered: 0,
+  subArtRequired: () => new Map(),
 })
 
 const emit = defineEmits<{
-  remove: [styleId: number, poId: number | null]
-  'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string }, poId: number | null]
-  'remove-color': [styleId: number, colorId: number, poId: number | null]
-  'update-quantity': [styleId: number, colorId: number, quantity: number, poId: number | null]
+  remove: [styleId: number, poId: number | null, subArtId: number | null | undefined]
+  'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string }, poId: number | null, subArtId: number | null | undefined]
+  'remove-color': [styleId: number, colorId: number, poId: number | null, subArtId: number | null | undefined]
+  'update-quantity': [styleId: number, colorId: number, quantity: number, poId: number | null, subArtId: number | null | undefined]
+  'update-sub-art': [styleId: number, poId: number | null, subArtId: number | null, subArtCode: string | undefined, oldSubArtId: number | null | undefined]
 }>()
 
 const selectedColorId = ref<number | null>(null)
+const subArts = ref<SubArt[]>([])
+
+const subArtOptions = computed(() =>
+  subArts.value.map((sa) => ({ label: sa.sub_art_code, value: sa.id }))
+)
+
+const isSubArtReadOnly = computed(() => {
+  if (!props.entry.sub_art_id) return false
+  return subArts.value.length === 0 || !subArts.value.some((sa) => sa.id === props.entry.sub_art_id)
+})
+
+const fetchSubArts = async () => {
+  try {
+    subArts.value = await subArtService.getByStyleId(props.entry.style_id)
+    props.subArtRequired.set(props.entry.style_id, subArts.value.length > 0)
+  } catch {
+    subArts.value = []
+  }
+}
+
+onMounted(fetchSubArts)
+
+watch(() => props.entry.style_id, fetchSubArts)
+
+const handleSubArtChange = (subArtId: number | null) => {
+  const oldSubArtId = props.entry.sub_art_id
+  const subArt = subArts.value.find((sa) => sa.id === subArtId)
+  emit('update-sub-art', props.entry.style_id, props.entry.po_id, subArtId, subArt?.sub_art_code, oldSubArtId)
+}
 
 const currentTotal = computed(() =>
   props.entry.colors.reduce((sum, c) => sum + c.quantity, 0)
@@ -219,7 +282,7 @@ const clampOnKeydown = (e: KeyboardEvent, colorId: number, currentValue: number)
     e.preventDefault()
     if (parseInt(input.value, 10) !== max) {
       input.value = String(max)
-      emit('update-quantity', props.entry.style_id, colorId, max, props.entry.po_id)
+      emit('update-quantity', props.entry.style_id, colorId, max, props.entry.po_id, props.entry.sub_art_id)
     }
   }
 }
@@ -234,7 +297,7 @@ const clampOnPaste = (e: ClipboardEvent, colorId: number) => {
     e.preventDefault()
     const input = e.target as HTMLInputElement
     input.value = String(max)
-    emit('update-quantity', props.entry.style_id, colorId, max, props.entry.po_id)
+    emit('update-quantity', props.entry.style_id, colorId, max, props.entry.po_id, props.entry.sub_art_id)
   }
 }
 
@@ -244,7 +307,7 @@ const handleQuantityChange = (colorId: number, rawQty: number) => {
   if (max != null) {
     qty = Math.min(qty, max)
   }
-  emit('update-quantity', props.entry.style_id, colorId, qty, props.entry.po_id)
+  emit('update-quantity', props.entry.style_id, colorId, qty, props.entry.po_id, props.entry.sub_art_id)
 }
 
 const availableColors = computed(() => {
@@ -263,7 +326,7 @@ const handleAddColor = () => {
     color_id: color.id,
     color_name: color.name,
     hex_code: color.hex_code,
-  }, props.entry.po_id)
+  }, props.entry.po_id, props.entry.sub_art_id)
   selectedColorId.value = null
 }
 </script>

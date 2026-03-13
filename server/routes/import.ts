@@ -47,17 +47,73 @@ const DEFAULT_PO_ITEMS_MAPPING: POImportMappingConfig = {
   header_row: 1,
   data_start_row: 2,
   columns: {
-    po_number: 'A',
-    style_code: 'B',
-    quantity: 'C',
-    customer_name: 'D',
-    order_date: 'E',
-    notes: 'F'
+    customer_name: 'A',
+    po_number: 'B',
+    style_code: 'C',
+    week: 'D',
+    description: 'E',
+    finished_product_code: 'F',
+    quantity: 'G'
+  }
+}
+
+const normalizePOImportMappingConfig = (raw: unknown): POImportMappingConfig => {
+  const fallback: POImportMappingConfig = {
+    sheet_index: DEFAULT_PO_ITEMS_MAPPING.sheet_index,
+    header_row: DEFAULT_PO_ITEMS_MAPPING.header_row,
+    data_start_row: DEFAULT_PO_ITEMS_MAPPING.data_start_row,
+    columns: { ...DEFAULT_PO_ITEMS_MAPPING.columns }
+  }
+
+  if (!raw || typeof raw !== 'object') {
+    return fallback
+  }
+
+  const value = raw as Record<string, unknown>
+  const columns = value.columns && typeof value.columns === 'object'
+    ? value.columns as Record<string, unknown>
+    : {}
+
+  const hasLegacyShape = 'order_date' in columns || 'notes' in columns
+  if (hasLegacyShape) {
+    return fallback
+  }
+
+  const normalizedColumns: POImportMappingConfig['columns'] = {
+    customer_name: typeof columns.customer_name === 'string' ? columns.customer_name : fallback.columns.customer_name,
+    po_number: typeof columns.po_number === 'string' ? columns.po_number : fallback.columns.po_number,
+    style_code: typeof columns.style_code === 'string' ? columns.style_code : fallback.columns.style_code,
+    week: typeof columns.week === 'string' ? columns.week : fallback.columns.week,
+    description: typeof columns.description === 'string' ? columns.description : fallback.columns.description,
+    finished_product_code:
+      typeof columns.finished_product_code === 'string'
+        ? columns.finished_product_code
+        : fallback.columns.finished_product_code,
+    quantity: typeof columns.quantity === 'string' ? columns.quantity : fallback.columns.quantity,
+  }
+
+  return {
+    sheet_index: typeof value.sheet_index === 'number' ? value.sheet_index : fallback.sheet_index,
+    header_row: typeof value.header_row === 'number' ? value.header_row : fallback.header_row,
+    data_start_row: typeof value.data_start_row === 'number' ? value.data_start_row : fallback.data_start_row,
+    columns: normalizedColumns
   }
 }
 
 const normalizeText = (value: string | null | undefined): string =>
   String(value || '').trim().toLowerCase()
+
+const normalizeOptionalText = (value: string | null | undefined): string | null => {
+  const normalized = String(value || '').trim()
+  return normalized ? normalized : null
+}
+
+const normalizeTexNumber = (raw: string): string => {
+  let val = String(raw || '').trim()
+  val = val.replace(/^tex\s*/i, '')
+  val = val.replace(/\s*\(.*\)\s*$/, '')
+  return val.trim()
+}
 
 const getMappingConfig = async (key: string, fallback: ImportMappingConfig): Promise<ImportMappingConfig> => {
   const { data: setting } = await supabase
@@ -93,7 +149,7 @@ const buildSupplierAndTexCaches = async () => {
   if (existingThreadTypes) {
     for (const t of existingThreadTypes) {
       if (t.tex_number !== null && t.supplier_id !== null) {
-        const key = `${t.supplier_id}-${t.tex_number}`
+        const key = `${t.supplier_id}-${normalizeTexNumber(String(t.tex_number))}`
         threadTypeCache.set(key, t.id)
       }
     }
@@ -109,19 +165,20 @@ const toTexPreviewRow = (
 ): ImportTexPreviewRow => {
   const supplierName = String(row.supplier_name || '').trim()
   const texNumber = String(row.tex_number || '').trim()
+  const texNormalized = normalizeTexNumber(texNumber)
   const metersPerCone = Number(row.meters_per_cone) || 0
   const unitPrice = row.unit_price == null ? null : Number(row.unit_price)
   const supplierItemCode = row.supplier_item_code ? String(row.supplier_item_code).trim() : undefined
 
   const errors: string[] = []
   if (!supplierName) errors.push('Thiếu tên NCC')
-  if (!texNumber) errors.push('Thiếu Tex')
+  if (!texNormalized) errors.push('Thiếu Tex')
   if (metersPerCone <= 0) errors.push('Mét/cuộn phải > 0')
   if (unitPrice == null || Number.isNaN(unitPrice)) errors.push('Thiếu đơn giá')
   else if (unitPrice < 0) errors.push('Giá không được âm')
 
   const supplierId = supplierCache.get(normalizeText(supplierName))
-  const texCacheKey = supplierId ? `${supplierId}-${texNumber}` : ''
+  const texCacheKey = supplierId ? `${supplierId}-${texNormalized}` : ''
 
   let status: ImportTexPreviewRow['status'] = 'valid'
   if (errors.length > 0) {
@@ -266,18 +323,20 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
         suppliers_created++
       }
 
-      const texCacheKey = `${supplierId}-${previewRow.tex_number}`
+      const texNorm = normalizeTexNumber(previewRow.tex_number)
+      const texCacheKey = `${supplierId}-${texNorm}`
       let threadTypeId = threadTypeCache.get(texCacheKey)
       if (!threadTypeId) {
-        const texNumeric = parseFloat(previewRow.tex_number) || 0
+        const texNumeric = parseFloat(texNorm) || 0
         const densityGramsPerMeter = texNumeric / 1000
-        const uniqueCode = `T-${supplierId}-TEX${previewRow.tex_number}`
+        const uniqueCode = `T-${supplierId}-TEX${texNorm}`
         const { data: newThreadType, error: threadTypeError } = await supabase
           .from('thread_types')
           .insert({
             code: uniqueCode,
-            name: `Chỉ TEX ${previewRow.tex_number}`,
-            tex_number: previewRow.tex_number,
+            name: `Chỉ TEX ${texNorm}`,
+            tex_number: texNorm,
+            tex_label: previewRow.tex_number,
             density_grams_per_meter: densityGramsPerMeter,
             meters_per_cone: previewRow.meters_per_cone,
             supplier_id: supplierId,
@@ -290,13 +349,13 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
           const { data: existingTypes } = await supabase
             .from('thread_types')
             .select('id')
-            .eq('tex_number', previewRow.tex_number)
+            .eq('tex_number', texNorm)
             .eq('supplier_id', supplierId)
             .is('deleted_at', null)
             .limit(1)
 
           if (!existingTypes?.length) {
-            skipRow(`Không thể tạo/tìm loại chỉ TEX ${previewRow.tex_number}: ${threadTypeError?.message || 'Lỗi không xác định'}`)
+            skipRow(`Không thể tạo/tìm loại chỉ TEX ${texNorm}: ${threadTypeError?.message || 'Lỗi không xác định'}`)
             continue
           }
 
@@ -309,7 +368,7 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
         threadTypeCache.set(texCacheKey, threadTypeId)
       }
 
-      const supplierItemCode = previewRow.supplier_item_code || `${previewRow.supplier_name}-TEX${previewRow.tex_number}`
+      const supplierItemCode = previewRow.supplier_item_code || `${previewRow.supplier_name}-TEX${texNorm}`
 
       const { data: existingLinks } = await supabase
         .from('thread_type_supplier')
@@ -684,7 +743,7 @@ const getPOImportMappingConfig = async (): Promise<POImportMappingConfig> => {
     .eq('key', 'import_po_items_mapping')
     .single()
 
-  return setting?.value || DEFAULT_PO_ITEMS_MAPPING
+  return normalizePOImportMappingConfig(setting?.value)
 }
 
 importRouter.get('/mapping/po-items', requirePermission('thread.purchase-orders.import'), async (c) => {
@@ -719,30 +778,73 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
 
     const { data: styles } = await supabase
       .from('styles')
-      .select('id, style_code, style_name')
+      .select('id, style_code, style_name, description')
       .is('deleted_at', null)
 
-    const styleMap = new Map<string, { id: number; style_code: string; style_name: string }>()
+    const styleMap = new Map<string, { id: number; style_code: string; style_name: string; description: string | null }>()
     styles?.forEach(s => styleMap.set(s.style_code.toLowerCase(), s))
 
     const { data: existingPOs } = await supabase
       .from('purchase_orders')
-      .select('id, po_number')
+      .select('id, po_number, customer_name, week')
       .is('deleted_at', null)
 
-    const poMap = new Map<string, number>()
-    existingPOs?.forEach(po => poMap.set(po.po_number.toLowerCase(), po.id))
+    const poMap = new Map<string, { id: number; customer_name: string | null; week: string | null }>()
 
     const { data: existingItems } = await supabase
       .from('po_items')
-      .select('po_id, style_id, quantity')
+      .select('po_id, style_id, quantity, finished_product_code')
       .is('deleted_at', null)
 
-    const itemMap = new Map<string, { quantity: number }>()
+    const itemMap = new Map<string, { quantity: number; finished_product_code: string | null }>()
     existingItems?.forEach(item => {
       const key = `${item.po_id}-${item.style_id}`
-      itemMap.set(key, { quantity: item.quantity })
+      itemMap.set(key, {
+        quantity: item.quantity,
+        finished_product_code: item.finished_product_code || null
+      })
     })
+
+    existingPOs?.forEach(po => {
+      poMap.set(po.po_number.toLowerCase(), {
+        id: po.id,
+        customer_name: po.customer_name || null,
+        week: po.week || null
+      })
+    })
+
+    const poCustomerValues = new Map<string, Set<string>>()
+    const poWeekValues = new Map<string, Set<string>>()
+    const styleDescriptionValues = new Map<string, Set<string>>()
+    const duplicateRowKeys = new Map<string, number>()
+
+    for (const row of rows) {
+      const poKey = normalizeText(row.po_number)
+      const styleKey = normalizeText(row.style_code)
+      const customerName = normalizeOptionalText(row.customer_name)
+      const week = normalizeOptionalText(row.week)
+      const description = normalizeOptionalText(row.description)
+
+      if (poKey && customerName) {
+        if (!poCustomerValues.has(poKey)) poCustomerValues.set(poKey, new Set())
+        poCustomerValues.get(poKey)?.add(customerName.toLowerCase())
+      }
+
+      if (poKey && week) {
+        if (!poWeekValues.has(poKey)) poWeekValues.set(poKey, new Set())
+        poWeekValues.get(poKey)?.add(week.toLowerCase())
+      }
+
+      if (styleKey && description) {
+        if (!styleDescriptionValues.has(styleKey)) styleDescriptionValues.set(styleKey, new Set())
+        styleDescriptionValues.get(styleKey)?.add(description.toLowerCase())
+      }
+
+      if (poKey && styleKey) {
+        const rowKey = `${poKey}::${styleKey}`
+        duplicateRowKeys.set(rowKey, (duplicateRowKeys.get(rowKey) || 0) + 1)
+      }
+    }
 
     const validRows: POImportRow[] = []
     const errorRows: POImportErrorRow[] = []
@@ -751,17 +853,29 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
     let skipCount = 0
 
     for (const row of rows) {
+      const customerName = normalizeOptionalText(row.customer_name)
       const poNumber = String(row.po_number || '').trim()
       const styleCode = String(row.style_code || '').trim()
+      const week = normalizeOptionalText(row.week)
+      const description = normalizeOptionalText(row.description)
+      const finishedProductCode = normalizeOptionalText(row.finished_product_code)
       const quantity = Number(row.quantity) || 0
 
       const errors: string[] = []
+      const poKey = poNumber.toLowerCase()
+      const styleKey = styleCode.toLowerCase()
+      const rowKey = `${poKey}::${styleKey}`
 
       if (!poNumber) errors.push('Thiếu số PO')
       if (!styleCode) errors.push('Thiếu mã hàng')
       if (quantity <= 0) errors.push('Số lượng phải lớn hơn 0')
+      if (finishedProductCode && finishedProductCode.length > 100) errors.push('Mã TP KT tối đa 100 ký tự')
+      if (poKey && (poCustomerValues.get(poKey)?.size || 0) > 1) errors.push('PO có nhiều khách hàng khác nhau trong cùng file')
+      if (poKey && (poWeekValues.get(poKey)?.size || 0) > 1) errors.push('PO có nhiều week khác nhau trong cùng file')
+      if (styleKey && (styleDescriptionValues.get(styleKey)?.size || 0) > 1) errors.push('Mã hàng có nhiều mô tả khác nhau trong cùng file')
+      if (poKey && styleKey && (duplicateRowKeys.get(rowKey) || 0) > 1) errors.push('Trùng dòng PO + mã hàng trong cùng file')
 
-      const style = styleMap.get(styleCode.toLowerCase())
+      const style = styleMap.get(styleKey)
 
       if (errors.length > 0) {
         errorRows.push({
@@ -772,21 +886,32 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
         continue
       }
 
-      const poId = poMap.get(poNumber.toLowerCase())
+      const po = poMap.get(poKey)
       let status: POImportRow['status']
 
       if (!style) {
         status = 'new_style'
-      } else if (!poId) {
+      } else if (!po) {
         status = 'new'
-        newPOsSet.add(poNumber.toLowerCase())
+        newPOsSet.add(poKey)
       } else {
-        const itemKey = `${poId}-${style.id}`
+        const itemKey = `${po.id}-${style.id}`
         const existingItem = itemMap.get(itemKey)
+        const poChanged =
+          (customerName !== null && customerName !== normalizeOptionalText(po.customer_name)) ||
+          (week !== null && week !== normalizeOptionalText(po.week))
+        const styleChanged =
+          description !== null && description !== normalizeOptionalText(style.description)
+        const itemChanged =
+          existingItem !== undefined && (
+            existingItem.quantity !== quantity ||
+            (finishedProductCode !== null &&
+              finishedProductCode !== normalizeOptionalText(existingItem.finished_product_code))
+          )
 
         if (!existingItem) {
           status = 'new'
-        } else if (existingItem.quantity !== quantity) {
+        } else if (poChanged || styleChanged || itemChanged) {
           status = 'update'
           updateCount++
         } else {
@@ -795,20 +920,21 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
         }
       }
 
-      if (!poId) {
-        newPOsSet.add(poNumber.toLowerCase())
+      if (!po) {
+        newPOsSet.add(poKey)
       }
 
       validRows.push({
         row_number: row.row_number,
+        customer_name: customerName || undefined,
         po_number: poNumber,
         style_code: styleCode,
+        week: week || undefined,
+        description: description || undefined,
         style_name: style?.style_name || styleCode,
         style_id: style?.id,
+        finished_product_code: finishedProductCode || undefined,
         quantity,
-        customer_name: row.customer_name,
-        order_date: row.order_date,
-        notes: row.notes,
         status
       })
     }
@@ -860,23 +986,47 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
     let skippedItems = 0
     let failedItems = 0
 
-    const { data: existingPOs } = await supabase
-      .from('purchase_orders')
-      .select('id, po_number')
+    const { data: existingStyles } = await supabase
+      .from('styles')
+      .select('id, style_code, style_name, description')
       .is('deleted_at', null)
 
-    const poMap = new Map<string, number>()
-    existingPOs?.forEach(po => poMap.set(po.po_number.toLowerCase(), po.id))
-
-    const poCustomerMap = new Map<string, string>()
-    const poDateMap = new Map<string, string>()
-    rows.forEach(row => {
-      const key = row.po_number.toLowerCase()
-      if (row.customer_name) poCustomerMap.set(key, row.customer_name)
-      if (row.order_date) poDateMap.set(key, row.order_date)
+    const styleMap = new Map<string, { id: number; style_name: string; description: string | null }>()
+    existingStyles?.forEach(style => {
+      styleMap.set(style.style_code.toLowerCase(), {
+        id: style.id,
+        style_name: style.style_name,
+        description: style.description || null
+      })
     })
 
-    const createdStyleMap = new Map<string, number>()
+    const { data: existingPOs } = await supabase
+      .from('purchase_orders')
+      .select('id, po_number, customer_name, week')
+      .is('deleted_at', null)
+
+    const poMap = new Map<string, { id: number; customer_name: string | null; week: string | null }>()
+    existingPOs?.forEach(po => {
+      poMap.set(po.po_number.toLowerCase(), {
+        id: po.id,
+        customer_name: po.customer_name || null,
+        week: po.week || null
+      })
+    })
+
+    const { data: existingItems } = await supabase
+      .from('po_items')
+      .select('id, po_id, style_id, quantity, finished_product_code')
+      .is('deleted_at', null)
+
+    const itemMap = new Map<string, { id: number; quantity: number; finished_product_code: string | null }>()
+    existingItems?.forEach(item => {
+      itemMap.set(`${item.po_id}-${item.style_id}`, {
+        id: item.id,
+        quantity: item.quantity,
+        finished_product_code: item.finished_product_code || null
+      })
+    })
 
     for (const row of rows) {
       if (row.status === 'skip') {
@@ -884,128 +1034,255 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
         continue
       }
 
-      if (row.status === 'new_style' && !row.style_id) {
-        const styleKey = row.style_code.toLowerCase()
-        let newStyleId = createdStyleMap.get(styleKey)
+      const styleKey = row.style_code.toLowerCase()
+      const description = normalizeOptionalText(row.description)
+      let styleEntry = row.style_id ? Array.from(styleMap.values()).find(style => style.id === row.style_id) : styleMap.get(styleKey)
+      let styleId = row.style_id || styleEntry?.id
 
-        if (!newStyleId) {
-          const { data: newStyle, error: styleError } = await supabase
-            .from('styles')
-            .insert({ style_code: row.style_code, style_name: row.style_code })
-            .select('id')
-            .single()
+      if (!styleId) {
+        const { data: newStyle, error: styleError } = await supabase
+          .from('styles')
+          .insert({
+            style_code: row.style_code,
+            style_name: row.style_code,
+            description
+          })
+          .select('id, style_name, description')
+          .single()
 
-          if (styleError) {
-            if (styleError.code === '23505') {
-              const { data: existingStyle } = await supabase
-                .from('styles')
-                .select('id')
-                .eq('style_code', row.style_code)
-                .is('deleted_at', null)
-                .single()
-              newStyleId = existingStyle?.id
-            } else {
-              console.error('Create style error:', styleError)
-              failedItems++
-              continue
+        if (styleError) {
+          if (styleError.code === '23505') {
+            const { data: existingStyle } = await supabase
+              .from('styles')
+              .select('id, style_name, description')
+              .eq('style_code', row.style_code)
+              .is('deleted_at', null)
+              .single()
+            styleId = existingStyle?.id
+            if (existingStyle) {
+              styleMap.set(styleKey, {
+                id: existingStyle.id,
+                style_name: existingStyle.style_name,
+                description: existingStyle.description || null
+              })
             }
           } else {
-            newStyleId = newStyle.id
+            console.error('Create style error:', styleError)
+            failedItems++
+            continue
           }
-
-          if (newStyleId) {
-            createdStyleMap.set(styleKey, newStyleId)
-          }
+        } else {
+          styleId = newStyle.id
+          styleMap.set(styleKey, {
+            id: newStyle.id,
+            style_name: newStyle.style_name,
+            description: newStyle.description || null
+          })
         }
+      }
 
-        if (!newStyleId) {
+      styleEntry = styleMap.get(styleKey)
+      if (!styleId || !styleEntry) {
+        failedItems++
+        continue
+      }
+
+      row.style_id = styleId
+
+      let rowUpdated = false
+
+      if (description !== null && description !== normalizeOptionalText(styleEntry.description)) {
+        const { error: styleUpdateError } = await supabase
+          .from('styles')
+          .update({
+            description,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', styleId)
+
+        if (styleUpdateError) {
+          console.error('Update style description error:', styleUpdateError)
           failedItems++
           continue
         }
-        row.style_id = newStyleId
-        row.status = 'new'
+
+        styleMap.set(styleKey, {
+          ...styleEntry,
+          description
+        })
+        rowUpdated = true
       }
 
-      let poId = poMap.get(row.po_number.toLowerCase())
+      const poKey = row.po_number.toLowerCase()
+      const customerName = normalizeOptionalText(row.customer_name)
+      const week = normalizeOptionalText(row.week)
+      let poEntry = poMap.get(poKey)
 
-      if (!poId) {
+      if (!poEntry) {
         const { data: newPO, error: poError } = await supabase
           .from('purchase_orders')
           .insert({
             po_number: row.po_number,
-            customer_name: poCustomerMap.get(row.po_number.toLowerCase()) || null,
-            order_date: poDateMap.get(row.po_number.toLowerCase()) || null,
+            customer_name: customerName,
+            week,
             status: 'PENDING'
           })
-          .select('id')
+          .select('id, customer_name, week')
           .single()
 
         if (poError) {
           if (poError.code === '23505') {
             const { data: existingPO } = await supabase
               .from('purchase_orders')
-              .select('id')
+              .select('id, customer_name, week')
               .eq('po_number', row.po_number)
               .is('deleted_at', null)
               .single()
-            poId = existingPO?.id
+            if (existingPO) {
+              poEntry = {
+                id: existingPO.id,
+                customer_name: existingPO.customer_name || null,
+                week: existingPO.week || null
+              }
+              poMap.set(poKey, poEntry)
+            }
           } else {
             throw poError
           }
         } else {
-          poId = newPO.id
-          poMap.set(row.po_number.toLowerCase(), poId)
+          poEntry = {
+            id: newPO.id,
+            customer_name: newPO.customer_name || null,
+            week: newPO.week || null
+          }
+          poMap.set(poKey, poEntry)
           createdPOs++
         }
       }
 
-      if (!poId) {
+      if (!poEntry) {
         failedItems++
         continue
       }
 
-      const { data: existingItem } = await supabase
-        .from('po_items')
-        .select('id, quantity')
-        .eq('po_id', poId)
-        .eq('style_id', row.style_id)
-        .is('deleted_at', null)
-        .maybeSingle()
+      if (
+        (customerName !== null && customerName !== normalizeOptionalText(poEntry.customer_name)) ||
+        (week !== null && week !== normalizeOptionalText(poEntry.week))
+      ) {
+        const updates: Record<string, string> = {}
+        if (customerName !== null && customerName !== normalizeOptionalText(poEntry.customer_name)) {
+          updates.customer_name = customerName
+        }
+        if (week !== null && week !== normalizeOptionalText(poEntry.week)) {
+          updates.week = week
+        }
+        updates.updated_at = new Date().toISOString()
+
+        const { error: poUpdateError } = await supabase
+          .from('purchase_orders')
+          .update(updates)
+          .eq('id', poEntry.id)
+
+        if (poUpdateError) {
+          console.error('Update purchase order metadata error:', poUpdateError)
+          failedItems++
+          continue
+        }
+
+        poEntry = {
+          ...poEntry,
+          customer_name: updates.customer_name ?? poEntry.customer_name,
+          week: updates.week ?? poEntry.week
+        }
+        poMap.set(poKey, poEntry)
+        rowUpdated = true
+      }
+
+      const itemKey = `${poEntry.id}-${styleId}`
+      let existingItem = itemMap.get(itemKey)
+      const finishedProductCode = normalizeOptionalText(row.finished_product_code)
 
       if (!existingItem) {
         const { data: newItem, error: insertError } = await supabase
           .from('po_items')
           .insert({
-            po_id: poId,
-            style_id: row.style_id,
+            po_id: poEntry.id,
+            style_id: styleId,
             quantity: row.quantity,
-            notes: row.notes || null
+            finished_product_code: finishedProductCode
           })
-          .select('id')
+          .select('id, quantity, finished_product_code')
           .single()
 
         if (insertError) {
-          if (insertError.code !== '23505') {
+          if (insertError.code === '23505') {
+            const { data: conflictedItem, error: conflictFetchError } = await supabase
+              .from('po_items')
+              .select('id, quantity, finished_product_code')
+              .eq('po_id', poEntry.id)
+              .eq('style_id', styleId)
+              .is('deleted_at', null)
+              .single()
+
+            if (conflictFetchError || !conflictedItem) {
+              console.error('Insert PO item conflict fetch error:', conflictFetchError || insertError)
+              failedItems++
+              continue
+            }
+
+            itemMap.set(itemKey, {
+              id: conflictedItem.id,
+              quantity: conflictedItem.quantity,
+              finished_product_code: conflictedItem.finished_product_code || null
+            })
+            existingItem = itemMap.get(itemKey)
+          } else {
             console.error('Insert PO item error:', insertError)
+            failedItems++
+            continue
           }
+        } else {
+          itemMap.set(itemKey, {
+            id: newItem.id,
+            quantity: newItem.quantity,
+            finished_product_code: newItem.finished_product_code || null
+          })
+
+          await supabase.from('po_item_history').insert({
+            po_item_id: newItem.id,
+            change_type: 'CREATE',
+            previous_quantity: null,
+            new_quantity: row.quantity,
+            changed_by: auth.employeeId,
+            notes: 'Import từ Excel'
+          })
+
+          createdItems++
           continue
         }
+      }
 
-        await supabase.from('po_item_history').insert({
-          po_item_id: newItem.id,
-          change_type: 'CREATE',
-          previous_quantity: null,
-          new_quantity: row.quantity,
-          changed_by: auth.employeeId,
-          notes: 'Import từ Excel'
-        })
+      const shouldUpdateItem =
+        existingItem.quantity !== row.quantity ||
+        (finishedProductCode !== null &&
+          finishedProductCode !== normalizeOptionalText(existingItem.finished_product_code))
 
-        createdItems++
-      } else if (existingItem.quantity !== row.quantity) {
-        await supabase
+      if (shouldUpdateItem) {
+        const { error: itemUpdateError } = await supabase
           .from('po_items')
-          .update({ quantity: row.quantity, updated_at: new Date().toISOString() })
+          .update({
+            quantity: row.quantity,
+            finished_product_code:
+              finishedProductCode !== null ? finishedProductCode : existingItem.finished_product_code,
+            updated_at: new Date().toISOString()
+          })
           .eq('id', existingItem.id)
+
+        if (itemUpdateError) {
+          console.error('Update PO item error:', itemUpdateError)
+          failedItems++
+          continue
+        }
 
         await supabase.from('po_item_history').insert({
           po_item_id: existingItem.id,
@@ -1016,6 +1293,14 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
           notes: 'Import từ Excel'
         })
 
+        itemMap.set(itemKey, {
+          id: existingItem.id,
+          quantity: row.quantity,
+          finished_product_code:
+            finishedProductCode !== null ? finishedProductCode : existingItem.finished_product_code
+        })
+        updatedItems++
+      } else if (rowUpdated) {
         updatedItems++
       } else {
         skippedItems++
@@ -1054,21 +1339,23 @@ importRouter.get('/template/po-items', requirePermission('thread.purchase-orders
     const sheet = workbook.addWorksheet('Import Đơn Hàng PO')
 
     const headerLabels: Record<string, string> = {
+      customer_name: 'Khách Hàng',
       po_number: 'Số PO',
       style_code: 'Mã hàng',
-      quantity: 'Số lượng SP',
-      customer_name: 'Khách hàng',
-      order_date: 'Ngày đặt',
-      notes: 'Ghi chú'
+      week: 'Week',
+      description: 'Mô tả',
+      finished_product_code: 'Mã TP KT',
+      quantity: 'Số lượng SP'
     }
 
     const exampleData: Record<string, string | number> = {
+      customer_name: 'Công ty ABC',
       po_number: 'PO-2024-001',
       style_code: 'STYLE-001',
-      quantity: 1000,
-      customer_name: 'Công ty ABC',
-      order_date: '2024-01-15',
-      notes: 'Giao hàng gấp'
+      week: 'W12-2026',
+      description: 'Áo thun nữ cổ tròn',
+      finished_product_code: 'TPKT-001',
+      quantity: 1000
     }
 
     for (const [field, colLetter] of Object.entries(config.columns)) {

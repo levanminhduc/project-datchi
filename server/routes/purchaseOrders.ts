@@ -18,7 +18,7 @@ purchaseOrders.get('/', requirePermission('thread.purchase-orders.view'), async 
     const includeItems = query.include === 'items'
 
     const selectQuery = includeItems
-      ? `*, items:po_items!inner(id, po_id, style_id, quantity, style:styles(id, style_code, style_name))`
+      ? `*, items:po_items!inner(id, po_id, style_id, quantity, finished_product_code, style:styles(id, style_code, style_name, description))`
       : '*'
 
     let dbQuery = supabase
@@ -130,7 +130,7 @@ purchaseOrders.get('/:id', requirePermission('thread.purchase-orders.view'), asy
     const includeItems = query.include === 'items'
 
     const selectQuery = includeItems
-      ? `*, items:po_items(id, po_id, style_id, quantity, notes, created_at, updated_at, deleted_at, style:styles(id, style_code, style_name))`
+      ? `*, items:po_items(id, po_id, style_id, quantity, finished_product_code, notes, created_at, updated_at, deleted_at, style:styles(id, style_code, style_name, description))`
       : '*'
 
     const dbQuery = supabase
@@ -174,6 +174,7 @@ purchaseOrders.post('/', requirePermission('thread.purchase-orders.create'), asy
       .insert([{
         po_number: body.po_number,
         customer_name: body.customer_name,
+        week: body.week,
         order_date: body.order_date,
         delivery_date: body.delivery_date,
         status: body.status || 'PENDING',
@@ -218,7 +219,7 @@ purchaseOrders.post('/:id/items', requirePermission('thread.purchase-orders.crea
       }, 400)
     }
 
-    const { style_id, quantity, notes } = parseResult.data
+    const { style_id, quantity, finished_product_code, notes } = parseResult.data
     const auth = c.get('auth') as AuthContext & { permissions: string[] }
 
     const { data: po, error: poError } = await supabase
@@ -266,9 +267,10 @@ purchaseOrders.post('/:id/items', requirePermission('thread.purchase-orders.crea
         po_id: poId,
         style_id,
         quantity,
+        finished_product_code: finished_product_code || null,
         notes: notes || null
       })
-      .select('*, style:styles(id, style_code, style_name)')
+      .select('*, style:styles(id, style_code, style_name, description)')
       .single()
 
     if (insertError) {
@@ -319,6 +321,7 @@ purchaseOrders.put('/:id', requirePermission('thread.purchase-orders.edit'), asy
       .update({
         po_number: body.po_number,
         customer_name: body.customer_name,
+        week: body.week,
         order_date: body.order_date,
         delivery_date: body.delivery_date,
         status: body.status,
@@ -369,12 +372,12 @@ purchaseOrders.put('/:id/items/:itemId', requirePermission('thread.purchase-orde
       }, 400)
     }
 
-    const { quantity, notes } = parseResult.data
+    const { quantity, finished_product_code, notes } = parseResult.data
     const auth = c.get('auth') as AuthContext & { permissions: string[] }
 
     const { data: item, error: itemError } = await supabase
       .from('po_items')
-      .select('id, po_id, style_id, quantity')
+      .select('id, po_id, style_id, quantity, finished_product_code')
       .eq('id', itemId)
       .eq('po_id', poId)
       .is('deleted_at', null)
@@ -408,23 +411,25 @@ purchaseOrders.put('/:id/items/:itemId', requirePermission('thread.purchase-orde
       .from('po_items')
       .update({
         quantity,
+        finished_product_code:
+          finished_product_code !== undefined ? (finished_product_code || null) : undefined,
         notes: notes !== undefined ? notes : undefined,
         updated_at: new Date().toISOString()
       })
       .eq('id', itemId)
-      .select('*, style:styles(id, style_code, style_name)')
+      .select('*, style:styles(id, style_code, style_name, description)')
       .single()
 
     if (updateError) throw updateError
 
-    if (previousQuantity !== quantity) {
+    if (previousQuantity !== quantity || finished_product_code !== undefined) {
       await supabase.from('po_item_history').insert({
         po_item_id: itemId,
         change_type: 'UPDATE',
         previous_quantity: previousQuantity,
         new_quantity: quantity,
         changed_by: auth.employeeId,
-        notes: notes || null
+        notes: notes || (finished_product_code !== undefined ? 'Cập nhật mã TP KT' : null)
       })
     }
 
