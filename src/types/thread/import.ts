@@ -46,3 +46,24 @@ export interface ImportColorResponse {
   skipped: number
   colors_created: number
 }
+
+export interface ImportStreamProgress {
+  phase: 'prepare' | 'colors' | 'links'
+  message?: string
+  processed: number
+  total: number
+  imported?: number
+  skipped?: number
+  colors_created?: number
+}
+
+export interface ImportStreamDone {
+  imported: number
+  skipped: number
+  colors_created: number
+}
+
+export type ImportStreamEvent =
+  | { type: 'progress'; data: ImportStreamProgress }
+  | { type: 'done'; data: ImportStreamDone }
+  | { type: 'error'; data: { message: string } }
