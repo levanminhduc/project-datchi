@@ -69,3 +69,19 @@ export interface ImportApiResponse<T> {
   error: string | null
   message?: string
 }
+
+export interface ImportColorStreamProgress {
+  phase: 'prepare' | 'colors' | 'links'
+  message?: string
+  processed: number
+  total: number
+  imported?: number
+  skipped?: number
+  colors_created?: number
+}
+
+export interface ImportColorStreamDone {
+  imported: number
+  skipped: number
+  colors_created: number
+}
