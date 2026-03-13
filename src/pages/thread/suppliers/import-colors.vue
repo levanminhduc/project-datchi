@@ -155,6 +155,31 @@
           </q-table>
         </div>
 
+          <div
+            v-if="importing"
+            class="q-pa-md q-mt-md"
+          >
+            <div class="text-subtitle2 q-mb-xs">
+              {{ importPhase }}: {{ importPhaseMessage }}
+            </div>
+            <q-linear-progress
+              :value="importProgress"
+              color="primary"
+              track-color="grey-3"
+              rounded
+              size="24px"
+              class="q-mb-xs"
+            >
+              <div class="absolute-full flex flex-center">
+                <q-badge
+                  color="white"
+                  text-color="primary"
+                  :label="`${Math.round(importProgress * 100)}%`"
+                />
+              </div>
+            </q-linear-progress>
+          </div>
+
         <q-stepper-navigation>
           <AppButton
             label="Quay lại"
@@ -162,6 +187,7 @@
             color="grey"
             icon="arrow_back"
             class="q-mr-sm"
+            :disable="importing"
             @click="currentStep = 'upload'"
           />
           <AppButton
@@ -231,6 +257,7 @@ import type {
   ImportMappingConfig,
   ImportRowStatus,
 } from '@/types/thread'
+import type { ImportStreamEvent } from '@/types/thread/import'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
@@ -260,6 +287,9 @@ const selectedFile = ref<File | null>(null)
 const parsing = ref(false)
 const parseError = ref('')
 const importing = ref(false)
+const importProgress = ref(0)
+const importPhase = ref('')
+const importPhaseMessage = ref('')
 const parsedRows = ref<ImportColorRow[]>([])
 const importResult = ref<ImportColorResponse | null>(null)
 const loadingSuppliers = ref(false)
@@ -462,8 +492,33 @@ async function doImport() {
   }
 
   importing.value = true
+  importProgress.value = 0
+  importPhase.value = ''
+  importPhaseMessage.value = ''
+
   try {
-    const result = await importService.importSupplierColors(selectedSupplierId.value, validRows)
+    const result = await importService.importSupplierColorsStream(
+      selectedSupplierId.value,
+      validRows,
+      (event: ImportStreamEvent) => {
+        if (event.type === 'progress') {
+          const { phase, processed, total, message } = event.data
+          importProgress.value = total > 0 ? Math.round((processed / total) * 100) / 100 : 0
+
+          if (phase === 'prepare') {
+            importPhase.value = 'Chuẩn bị'
+            importPhaseMessage.value = message || 'Đang chuẩn bị dữ liệu...'
+          } else if (phase === 'colors') {
+            importPhase.value = 'Tạo màu'
+            importPhaseMessage.value = `Đang tạo màu mới: ${processed}/${total}`
+          } else if (phase === 'links') {
+            importPhase.value = 'Liên kết'
+            importPhaseMessage.value = `Đang liên kết NCC: ${processed}/${total}`
+          }
+        }
+      }
+    )
+
     importResult.value = result
     snackbar.success(`Import thành công ${result.imported} liên kết`)
     currentStep.value = 'result'
