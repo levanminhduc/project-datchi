@@ -26,6 +26,7 @@ interface SupplierJoin {
 interface ThreadTypeJoin {
   id: number
   tex_number: string
+  tex_label: string | null
   name: string
   meters_per_cone: number | null
   color_id: number | null
@@ -49,11 +50,12 @@ interface ColorJoin {
   name: string
 }
 
-/** Joined thread_type shape from: thread_types:thread_type_id (id, name, tex_number) */
+/** Joined thread_type shape from: thread_types:thread_type_id (id, name, tex_number, tex_label) */
 interface ColorThreadTypeJoin {
   id: number
   name: string
   tex_number: string
+  tex_label: string | null
   meters_per_cone: number | null
   supplier_id: number | null
   suppliers: SupplierJoin | null
@@ -147,7 +149,7 @@ const SPEC_SELECT = `
   meters_per_unit,
   thread_type_id,
   suppliers:supplier_id (id, name, lead_time_days),
-  thread_types:thread_type_id (id, tex_number, name, meters_per_cone, color_id, color_data:colors(name, hex_code))
+  thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_id, color_data:colors(name, hex_code))
 ` as const
 
 const COLOR_SPEC_SELECT = `
@@ -159,6 +161,7 @@ const COLOR_SPEC_SELECT = `
     id,
     name,
     tex_number,
+    tex_label,
     meters_per_cone,
     supplier_id,
     suppliers:supplier_id (id, name, lead_time_days),
@@ -271,7 +274,7 @@ function buildCalculation(
     spec_id: spec.id,
     process_name: spec.process_name,
     supplier_name: spec.suppliers?.name || '',
-    tex_number: spec.thread_types?.tex_number || '',
+    tex_number: spec.thread_types?.tex_label || spec.thread_types?.tex_number || '',
     meters_per_unit: spec.meters_per_unit,
     total_meters: spec.meters_per_unit * quantity,
     meters_per_cone: spec.thread_types?.meters_per_cone || null,
@@ -311,7 +314,9 @@ function buildCalculation(
         spec.suppliers?.id ??
         null
       const resolvedTexNumber =
+        colorSpec?.thread_types?.tex_label ||
         colorSpec?.thread_types?.tex_number ||
+        spec.thread_types?.tex_label ||
         spec.thread_types?.tex_number ||
         ''
 
@@ -683,7 +688,9 @@ threadCalculation.post('/calculate-by-po', async (c) => {
             spec.suppliers?.id ??
             null
           const resolvedTexNumber =
+            colorSpec?.thread_types?.tex_label ||
             colorSpec?.thread_types?.tex_number ||
+            spec.thread_types?.tex_label ||
             spec.thread_types?.tex_number ||
             ''
 
@@ -709,7 +716,7 @@ threadCalculation.post('/calculate-by-po', async (c) => {
           spec_id: spec.id,
           process_name: spec.process_name,
           supplier_name: spec.suppliers?.name || '',
-          tex_number: spec.thread_types?.tex_number || '',
+          tex_number: spec.thread_types?.tex_label || spec.thread_types?.tex_number || '',
           meters_per_unit: spec.meters_per_unit,
           total_meters: spec.meters_per_unit * item.quantity,
           meters_per_cone: spec.thread_types?.meters_per_cone || null,

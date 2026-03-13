@@ -426,10 +426,11 @@ const getThreadOptionsForSpec = (spec: StyleThreadSpec): { label: string; value:
       matchesSupplier(t, spec.supplier_id) &&
       t.tex_number !== null &&
       String(t.tex_number) === String(specTexNumber) &&
-      t.is_active
+      t.is_active &&
+      t.color_id !== null
     )
     .map(t => ({
-      label: `${t.color_data?.name || t.name || t.code}`,
+      label: t.color_data?.name ?? `${t.code} (chưa gán màu)`,
       value: t.id,
     }))
 }

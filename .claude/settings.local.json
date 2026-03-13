@@ -52,7 +52,8 @@
       "mcp__playwright__browser_click",
       "mcp__tavily__tavily_extract",
       "mcp__tavily__tavily_search",
-      "mcp__playwright__browser_take_screenshot"
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_press_key"
     ]
   }
 }
