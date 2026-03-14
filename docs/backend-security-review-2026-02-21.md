@@ -1,14 +1,33 @@
 # Backend Security Review - 2026-02-21
 
+> **⚠ Point-in-time snapshot:** This review reflects the state of `server/` as of 2026-02-21.
+> The codebase has changed since then (route count: 25 → 28 as of 2026-03-14; global `authMiddleware` applied as of 2026-03 — see C01 remediation status below).
+> Do not treat file/line references as current — re-verify against current code before acting on individual findings.
+
 ## Tổng quan
 - Phạm vi review: `server/` (Hono routes, middleware auth, Supabase client usage).
 - Kết luận nhanh: Backend hiện tại **chưa an toàn** để expose trên network vì nhiều endpoint quan trọng đang mở công khai và đang dùng `supabaseAdmin` (service_role, bypass RLS).
 
-## Số liệu tóm tắt
-- Tổng số route files: `25`
+## Số liệu tóm tắt (tại 2026-02-21)
+- Tổng số route files: `25` *(hiện tại: 28 — xem codebase-summary.md)*
 - Route files có `authMiddleware`: `3`
 - Route files không có `authMiddleware`: `22`
 - Số write endpoints (POST/PUT/PATCH/DELETE) trong nhóm chưa auth: `99`
+
+## Trạng thái khắc phục (cập nhật 2026-03-14)
+
+| Finding | Mức độ | Trạng thái |
+|---------|--------|-----------|
+| C01 - Missing auth | Critical | ✅ **Remediated** — global `authMiddleware` via `app.use('*')` trên `/api/*`, chỉ whitelist `/api/auth/login` |
+| C02 - supabaseAdmin on unauth routes | Critical | ⚠ Partially mitigated (auth now covers routes; RLS migration not yet done) |
+| C03 - Privilege escalation | Critical | ⚠ Partially mitigated (global auth blocks unauth calls) |
+| H01 - Employee data exposure | High | 🔲 Pending |
+| H02 - Settings read public | High | ✅ **Remediated** — settings now behind auth |
+| H03 - Settings write broad | High | 🔲 Pending |
+| H04 - Weak default password | High | 🔲 Pending |
+| H05 - ROOT policy inconsistent | High | 🔲 Pending |
+| M01–M07 | Medium | 🔲 Pending |
+| L01–L02 | Low | 🔲 Pending |
 
 ## Findings (ưu tiên theo mức độ nghiêm trọng)
 

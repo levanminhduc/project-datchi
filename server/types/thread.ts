@@ -349,6 +349,7 @@ export interface ConeSummaryRow {
   material: ThreadMaterial
   tex_number: string | null
   meters_per_cone: number | null
+  unit_price: number | null
   full_cones: number
   partial_cones: number
   partial_meters: number

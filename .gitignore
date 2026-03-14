@@ -45,6 +45,8 @@ opencode.json
 .claude/
 
 # Playwright
+*.png
+.playwright-mcp/
 playwright-report/
 test-results/
 plans/

@@ -1,6 +1,7 @@
-# Đất Chỉ — Hướng dẫn Docker Deployment
+# Docker Deployment Guide
 
-> Tài liệu ghi lại từ phiên làm việc setup Docker cho dự án.
+**Project:** Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)
+**Last updated:** 2026-03-14
 
 ---
 
@@ -15,7 +16,7 @@
        /index.html    /api/*        /supabase/*
            │              │               │
 ┌──────────▼──────────────▼───────────────▼───────────────┐
-│  Docker: Frontend (nginx) — port 8080                   │
+│  Docker: Frontend (nginx-brotli) — port 8080            │
 │  ┌─────────────┐  ┌────────────┐  ┌──────────────────┐  │
 │  │ Static files │  │ proxy /api │  │ proxy /supabase  │  │
 │  │ (Vue SPA)   │  │  → :3000   │  │  → host:54321    │  │
@@ -24,14 +25,27 @@
                            │                 │
               ┌────────────▼──────┐  ┌───────▼─────────┐
               │ Docker: Backend   │  │ Supabase CLI     │
-              │ (Hono) — port 3010│  │ (đang chạy sẵn) │
-              │                   │  │ port 54321       │
-              │ connect Supabase  │  └──────────────────┘
-              │ qua host:54321    │
-              └───────────────────┘
+              │ (Hono) — port 3010│  │ (chạy riêng)    │
+              │ server.mjs bundle │  │ port 54321       │
+              └───────────────────┘  └──────────────────┘
 ```
 
-**Chỉ build 2 containers** (Frontend + Backend). Supabase chạy sẵn bằng `supabase start`, không cần Docker riêng.
+**Chỉ build 2 containers** (Frontend + Backend). Supabase chạy bằng `supabase start` — không Docker riêng.
+
+---
+
+## Cấu trúc files Docker
+
+```
+project-datchi/
+├── docker-compose.yml          # 2 services: frontend + backend
+├── Dockerfile.frontend         # 3-stage: deps → builder → production (nginx-brotli)
+├── Dockerfile.backend          # 3-stage: builder → deps → production (esbuild bundle)
+├── nginx.docker.conf           # Docker config: brotli + gzip + security headers + proxies
+├── nginx.conf                  # Dev config (Vite dev server)
+├── .env.docker                 # Env cho Docker — KHÔNG commit
+└── .dockerignore               # Loại bỏ node_modules, dist, .env...
+```
 
 ---
 
@@ -47,7 +61,7 @@ supabase start
 docker compose --env-file .env.docker up --build -d
 ```
 
-### Rebuild sau khi code tính năng mới
+### Rebuild sau khi thay đổi code
 
 ```bash
 # Rebuild tất cả
@@ -60,21 +74,26 @@ docker compose --env-file .env.docker up --build -d backend
 docker compose --env-file .env.docker up --build -d frontend
 ```
 
-### Dừng
+### Dừng / Xóa
 
 ```bash
+# Dừng
 docker compose --env-file .env.docker down
+
+# Xóa kể cả volumes
+docker compose --env-file .env.docker down -v
 ```
 
-### Xóa sạch (kể cả volumes)
+### Kiểm tra health
 
 ```bash
-docker compose --env-file .env.docker down -v
+docker compose --env-file .env.docker ps
+# STATUS column: "healthy" hoặc "unhealthy"
 ```
 
 ---
 
-## URLs truy cập
+## URLs & Ports
 
 | Service | URL | Ghi chú |
 |---------|-----|---------|
@@ -83,61 +102,54 @@ docker compose --env-file .env.docker down -v
 | Supabase API | `http://<IP>:8080/supabase/` | Proxy qua nginx → Supabase CLI |
 | Backend trực tiếp | `http://<IP>:3010` | Không qua nginx |
 
-> **IP nào cũng vào được** — PC, điện thoại, tablet trong cùng mạng LAN.
+**IP nào cũng vào được** — PC, điện thoại, tablet trong cùng mạng LAN.
 
 ---
 
-## Cấu trúc files Docker
+## Dev Local vs Docker
 
-```
-project-datchi/
-├── docker-compose.yml          # 2 services: frontend + backend
-├── Dockerfile.frontend         # 3-stage: deps → builder → production (nginx-brotli)
-├── Dockerfile.backend          # 3-stage: builder → deps → production (esbuild bundle)
-├── nginx.conf                  # Dev config
-├── nginx.docker.conf           # Docker config: brotli + gzip + security headers
-├── .env.docker                 # Env cho Docker (KHÔNG commit lên git)
-├── .env                        # Env cho dev local (KHÔNG commit lên git)
-└── .dockerignore               # Loại bỏ node_modules, dist, .env...
-```
+| | Dev local | Docker |
+|---|---|---|
+| Frontend | `npm run dev` → port 5173 | nginx → port 8080 |
+| Backend | `tsx server/index.ts` → port 3000 | Node container → port 3010 |
+| Supabase | `supabase start` → port 54321 | Dùng chung Supabase CLI |
+| Env file | `.env` | `.env.docker` |
+| Supabase URL | `http://127.0.0.1:54321` | `/supabase` (proxy qua nginx) |
+| Truy cập LAN | Không (localhost only) | Có (IP nào cũng được) |
 
----
-
-## Tối ưu Image Size
-
-### Lịch sử tối ưu
-
-| Thời điểm | Image | Trước | Sau | Giảm |
-|-----------|-------|-------|-----|------|
-| 2026-03 (lần 1) | Frontend | 105MB | 40MB | -62% |
-| 2026-03 (lần 1) | Backend | 1.23GB | 555MB | -55% |
-| 2026-03-05 (lần 2) | Frontend | 40MB | 47.6MB | +7.5MB (thêm HEALTHCHECK) |
-| 2026-03-05 (lần 2) | Backend | 555MB | 555MB | Giữ nguyên |
-
-### Kỹ thuật áp dụng
-
-**Frontend (3 stages: deps → builder → production):**
-- Stage 1 `deps`: `node:22-alpine`, `npm install` (resolve đúng platform)
-- Stage 2 `builder`: Selective COPY (`index.html`, `src/`, `public/`, config files) — không `COPY . .`
-- Stage 3 `production`: `alpine:3.20` + nginx + brotli + gzip compression
-- HEALTHCHECK via `curl` (interval 30s)
-- Non-root user (`nginx`)
-- Security headers: X-Frame-Options, X-Content-Type-Options, etc.
-
-**Backend (3 stages: builder → deps → production):**
-- Stage 1 `builder`: `npm ci` + esbuild bundle → 1 file `server.mjs` (minify, tree-shaking, 301KB)
-- Stage 2 `deps`: `npm ci --omit=dev` (chỉ production dependencies)
-- Stage 3 `production`: `node:22-alpine`, non-root user (`nodejs`)
-- HEALTHCHECK via `wget` đến `/health` endpoint (interval 30s)
-- npm cache mount (`--mount=type=cache`) cho cả builder và deps stages
-
-**Lưu ý quan trọng:**
-- Frontend dùng `npm install` (KHÔNG `npm ci`) vì `package-lock.json` từ Windows không resolve được `@rollup/rollup-linux-x64-musl` cho Alpine
-- Backend dùng `npm ci` được vì esbuild và runtime deps không có native binary conflict
+Cả 2 chế độ **chạy song song được** — không conflict ports.
 
 ---
 
-## File cấu hình chi tiết
+## Image Optimization
+
+### Kết quả
+
+| Image | Size (optimized) | Kỹ thuật |
+|-------|-----------------|---------|
+| Frontend | 47.6 MB | nginx-brotli, 3-stage, selective COPY |
+| Backend | 555 MB | esbuild bundle, 3-stage, npm omit=dev |
+
+### Frontend (3 stages: deps → builder → production)
+
+- **Stage 1 `deps`:** `node:22-alpine`, `npm install` (không `npm ci` — xem Known Issue #1)
+- **Stage 2 `builder`:** Selective COPY (`index.html`, `src/`, `public/`, config files) — không `COPY . .`
+- **Stage 3 `production`:** `alpine:3.20` + nginx + brotli + gzip compression
+- HEALTHCHECK: `curl -f http://localhost:80/` (interval 30s, start 5s)
+- Non-root user: `nginx`
+- Security headers: `X-Frame-Options`, `X-Content-Type-Options`, etc.
+
+### Backend (3 stages: builder → deps → production)
+
+- **Stage 1 `builder`:** `npm ci` + esbuild bundle → 1 file `server.mjs` (minify, tree-shaking, ~301KB)
+- **Stage 2 `deps`:** `npm ci --omit=dev` (chỉ production dependencies)
+- **Stage 3 `production`:** `node:22-alpine`, non-root user `nodejs`
+- HEALTHCHECK: `wget -qO- http://localhost:3000/health` (interval 30s, start 10s)
+- npm cache mount (`--mount=type=cache`) cho builder và deps stages
+
+---
+
+## Cấu hình chi tiết
 
 ### docker-compose.yml
 
@@ -167,13 +179,13 @@ services:
     environment:
       PORT: 3000
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
-      NEXT_PUBLIC_SUPABASE_URL: http://host.docker.internal:54321
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+      VITE_SUPABASE_URL: http://host.docker.internal:54321
+      VITE_SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       SUPABASE_JWT_SECRET: ${JWT_SECRET}
 ```
 
-### nginx.conf — Điểm quan trọng
+### nginx.docker.conf — Key sections
 
 ```nginx
 # Proxy backend
@@ -181,7 +193,7 @@ location /api/ {
     proxy_pass http://backend:3000;
 }
 
-# Proxy Supabase (giải quyết vấn đề truy cập từ thiết bị khác)
+# Proxy Supabase (giải quyết truy cập từ devices khác)
 location /supabase/ {
     proxy_pass http://host.docker.internal:54321/;
 }
@@ -192,7 +204,7 @@ location / {
 }
 ```
 
-### supabase.ts — Auto-resolve URL
+### src/lib/supabase.ts — Auto-resolve URL
 
 ```typescript
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321'
@@ -204,12 +216,12 @@ const resolvedSupabaseUrl = supabaseUrl.startsWith('/')
 ```
 
 Khi `VITE_SUPABASE_URL=/supabase`:
-- PC truy cập `http://localhost:8080` → Supabase URL = `http://localhost:8080/supabase`
-- Điện thoại truy cập `http://192.168.1.5:8080` → Supabase URL = `http://192.168.1.5:8080/supabase`
+- PC truy cập `http://localhost:8080` → `http://localhost:8080/supabase`
+- Điện thoại `http://192.168.1.5:8080` → `http://192.168.1.5:8080/supabase`
 
 ---
 
-## Các lỗi đã gặp và cách fix
+## Known Issues & Fixes
 
 ### 1. Rollup native binary mismatch
 
@@ -217,68 +229,64 @@ Khi `VITE_SUPABASE_URL=/supabase`:
 
 **Nguyên nhân:** `npm ci` dùng `package-lock.json` từ Windows (x64-win), container là Alpine Linux (x64-musl).
 
-**Fix:** Dùng `npm install` thay vì `npm ci`, không copy `package-lock.json` vào container.
+**Fix:** Dùng `npm install` thay vì `npm ci` trong frontend Dockerfile, không copy `package-lock.json`.
 
 ```dockerfile
-# Sai
+# ❌ Sai
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Đúng
+# ✅ Đúng
 COPY package.json ./
 RUN npm install
 ```
 
-### 2. Postgres internal port bị đổi
+### 2. Sai env var prefix cho backend
 
-**Lỗi:** Auth service không connect được DB, `connection refused` trên port 5432.
+**Vấn đề:** Backend container dùng `VITE_SUPABASE_URL` và `VITE_SUPABASE_ANON_KEY` — prefix `VITE_` là convention của Vite (frontend-only), không phải backend.
 
-**Nguyên nhân:** `PGPORT=${POSTGRES_PORT}` truyền vào container khiến Postgres listen trên port khác (5433) bên trong container. Các service khác connect `db:5432` → fail.
+**Tác động:** Functional — code server đọc được — nhưng misleading về ownership.
 
-**Fix:** Hardcode internal port = 5432, chỉ đổi host mapping.
+**Trạng thái:** Technical debt — chưa fix để tránh break changes. Nên đổi thành `SUPABASE_URL` và `SUPABASE_ANON_KEY` trong tương lai.
 
-```yaml
-# Sai
-PGPORT: ${POSTGRES_PORT:-5432}  # Nếu POSTGRES_PORT=5433 → Postgres listen 5433
-
-# Đúng
-PGPORT: 5432  # Luôn listen 5432 bên trong container
-```
-
-### 3. Kong `eval echo` mất double quotes
-
-**Lỗi:** `in '_format_version': expected a string`
-
-**Nguyên nhân:** `eval "echo \"$(cat ~/temp.yml)\""` — shell eval nuốt mất double quotes trong YAML, `"2.1"` thành `2.1` (không phải string).
-
-**Fix:** Dùng `perl` thay thế env vars, giữ nguyên YAML format.
-
-```yaml
-entrypoint: >
-  bash -c "perl -pe 's/\\$$([A-Z_]+)/$$ENV{$$1}/g' ~/temp.yml > ~/kong.yml && /docker-entrypoint.sh kong docker-start"
-```
-
-### 4. "Failed to fetch" trên điện thoại
+### 3. "Failed to fetch" trên điện thoại
 
 **Lỗi:** Login từ điện thoại → `Failed to fetch`.
 
-**Nguyên nhân:** `VITE_SUPABASE_URL=http://localhost:54321` bake lúc build. `localhost` trên điện thoại = chính điện thoại → không có Supabase.
+**Nguyên nhân:** `VITE_SUPABASE_URL=http://localhost:54321` bake lúc build — `localhost` trên điện thoại = chính điện thoại.
 
-**Fix:** Nginx proxy `/supabase/` → host Supabase, frontend dùng relative URL `/supabase` resolve bằng `window.location.origin` lúc runtime. IP nào cũng vào được.
+**Fix:** nginx proxy `/supabase/` → host Supabase, frontend dùng relative URL `/supabase` resolve bằng `window.location.origin` lúc runtime.
 
-### 5. Port conflicts với dev server
+### 4. Port conflicts với dev server
 
-**Lỗi:** Port 3000 (backend dev) và 5432 (Postgres local) đã bị chiếm.
+**Vấn đề:** Port 3000 (backend dev) và 5432 (Postgres local) có thể conflict.
 
-**Fix:** Docker dùng ports khác: Frontend=8080, Backend=3010, Postgres=5433.
+**Fix:** Docker dùng ports khác — Frontend: 8080, Backend: 3010, Postgres: 5433.
+
+### 5. Postgres internal port
+
+**Lỗi:** Auth service không connect được DB, `connection refused` trên port 5432.
+
+**Nguyên nhân:** `PGPORT=${POSTGRES_PORT}` truyền vào container khiến Postgres listen trên port khác bên trong container.
+
+**Fix:** Hardcode internal port = 5432, chỉ đổi host mapping.
+
+---
+
+## HEALTHCHECK
+
+| Container | Command | Interval | Start period |
+|-----------|---------|----------|--------------|
+| Frontend | `curl -f http://localhost:80/` | 30s | 5s |
+| Backend | `wget -qO- http://localhost:3000/health` | 30s | 10s |
 
 ---
 
 ## Bảo mật
 
-Các file chứa secrets đã được thêm vào `.gitignore`:
+Files chứa secrets đã add vào `.gitignore`:
 
-```gitignore
+```
 .env
 .env.local
 .env.production
@@ -286,37 +294,25 @@ Các file chứa secrets đã được thêm vào `.gitignore`:
 .env.*.local
 ```
 
-**KHÔNG BAO GIỜ commit** các file này lên git.
+**KHÔNG BAO GIỜ commit** các file này.
 
 ---
 
-## Chế độ Dev local vs Docker
-
-| | Dev local | Docker |
-|---|---|---|
-| Frontend | `npm run dev` → port 5173 | nginx → port 8080 |
-| Backend | `npx tsx server/index.ts` → port 3000 | Node container → port 3010 |
-| Supabase | `supabase start` → port 54321 | Dùng chung Supabase CLI |
-| Env file | `.env` | `.env.docker` |
-| Supabase URL | `http://127.0.0.1:54321` | `/supabase` (proxy qua nginx) |
-| Truy cập LAN | Không (localhost only) | Có (IP nào cũng được) |
-
-Cả 2 chế độ **chạy song song được**, không conflict ports.
-
----
-
-## HEALTHCHECK
-
-Cả 2 containers đều có Docker HEALTHCHECK tự động:
-
-| Container | Command | Interval | Start period |
-|-----------|---------|----------|--------------|
-| Frontend | `curl -f http://localhost:80/` | 30s | 5s |
-| Backend | `wget -qO- http://localhost:3000/health` | 30s | 10s |
-
-Kiểm tra trạng thái:
+## Rollback
 
 ```bash
-docker compose --env-file .env.docker ps
-# STATUS column hiện "healthy" hoặc "unhealthy"
+# Tag image hiện tại trước khi deploy mới (làm trước khi build)
+docker tag project-datchi-frontend:latest project-datchi-frontend:backup
+docker tag project-datchi-backend:latest project-datchi-backend:backup
+
+# Nếu build mới lỗi — dừng containers
+docker compose --env-file .env.docker down
+
+# Option 1: rollback từ git commit cũ
+git checkout <commit-hash>
+docker compose --env-file .env.docker up --build -d
+
+# Option 2: chạy image backup trực tiếp
+docker run -d -p 8080:80 project-datchi-frontend:backup
+docker run -d -p 3010:3000 project-datchi-backend:backup
 ```

@@ -192,6 +192,25 @@
         </q-td>
         <q-td />
       </q-tr>
+      <q-tr
+        v-if="totalInventoryValue > 0"
+        class="bg-blue-1 text-weight-bold"
+      >
+        <q-td
+          colspan="9"
+          class="text-right text-subtitle2"
+        >
+          <q-icon
+            name="payments"
+            size="xs"
+            class="q-mr-xs"
+          />
+          Giá trị tồn kho (cuộn nguyên):
+          <span class="text-primary q-ml-sm">
+            {{ formatCurrency(totalInventoryValue) }} VND
+          </span>
+        </q-td>
+      </q-tr>
     </template>
 
     <!-- No data -->
@@ -313,10 +332,22 @@ const totalPartialMeters = computed(() =>
 const totalPartialWeight = computed(() =>
   props.rows.reduce((sum, row) => sum + row.partial_weight_grams, 0)
 )
+const totalInventoryValue = computed(() =>
+  props.rows.reduce((sum, row) => {
+    if (row.unit_price && row.full_cones > 0) {
+      return sum + row.full_cones * row.unit_price
+    }
+    return sum
+  }, 0)
+)
 
 // Methods
 const formatNumber = (num: number): string => {
   return new Intl.NumberFormat('vi-VN').format(num)
+}
+
+const formatCurrency = (num: number): string => {
+  return new Intl.NumberFormat('vi-VN').format(Math.round(num))
 }
 
 const handleRowClick = (_evt: Event, row: ConeSummaryRow) => {
