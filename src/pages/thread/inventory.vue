@@ -182,7 +182,9 @@
           row-key="id"
           :loading="isLoading"
           :rows-per-page-options="[10, 25, 50, 100]"
+          :rows-number="totalCount"
           class="inventory-table shadow-1"
+          @request="onTableRequest"
         >
           <!-- Loading Skeleton -->
           <template #loading>
@@ -744,6 +746,9 @@ const {
   receiveStock,
   enableRealtime,
   disableRealtime,
+  totalCount,
+  handleTableRequest,
+  currentPage,
 } = useInventory()
 
 const {
@@ -786,6 +791,7 @@ const pagination = ref({
   rowsPerPage: 25,
   sortBy: 'received_date',
   descending: true,
+  rowsNumber: 0,
 })
 
 // Labels and Options
@@ -858,7 +864,7 @@ const columns: QTableColumn[] = [
     label: 'Loại Chỉ',
     field: (row: Cone) => row.thread_type?.name,
     align: 'left',
-    sortable: true,
+    sortable: false,
   },
   {
     name: 'quantity_meters',
@@ -888,7 +894,7 @@ const columns: QTableColumn[] = [
     label: 'Kho',
     field: 'warehouse_code',
     align: 'left',
-    sortable: true,
+    sortable: false,
   },
   {
     name: 'lot_number',
@@ -923,6 +929,8 @@ const columns: QTableColumn[] = [
 // Handlers
 const handleFilterChange = async () => {
   await nextTick()
+  pagination.value.page = 1
+  currentPage.value = 1
   fetchInventory({
     search: searchQuery.value || undefined,
     ...filters
@@ -943,9 +951,24 @@ const handleSupplierFilterChange = async () => {
   })
 }
 
+const onTableRequest = async (props: {
+  pagination: { page: number; rowsPerPage: number; sortBy: string; descending: boolean }
+}) => {
+  pagination.value.page = props.pagination.page
+  pagination.value.rowsPerPage = props.pagination.rowsPerPage
+  pagination.value.sortBy = props.pagination.sortBy
+  pagination.value.descending = props.pagination.descending
+
+  await handleTableRequest(props)
+}
+
 // Watchers
+watch(totalCount, (newCount) => {
+  pagination.value.rowsNumber = newCount
+})
 watch(searchQuery, (newVal) => {
   pagination.value.page = 1
+  currentPage.value = 1
   fetchInventory({
     search: newVal || undefined,
     ...filters
