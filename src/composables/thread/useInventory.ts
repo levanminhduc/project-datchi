@@ -31,6 +31,11 @@ export function useInventory() {
   const error = ref<string | null>(null)
   const selectedCone = ref<Cone | null>(null)
   const filters = ref<InventoryFilters>({})
+  const totalCount = ref(0)
+  const currentPage = ref(1)
+  const pageSize = ref(25)
+  const sortBy = ref('received_date')
+  const descending = ref(true)
   const availableSummary = ref<
     Record<number, { total_meters: number; full_cones: number; partial_cones: number }>
   >({})
@@ -67,23 +72,44 @@ export function useInventory() {
   const fetchInventory = async (newFilters?: InventoryFilters): Promise<void> => {
     clearError()
 
-    // Update filters if provided
     if (newFilters) {
       filters.value = { ...filters.value, ...newFilters }
     }
 
     try {
-      const data = await loading.withLoading(async () => {
-        return await inventoryService.getAll(filters.value)
+      const result = await loading.withLoading(async () => {
+        return await inventoryService.getPaginated({
+          page: currentPage.value,
+          pageSize: pageSize.value,
+          sortBy: sortBy.value,
+          descending: descending.value,
+          search: filters.value.search,
+          thread_type_id: filters.value.thread_type_id,
+          warehouse_id: filters.value.warehouse_id,
+          status: filters.value.status,
+          is_partial: filters.value.is_partial,
+        })
       })
 
-      inventory.value = data
+      inventory.value = result.data
+      totalCount.value = result.count
     } catch (err) {
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(errorMessage)
       console.error('[useInventory] fetchInventory error:', err)
     }
+  }
+
+  const handleTableRequest = async (props: {
+    pagination: { page: number; rowsPerPage: number; sortBy: string; descending: boolean }
+  }): Promise<void> => {
+    const { page, rowsPerPage, sortBy: sort, descending: desc } = props.pagination
+    currentPage.value = page
+    pageSize.value = rowsPerPage
+    sortBy.value = sort || 'received_date'
+    descending.value = desc
+    await fetchInventory()
   }
 
   /**
@@ -178,6 +204,7 @@ export function useInventory() {
       clearTimeout(debounceTimer.value)
     }
     debounceTimer.value = setTimeout(() => {
+      currentPage.value = 1
       fetchInventory()
       debounceTimer.value = null
     }, delay)
@@ -283,6 +310,13 @@ export function useInventory() {
     filters,
     availableSummary,
 
+    // Pagination
+    totalCount,
+    currentPage,
+    pageSize,
+    sortBy,
+    descending,
+
     // Computed
     isLoading,
     hasInventory,
@@ -292,6 +326,7 @@ export function useInventory() {
 
     // Methods
     fetchInventory,
+    handleTableRequest,
     receiveStock,
     getConeById,
     fetchAvailableSummary,

@@ -15,6 +15,15 @@ interface ApiResponse<T> {
   message?: string
 }
 
+interface PaginatedResponse<T> {
+  data: T[]
+  count: number
+  page: number
+  pageSize: number
+  error: string | null
+  message?: string
+}
+
 /**
  * Available stock summary per thread type
  */
@@ -44,6 +53,44 @@ function buildQueryString(filters?: InventoryFilters): string {
 }
 
 export const inventoryService = {
+  async getPaginated(params: {
+    page?: number
+    pageSize?: number
+    search?: string
+    thread_type_id?: number
+    warehouse_id?: number
+    status?: string
+    is_partial?: boolean
+    sortBy?: string
+    descending?: boolean
+  } = {}): Promise<{ data: Cone[]; count: number }> {
+    const urlParams = new URLSearchParams()
+
+    if (params.page) urlParams.append('page', String(params.page))
+    if (params.pageSize) urlParams.append('pageSize', String(params.pageSize))
+    if (params.search) urlParams.append('search', params.search)
+    if (params.thread_type_id != null) urlParams.append('thread_type_id', String(params.thread_type_id))
+    if (params.warehouse_id != null) urlParams.append('warehouse_id', String(params.warehouse_id))
+    if (params.status) urlParams.append('status', params.status)
+    if (params.is_partial !== undefined) urlParams.append('is_partial', String(params.is_partial))
+    if (params.sortBy) urlParams.append('sortBy', params.sortBy)
+    if (params.descending !== undefined) urlParams.append('descending', String(params.descending))
+
+    const queryString = urlParams.toString()
+    const url = `/api/inventory${queryString ? `?${queryString}` : ''}`
+
+    const response = await fetchApi<PaginatedResponse<Cone>>(url)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return {
+      data: response.data || [],
+      count: response.count ?? 0,
+    }
+  },
+
   /**
    * Lấy danh sách tất cả cone trong kho
    * Uses limit=0 to trigger batch fetch for all records
