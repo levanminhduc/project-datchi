@@ -451,10 +451,10 @@
 
         <div class="col-12">
           <AppSelect
-            v-model="manualEntryForm.thread_type_id"
+            v-model="manualEntryForm.color_id"
             label="Màu chỉ"
             :options="manualColorOptions"
-            :disable="!manualEntryForm.tex_number || manualColorOptions.length === 0"
+            :disable="!manualEntryForm.supplier_id || manualColorOptions.length === 0"
             required
             emit-value
             map-options
@@ -730,6 +730,7 @@ import type { ConeLabelData } from '@/types/qr-label'
 import { threadService } from '@/services/threadService'
 import { stockService } from '@/services/stockService'
 import { ApiError } from '@/services/api'
+import { supplierService } from '@/services/supplierService'
 
 // Composables
 const $q = useQuasar()
@@ -1076,12 +1077,14 @@ const showManualEntryDialog = ref(false)
 const manualEntryLoading = ref(false)
 const manualEntrySubmitting = ref(false)
 const manualEntryThreadTypes = ref<ThreadType[]>([])
+const manualSupplierColors = ref<Array<{ id: number; name: string; hex_code: string }>>([])
 let manualSupplierRequestId = 0
 
 const manualEntryForm = reactive({
   supplier_id: null as number | null,
   tex_number: null as string | null,
   thread_type_id: null as number | null,
+  color_id: null as number | null,
   warehouse_id: null as number | null,
   qty_full_cones: 0,
   qty_partial_cones: 0,
@@ -1091,10 +1094,12 @@ const resetManualEntryForm = () => {
   manualEntryForm.supplier_id = null
   manualEntryForm.tex_number = null
   manualEntryForm.thread_type_id = null
+  manualEntryForm.color_id = null
   manualEntryForm.warehouse_id = null
   manualEntryForm.qty_full_cones = 0
   manualEntryForm.qty_partial_cones = 0
   manualEntryThreadTypes.value = []
+  manualSupplierColors.value = []
 }
 
 const manualSupplierOptions = computed(() =>
@@ -1108,21 +1113,18 @@ const manualTexOptions = computed(() => {
   const texSet = new Map<string, string>()
   for (const tt of manualEntryThreadTypes.value) {
     if (tt.tex_number != null) {
-      texSet.set(tt.tex_number, `Tex ${tt.tex_number}`)
+      texSet.set(tt.tex_number, tt.tex_label || `Tex ${tt.tex_number}`)
     }
   }
   return Array.from(texSet.entries()).map(([value, label]) => ({ label, value }))
 })
 
 const manualColorOptions = computed(() => {
-  if (!manualEntryForm.tex_number) return []
-  return manualEntryThreadTypes.value
-    .filter(tt => tt.tex_number === manualEntryForm.tex_number)
-    .map(tt => ({
-      label: tt.color_data?.name || 'Không xác định',
-      value: tt.id,
-      hex: tt.color_data?.hex_code || '#ccc',
-    }))
+  return manualSupplierColors.value.map(c => ({
+    label: c.name,
+    value: c.id,
+    hex: c.hex_code,
+  }))
 })
 
 const manualWarehouseOptions = computed(() => storageOptions.value)
@@ -1130,16 +1132,24 @@ const manualWarehouseOptions = computed(() => storageOptions.value)
 const onManualSupplierChange = async (supplierId: number | null) => {
   manualEntryForm.tex_number = null
   manualEntryForm.thread_type_id = null
+  manualEntryForm.color_id = null
   manualEntryThreadTypes.value = []
+  manualSupplierColors.value = []
 
   if (!supplierId) return
 
   const requestId = ++manualSupplierRequestId
   manualEntryLoading.value = true
   try {
-    const result = await threadService.getAll({ supplier_id: supplierId })
+    const [threads, colors] = await Promise.all([
+      threadService.getAll({ supplier_id: supplierId }),
+      supplierService.getColors(supplierId),
+    ])
     if (requestId !== manualSupplierRequestId) return
-    manualEntryThreadTypes.value = result
+    manualEntryThreadTypes.value = threads
+    manualSupplierColors.value = (colors as Array<{ color: { id: number; name: string; hex_code: string; is_active: boolean } }>)
+      .filter(link => link.color?.is_active)
+      .map(link => link.color)
   } catch (err: any) {
     if (requestId !== manualSupplierRequestId) return
     if (err instanceof ApiError && err.status === 403) {
@@ -1155,7 +1165,9 @@ const onManualSupplierChange = async (supplierId: number | null) => {
 }
 
 const onManualTexChange = () => {
-  manualEntryForm.thread_type_id = null
+  manualEntryForm.color_id = null
+  const match = manualEntryThreadTypes.value.find(tt => tt.tex_number === manualEntryForm.tex_number)
+  manualEntryForm.thread_type_id = match?.id ?? null
 }
 
 const handleManualEntrySubmit = async () => {

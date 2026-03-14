@@ -27,6 +27,9 @@ export { useStyles } from './thread/useStyles'
 export { useStyleThreadSpecs } from './thread/useStyleThreadSpecs'
 export { useThreadCalculation } from './thread/useThreadCalculation'
 
+// Style colors
+export { useStyleColors } from './thread/use-style-colors'
+
 // Weekly ordering
 export { useWeeklyOrder } from './thread/useWeeklyOrder'
 export { useWeeklyOrderCalculation } from './thread/useWeeklyOrderCalculation'

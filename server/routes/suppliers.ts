@@ -316,12 +316,11 @@ suppliers.get('/:id/colors', requirePermission('thread.suppliers.view'), async (
       .from('color_supplier')
       .select(`
         id,
-        is_preferred,
-        notes,
+        is_active,
         color:colors(id, name, hex_code, pantone_code, is_active)
       `)
       .eq('supplier_id', id)
-      .order('is_preferred', { ascending: false })
+      .order('created_at', { ascending: false })
 
     if (error) {
       console.error('Supabase error:', error)
@@ -351,7 +350,7 @@ suppliers.get('/:id/colors', requirePermission('thread.suppliers.view'), async (
 suppliers.post('/:id/colors', requirePermission('thread.suppliers.manage'), async (c) => {
   try {
     const supplierId = parseInt(c.req.param('id'))
-    const body = await c.req.json<{ color_id: number; is_preferred?: boolean; notes?: string }>()
+    const body = await c.req.json<{ color_id: number }>()
 
     if (!body.color_id) {
       return c.json<SupplierApiResponse<null>>({
@@ -380,8 +379,6 @@ suppliers.post('/:id/colors', requirePermission('thread.suppliers.manage'), asyn
       .insert({
         color_id: body.color_id,
         supplier_id: supplierId,
-        is_preferred: body.is_preferred ?? false,
-        notes: body.notes || null
       })
       .select()
       .single()

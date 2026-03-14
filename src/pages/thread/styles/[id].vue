@@ -373,10 +373,9 @@
             <StyleColorSpecsTab
               :style-id="id"
               :specs="styleThreadSpecs"
-              :thread-types="threadTypes"
-              :colors="allColors"
+              :style-colors="styleColors"
               @go-to-specs="activeTab = 'specs'"
-              @color-created="fetchColors"
+              @color-created="() => fetchStyleColors(id)"
             />
           </q-tab-panel>
         </q-tab-panels>
@@ -409,7 +408,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useThreadTypes, useColors, useSnackbar } from '@/composables'
+import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useThreadTypes, useStyleColors, useSnackbar } from '@/composables'
 import StyleColorSpecsTab from '@/components/thread/StyleColorSpecsTab.vue'
 import type { QTableColumn } from 'quasar'
 import type { StyleThreadSpec, ThreadType } from '@/types/thread'
@@ -561,7 +560,7 @@ const {
   updateSpec,
 } = useStyleThreadSpecs()
 
-const { colors: allColors, fetchColors } = useColors()
+const { styleColors, fetchStyleColors } = useStyleColors()
 
 const { suppliers, fetchSuppliers } = useSuppliers()
 const { threadTypes, fetchThreadTypes } = useThreadTypes()
@@ -651,7 +650,7 @@ onMounted(async () => {
     fetchStyleThreadSpecs({ style_id: id.value }),
     fetchSuppliers(),
     fetchThreadTypes(),
-    fetchColors(),
+    fetchStyleColors(id.value),
   ])
 })
 

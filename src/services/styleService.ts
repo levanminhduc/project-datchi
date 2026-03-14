@@ -183,8 +183,8 @@ export const styleService = {
    * @param id - Style ID
    * @returns Array of colors with thread specs configured
    */
-  async getSpecColors(id: number): Promise<Array<{ id: number; name: string; hex_code: string }>> {
-    const response = await fetchApi<ApiResponse<Array<{ id: number; name: string; hex_code: string }>>>(`${BASE}/${id}/spec-colors`)
+  async getSpecColors(id: number): Promise<Array<{ id: number; color_name: string; hex_code: string }>> {
+    const response = await fetchApi<ApiResponse<Array<{ id: number; color_name: string; hex_code: string }>>>(`${BASE}/${id}/spec-colors`)
 
     if (response.error) {
       throw new Error(response.error)

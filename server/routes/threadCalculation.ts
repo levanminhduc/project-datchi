@@ -169,6 +169,36 @@ const COLOR_SPEC_SELECT = `
   )
 ` as const
 
+type SupplierMpcMap = Map<string, number>
+
+function mpcKey(threadTypeId: number, supplierId: number | null | undefined): string {
+  return `${threadTypeId}-${supplierId ?? 0}`
+}
+
+async function getSupplierMetersPerCone(
+  threadTypeIds: number[],
+  supplierIds: number[]
+): Promise<SupplierMpcMap> {
+  const map: SupplierMpcMap = new Map()
+  if (threadTypeIds.length === 0 || supplierIds.length === 0) return map
+
+  const { data, error } = await supabase
+    .from('thread_type_supplier')
+    .select('thread_type_id, supplier_id, meters_per_cone')
+    .in('thread_type_id', threadTypeIds)
+    .in('supplier_id', supplierIds)
+    .not('meters_per_cone', 'is', null)
+
+  if (error || !data) return map
+
+  for (const row of data) {
+    if (row.meters_per_cone != null) {
+      map.set(mpcKey(row.thread_type_id, row.supplier_id), Number(row.meters_per_cone))
+    }
+  }
+  return map
+}
+
 /**
  * Query available inventory cones grouped by thread_type_id
  * Returns a Map of thread_type_id -> available cone count
@@ -199,13 +229,15 @@ async function getAvailableInventory(threadTypeIds: number[]): Promise<Map<numbe
  * Modifies results in-place to add inventory preview fields
  */
 async function applyInventoryPreview(results: CalculationResult[]): Promise<void> {
-  // Collect all thread_type_ids from color_breakdown
+  // Collect all thread_type_ids from color_breakdown (skip null/undefined)
   const threadTypeIds = new Set<number>()
   for (const result of results) {
     for (const calc of result.calculations) {
       if (calc.color_breakdown) {
         for (const cb of calc.color_breakdown) {
-          threadTypeIds.add(cb.thread_type_id)
+          if (cb.thread_type_id) {
+            threadTypeIds.add(cb.thread_type_id)
+          }
         }
       }
     }
@@ -244,6 +276,7 @@ async function applyInventoryPreview(results: CalculationResult[]): Promise<void
       if (calc.color_breakdown && calc.color_breakdown.length > 0) {
         // For each color, check its thread type's inventory
         for (const cb of calc.color_breakdown) {
+          if (!cb.thread_type_id) continue
           const cbNeededCones = metersPerCone > 0 ? Math.ceil(cb.total_meters / metersPerCone) : 0
           const available = runningBalance.get(cb.thread_type_id) || 0
           const allocated = Math.min(cbNeededCones, available)
@@ -268,8 +301,13 @@ function buildCalculation(
   spec: SpecRow,
   quantity: number,
   colorBreakdown: { color_id: number; quantity: number }[] | undefined,
-  colorSpecs: ColorSpecRow[]
+  colorSpecs: ColorSpecRow[],
+  supplierMpcMap: SupplierMpcMap = new Map()
 ) {
+  const baseMpc =
+    supplierMpcMap.get(mpcKey(spec.thread_type_id, spec.suppliers?.id)) ??
+    spec.thread_types?.meters_per_cone ?? null
+
   const baseCalculation: CalculationResult['calculations'][number] = {
     spec_id: spec.id,
     process_name: spec.process_name,
@@ -277,7 +315,7 @@ function buildCalculation(
     tex_number: spec.thread_types?.tex_label || spec.thread_types?.tex_number || '',
     meters_per_unit: spec.meters_per_unit,
     total_meters: spec.meters_per_unit * quantity,
-    meters_per_cone: spec.thread_types?.meters_per_cone || null,
+    meters_per_cone: baseMpc,
     thread_color: spec.thread_types?.color_data?.name || null,
     thread_color_code: spec.thread_types?.color_data?.hex_code || null,
     supplier_id: spec.suppliers?.id || null,
@@ -320,11 +358,17 @@ function buildCalculation(
         spec.thread_types?.tex_number ||
         ''
 
+      const resolvedThreadTypeId = colorSpec?.thread_type_id || spec.thread_type_id
+      const colorMpc =
+        supplierMpcMap.get(mpcKey(resolvedThreadTypeId, resolvedSupplierId)) ??
+        colorSpec?.thread_types?.meters_per_cone ??
+        spec.thread_types?.meters_per_cone ?? null
+
       return {
         color_id: cb.color_id,
         color_name: colorSpec?.colors?.name || '',
         quantity: cb.quantity,
-        thread_type_id: colorSpec?.thread_type_id || spec.thread_type_id,
+        thread_type_id: resolvedThreadTypeId,
         thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
         thread_color: colorSpec?.thread_types?.color_data?.name || spec.thread_types?.color_data?.name || null,
         thread_color_code: colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
@@ -334,7 +378,7 @@ function buildCalculation(
         supplier_id: resolvedSupplierId,
         tex_number: resolvedTexNumber,
         meters_per_unit: spec.meters_per_unit,
-        meters_per_cone: colorSpec?.thread_types?.meters_per_cone ?? spec.thread_types?.meters_per_cone ?? null,
+        meters_per_cone: colorMpc,
       }
     })
   }
@@ -407,9 +451,17 @@ threadCalculation.post('/calculate', async (c) => {
       colorSpecs = (cs || []) as unknown as ColorSpecRow[]
     }
 
+    // Get supplier-specific meters_per_cone from thread_type_supplier
+    const ttIds = [...new Set(typedSpecs.map(s => s.thread_type_id))]
+    const supIds = [...new Set([
+      ...typedSpecs.map(s => s.suppliers?.id).filter((id): id is number => id != null),
+      ...colorSpecs.map(cs => cs.thread_types?.supplier_id).filter((id): id is number => id != null),
+    ])]
+    const supplierMpcMap = await getSupplierMetersPerCone(ttIds, supIds)
+
     // Calculate results
     const calculations = typedSpecs.map((spec) =>
-      buildCalculation(spec, body.quantity, body.color_breakdown, colorSpecs)
+      buildCalculation(spec, body.quantity, body.color_breakdown, colorSpecs, supplierMpcMap)
     )
 
     const result: CalculationResult = {
@@ -516,6 +568,14 @@ threadCalculation.post('/calculate-batch', async (c) => {
       allColorSpecs = (cs || []) as unknown as ColorSpecRow[]
     }
 
+    // Get supplier-specific meters_per_cone
+    const batchTtIds = [...new Set(typedSpecs.map(s => s.thread_type_id))]
+    const batchSupIds = [...new Set([
+      ...typedSpecs.map(s => s.suppliers?.id).filter((id): id is number => id != null),
+      ...allColorSpecs.map(cs => cs.thread_types?.supplier_id).filter((id): id is number => id != null),
+    ])]
+    const batchMpcMap = await getSupplierMetersPerCone(batchTtIds, batchSupIds)
+
     // Map results in-memory
     const results: CalculationResult[] = []
     for (const item of body.items) {
@@ -532,7 +592,7 @@ threadCalculation.post('/calculate-batch', async (c) => {
       )
 
       const calculations = specs.map((spec) =>
-        buildCalculation(spec, item.quantity, item.color_breakdown, relevantColorSpecs)
+        buildCalculation(spec, item.quantity, item.color_breakdown, relevantColorSpecs, batchMpcMap)
       )
 
       results.push({
@@ -659,6 +719,14 @@ threadCalculation.post('/calculate-by-po', async (c) => {
       allColorSpecs = (cs || []) as unknown as ColorSpecRow[]
     }
 
+    // Get supplier-specific meters_per_cone
+    const poTtIds = [...new Set(typedSpecs.map(s => s.thread_type_id))]
+    const poSupIds = [...new Set([
+      ...typedSpecs.map(s => s.suppliers?.id).filter((id): id is number => id != null),
+      ...allColorSpecs.map(cs => cs.thread_types?.supplier_id).filter((id): id is number => id != null),
+    ])]
+    const poMpcMap = await getSupplierMetersPerCone(poTtIds, poSupIds)
+
     // Map results in-memory
     const results = []
     for (const item of validItems) {
@@ -694,11 +762,17 @@ threadCalculation.post('/calculate-by-po', async (c) => {
             spec.thread_types?.tex_number ||
             ''
 
+          const resolvedThreadTypeId = colorSpec?.thread_type_id || spec.thread_type_id
+          const colorMpc =
+            poMpcMap.get(mpcKey(resolvedThreadTypeId, resolvedSupplierId)) ??
+            colorSpec?.thread_types?.meters_per_cone ??
+            spec.thread_types?.meters_per_cone ?? null
+
           return {
             color_id: sku.color_id,
             color_name: sku.colors?.name || '',
             quantity: sku.quantity,
-            thread_type_id: colorSpec?.thread_type_id || spec.thread_type_id,
+            thread_type_id: resolvedThreadTypeId,
             thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
             thread_color: colorSpec?.thread_types?.color_data?.name || spec.thread_types?.color_data?.name || null,
             thread_color_code: colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
@@ -708,9 +782,13 @@ threadCalculation.post('/calculate-by-po', async (c) => {
             supplier_id: resolvedSupplierId,
             tex_number: resolvedTexNumber,
             meters_per_unit: spec.meters_per_unit,
-            meters_per_cone: colorSpec?.thread_types?.meters_per_cone ?? spec.thread_types?.meters_per_cone ?? null,
+            meters_per_cone: colorMpc,
           }
         })
+
+        const poBaseMpc =
+          poMpcMap.get(mpcKey(spec.thread_type_id, spec.suppliers?.id)) ??
+          spec.thread_types?.meters_per_cone ?? null
 
         return {
           spec_id: spec.id,
@@ -719,7 +797,7 @@ threadCalculation.post('/calculate-by-po', async (c) => {
           tex_number: spec.thread_types?.tex_label || spec.thread_types?.tex_number || '',
           meters_per_unit: spec.meters_per_unit,
           total_meters: spec.meters_per_unit * item.quantity,
-          meters_per_cone: spec.thread_types?.meters_per_cone || null,
+          meters_per_cone: poBaseMpc,
           thread_color: spec.thread_types?.color_data?.name || null,
           thread_color_code: spec.thread_types?.color_data?.hex_code || null,
           supplier_id: spec.suppliers?.id || null,

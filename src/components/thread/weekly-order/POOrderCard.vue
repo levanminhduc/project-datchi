@@ -125,7 +125,7 @@ const emit = defineEmits<{
   'remove-po': [poId: number]
   'add-style': [style: { id: number; style_code: string; style_name: string; po_id: number; po_number: string }]
   'remove-style': [styleId: number, poId: number | null, subArtId?: number | null]
-  'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string }, poId: number | null, subArtId?: number | null]
+  'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string; style_color_id: number }, poId: number | null, subArtId?: number | null]
   'remove-color': [styleId: number, colorId: number, poId: number | null, subArtId?: number | null]
   'update-quantity': [styleId: number, colorId: number, quantity: number, poId: number | null, subArtId?: number | null]
   'update-sub-art': [styleId: number, poId: number | null, subArtId: number | null, subArtCode: string | undefined, oldSubArtId: number | null | undefined]
@@ -139,7 +139,7 @@ const fetchSpecColors = async (styleId: number) => {
   if (specColorsCache.value.has(styleId)) return
   try {
     const colors = await styleService.getSpecColors(styleId)
-    specColorsCache.value.set(styleId, colors)
+    specColorsCache.value.set(styleId, colors.map(c => ({ id: c.id, name: c.color_name, hex_code: c.hex_code })))
   } catch (err) {
     console.error(`Error fetching spec colors for style ${styleId}:`, err)
     specColorsCache.value.set(styleId, [])

@@ -172,7 +172,7 @@ export function useWeeklyOrderCalculation() {
    */
   const addColorToStyle = (
     styleId: number,
-    color: { color_id: number; color_name: string; hex_code: string },
+    color: { color_id: number; color_name: string; hex_code: string; style_color_id: number },
     poId?: number | null,
     subArtId?: number | null,
   ) => {
@@ -191,6 +191,7 @@ export function useWeeklyOrderCalculation() {
       color_name: color.color_name,
       hex_code: color.hex_code,
       quantity: 1,
+      style_color_id: color.style_color_id,
     })
     lastModifiedAt.value = Date.now()
   }
@@ -248,11 +249,14 @@ export function useWeeklyOrderCalculation() {
    */
   const aggregateResults = (results: CalculationResult[]) => {
     const map = new Map<number, AggregatedRow>()
+    const specsWithColorBreakdown = new Set<number>()
 
     for (const result of results) {
       for (const calc of result.calculations) {
-        if (calc.color_breakdown) {
+        if (calc.color_breakdown && calc.color_breakdown.length > 0) {
+          specsWithColorBreakdown.add(calc.spec_id)
           for (const cb of calc.color_breakdown) {
+            if (!cb.thread_type_id) continue
             const existing = map.get(cb.thread_type_id)
 
             if (existing) {
@@ -274,29 +278,35 @@ export function useWeeklyOrderCalculation() {
               })
             }
           }
-        } else {
-          // No color_breakdown -- aggregate by spec-level data
-          const key = calc.spec_id
-          const existing = map.get(key)
+        }
+      }
+    }
 
-          if (existing) {
-            existing.total_meters += calc.total_meters
-          } else {
-            map.set(key, {
-              thread_type_id: key,
-              thread_type_name: calc.process_name,
-              supplier_name: calc.supplier_name,
-              tex_number: calc.tex_number,
-              total_meters: calc.total_meters,
-              total_cones: 0,
-              meters_per_cone: calc.meters_per_cone ?? null,
-              thread_color: calc.thread_color ?? null,
-              thread_color_code: calc.thread_color_code ?? null,
-              supplier_id: calc.supplier_id ?? null,
-              delivery_date: calc.delivery_date ?? null,
-              lead_time_days: calc.lead_time_days ?? null,
-            })
-          }
+    for (const result of results) {
+      for (const calc of result.calculations) {
+        if (calc.color_breakdown && calc.color_breakdown.length > 0) continue
+        if (specsWithColorBreakdown.has(calc.spec_id)) continue
+
+        const key = calc.spec_id
+        const existing = map.get(key)
+
+        if (existing) {
+          existing.total_meters += calc.total_meters
+        } else {
+          map.set(key, {
+            thread_type_id: key,
+            thread_type_name: calc.process_name,
+            supplier_name: calc.supplier_name,
+            tex_number: calc.tex_number,
+            total_meters: calc.total_meters,
+            total_cones: 0,
+            meters_per_cone: calc.meters_per_cone ?? null,
+            thread_color: calc.thread_color ?? null,
+            thread_color_code: calc.thread_color_code ?? null,
+            supplier_id: calc.supplier_id ?? null,
+            delivery_date: calc.delivery_date ?? null,
+            lead_time_days: calc.lead_time_days ?? null,
+          })
         }
       }
     }
@@ -310,7 +320,9 @@ export function useWeeklyOrderCalculation() {
       }
     }
 
-    aggregatedResults.value = Array.from(map.values())
+    aggregatedResults.value = Array.from(map.values()).filter(
+      (row) => row.total_meters > 0 && row.thread_type_id > 0
+    )
   }
 
   /**
@@ -507,9 +519,10 @@ export function useWeeklyOrderCalculation() {
       if (!colorExists) {
         entry.colors.push({
           color_id: item.color_id,
-          color_name: item.color?.name || `Color #${item.color_id}`,
-          hex_code: item.color?.hex_code || '#000000',
+          color_name: item.style_color?.color_name || item.color?.name || `Color #${item.color_id}`,
+          hex_code: item.style_color?.hex_code || item.color?.hex_code || '#000000',
           quantity: item.quantity,
+          style_color_id: item.style_color_id || item.color_id,
         })
       }
     }

@@ -194,7 +194,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   remove: [styleId: number, poId: number | null, subArtId: number | null | undefined]
-  'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string }, poId: number | null, subArtId: number | null | undefined]
+  'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string; style_color_id: number }, poId: number | null, subArtId: number | null | undefined]
   'remove-color': [styleId: number, colorId: number, poId: number | null, subArtId: number | null | undefined]
   'update-quantity': [styleId: number, colorId: number, quantity: number, poId: number | null, subArtId: number | null | undefined]
   'update-sub-art': [styleId: number, poId: number | null, subArtId: number | null, subArtCode: string | undefined, oldSubArtId: number | null | undefined]
@@ -326,6 +326,7 @@ const handleAddColor = () => {
     color_id: color.id,
     color_name: color.name,
     hex_code: color.hex_code,
+    style_color_id: color.id,
   }, props.entry.po_id, props.entry.sub_art_id)
   selectedColorId.value = null
 }

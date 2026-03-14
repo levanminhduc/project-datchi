@@ -487,6 +487,7 @@ const handleSave = async () => {
         color_id: c.color_id,
         quantity: c.quantity,
         sub_art_id: entry.sub_art_id ?? null,
+        style_color_id: c.style_color_id,
       }))
   )
 

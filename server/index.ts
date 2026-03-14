@@ -36,6 +36,7 @@ import issuesV2Router from './routes/issuesV2'
 import notificationsRouter from './routes/notifications'
 import importRouter from './routes/import'
 import subArtsRouter from './routes/subArts'
+import styleColorsRouter from './routes/styleColors'
 import { authMiddleware } from './middleware/auth'
 
 const app = new Hono()
@@ -95,6 +96,7 @@ app.route('/api/stock', stockRouter)
 app.route('/api/notifications', notificationsRouter)
 app.route('/api/import', importRouter)
 app.route('/api/sub-arts', subArtsRouter)
+app.route('/api/style-colors', styleColorsRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)

@@ -21,22 +21,24 @@ export interface StyleThreadSpec {
     tex_number: string
     tex_label: string | null
     name: string
+    meters_per_cone: number | null
   }
 }
 
 export interface StyleColorThreadSpec {
   id: number
   style_thread_spec_id: number
-  color_id: number
-  thread_type_id: number
+  style_color_id: number
+  thread_type_id: number | null
+  thread_color_id: number | null
   notes: string | null
   created_at: string
   updated_at: string
-  // Joined fields
-  colors?: {
+  style_color?: {
     id: number
-    name: string
+    color_name: string
     hex_code: string | null
+    style_id: number
   }
   thread_types?: {
     id: number
@@ -47,6 +49,11 @@ export interface StyleColorThreadSpec {
     supplier_id?: number | null
     meters_per_cone?: number | null
   }
+  thread_color?: {
+    id: number
+    name: string
+    hex_code: string
+  } | null
 }
 
 export interface CreateStyleThreadSpecDTO {
@@ -71,8 +78,9 @@ export interface UpdateStyleThreadSpecDTO {
 
 export interface CreateStyleColorThreadSpecDTO {
   style_thread_spec_id: number
-  color_id: number
-  thread_type_id: number
+  style_color_id: number
+  thread_type_id?: number
+  thread_color_id?: number
   notes?: string
 }
 
@@ -83,5 +91,6 @@ export interface StyleThreadSpecFilter {
 
 export interface UpdateStyleColorThreadSpecDTO {
   thread_type_id?: number
+  thread_color_id?: number
   notes?: string
 }

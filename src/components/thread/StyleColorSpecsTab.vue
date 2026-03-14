@@ -90,7 +90,7 @@
               :style="{ backgroundColor: group.color.hex_code || '#ccc' }"
             />
             <div class="text-subtitle2 text-weight-medium">
-              {{ group.color.name }}
+              {{ group.color.color_name }}
             </div>
             <q-space />
             <q-btn
@@ -131,7 +131,7 @@
                 />
                 <template v-else>
                   <span class="cell-value">
-                    {{ getThreadDisplayName(props.row) }}
+                    {{ getColorDisplayName(props.row) }}
                   </span>
                   <q-icon
                     name="edit"
@@ -140,7 +140,7 @@
                   />
                   <q-popup-edit
                     v-slot="scope"
-                    v-model="props.row.threadTypeId"
+                    v-model="props.row.threadColorId"
                     buttons
                     label-set="Lưu"
                     label-cancel="Hủy"
@@ -148,7 +148,7 @@
                   >
                     <q-select
                       v-model="scope.value"
-                      :options="getThreadOptionsForSpec(props.row.spec)"
+                      :options="getColorOptionsForSpec(props.row.spec)"
                       option-value="value"
                       option-label="label"
                       emit-value
@@ -164,14 +164,14 @@
               </q-td>
             </template>
 
-            <!-- Chiều dài cuộn column - auto-fill from thread type -->
+            <!-- Chiều dài cuộn column - from thread type -->
             <template #body-cell-meters_per_cone="props">
               <q-td
                 :props="props"
                 class="text-right"
               >
-                {{ props.row.threadType?.meters_per_cone != null
-                  ? Number(props.row.threadType.meters_per_cone).toLocaleString()
+                {{ props.row.spec.thread_types?.meters_per_cone
+                  ? new Intl.NumberFormat('vi-VN').format(props.row.spec.thread_types.meters_per_cone)
                   : '-' }}
               </q-td>
             </template>
@@ -326,20 +326,19 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useStyleThreadSpecs, useConfirm, useSnackbar } from '@/composables'
 import type { QTableColumn } from 'quasar'
 import type { StyleThreadSpec } from '@/types/thread'
-import type { ThreadType } from '@/types/thread'
-import type { Color } from '@/types/thread'
-import { colorService } from '@/services/colorService'
+import type { StyleColor } from '@/types/thread'
+import { styleColorService } from '@/services/styleColorService'
+import { supplierService } from '@/services/supplierService'
 
 interface Props {
   styleId: number
   specs: StyleThreadSpec[]
-  threadTypes: ThreadType[]
-  colors: Color[]
+  styleColors: StyleColor[]
 }
 
 interface ColorGroupColor {
   id: number
-  name: string
+  color_name: string
   hex_code: string | null
 }
 
@@ -347,14 +346,11 @@ interface ColorSpecRow {
   specId: number
   spec: StyleThreadSpec
   colorSpecId: number | null
-  threadTypeId: number | null
-  threadType: {
+  threadColorId: number | null
+  threadColor: {
     id: number
     name: string
-    color_data?: { name: string; hex_code: string } | null
-    meters_per_cone: number | null
-    tex_number: string
-    tex_label: string | null
+    hex_code: string
   } | null
 }
 
@@ -391,53 +387,46 @@ const newColorName = ref('')
 const newColorHex = ref('#cccccc')
 const creatingColor = ref(false)
 
+const supplierColorsCache = ref<Record<number, { id: number; name: string; hex_code: string }[]>>({})
+
+const fetchSupplierColors = async (supplierId: number) => {
+  if (supplierColorsCache.value[supplierId]) return
+  try {
+    const data = await supplierService.getColors(supplierId)
+    supplierColorsCache.value[supplierId] = (data as Array<{ color: { id: number; name: string; hex_code: string; is_active: boolean } }>)
+      .filter((link: { color: { id: number; name: string; hex_code: string; is_active: boolean } }) => link.color?.is_active)
+      .map((link: { color: { id: number; name: string; hex_code: string; is_active: boolean } }) => link.color)
+  } catch {
+    supplierColorsCache.value[supplierId] = []
+  }
+}
+
 // Helpers
 const getColorCellKey = (specId: number, colorId: number): string =>
   `${specId}-${colorId}`
 
 const getColorHex = (colorId: number): string => {
-  const c = props.colors.find(cl => cl.id === colorId)
+  const c = props.styleColors.find(cl => cl.id === colorId)
   return c?.hex_code || '#ccc'
 }
 
-const getThreadDisplayName = (row: ColorSpecRow): string => {
-  if (!row.threadType) return '-'
-  return row.threadType.color_data?.name || row.threadType.name || '-'
+const getColorDisplayName = (row: ColorSpecRow): string => {
+  if (!row.threadColor) return '-'
+  return row.threadColor.name
 }
 
-const matchesSupplier = (threadType: ThreadType, supplierId: number): boolean => {
-  if (threadType.supplier_id === supplierId) return true
-
-  return threadType.suppliers?.some(link => link.supplier_id === supplierId && link.is_active) ?? false
-}
-
-/**
- * Get thread type dropdown options for a given spec row.
- * Filters by BOTH supplier_id AND tex_number (bug fix from previous version).
- */
-const getThreadOptionsForSpec = (spec: StyleThreadSpec): { label: string; value: number }[] => {
+const getColorOptionsForSpec = (spec: StyleThreadSpec): { label: string; value: number }[] => {
   if (!spec.supplier_id) return []
-
-  const specTexNumber = spec.thread_types?.tex_number
-  if (!specTexNumber) return []
-
-  return props.threadTypes
-    .filter(t =>
-      matchesSupplier(t, spec.supplier_id) &&
-      t.tex_number !== null &&
-      String(t.tex_number) === String(specTexNumber) &&
-      t.is_active &&
-      t.color_id !== null
-    )
-    .map(t => ({
-      label: t.color_data?.name ?? `${t.code} (chưa gán màu)`,
-      value: t.id,
-    }))
+  const colors = supplierColorsCache.value[spec.supplier_id] || []
+  return colors.map(c => ({
+    label: c.name,
+    value: c.id,
+  }))
 }
 
 // Computed: unique color IDs that have data in colorSpecs or were manually added
 const usedColorIds = computed<number[]>(() => {
-  const fromDb = new Set(colorSpecs.value.map(cs => cs.color_id))
+  const fromDb = new Set(colorSpecs.value.map(cs => cs.style_color_id))
   const fromManual = new Set(addedColors.value)
   return [...new Set([...fromDb, ...fromManual])]
 })
@@ -447,51 +436,45 @@ const colorGroups = computed<ColorGroup[]>(() => {
   const groups: ColorGroup[] = []
 
   for (const colorId of usedColorIds.value) {
-    const colorData = props.colors.find(c => c.id === colorId)
+    const colorData = props.styleColors.find(c => c.id === colorId)
     if (!colorData) continue
 
     const rows: ColorSpecRow[] = props.specs.map(spec => {
-      // Find matching color spec for this (spec, color) combination
       const match = colorSpecs.value.find(
-        cs => cs.style_thread_spec_id === spec.id && cs.color_id === colorId
+        cs => cs.style_thread_spec_id === spec.id && cs.style_color_id === colorId
       )
 
       return {
         specId: spec.id,
         spec,
         colorSpecId: match?.id ?? null,
-        threadTypeId: match?.thread_type_id ?? null,
-        threadType: match?.thread_types
-          ? {
-              id: match.thread_types.id,
-              name: match.thread_types.name,
-              color_data: match.thread_types.color_data ?? null,
-              meters_per_cone: match.thread_types.meters_per_cone ?? null,
-              tex_number: match.thread_types.tex_number,
-              tex_label: match.thread_types.tex_label ?? null,
-            }
-          : null,
+        threadColorId: match?.thread_color_id ?? null,
+        threadColor: match?.thread_color ? {
+          id: match.thread_color.id,
+          name: match.thread_color.name,
+          hex_code: match.thread_color.hex_code,
+        } : null,
       }
     })
 
     groups.push({
       color: {
         id: colorData.id,
-        name: colorData.name,
+        color_name: colorData.color_name,
         hex_code: colorData.hex_code,
       },
       rows,
     })
   }
 
-  return groups.sort((a, b) => a.color.name.localeCompare(b.color.name))
+  return groups.sort((a, b) => a.color.color_name.localeCompare(b.color.color_name))
 })
 
 // Available colors for "add color" dialog (exclude already-used)
 const availableColorOptions = computed(() =>
-  props.colors
+  props.styleColors
     .filter(c => c.is_active && !usedColorIds.value.includes(c.id))
-    .map(c => ({ label: c.name, value: c.id }))
+    .map(c => ({ label: c.color_name, value: c.id }))
 )
 
 // Table columns
@@ -523,7 +506,7 @@ const colorTableColumns: QTableColumn[] = [
   {
     name: 'meters_per_cone',
     label: 'Chiều dài cuộn (Mét)',
-    field: 'meters_per_cone',
+    field: (row: ColorSpecRow) => row.spec.thread_types?.meters_per_cone ?? null,
     align: 'right',
   },
   {
@@ -544,7 +527,11 @@ const loadColorSpecs = async () => {
   }
 }
 
-onMounted(loadColorSpecs)
+onMounted(async () => {
+  await loadColorSpecs()
+  const supplierIds = [...new Set(props.specs.map(s => s.supplier_id).filter(Boolean))]
+  await Promise.all(supplierIds.map(id => fetchSupplierColors(id)))
+})
 
 watch(() => props.styleId, loadColorSpecs)
 
@@ -561,8 +548,8 @@ const handleCreateColor = async () => {
   if (!newColorName.value.trim() || !newColorHex.value) return
   creatingColor.value = true
   try {
-    const newColor = await colorService.create({
-      name: newColorName.value.trim(),
+    const newColor = await styleColorService.create(props.styleId, {
+      color_name: newColorName.value.trim(),
       hex_code: newColorHex.value,
     })
     addedColors.value.push(newColor.id)
@@ -582,13 +569,12 @@ const handleCreateColor = async () => {
 
 const handleDeleteColorGroup = async (color: ColorGroupColor) => {
   const confirmed = await confirm.confirmDelete({
-    itemName: `tất cả định mức màu cho "${color.name}"`,
+    itemName: `tất cả định mức màu cho "${color.color_name}"`,
   })
 
   if (!confirmed) return
 
-  // Find all color specs for this color
-  const toDelete = colorSpecs.value.filter(cs => cs.color_id === color.id)
+  const toDelete = colorSpecs.value.filter(cs => cs.style_color_id === color.id)
 
   for (const cs of toDelete) {
     await deleteColorSpec(cs.id)
@@ -620,16 +606,14 @@ const handleColorSpecEdit = async (
 
   try {
     if (row.colorSpecId === null && newValue !== null) {
-      // CREATE new color spec
       await addColorSpec(row.specId, {
         style_thread_spec_id: row.specId,
-        color_id: color.id,
-        thread_type_id: newValue,
+        style_color_id: color.id,
+        thread_color_id: newValue,
       })
     } else if (row.colorSpecId !== null && newValue !== null) {
-      // UPDATE existing
       await updateColorSpec(row.colorSpecId, {
-        thread_type_id: newValue,
+        thread_color_id: newValue,
       })
     } else if (row.colorSpecId !== null && newValue === null) {
       // DELETE (cleared)
@@ -641,7 +625,7 @@ const handleColorSpecEdit = async (
   } catch {
     // Error notification handled by composable
     // Revert the optimistic v-model update
-    row.threadTypeId = originalValue
+    row.threadColorId = originalValue
   } finally {
     inlineEditLoading.value[cellKey] = false
   }

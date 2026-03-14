@@ -874,9 +874,9 @@ weeklyOrder.get('/history-by-week', requirePermission('thread.allocations.view')
     let itemsQuery = supabase
       .from('thread_order_items')
       .select(`
-        id, week_id, po_id, style_id, color_id, quantity,
+        id, week_id, po_id, style_id, style_color_id, quantity,
         style:styles(id, style_code, style_name),
-        color:colors(id, name, hex_code),
+        style_color:style_colors(id, color_name, hex_code),
         po:purchase_orders(id, po_number)
       `)
       .in('week_id', pageWeekIds)
@@ -960,9 +960,9 @@ weeklyOrder.get('/history-by-week', requirePermission('thread.allocations.view')
           }
           const sg = styleMap.get(item.style_id)!
           sg.colors.push({
-            color_id: item.color_id,
-            color_name: item.color?.name || '',
-            hex_code: item.color?.hex_code || '',
+            style_color_id: item.style_color_id,
+            color_name: item.style_color?.color_name || '',
+            hex_code: item.style_color?.hex_code || '',
             quantity: item.quantity,
           })
           sg.thisWeekQty += item.quantity
@@ -1254,12 +1254,12 @@ weeklyOrder.get('/:id', requirePermission('thread.allocations.view'), async (c) 
           week_id,
           po_id,
           style_id,
-          color_id,
+          style_color_id,
           quantity,
           sub_art_id,
           created_at,
           style:styles (id, style_code, style_name),
-          color:colors (id, name, hex_code),
+          style_color:style_colors (id, color_name, hex_code),
           po:purchase_orders (id, po_number),
           sub_art:sub_arts (id, sub_art_code)
         )
@@ -1350,7 +1350,7 @@ weeklyOrder.post('/', requirePermission('thread.allocations.manage'), async (c) 
       week_id: week.id,
       po_id: item.po_id || null,
       style_id: item.style_id,
-      color_id: item.color_id,
+      style_color_id: item.style_color_id,
       quantity: item.quantity,
       sub_art_id: item.sub_art_id || null,
     }))
@@ -1364,12 +1364,12 @@ weeklyOrder.post('/', requirePermission('thread.allocations.manage'), async (c) 
         week_id,
         po_id,
         style_id,
-        color_id,
+        style_color_id,
         quantity,
         sub_art_id,
         created_at,
         style:styles (id, style_code, style_name),
-        color:colors (id, name, hex_code),
+        style_color:style_colors (id, color_name, hex_code),
         po:purchase_orders (id, po_number),
         sub_art:sub_arts (id, sub_art_code)
       `,
@@ -1496,7 +1496,7 @@ weeklyOrder.put('/:id', requirePermission('thread.allocations.manage'), async (c
           week_id: id,
           po_id: item.po_id || null,
           style_id: item.style_id,
-          color_id: item.color_id,
+          style_color_id: item.style_color_id,
           quantity: item.quantity,
           sub_art_id: item.sub_art_id || null,
         }))
@@ -1510,12 +1510,12 @@ weeklyOrder.put('/:id', requirePermission('thread.allocations.manage'), async (c
             week_id,
             po_id,
             style_id,
-            color_id,
+            style_color_id,
             quantity,
             sub_art_id,
             created_at,
             style:styles (id, style_code, style_name),
-            color:colors (id, name, hex_code),
+            style_color:style_colors (id, color_name, hex_code),
             po:purchase_orders (id, po_number),
             sub_art:sub_arts (id, sub_art_code)
           `,

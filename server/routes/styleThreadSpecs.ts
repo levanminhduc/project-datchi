@@ -20,7 +20,7 @@ styleThreadSpecs.get('/', async (c) => {
         *,
         styles:style_id (id, style_code, style_name),
         suppliers:supplier_id (id, name),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, color_data:colors!color_id(name, hex_code))
+        thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_data:colors!color_id(name, hex_code))
       `)
       .order('display_order', { ascending: true })
 
@@ -60,7 +60,7 @@ styleThreadSpecs.get('/:id', async (c) => {
         *,
         styles:style_id (id, style_code, style_name),
         suppliers:supplier_id (id, name),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, color_data:colors!color_id(name, hex_code))
+        thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_data:colors!color_id(name, hex_code))
       `)
       .eq('id', id)
       .single()
@@ -247,8 +247,9 @@ styleThreadSpecs.get('/:id/color-specs', async (c) => {
       .from('style_color_thread_specs')
       .select(`
         *,
-        colors:color_id (id, name, hex_code),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, color_data:colors!color_id(name, hex_code), supplier_id)
+        style_color:style_colors!style_color_id (id, color_name, hex_code, style_id),
+        thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_data:colors!color_id(name, hex_code), supplier_id),
+        thread_color:colors!thread_color_id (id, name, hex_code)
       `)
       .eq('style_thread_spec_id', id)
       .order('created_at', { ascending: false })
@@ -275,22 +276,27 @@ styleThreadSpecs.post('/:id/color-specs', async (c) => {
 
     const body = await c.req.json()
     
-    if (!body.color_id) {
-      return c.json({ data: null, error: 'Mã màu (color_id) là bắt buộc' }, 400)
+    if (!body.style_color_id) {
+      return c.json({ data: null, error: 'Mã màu hàng (style_color_id) là bắt buộc' }, 400)
     }
-    if (!body.thread_type_id) {
-      return c.json({ data: null, error: 'Loại chỉ (thread_type_id) là bắt buộc' }, 400)
+
+    const insertData: Record<string, unknown> = {
+      style_thread_spec_id: styleThreadSpecId,
+      style_color_id: body.style_color_id,
+      notes: body.notes,
     }
+    if (body.thread_type_id) insertData.thread_type_id = body.thread_type_id
+    if (body.thread_color_id) insertData.thread_color_id = body.thread_color_id
 
     const { data, error } = await supabase
       .from('style_color_thread_specs')
-      .insert([{
-        style_thread_spec_id: styleThreadSpecId,
-        color_id: body.color_id,
-        thread_type_id: body.thread_type_id,
-        notes: body.notes,
-      }])
-      .select()
+      .insert([insertData])
+      .select(`
+        *,
+        style_color:style_colors!style_color_id (id, color_name, hex_code, style_id),
+        thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_data:colors!color_id(name, hex_code), supplier_id),
+        thread_color:colors!thread_color_id (id, name, hex_code)
+      `)
       .single()
 
     if (error) throw error
@@ -334,8 +340,9 @@ styleThreadSpecs.get('/by-style/:styleId/all-color-specs', async (c) => {
       .from('style_color_thread_specs')
       .select(`
         *,
-        colors:color_id (id, name, hex_code),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, color_data:colors!color_id(name, hex_code), supplier_id, meters_per_cone)
+        style_color:style_colors!style_color_id (id, color_name, hex_code, style_id),
+        thread_types:thread_type_id (id, tex_number, tex_label, name, color_data:colors!color_id(name, hex_code), supplier_id, meters_per_cone),
+        thread_color:colors!thread_color_id (id, name, hex_code)
       `)
       .in('style_thread_spec_id', specIds)
       .order('created_at', { ascending: true })
@@ -367,6 +374,7 @@ styleThreadSpecs.put('/color-specs/:id', async (c) => {
     }
 
     if (body.thread_type_id !== undefined) updateData.thread_type_id = body.thread_type_id
+    if (body.thread_color_id !== undefined) updateData.thread_color_id = body.thread_color_id
     if (body.notes !== undefined) updateData.notes = body.notes
 
     const { data, error } = await supabase
@@ -375,8 +383,9 @@ styleThreadSpecs.put('/color-specs/:id', async (c) => {
       .eq('id', id)
       .select(`
         *,
-        colors:color_id (id, name, hex_code),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, color_data:colors!color_id(name, hex_code), supplier_id, meters_per_cone)
+        style_color:style_colors!style_color_id (id, color_name, hex_code, style_id),
+        thread_types:thread_type_id (id, tex_number, tex_label, name, color_data:colors!color_id(name, hex_code), supplier_id, meters_per_cone),
+        thread_color:colors!thread_color_id (id, name, hex_code)
       `)
       .single()
 
