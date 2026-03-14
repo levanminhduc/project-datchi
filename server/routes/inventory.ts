@@ -8,7 +8,7 @@ const inventory = new Hono()
 
 const BATCH_SIZE = 1000
 
-// GET /api/inventory - List inventory with filters and batch support
+// GET /api/inventory - List inventory with server-side pagination
 inventory.get('/', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const search = c.req.query('search') || ''
@@ -16,76 +16,22 @@ inventory.get('/', requirePermission('thread.inventory.view'), async (c) => {
     const warehouseId = c.req.query('warehouse_id')
     const status = c.req.query('status')
     const isPartial = c.req.query('is_partial')
-    const limit = c.req.query('limit')
 
-    // If limit=0, fetch all with batch
-    if (limit === '0') {
-      const allData: ConeRow[] = []
-      let offset = 0
-      let hasMore = true
+    const page = Math.max(1, parseInt(c.req.query('page') || '1'))
+    const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query('pageSize') || '25')))
+    const sortBy = c.req.query('sortBy') || 'received_date'
+    const descending = c.req.query('descending') !== 'false'
 
-      while (hasMore) {
-        let query = supabase
-          .from('thread_inventory')
-          .select('*, thread_types(code, name, color_data:colors!color_id(name, hex_code))')
-          .order('created_at', { ascending: false })
-          .range(offset, offset + BATCH_SIZE - 1)
+    const ALLOWED_SORT_COLUMNS = ['created_at', 'received_date', 'cone_id', 'quantity_meters', 'weight_grams', 'status', 'lot_number', 'is_partial']
+    const safeSortBy = ALLOWED_SORT_COLUMNS.includes(sortBy) ? sortBy : 'received_date'
 
-        if (search) {
-          const s = sanitizeFilterValue(search)
-          query = query.or(`cone_id.ilike.%${s}%,lot_number.ilike.%${s}%`)
-        }
-        if (threadTypeId) {
-          const parsedThreadTypeId = parseInt(threadTypeId)
-          if (!isNaN(parsedThreadTypeId)) {
-            query = query.eq('thread_type_id', parsedThreadTypeId)
-          }
-        }
-        if (warehouseId) {
-          const parsedWarehouseId = parseInt(warehouseId)
-          if (!isNaN(parsedWarehouseId)) {
-            query = query.eq('warehouse_id', parsedWarehouseId)
-          }
-        }
-        if (status) {
-          query = query.eq('status', status)
-        }
-        if (isPartial !== undefined) {
-          query = query.eq('is_partial', isPartial === 'true')
-        }
+    const offset = (page - 1) * pageSize
 
-        const { data, error } = await query
-
-        if (error) {
-          return c.json<ThreadApiResponse<null>>({
-            data: null,
-            error: 'Lỗi khi tải danh sách tồn kho'
-          }, 500)
-        }
-
-        if (!data || data.length === 0) {
-          hasMore = false
-        } else {
-          allData.push(...data as ConeRow[])
-          offset += BATCH_SIZE
-          if (data.length < BATCH_SIZE) {
-            hasMore = false
-          }
-        }
-      }
-
-      return c.json<ThreadApiResponse<ConeRow[]>>({
-        data: allData,
-        error: null,
-        message: `Đã tải ${allData.length} cuộn chỉ`
-      })
-    }
-
-    // Normal paginated query
     let query = supabase
       .from('thread_inventory')
-      .select('*, thread_types(code, name, color_data:colors!color_id(name, hex_code))')
-      .order('created_at', { ascending: false })
+      .select('*, thread_types(code, name, color_data:colors!color_id(name, hex_code))', { count: 'exact' })
+      .order(safeSortBy, { ascending: !descending })
+      .range(offset, offset + pageSize - 1)
 
     if (search) {
       const s = sanitizeFilterValue(search)
@@ -106,11 +52,11 @@ inventory.get('/', requirePermission('thread.inventory.view'), async (c) => {
     if (status) {
       query = query.eq('status', status)
     }
-    if (isPartial !== undefined) {
+    if (isPartial !== undefined && isPartial !== '') {
       query = query.eq('is_partial', isPartial === 'true')
     }
 
-    const { data, error } = await query
+    const { data, error, count } = await query
 
     if (error) {
       return c.json<ThreadApiResponse<null>>({
@@ -119,9 +65,13 @@ inventory.get('/', requirePermission('thread.inventory.view'), async (c) => {
       }, 500)
     }
 
-    return c.json<ThreadApiResponse<ConeRow[]>>({
+    return c.json({
       data: data as ConeRow[],
-      error: null
+      count: count ?? 0,
+      page,
+      pageSize,
+      error: null,
+      message: `Trang ${page}, ${count ?? 0} cuộn chỉ`
     })
   } catch (err) {
     console.error('Server error:', err)
@@ -278,8 +228,7 @@ inventory.get('/by-warehouse/:warehouseId', requirePermission('thread.inventory.
   }
 })
 
-// GET /api/inventory/summary/by-cone - Cone-based inventory summary
-// Groups inventory by thread_type, counting full and partial cones
+// GET /api/inventory/summary/by-cone - Cone-based inventory summary via SQL view/RPC
 inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const warehouseId = c.req.query('warehouse_id')
@@ -287,125 +236,118 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
     const material = c.req.query('material')
     const search = c.req.query('search')
 
-    // Statuses representing usable stock in warehouse
-    // Excludes: IN_PRODUCTION, PARTIAL_RETURN, PENDING_WEIGH, CONSUMED, WRITTEN_OFF, QUARANTINE
-    const usableStatuses: ConeStatus[] = [
-      'RECEIVED',
-      'INSPECTED', 
-      'AVAILABLE',
-      'SOFT_ALLOCATED',
-      'HARD_ALLOCATED'
-    ]
+    const needsRpc = !!warehouseId || !!supplierId
 
-    // Fetch all usable cones with thread type and lot details for supplier filtering
-    let query = supabase
-      .from('thread_inventory')
-      .select(`
-        thread_type_id,
-        quantity_meters,
-        weight_grams,
-        is_partial,
-        lot_id,
-        thread_types(
-          code, name, color_data:colors!color_id(name, hex_code), material, tex_number, meters_per_cone, supplier_id
-        ),
-        lots(supplier_id)
-      `)
-      .in('status', usableStatuses)
+    type SummaryViewRow = {
+      thread_type_id: number
+      thread_code: string
+      thread_name: string
+      color_name: string | null
+      color_hex: string | null
+      material: string
+      tex_number: number | null
+      meters_per_cone: number | null
+      supplier_id: number | null
+      full_cones: number
+      partial_cones: number
+      partial_meters: number
+      partial_weight_grams: number
+    }
 
-    if (warehouseId) {
-      const parsedId = parseInt(warehouseId)
-      if (!isNaN(parsedId)) {
-        query = query.eq('warehouse_id', parsedId)
+    let summaryData: SummaryViewRow[] = []
+
+    if (needsRpc) {
+      const usableStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED']
+      const { data, error } = await supabase.rpc('fn_cone_summary_filtered', {
+        p_statuses: usableStatuses,
+        p_warehouse_id: warehouseId ? parseInt(warehouseId) : null,
+        p_supplier_id: supplierId ? parseInt(supplierId) : null,
+        p_material: material || null,
+        p_search: search ? `%${sanitizeFilterValue(search)}%` : null,
+      })
+
+      if (error) {
+        console.error('RPC error:', error)
+        return c.json<ThreadApiResponse<null>>({
+          data: null,
+          error: 'Lỗi khi tải tổng hợp tồn kho'
+        }, 500)
       }
+
+      summaryData = (data || []) as SummaryViewRow[]
+    } else {
+      let query = supabase
+        .from('v_cone_summary')
+        .select('*')
+        .order('thread_code')
+
+      if (material) {
+        query = query.eq('material', material)
+      }
+
+      if (search) {
+        const s = sanitizeFilterValue(search)
+        query = query.or(`thread_code.ilike.%${s}%,thread_name.ilike.%${s}%,color_name.ilike.%${s}%`)
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        console.error('Supabase error:', error)
+        return c.json<ThreadApiResponse<null>>({
+          data: null,
+          error: 'Lỗi khi tải tổng hợp tồn kho'
+        }, 500)
+      }
+
+      summaryData = (data || []) as SummaryViewRow[]
     }
 
-    const { data: cones, error } = await query
+    const threadTypeIds = [...new Set(summaryData.map(r => r.thread_type_id))]
+    const priceMap = new Map<number, number>()
 
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<ThreadApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi tải tổng hợp tồn kho'
-      }, 500)
-    }
+    if (threadTypeIds.length > 0) {
+      const { data: prices } = await supabase
+        .from('thread_type_supplier')
+        .select('thread_type_id, supplier_id, unit_price')
+        .in('thread_type_id', threadTypeIds)
+        .eq('is_active', true)
 
-    // Aggregate by thread_type_id
-    const summaryMap: Map<number, ConeSummaryRow> = new Map()
-
-    for (const cone of cones || []) {
-      const ttRaw = cone.thread_types
-      const tt = (Array.isArray(ttRaw) ? ttRaw[0] : ttRaw) as {
-        code: string
-        name: string
-        color_data: { name: string; hex_code: string | null } | null
-        material: string
-        tex_number: number | null
-        meters_per_cone: number | null
-        supplier_id: number | null
-      } | null
-
-      if (!tt) continue
-
-      // Apply material filter
-      if (material && tt.material !== material) continue
-
-      // Apply supplier filter
-      if (supplierId) {
-        const parsedSupplierId = parseInt(supplierId)
-        if (!isNaN(parsedSupplierId)) {
-          const lotRaw = cone.lots as unknown
-          const lot = (Array.isArray(lotRaw) ? lotRaw[0] : lotRaw) as { supplier_id: number | null } | null
-          const lotSupplierId = lot?.supplier_id
-          const typeSupplierId = tt.supplier_id
-          const effectiveSupplierId = lotSupplierId || typeSupplierId
-          if (effectiveSupplierId !== parsedSupplierId) continue
+      if (prices) {
+        const supplierMap = new Map<number, number | null>()
+        for (const row of summaryData) {
+          if (row.supplier_id && !supplierMap.has(row.thread_type_id)) {
+            supplierMap.set(row.thread_type_id, row.supplier_id)
+          }
+        }
+        for (const p of prices) {
+          const defaultSupplierId = supplierMap.get(p.thread_type_id)
+          if (defaultSupplierId && p.supplier_id === defaultSupplierId && p.unit_price != null) {
+            priceMap.set(p.thread_type_id, Number(p.unit_price))
+          }
         }
       }
-
-      // Apply search filter
-      if (search) {
-        const searchLower = search.toLowerCase()
-        const matchesSearch =
-          tt.code.toLowerCase().includes(searchLower) ||
-          tt.name.toLowerCase().includes(searchLower) ||
-          (tt.color_data?.name && tt.color_data.name.toLowerCase().includes(searchLower))
-        if (!matchesSearch) continue
-      }
-
-      if (!summaryMap.has(cone.thread_type_id)) {
-        summaryMap.set(cone.thread_type_id, {
-          thread_type_id: cone.thread_type_id,
-          thread_code: tt.code,
-          thread_name: tt.name,
-          color_data: tt.color_data || null,
-          material: tt.material as ConeSummaryRow['material'],
-          tex_number: tt.tex_number,
-          meters_per_cone: tt.meters_per_cone,
-          full_cones: 0,
-          partial_cones: 0,
-          partial_meters: 0,
-          partial_weight_grams: 0
-        })
-      }
-
-      const row = summaryMap.get(cone.thread_type_id)!
-      if (cone.is_partial) {
-        row.partial_cones++
-        row.partial_meters += cone.quantity_meters || 0
-        row.partial_weight_grams += cone.weight_grams || 0
-      } else {
-        row.full_cones++
-      }
     }
 
-    const summaryList = Array.from(summaryMap.values())
-      .sort((a, b) => a.thread_code.localeCompare(b.thread_code))
+    const mapped: ConeSummaryRow[] = summaryData.map(row => ({
+      thread_type_id: row.thread_type_id,
+      thread_code: row.thread_code,
+      thread_name: row.thread_name,
+      color_data: row.color_name ? { name: row.color_name, hex_code: row.color_hex } : null,
+      material: row.material as ConeSummaryRow['material'],
+      tex_number: row.tex_number,
+      meters_per_cone: row.meters_per_cone,
+      unit_price: priceMap.get(row.thread_type_id) ?? null,
+      full_cones: Number(row.full_cones),
+      partial_cones: Number(row.partial_cones),
+      partial_meters: Number(row.partial_meters),
+      partial_weight_grams: Number(row.partial_weight_grams),
+    }))
 
     return c.json<ThreadApiResponse<ConeSummaryRow[]>>({
-      data: summaryList,
+      data: mapped,
       error: null,
-      message: `Tổng hợp ${summaryList.length} loại chỉ`
+      message: `Tổng hợp ${mapped.length} loại chỉ`
     })
   } catch (err) {
     console.error('Server error:', err)
