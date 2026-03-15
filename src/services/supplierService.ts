@@ -7,7 +7,7 @@
 import { fetchApi } from './api'
 import type {
   Supplier,
-  SupplierWithColors,
+  SupplierDetail,
   SupplierFormData,
   SupplierFilters
 } from '@/types/thread/supplier'
@@ -35,8 +35,8 @@ export const supplierService = {
   /**
    * Lấy thông tin chi tiết nhà cung cấp với danh sách màu
    */
-  async getById(id: number): Promise<SupplierWithColors> {
-    const response = await fetchApi<ApiResponse<SupplierWithColors>>(`/api/suppliers/${id}`)
+  async getById(id: number): Promise<SupplierDetail> {
+    const response = await fetchApi<ApiResponse<SupplierDetail>>(`/api/suppliers/${id}`)
     if (response.error) throw new Error(response.error)
     return response.data!
   },

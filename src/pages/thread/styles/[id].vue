@@ -408,10 +408,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useThreadTypes, useStyleColors, useSnackbar } from '@/composables'
+import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useStyleColors, useSnackbar } from '@/composables'
 import StyleColorSpecsTab from '@/components/thread/StyleColorSpecsTab.vue'
+import { fetchApi } from '@/services/api'
 import type { QTableColumn } from 'quasar'
-import type { StyleThreadSpec, ThreadType } from '@/types/thread'
+import type { StyleThreadSpec } from '@/types/thread'
 
 definePage({
   meta: { requiresAuth: true }
@@ -458,7 +459,11 @@ const handleInlineEdit = async (
     // Optimistic update already applied by v-model
     const result = await updateSpec(specId, { [field]: newValue })
 
-    if (!result) {
+    if (result) {
+      if (field === 'supplier_id' && typeof newValue === 'number') {
+        await fetchTexOptions(newValue)
+      }
+    } else {
       // Revert on error - find spec and restore original value
       const spec = styleThreadSpecs.value.find(s => s.id === specId)
       if (spec) {
@@ -511,35 +516,41 @@ const addEmptyRow = async (): Promise<void> => {
   }
 }
 
-const supplierOptions = computed(() => 
+const supplierOptions = computed(() =>
   suppliers.value.map(s => ({ label: s.name, value: s.id }))
 )
 
-const matchesSupplier = (threadType: ThreadType, supplierId: number): boolean => {
-  if (threadType.supplier_id === supplierId) return true
+interface TexOption { id: number; tex_number: string; tex_label: string | null }
+const texOptionsCache = ref<Record<number, { label: string; value: number }[]>>({})
+const texOptionsLoading = ref<Record<number, boolean>>({})
 
-  return threadType.suppliers?.some(link => link.supplier_id === supplierId && link.is_active) ?? false
+const fetchTexOptions = async (supplierId: number): Promise<void> => {
+  if (texOptionsCache.value[supplierId] || texOptionsLoading.value[supplierId]) return
+
+  texOptionsLoading.value[supplierId] = true
+  try {
+    const response = await fetchApi<{ data: TexOption[] | null; error: string | null }>(
+      `/api/threads/tex-options?supplier_id=${supplierId}`
+    )
+    const items = response.data || []
+    texOptionsCache.value[supplierId] = items.map(t => ({
+      label: t.tex_label || String(t.tex_number),
+      value: t.id,
+    }))
+  } catch {
+    texOptionsCache.value[supplierId] = []
+  } finally {
+    texOptionsLoading.value[supplierId] = false
+  }
 }
 
-/**
- * Get tex options for inline edit based on row's supplier_id
- * Returns unique tex_number per supplier (first thread_type_id for each tex)
- */
 const getTexOptionsForRow = (row: StyleThreadSpec): { label: string; value: number }[] => {
   if (!row.supplier_id) return []
-  const supplierThreads = threadTypes.value.filter(
-    t => t.is_active && matchesSupplier(t, row.supplier_id!)
-  )
-  const uniqueTexMap = new Map<string, { id: number; label: string }>()
-  for (const t of supplierThreads) {
-    const texKey = t.tex_number !== null ? String(t.tex_number) : null
-    if (texKey && !uniqueTexMap.has(texKey)) {
-      uniqueTexMap.set(texKey, { id: t.id, label: t.tex_label || String(t.tex_number) })
-    }
+  if (!texOptionsCache.value[row.supplier_id]) {
+    fetchTexOptions(row.supplier_id)
+    return []
   }
-  return Array.from(uniqueTexMap.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([, v]) => ({ label: v.label, value: v.id }))
+  return texOptionsCache.value[row.supplier_id] ?? []
 }
 const isSaving = ref(false)
 
@@ -563,7 +574,6 @@ const {
 const { styleColors, fetchStyleColors } = useStyleColors()
 
 const { suppliers, fetchSuppliers } = useSuppliers()
-const { threadTypes, fetchThreadTypes } = useThreadTypes()
 
 // Form state
 const form = ref({
@@ -649,9 +659,11 @@ onMounted(async () => {
     fetchStyleById(id.value),
     fetchStyleThreadSpecs({ style_id: id.value }),
     fetchSuppliers(),
-    fetchThreadTypes(),
     fetchStyleColors(id.value),
   ])
+
+  const supplierIds = [...new Set(styleThreadSpecs.value.map(s => s.supplier_id).filter(Boolean))] as number[]
+  await Promise.all(supplierIds.map(sid => fetchTexOptions(sid)))
 })
 
 // Watch addToTop and persist to localStorage

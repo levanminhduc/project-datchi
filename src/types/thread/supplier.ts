@@ -38,6 +38,19 @@ export interface SupplierWithColors extends Supplier {
   colors?: ColorSummary[]
 }
 
+export interface SupplierThreadTypeSummary {
+  id: number
+  code: string
+  name: string
+  tex_label: string | null
+  supplier_item_code: string | null
+  unit_price: number | null
+}
+
+export interface SupplierDetail extends SupplierWithColors {
+  thread_types?: SupplierThreadTypeSummary[]
+}
+
 /**
  * Form data for create/update supplier operations
  */

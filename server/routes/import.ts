@@ -139,7 +139,9 @@ const normalizeTexNumber = (raw: string): string => {
   let val = String(raw || '').trim()
   val = val.replace(/^tex\s*/i, '')
   val = val.replace(/\s*\(.*\)\s*$/, '')
-  return val.trim()
+  val = val.trim()
+  const num = parseFloat(val)
+  return Number.isNaN(num) ? val : String(num)
 }
 
 const getMappingConfig = async (key: string, fallback: ImportMappingConfig): Promise<ImportMappingConfig> => {

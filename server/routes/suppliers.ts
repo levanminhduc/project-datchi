@@ -100,12 +100,17 @@ suppliers.get('/:id', requirePermission('thread.suppliers.view'), async (c) => {
       `)
       .eq('supplier_id', id)
 
-    const result: SupplierWithColors = {
+    // Get unique tex numbers for this supplier via raw SQL (DISTINCT ON)
+    const { data: uniqueTexTypes } = await supabase
+      .rpc('fn_get_supplier_unique_tex', { p_supplier_id: id })
+
+    const result = {
       ...supplier,
-      colors: links?.map(l => l.color).filter(Boolean) || []
+      colors: links?.map(l => l.color).filter(Boolean) || [],
+      thread_types: uniqueTexTypes || []
     }
 
-    return c.json<SupplierApiResponse<SupplierWithColors>>({
+    return c.json<SupplierApiResponse<typeof result>>({
       data: result,
       error: null
     })

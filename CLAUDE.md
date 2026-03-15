@@ -102,6 +102,40 @@ UI Components (src/components/ui/) → App* wrappers over Quasar
 ### File-Based Routing
 Pages in `src/pages/` auto-generate routes via `unplugin-vue-router`. Dynamic params use `[id]` convention.
 
+## Large Dataset Architecture (Inventory Pattern)
+
+Trang inventory là reference pattern cho mọi trang có dữ liệu lớn. **KHÔNG load toàn bộ data vào frontend.**
+
+### Server-Side Pagination (Bắt buộc cho listing)
+```
+q-table @request → composable.handleTableRequest() → service.getPaginated({ page, pageSize, sortBy, descending })
+→ Hono route: range(offset, offset + pageSize - 1) + { count: 'exact' }
+→ DB: LIMIT/OFFSET + COUNT(*)
+```
+- Default 25 rows/page, options `[10, 25, 50, 100]`, backend cap `100`
+- Ref: `src/pages/thread/inventory.vue` + `useInventory.ts` + `server/routes/inventory.ts`
+
+### DB Indexes (Thiết kế theo query pattern)
+- **Partial indexes** cho filter phổ biến: `WHERE status = 'AVAILABLE'`, `WHERE is_partial = TRUE`
+- **Composite index** cho business logic: FEFO `(is_partial DESC, expiry_date ASC, received_date ASC) WHERE status = 'AVAILABLE'`
+- **Aggregation index**: `(thread_type_id, status, is_partial)` cho summary view
+- **Pagination index**: `(received_date DESC, thread_type_id, warehouse_id, status)` cho listing
+
+### Pre-Aggregated Views + RPC (Cho summary/dashboard)
+- `v_cone_summary` — PostgreSQL VIEW, dùng khi không filter
+- `fn_cone_summary_filtered()` — RPC function, dùng khi cần WHERE động (warehouse/supplier)
+- Ref: `supabase/migrations/20260314100000_create_v_cone_summary.sql`
+
+### Batch Fetch (Khi cần ALL records — stocktake/export)
+```typescript
+const BATCH_SIZE = 1000
+while (hasMore) { query.range(offset, offset + BATCH_SIZE - 1); offset += BATCH_SIZE }
+```
+
+### Realtime + Debounce
+- Supabase Realtime subscribe table changes → **smart filter** (chỉ refresh khi match current view) → **debounced refresh** (100ms)
+- Search input: 300ms debounce tại component level
+
 ## Anti-patterns
 
 | Don't | Do Instead |

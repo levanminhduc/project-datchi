@@ -372,7 +372,7 @@
       <q-dialog v-model="detailDialog.isOpen">
         <q-card
           v-if="detailDialog.supplier"
-          style="width: 500px; max-width: 90vw"
+          style="width: 600px; max-width: 90vw"
         >
           <q-card-section class="row items-center q-pb-none">
             <div class="text-h6">
@@ -461,6 +461,68 @@
             </div>
           </q-card-section>
 
+          <q-separator />
+
+          <q-card-section class="q-pa-md">
+            <div class="text-subtitle2 text-weight-bold q-mb-sm">
+              Danh sách Tex chỉ
+              <q-badge
+                v-if="!loadingThreadTypes"
+                color="primary"
+                class="q-ml-sm"
+              >
+                {{ supplierThreadTypes.length }}
+              </q-badge>
+            </div>
+
+            <q-linear-progress
+              v-if="loadingThreadTypes"
+              indeterminate
+              color="primary"
+              class="q-mb-sm"
+            />
+
+            <div
+              v-else-if="supplierThreadTypes.length === 0"
+              class="text-grey-6 text-center q-py-sm"
+            >
+              Chưa có Tex chỉ nào
+            </div>
+
+            <q-list
+              v-else
+              dense
+              separator
+              class="rounded-borders"
+              style="max-height: 240px; overflow-y: auto"
+            >
+              <q-item
+                v-for="tex in supplierThreadTypes"
+                :key="tex.id"
+              >
+                <q-item-section>
+                  <q-item-label>
+                    {{ tex.tex_label || tex.name || '-' }}
+                  </q-item-label>
+                  <q-item-label caption>
+                    {{ tex.code }}
+                    <template v-if="tex.supplier_item_code">
+                      · Mã NCC: {{ tex.supplier_item_code }}
+                    </template>
+                  </q-item-label>
+                </q-item-section>
+                <q-item-section
+                  v-if="tex.unit_price"
+                  side
+                >
+                  <q-item-label caption>
+                    {{ new Intl.NumberFormat('vi-VN').format(tex.unit_price) }}đ
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-card-section>
+
           <q-card-actions
             align="right"
             class="q-px-md q-pb-md"
@@ -490,7 +552,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSuppliers } from '@/composables/thread/useSuppliers'
 import { useConfirm } from '@/composables/useConfirm'
-import type { Supplier, SupplierFormData } from '@/types/thread/supplier'
+import { supplierService } from '@/services/supplierService'
+import type { Supplier, SupplierFormData, SupplierThreadTypeSummary } from '@/types/thread/supplier'
 
 // Composables
 const router = useRouter()
@@ -574,6 +637,9 @@ const detailDialog = reactive({
   supplier: null as Supplier | null,
 })
 
+const supplierThreadTypes = ref<SupplierThreadTypeSummary[]>([])
+const loadingThreadTypes = ref(false)
+
 const defaultFormData: SupplierFormData = {
   code: '',
   name: '',
@@ -617,9 +683,19 @@ function openEditDialog(supplier: Supplier) {
   formDialog.isOpen = true
 }
 
-function openDetailDialog(supplier: Supplier) {
+async function openDetailDialog(supplier: Supplier) {
   detailDialog.supplier = supplier
   detailDialog.isOpen = true
+  supplierThreadTypes.value = []
+  loadingThreadTypes.value = true
+  try {
+    const detail = await supplierService.getById(supplier.id)
+    supplierThreadTypes.value = detail.thread_types || []
+  } catch {
+    supplierThreadTypes.value = []
+  } finally {
+    loadingThreadTypes.value = false
+  }
 }
 
 function editFromDetail() {

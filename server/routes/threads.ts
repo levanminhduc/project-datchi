@@ -99,6 +99,31 @@ threads.get('/', requirePermission('thread.types.view'), async (c) => {
 })
 
 /**
+ * GET /api/threads/tex-options?supplier_id=X
+ * Returns distinct tex values for a supplier (lightweight, ~4 rows)
+ */
+threads.get('/tex-options', requirePermission('thread.types.view'), async (c) => {
+  try {
+    const supplierId = c.req.query('supplier_id')
+
+    if (!supplierId) {
+      return c.json({ data: null, error: 'supplier_id là bắt buộc' }, 400)
+    }
+
+    const sid = parseInt(supplierId)
+
+    const { data, error } = await supabase.rpc('fn_get_tex_options_by_supplier', { p_supplier_id: sid })
+
+    if (error) throw error
+
+    return c.json({ data: data || [], error: null })
+  } catch (err) {
+    console.error('Error fetching tex options:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * GET /api/threads/:id - Get single thread type by ID
  * Returns joined color_data, supplier_data, and suppliers from junction table
  */
