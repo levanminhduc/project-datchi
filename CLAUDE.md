@@ -2,6 +2,8 @@
 
 ## Role & Codebase Search
 
+Always spawn subagents for testing, review, and finalization.
+
 When asked about the codebase, project structure, or to find code, always use the augment-context-engine MCP tool (codebase-retrieval) in the root workspace first before reading individual files.
 
 
