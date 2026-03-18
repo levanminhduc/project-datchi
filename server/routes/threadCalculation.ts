@@ -66,8 +66,11 @@ interface ColorThreadTypeJoin {
 interface ColorSpecRow {
   style_thread_spec_id: number
   color_id: number
+  style_color_id: number
   thread_type_id: number
+  thread_color_id: number | null
   colors: ColorJoin | null
+  thread_color: { name: string; hex_code: string | null } | null
   thread_types: ColorThreadTypeJoin | null
 }
 
@@ -155,8 +158,11 @@ const SPEC_SELECT = `
 const COLOR_SPEC_SELECT = `
   style_thread_spec_id,
   color_id,
+  style_color_id,
   thread_type_id,
+  thread_color_id,
   colors:color_id (id, name),
+  thread_color:colors!thread_color_id (name, hex_code),
   thread_types:thread_type_id (
     id,
     name,
@@ -341,7 +347,7 @@ function buildCalculation(
 
     baseCalculation.color_breakdown = colorBreakdown.map((cb) => {
       const colorSpec = specColorSpecs.find(
-        (sc) => sc.color_id === cb.color_id
+        (sc) => sc.style_color_id === cb.color_id
       )
       const resolvedSupplierName =
         colorSpec?.thread_types?.suppliers?.name ||
@@ -370,8 +376,8 @@ function buildCalculation(
         quantity: cb.quantity,
         thread_type_id: resolvedThreadTypeId,
         thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
-        thread_color: colorSpec?.thread_types?.color_data?.name || spec.thread_types?.color_data?.name || null,
-        thread_color_code: colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
+        thread_color: colorSpec?.thread_color?.name || colorSpec?.thread_types?.color_data?.name || spec.thread_types?.color_data?.name || null,
+        thread_color_code: colorSpec?.thread_color?.hex_code || colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
         total_meters: spec.meters_per_unit * cb.quantity,
         process_name: spec.process_name,
         supplier_name: resolvedSupplierName,
@@ -445,7 +451,7 @@ threadCalculation.post('/calculate', async (c) => {
         .from('style_color_thread_specs')
         .select(COLOR_SPEC_SELECT)
         .in('style_thread_spec_id', specIds)
-        .in('color_id', colorIds)
+        .in('style_color_id', colorIds)
 
       if (csError) throw csError
       colorSpecs = (cs || []) as unknown as ColorSpecRow[]
@@ -562,7 +568,7 @@ threadCalculation.post('/calculate-batch', async (c) => {
         .from('style_color_thread_specs')
         .select(COLOR_SPEC_SELECT)
         .in('style_thread_spec_id', allSpecIds)
-        .in('color_id', [...allColorIds])
+        .in('style_color_id', [...allColorIds])
 
       if (csError) throw csError
       allColorSpecs = (cs || []) as unknown as ColorSpecRow[]
@@ -713,7 +719,7 @@ threadCalculation.post('/calculate-by-po', async (c) => {
         .from('style_color_thread_specs')
         .select(COLOR_SPEC_SELECT)
         .in('style_thread_spec_id', allSpecIds)
-        .in('color_id', allColorIds)
+        .in('style_color_id', allColorIds)
 
       if (csError) throw csError
       allColorSpecs = (cs || []) as unknown as ColorSpecRow[]
@@ -745,7 +751,7 @@ threadCalculation.post('/calculate-by-po', async (c) => {
       const calculations = specs.map((spec) => {
         const colorBreakdown = skus.map((sku) => {
           const colorSpec = relevantColorSpecs.find(
-            (cs) => cs.style_thread_spec_id === spec.id && cs.color_id === sku.color_id
+            (cs) => cs.style_thread_spec_id === spec.id && cs.style_color_id === sku.color_id
           )
           const resolvedSupplierName =
             colorSpec?.thread_types?.suppliers?.name ||
@@ -774,8 +780,8 @@ threadCalculation.post('/calculate-by-po', async (c) => {
             quantity: sku.quantity,
             thread_type_id: resolvedThreadTypeId,
             thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
-            thread_color: colorSpec?.thread_types?.color_data?.name || spec.thread_types?.color_data?.name || null,
-            thread_color_code: colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
+            thread_color: colorSpec?.thread_color?.name || colorSpec?.thread_types?.color_data?.name || spec.thread_types?.color_data?.name || null,
+            thread_color_code: colorSpec?.thread_color?.hex_code || colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
             total_meters: spec.meters_per_unit * sku.quantity,
             process_name: spec.process_name,
             supplier_name: resolvedSupplierName,

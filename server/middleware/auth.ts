@@ -5,6 +5,32 @@ import type { JwtPayload, AuthContext } from '../types/auth'
 
 export type { JwtPayload, AuthContext }
 
+const DB_RETRY_CODES = new Set(['PGRST000', 'PGRST503', '57P01', '57P03', '08006'])
+const MAX_RETRIES = 2
+const RETRY_DELAY_MS = 300
+
+function isTransientDbError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  if (error.code && DB_RETRY_CODES.has(error.code)) return true
+  return typeof error.message === 'string' && error.message.includes('recovery mode')
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function retryOnDbError<T extends { error: { code?: string; message?: string } | null }>(
+  fn: () => PromiseLike<T>,
+): Promise<T> {
+  let lastResult = await fn()
+  for (let attempt = 1; attempt <= MAX_RETRIES && isTransientDbError(lastResult.error); attempt++) {
+    console.warn(`[Auth] DB transient error (attempt ${attempt}/${MAX_RETRIES}), retrying in ${RETRY_DELAY_MS * attempt}ms...`)
+    await sleep(RETRY_DELAY_MS * attempt)
+    lastResult = await fn()
+  }
+  return lastResult
+}
+
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET
   ? new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET)
   : null
@@ -62,15 +88,21 @@ export async function authMiddleware(c: Context, next: Next) {
       return c.json({ error: true, message: 'Token thiếu thông tin nhân viên. Vui lòng đăng nhập lại.' }, 401)
     }
 
-    const { data: employeeStatus, error: employeeStatusError } = await supabaseAdmin
-      .from('employees')
-      .select('id, is_active, deleted_at')
-      .eq('id', jwtPayload.employee_id)
-      .maybeSingle()
+    const { data: employeeStatus, error: employeeStatusError } = await retryOnDbError(() =>
+      supabaseAdmin
+        .from('employees')
+        .select('id, is_active, deleted_at')
+        .eq('id', jwtPayload.employee_id)
+        .maybeSingle()
+    )
 
     if (employeeStatusError) {
       console.error('Auth middleware: failed to fetch employee status:', employeeStatusError)
-      return c.json({ error: true, message: 'Xác thực thất bại' }, 401)
+      const isDbDown = isTransientDbError(employeeStatusError)
+      return c.json(
+        { error: true, message: isDbDown ? 'Hệ thống đang khởi động lại, vui lòng thử lại sau' : 'Xác thực thất bại' },
+        isDbDown ? 503 : 401
+      )
     }
 
     if (!employeeStatus || employeeStatus.deleted_at) {

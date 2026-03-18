@@ -30,14 +30,17 @@ let initPromise: Promise<void> | null = null
 let signingOut = false
 let loggedOut = false
 let authListenerUnsubscribe: (() => void) | null = null
+let sessionResumeListenerCleanup: (() => void) | null = null
+let lastResumeReinitAt = 0
 
 let verifiedPermissionsSnapshot: string[] | null = null
 
 const tempPassword = ref<string | null>(null)
 
 const RETRY_DELAYS = [0, 500, 1000]
-const GET_USER_TIMEOUT = 5000
-const GET_SESSION_TIMEOUT = 3000
+const GET_USER_TIMEOUT = 8000
+const GET_SESSION_TIMEOUT = 8000
+const RESUME_REINIT_DEBOUNCE_MS = 1500
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -86,11 +89,11 @@ async function retryGetUser(): Promise<{
   return { user: null, errorType: 'network' }
 }
 
-async function getSessionSafe(): Promise<Session | null> {
+async function getSessionSafe(timeoutMs = GET_SESSION_TIMEOUT): Promise<Session | null> {
   try {
     const result = await withTimeout(
       supabase.auth.getSession(),
-      GET_SESSION_TIMEOUT
+      timeoutMs
     )
 
     if (!result) {
@@ -101,6 +104,25 @@ async function getSessionSafe(): Promise<Session | null> {
   } catch {
     return null
   }
+}
+
+function applyPermissionsSnapshot() {
+  if (verifiedPermissionsSnapshot) {
+    state.value.permissions = verifiedPermissionsSnapshot
+    state.value.isRoot = verifiedPermissionsSnapshot.includes('*')
+  }
+}
+
+function preserveExistingAuthStateOnNetworkError(): boolean {
+  if (!state.value.isAuthenticated || !state.value.employee) {
+    return false
+  }
+
+  state.value.isLoading = false
+  state.value.error = 'network'
+  applyPermissionsSnapshot()
+  initialized = false
+  return true
 }
 
 export function useAuth() {
@@ -142,6 +164,7 @@ export function useAuth() {
   async function doInit() {
     initialized = true
     setupAuthListener()
+    setupSessionResumeListener()
 
     state.value.isLoading = true
 
@@ -163,12 +186,14 @@ export function useAuth() {
           state.value.isAuthenticated = true
           state.value.error = 'network'
           state.value.isLoading = false
-          if (verifiedPermissionsSnapshot) {
-            state.value.permissions = verifiedPermissionsSnapshot
-            state.value.isRoot = verifiedPermissionsSnapshot.includes('*')
-          }
+          applyPermissionsSnapshot()
           initialized = false
           snackbar.error('Lỗi kết nối mạng. Đang thử khôi phục phiên...')
+          return
+        }
+
+        if (preserveExistingAuthStateOnNetworkError()) {
+          snackbar.error('Kết nối bị gián đoạn khi khôi phục phiên. Đang thử lại...')
           return
         }
 
@@ -197,12 +222,14 @@ export function useAuth() {
           state.value.isAuthenticated = true
           state.value.error = 'network'
           state.value.isLoading = false
-          if (verifiedPermissionsSnapshot) {
-            state.value.permissions = verifiedPermissionsSnapshot
-            state.value.isRoot = verifiedPermissionsSnapshot.includes('*')
-          }
+          applyPermissionsSnapshot()
           initialized = false
           snackbar.error('Lỗi kết nối mạng. Đang thử khôi phục phiên...')
+          return
+        }
+
+        if (preserveExistingAuthStateOnNetworkError()) {
+          snackbar.error('Kết nối bị gián đoạn khi khôi phục phiên. Đang thử lại...')
           return
         }
 
@@ -345,6 +372,32 @@ export function useAuth() {
     authListenerUnsubscribe = () => subscription.unsubscribe()
   }
 
+  function setupSessionResumeListener() {
+    if (typeof window === 'undefined' || sessionResumeListenerCleanup) return
+
+    const revalidateAuthOnResume = () => {
+      if (document.visibilityState === 'hidden') return
+      if (signingOut || loggedOut || !state.value.isAuthenticated) return
+
+      const now = Date.now()
+      if (now - lastResumeReinitAt < RESUME_REINIT_DEBOUNCE_MS) {
+        return
+      }
+
+      lastResumeReinitAt = now
+      initialized = false
+      void init()
+    }
+
+    window.addEventListener('focus', revalidateAuthOnResume)
+    document.addEventListener('visibilitychange', revalidateAuthOnResume)
+
+    sessionResumeListenerCleanup = () => {
+      window.removeEventListener('focus', revalidateAuthOnResume)
+      document.removeEventListener('visibilitychange', revalidateAuthOnResume)
+    }
+  }
+
   function resetState() {
     state.value = {
       employee: null,
@@ -393,6 +446,7 @@ export function useAuth() {
 
       resetLogoutFlag()
       setupAuthListener()
+      setupSessionResumeListener()
       initialized = true
 
       return true

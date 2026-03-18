@@ -152,14 +152,14 @@
       align="left"
     >
       <q-tab
-        name="detail"
-        label="Chi tiết cuộn"
-        icon="view_list"
-      />
-      <q-tab
         name="summary"
         label="Tổng hợp theo cuộn"
         icon="summarize"
+      />
+      <q-tab
+        name="detail"
+        label="Chi tiết cuộn"
+        icon="view_list"
       />
     </q-tabs>
 
@@ -168,6 +168,19 @@
       animated
       keep-alive
     >
+      <!-- Summary View Panel -->
+      <q-tab-panel
+        name="summary"
+        class="q-pa-none"
+      >
+        <ConeSummaryTable
+          :rows="coneSummaryList"
+          :loading="coneSummaryLoading"
+          @refresh="handleSummaryRefresh"
+          @show-breakdown="handleShowBreakdown"
+        />
+      </q-tab-panel>
+
       <!-- Detail View Panel -->
       <q-tab-panel
         name="detail"
@@ -298,18 +311,6 @@
         </q-table>
       </q-tab-panel>
 
-      <!-- Summary View Panel -->
-      <q-tab-panel
-        name="summary"
-        class="q-pa-none"
-      >
-        <ConeSummaryTable
-          :rows="coneSummaryList"
-          :loading="coneSummaryLoading"
-          @refresh="handleSummaryRefresh"
-          @show-breakdown="handleShowBreakdown"
-        />
-      </q-tab-panel>
     </q-tab-panels>
 
     <!-- Stock Receipt Dialog -->
@@ -447,6 +448,9 @@
             required
             emit-value
             map-options
+            use-input
+            fill-input
+            hide-selected
             @update:model-value="onManualTexChange"
           />
         </div>
@@ -460,6 +464,9 @@
             required
             emit-value
             map-options
+            use-input
+            fill-input
+            hide-selected
           >
             <template #option="{ opt, itemProps }">
               <q-item v-bind="itemProps">
@@ -776,7 +783,7 @@ const {
 } = useConeSummary()
 
 // Local State
-const activeTab = ref<'detail' | 'summary'>('detail')
+const activeTab = ref<'detail' | 'summary'>('summary')
 const showBreakdownDialog = ref(false)
 const searchQuery = ref('')
 const filters = reactive({
@@ -1136,7 +1143,11 @@ const manualTexOptions = computed(() => {
   const texSet = new Map<string, string>()
   for (const tt of manualEntryThreadTypes.value) {
     if (tt.tex_number != null) {
-      texSet.set(tt.tex_number, tt.tex_label || `Tex ${tt.tex_number}`)
+      const texLabel = tt.tex_label?.trim()
+      texSet.set(
+        tt.tex_number,
+        texLabel ? `${tt.tex_number} - ${texLabel}` : `Tex ${tt.tex_number}`
+      )
     }
   }
   return Array.from(texSet.entries()).map(([value, label]) => ({ label, value }))
@@ -1283,6 +1294,10 @@ watch(() => filters.warehouse_id, async (newWarehouseId) => {
 onMounted(async () => {
   await Promise.all([
     fetchInventory(),
+    fetchConeSummary({
+      warehouse_id: filters.warehouse_id,
+      supplier_id: filters.supplier_id,
+    }),
     fetchThreadTypes(),
     fetchWarehouses(),
     fetchSuppliers()
