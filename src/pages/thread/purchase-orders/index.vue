@@ -58,9 +58,9 @@
       bordered
       :rows="purchaseOrders"
       :columns="columns"
-      :loading="loading"
+      :loading="isLoading"
       row-key="id"
-      :rows-per-page-options="[10, 25, 50]"
+      :rows-per-page-options="[10, 25, 50, 100]"
       class="po-table"
       @request="onRequest"
       @row-click="onRowClick"
@@ -145,14 +145,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { purchaseOrderService } from '@/services/purchaseOrderService'
+import { usePurchaseOrders } from '@/composables/thread/usePurchaseOrders'
 import POFormDialog from '@/components/thread/POFormDialog.vue'
 import SearchInput from '@/components/ui/inputs/SearchInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import { POStatus } from '@/types/thread/enums'
-import type { PurchaseOrder, PurchaseOrderFilter } from '@/types/thread'
+import type { PurchaseOrder } from '@/types/thread'
 
 definePage({
   meta: {
@@ -163,21 +163,26 @@ definePage({
 
 const router = useRouter()
 
-const purchaseOrders = ref<PurchaseOrder[]>([])
-const loading = ref(false)
+const {
+  purchaseOrders,
+  isLoading,
+  filters,
+  totalCount,
+  currentPage,
+  fetchPurchaseOrders,
+  handleTableRequest,
+} = usePurchaseOrders()
+
 const searchQuery = ref('')
 const showCreateDialog = ref(false)
 const selectedPO = ref<PurchaseOrder | null>(null)
 
-const filters = ref<PurchaseOrderFilter>({
-  status: undefined,
-  po_number: undefined
-})
-
 const pagination = ref({
   page: 1,
   rowsPerPage: 25,
-  rowsNumber: 0
+  sortBy: 'created_at',
+  descending: true,
+  rowsNumber: 0,
 })
 
 const statusOptions = [
@@ -246,31 +251,37 @@ function formatDate(date: string | null): string {
 }
 
 async function loadData() {
-  loading.value = true
-  try {
-    const filterParams: PurchaseOrderFilter = {
-      ...filters.value,
-      po_number: searchQuery.value || undefined
-    }
-    purchaseOrders.value = await purchaseOrderService.getAll(filterParams)
-  } finally {
-    loading.value = false
-  }
+  await fetchPurchaseOrders({
+    po_number: searchQuery.value || undefined
+  })
 }
 
 function handleSearch() {
   pagination.value.page = 1
+  currentPage.value = 1
   loadData()
 }
 
 function handleFilterChange() {
   pagination.value.page = 1
+  currentPage.value = 1
   loadData()
 }
 
-function onRequest() {
-  loadData()
+function onRequest(props: {
+  pagination: { page: number; rowsPerPage: number; sortBy: string; descending: boolean }
+}) {
+  pagination.value.page = props.pagination.page
+  pagination.value.rowsPerPage = props.pagination.rowsPerPage
+  pagination.value.sortBy = props.pagination.sortBy
+  pagination.value.descending = props.pagination.descending
+
+  handleTableRequest(props)
 }
+
+watch(totalCount, (newCount) => {
+  pagination.value.rowsNumber = newCount
+})
 
 function onRowClick(_evt: Event, row: PurchaseOrder) {
   router.push(`/thread/purchase-orders/${row.id}`)
