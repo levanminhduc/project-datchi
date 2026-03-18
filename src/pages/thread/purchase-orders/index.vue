@@ -17,6 +17,22 @@
             />
           </div>
 
+          <div class="col-12 col-sm-4 col-md-2">
+            <AppSelect
+              v-model="filters.customer_name"
+              :options="customerOptions"
+              label="Khách hàng"
+              dense
+              clearable
+              emit-value
+              map-options
+              use-input
+              :input-debounce="300"
+              @filter="filterCustomerOptions"
+              @update:model-value="handleFilterChange"
+            />
+          </div>
+
           <div class="col-12 col-sm-3 col-md-2">
             <AppSelect
               v-model="filters.status"
@@ -151,6 +167,7 @@ import { usePurchaseOrders } from '@/composables/thread/usePurchaseOrders'
 import POFormDialog from '@/components/thread/POFormDialog.vue'
 import SearchInput from '@/components/ui/inputs/SearchInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
+import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { POStatus } from '@/types/thread/enums'
 import type { PurchaseOrder } from '@/types/thread'
 
@@ -176,6 +193,30 @@ const {
 const searchQuery = ref('')
 const showCreateDialog = ref(false)
 const selectedPO = ref<PurchaseOrder | null>(null)
+
+const allCustomerOptions = ref<{ label: string; value: string }[]>([])
+const customerOptions = ref<{ label: string; value: string }[]>([])
+
+async function loadCustomers() {
+  try {
+    const names = await purchaseOrderService.getCustomers()
+    const opts = names.map(name => ({ label: name, value: name }))
+    allCustomerOptions.value = opts
+    customerOptions.value = opts
+  } catch {
+    allCustomerOptions.value = []
+    customerOptions.value = []
+  }
+}
+
+function filterCustomerOptions(val: string, update: (fn: () => void) => void) {
+  update(() => {
+    const needle = val.toLowerCase()
+    customerOptions.value = allCustomerOptions.value.filter(
+      opt => opt.label.toLowerCase().includes(needle)
+    )
+  })
+}
 
 const pagination = ref({
   page: 1,
@@ -303,6 +344,7 @@ function onPOSaved() {
 }
 
 onMounted(() => {
+  loadCustomers()
   loadData()
 })
 </script>

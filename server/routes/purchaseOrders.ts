@@ -45,8 +45,7 @@ purchaseOrders.get('/', requirePermission('thread.purchase-orders.view'), async 
       dbQuery = dbQuery.eq('priority', query.priority)
     }
     if (query.customer_name) {
-      const s = sanitizeFilterValue(query.customer_name)
-      dbQuery = dbQuery.ilike('customer_name', `%${s}%`)
+      dbQuery = dbQuery.eq('customer_name', query.customer_name)
     }
     if (query.po_number) {
       const s = sanitizeFilterValue(query.po_number)
@@ -60,6 +59,26 @@ purchaseOrders.get('/', requirePermission('thread.purchase-orders.view'), async 
     return c.json({ data, count: count ?? 0, page, pageSize, error: null })
   } catch (err) {
     console.error('Error fetching purchase orders:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+purchaseOrders.get('/customers', requirePermission('thread.purchase-orders.view'), async (c) => {
+  try {
+    const { data, error } = await supabase
+      .from('purchase_orders')
+      .select('customer_name')
+      .is('deleted_at', null)
+      .not('customer_name', 'is', null)
+      .order('customer_name', { ascending: true })
+
+    if (error) throw error
+
+    const uniqueNames = [...new Set((data || []).map(r => r.customer_name as string))]
+
+    return c.json({ data: uniqueNames, error: null })
+  } catch (err) {
+    console.error('Error fetching customer names:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

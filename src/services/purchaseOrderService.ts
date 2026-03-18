@@ -100,6 +100,16 @@ export const purchaseOrderService = {
     }
   },
 
+  async getCustomers(): Promise<string[]> {
+    const response = await fetchApi<ApiResponse<string[]>>(`${BASE}/customers`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
+  },
+
   /**
    * Lấy thông tin đơn hàng theo ID
    * @param id - Purchase order ID
