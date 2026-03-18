@@ -148,7 +148,7 @@
                   >
                     <q-select
                       v-model="scope.value"
-                      :options="getColorOptionsForSpec(props.row.spec)"
+                      :options="getFilteredColorOptions(props.row.spec)"
                       option-value="value"
                       option-label="label"
                       emit-value
@@ -156,8 +156,12 @@
                       dense
                       autofocus
                       clearable
+                      use-input
+                      fill-input
+                      hide-selected
                       label="Chọn màu chỉ"
                       style="min-width: 250px"
+                      @filter="(val, update) => filterColorOptions(val, update, props.row.spec)"
                     />
                   </q-popup-edit>
                 </template>
@@ -422,6 +426,23 @@ const getColorOptionsForSpec = (spec: StyleThreadSpec): { label: string; value: 
     label: c.name,
     value: c.id,
   }))
+}
+
+const filteredColorOptionsMap = ref<Record<number, { label: string; value: number }[]>>({})
+const getFilteredColorOptions = (spec: StyleThreadSpec): { label: string; value: number }[] => {
+  if (!spec.supplier_id) return []
+  return filteredColorOptionsMap.value[spec.supplier_id] ?? getColorOptionsForSpec(spec)
+}
+const filterColorOptions = (val: string, update: (fn: () => void) => void, spec: StyleThreadSpec) => {
+  update(() => {
+    const allOptions = getColorOptionsForSpec(spec)
+    if (!val) {
+      filteredColorOptionsMap.value[spec.supplier_id] = allOptions
+      return
+    }
+    const needle = val.toLowerCase()
+    filteredColorOptionsMap.value[spec.supplier_id] = allOptions.filter(o => o.label.toLowerCase().includes(needle))
+  })
 }
 
 // Computed: unique color IDs that have data in colorSpecs or were manually added

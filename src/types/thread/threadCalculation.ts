@@ -21,6 +21,8 @@ export interface CalculationResult {
 
 export interface CalculationItem {
   spec_id: number
+  thread_type_id: number
+  thread_type_name: string
   process_name: string
   supplier_name: string
   tex_number: string

@@ -193,11 +193,18 @@
                       label-cancel="Hủy"
                       @save="(val: string, initialVal: string) => handleInlineEdit(props.row.id, 'process_name', val, initialVal)"
                     >
-                      <q-input
+                      <q-select
                         v-model="scope.value"
+                        :options="filteredProcessOptions"
                         dense
                         autofocus
+                        use-input
+                        fill-input
+                        hide-selected
+                        new-value-mode="add-unique"
                         label="Tên công đoạn"
+                        style="min-width: 200px"
+                        @filter="filterProcessOptions"
                         @keyup.enter="scope.set"
                       />
                     </q-popup-edit>
@@ -278,17 +285,21 @@
                     >
                       <q-select
                         v-model="scope.value"
-                        :options="getTexOptionsForRow(props.row)"
+                        :options="getFilteredTexOptions(props.row)"
                         option-value="value"
                         option-label="label"
                         emit-value
                         map-options
                         dense
                         autofocus
+                        use-input
+                        fill-input
+                        hide-selected
                         label="Tex"
-                        style="min-width: 150px"
+                        style="min-width: 200px"
                         :disable="!props.row.supplier_id"
                         :hint="!props.row.supplier_id ? 'Chọn NCC trước' : ''"
+                        @filter="(val, update) => filterTexOptions(val, update, props.row)"
                       />
                     </q-popup-edit>
                   </template>
@@ -551,6 +562,39 @@ const getTexOptionsForRow = (row: StyleThreadSpec): { label: string; value: numb
     return []
   }
   return texOptionsCache.value[row.supplier_id] ?? []
+}
+
+const processNameOptions = computed(() => {
+  const names = styleThreadSpecs.value.map(s => s.process_name).filter(Boolean)
+  return [...new Set(names)]
+})
+const filteredProcessOptions = ref<string[]>([])
+const filterProcessOptions = (val: string, update: (fn: () => void) => void) => {
+  update(() => {
+    if (!val) {
+      filteredProcessOptions.value = processNameOptions.value
+      return
+    }
+    const needle = val.toLowerCase()
+    filteredProcessOptions.value = processNameOptions.value.filter(n => n.toLowerCase().includes(needle))
+  })
+}
+
+const filteredTexOptionsMap = ref<Record<number, { label: string; value: number }[]>>({})
+const getFilteredTexOptions = (row: StyleThreadSpec): { label: string; value: number }[] => {
+  if (!row.supplier_id) return []
+  return filteredTexOptionsMap.value[row.supplier_id] ?? getTexOptionsForRow(row)
+}
+const filterTexOptions = (val: string, update: (fn: () => void) => void, row: StyleThreadSpec) => {
+  update(() => {
+    const allOptions = getTexOptionsForRow(row)
+    if (!val) {
+      filteredTexOptionsMap.value[row.supplier_id] = allOptions
+      return
+    }
+    const needle = val.toLowerCase()
+    filteredTexOptionsMap.value[row.supplier_id] = allOptions.filter(o => o.label.toLowerCase().includes(needle))
+  })
 }
 const isSaving = ref(false)
 

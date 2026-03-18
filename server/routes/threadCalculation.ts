@@ -109,6 +109,8 @@ interface CalculationResult {
   total_quantity: number
   calculations: {
     spec_id: number
+    thread_type_id: number
+    thread_type_name: string
     process_name: string
     supplier_name: string
     tex_number: string
@@ -235,35 +237,30 @@ async function getAvailableInventory(threadTypeIds: number[]): Promise<Map<numbe
  * Modifies results in-place to add inventory preview fields
  */
 async function applyInventoryPreview(results: CalculationResult[]): Promise<void> {
-  // Collect all thread_type_ids from color_breakdown (skip null/undefined)
   const threadTypeIds = new Set<number>()
   for (const result of results) {
     for (const calc of result.calculations) {
-      if (calc.color_breakdown) {
+      if (calc.color_breakdown && calc.color_breakdown.length > 0) {
         for (const cb of calc.color_breakdown) {
-          if (cb.thread_type_id) {
-            threadTypeIds.add(cb.thread_type_id)
-          }
+          if (cb.thread_type_id) threadTypeIds.add(cb.thread_type_id)
         }
+      } else {
+        if (calc.thread_type_id) threadTypeIds.add(calc.thread_type_id)
       }
     }
   }
 
   if (threadTypeIds.size === 0) return
 
-  // Get available inventory
   const inventoryMap = await getAvailableInventory([...threadTypeIds])
 
-  // Track running balance per thread_type_id
   const runningBalance = new Map<number, number>()
   for (const [threadTypeId, available] of inventoryMap) {
     runningBalance.set(threadTypeId, available)
   }
 
-  // Process each calculation in order (position determines priority)
   for (const result of results) {
     for (const calc of result.calculations) {
-      // Calculate total needed cones for this calculation
       const metersPerCone = calc.meters_per_cone || 0
       const totalCones = metersPerCone > 0 ? Math.ceil(calc.total_meters / metersPerCone) : 0
 
@@ -274,30 +271,35 @@ async function applyInventoryPreview(results: CalculationResult[]): Promise<void
         continue
       }
 
-      // Get the primary thread_type_id for this calculation
-      // If color_breakdown exists, aggregate inventory across all thread types
-      let totalAvailable = 0
-      const threadTypesUsed: number[] = []
-
       if (calc.color_breakdown && calc.color_breakdown.length > 0) {
-        // For each color, check its thread type's inventory
+        // Group color_breakdown entries by thread_type_id to compute per-type cone needs
+        const neededByType = new Map<number, number>()
         for (const cb of calc.color_breakdown) {
           if (!cb.thread_type_id) continue
-          const cbNeededCones = metersPerCone > 0 ? Math.ceil(cb.total_meters / metersPerCone) : 0
-          const available = runningBalance.get(cb.thread_type_id) || 0
-          const allocated = Math.min(cbNeededCones, available)
-          totalAvailable += allocated
-          // Decrement running balance
-          runningBalance.set(cb.thread_type_id, available - allocated)
-          if (!threadTypesUsed.includes(cb.thread_type_id)) {
-            threadTypesUsed.push(cb.thread_type_id)
-          }
+          const mpc = cb.meters_per_cone ?? metersPerCone
+          const cbCones = mpc > 0 ? Math.ceil(cb.total_meters / mpc) : 0
+          neededByType.set(cb.thread_type_id, (neededByType.get(cb.thread_type_id) || 0) + cbCones)
         }
-      }
 
-      calc.inventory_available = totalAvailable
-      calc.shortage_cones = Math.max(0, totalCones - totalAvailable)
-      calc.is_fully_stocked = calc.shortage_cones === 0
+        let totalAvailable = 0
+        for (const [ttId, needed] of neededByType) {
+          const available = runningBalance.get(ttId) || 0
+          const allocated = Math.min(needed, available)
+          totalAvailable += allocated
+          runningBalance.set(ttId, available - allocated)
+        }
+
+        calc.inventory_available = totalAvailable
+        calc.shortage_cones = Math.max(0, totalCones - totalAvailable)
+        calc.is_fully_stocked = calc.shortage_cones === 0
+      } else {
+        const available = runningBalance.get(calc.thread_type_id) || 0
+        const allocated = Math.min(totalCones, available)
+        calc.inventory_available = allocated
+        calc.shortage_cones = Math.max(0, totalCones - allocated)
+        calc.is_fully_stocked = calc.shortage_cones === 0
+        runningBalance.set(calc.thread_type_id, available - allocated)
+      }
     }
   }
 }
@@ -316,6 +318,8 @@ function buildCalculation(
 
   const baseCalculation: CalculationResult['calculations'][number] = {
     spec_id: spec.id,
+    thread_type_id: spec.thread_type_id,
+    thread_type_name: spec.thread_types?.name || '',
     process_name: spec.process_name,
     supplier_name: spec.suppliers?.name || '',
     tex_number: spec.thread_types?.tex_label || spec.thread_types?.tex_number || '',

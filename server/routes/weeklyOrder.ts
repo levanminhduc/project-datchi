@@ -221,24 +221,20 @@ weeklyOrder.post('/enrich-inventory', requirePermission('thread.allocations.mana
 
     const partialConeRatio = await getPartialConeRatio()
 
-    // Query available inventory (exclude reserved cones)
-    const { data: inventory, error: invError } = await supabase
-      .from('thread_inventory')
-      .select('thread_type_id, is_partial')
-      .eq('status', 'AVAILABLE')
-      .is('reserved_week_id', null)
-      .in('thread_type_id', threadTypeIds)
+    // Query inventory counts grouped by thread_type_id and is_partial (avoids Supabase 1000-row default limit)
+    const { data: inventoryCounts, error: invError } = await supabase.rpc('fn_count_available_cones', {
+      p_thread_type_ids: threadTypeIds,
+    })
 
     if (invError) throw invError
 
-    // Task 2.2: Track full and partial cones separately
     const fullMap = new Map<number, number>()
     const partialMap = new Map<number, number>()
-    for (const row of inventory || []) {
+    for (const row of inventoryCounts || []) {
       if (row.is_partial) {
-        partialMap.set(row.thread_type_id, (partialMap.get(row.thread_type_id) || 0) + 1)
+        partialMap.set(row.thread_type_id, row.cone_count)
       } else {
-        fullMap.set(row.thread_type_id, (fullMap.get(row.thread_type_id) || 0) + 1)
+        fullMap.set(row.thread_type_id, row.cone_count)
       }
     }
 

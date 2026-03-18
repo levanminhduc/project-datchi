@@ -305,8 +305,10 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
     }
 
     const threadTypeIds = [...new Set(summaryData.map(r => r.thread_type_id))]
+    const supplierIds = [...new Set(summaryData.map(r => r.supplier_id).filter(Boolean))] as number[]
     const priceMap = new Map<number, number>()
     const texMap = new Map<number, { tex_number: string | null; tex_label: string | null }>()
+    const supplierNameMap = new Map<number, string>()
 
     if (threadTypeIds.length > 0) {
       const { data: threadTypes, error: threadTypesError } = await supabase
@@ -327,6 +329,16 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
           tex_number: threadType.tex_number != null ? String(threadType.tex_number) : null,
           tex_label: threadType.tex_label ?? null,
         })
+      }
+
+      if (supplierIds.length > 0) {
+        const { data: suppliers } = await supabase
+          .from('suppliers')
+          .select('id, name')
+          .in('id', supplierIds)
+        for (const s of suppliers || []) {
+          supplierNameMap.set(s.id, s.name)
+        }
       }
 
       const { data: prices } = await supabase
@@ -366,6 +378,7 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       thread_type_id: row.thread_type_id,
       thread_code: row.thread_code,
       thread_name: row.thread_name,
+      supplier_name: row.supplier_id ? (supplierNameMap.get(row.supplier_id) ?? null) : null,
       color_id: row.color_id ?? null,
       color_data: row.color_name ? { name: row.color_name, hex_code: row.color_hex } : null,
       material: row.material as ConeSummaryRow['material'],

@@ -287,7 +287,7 @@ export function useWeeklyOrderCalculation() {
         if (calc.color_breakdown && calc.color_breakdown.length > 0) continue
         if (specsWithColorBreakdown.has(calc.spec_id)) continue
 
-        const key = calc.spec_id
+        const key = calc.thread_type_id
         const existing = map.get(key)
 
         if (existing) {
@@ -295,7 +295,7 @@ export function useWeeklyOrderCalculation() {
         } else {
           map.set(key, {
             thread_type_id: key,
-            thread_type_name: calc.process_name,
+            thread_type_name: calc.thread_type_name,
             supplier_name: calc.supplier_name,
             tex_number: calc.tex_number,
             total_meters: calc.total_meters,

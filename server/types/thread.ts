@@ -347,6 +347,7 @@ export interface ConeSummaryRow {
   thread_type_id: number
   thread_code: string
   thread_name: string
+  supplier_name: string | null
   color_id: number | null
   color_data: { name: string; hex_code: string | null } | null
   material: ThreadMaterial

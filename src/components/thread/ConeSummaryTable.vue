@@ -165,7 +165,7 @@
     <template #bottom-row>
       <q-tr class="bg-grey-2 text-weight-bold">
         <q-td
-          colspan="4"
+          colspan="3"
           class="text-right"
         >
           Tổng cộng:
@@ -197,7 +197,7 @@
         class="bg-blue-1 text-weight-bold"
       >
         <q-td
-          colspan="9"
+          colspan="8"
           class="text-right text-subtitle2"
         >
           <q-icon
@@ -253,26 +253,21 @@ const emit = defineEmits<{
 const filter = ref('')
 const getTexDisplay = (row: ConeSummaryRow): string => row.tex_label || row.tex_number || '-'
 
+const getDisplayName = (row: ConeSummaryRow): string => {
+  const parts = [
+    row.supplier_name || null,
+    getTexDisplay(row) !== '-' ? `TEX ${getTexDisplay(row)}` : null,
+    row.color_data?.name || null,
+  ].filter(Boolean)
+  return parts.join(' - ')
+}
+
 // Columns definition
 const columns: QTableColumn[] = [
   {
-    name: 'thread_code',
-    label: 'Mã chỉ',
-    field: 'thread_code',
-    align: 'left',
-    sortable: true,
-  },
-  {
     name: 'thread_name',
     label: 'Tên chỉ',
-    field: 'thread_name',
-    align: 'left',
-    sortable: true,
-  },
-  {
-    name: 'color',
-    label: 'Màu',
-    field: (row: any) => row.color_data?.name || '-',
+    field: (row: ConeSummaryRow) => getDisplayName(row),
     align: 'left',
     sortable: true,
   },
@@ -281,6 +276,13 @@ const columns: QTableColumn[] = [
     label: 'Tex',
     field: (row: ConeSummaryRow) => getTexDisplay(row),
     align: 'center',
+    sortable: true,
+  },
+  {
+    name: 'color',
+    label: 'Màu',
+    field: (row: any) => row.color_data?.name || '-',
+    align: 'left',
     sortable: true,
   },
   {
