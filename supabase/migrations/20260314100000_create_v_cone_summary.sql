@@ -1,5 +1,3 @@
-BEGIN;
-
 -- View: Tổng hợp tồn kho theo loại chỉ (pre-aggregated)
 CREATE OR REPLACE VIEW v_cone_summary AS
 SELECT
@@ -34,6 +32,7 @@ CREATE INDEX IF NOT EXISTS idx_thread_inventory_pagination
 ON thread_inventory(received_date DESC, thread_type_id, warehouse_id, status);
 
 -- RPC: Tổng hợp tồn kho với filter warehouse/supplier (lot-based)
+DROP FUNCTION IF EXISTS fn_cone_summary_filtered;
 CREATE OR REPLACE FUNCTION fn_cone_summary_filtered(
   p_statuses cone_status[],
   p_warehouse_id INTEGER DEFAULT NULL,
@@ -48,7 +47,7 @@ RETURNS TABLE (
   color_name VARCHAR,
   color_hex VARCHAR,
   material thread_material,
-  tex_number NUMERIC,
+  tex_number VARCHAR,
   meters_per_cone NUMERIC,
   supplier_id INTEGER,
   full_cones BIGINT,
@@ -91,5 +90,3 @@ $$;
 COMMENT ON FUNCTION fn_cone_summary_filtered IS 'Tổng hợp tồn kho có filter warehouse/supplier (lot-based)';
 
 NOTIFY pgrst, 'reload schema';
-
-COMMIT;

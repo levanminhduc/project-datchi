@@ -4,7 +4,7 @@ RETURNS TABLE(
   code VARCHAR,
   name VARCHAR,
   tex_label TEXT,
-  tex_number NUMERIC
+  tex_number VARCHAR
 ) LANGUAGE sql STABLE AS $$
   SELECT DISTINCT ON (t.tex_number)
     t.id, t.code, t.name, t.tex_label, t.tex_number

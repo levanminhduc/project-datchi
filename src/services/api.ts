@@ -135,14 +135,15 @@ export async function clearAuthSessionLocal(): Promise<void> {
 export async function fetchApiRaw(
   endpointOrUrl: string,
   options: RequestOptions = {},
-  config: { includeJsonContentType?: boolean } = {}
+  config: { includeJsonContentType?: boolean; timeout?: number } = {}
 ): Promise<Response> {
   const url = resolveRequestUrl(endpointOrUrl)
   const includeJsonContentType = config.includeJsonContentType ?? false
+  const timeoutMs = config.timeout ?? REQUEST_TIMEOUT_MS
 
   const makeRequest = async (token?: string): Promise<Response> => {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
       const headers = buildRequestHeaders(
@@ -194,10 +195,12 @@ export async function fetchApiRaw(
 
 export async function fetchApi<T>(
   endpoint: string,
-  options: RequestOptions = {}
+  options: RequestOptions = {},
+  config?: { timeout?: number }
 ): Promise<T> {
   const response = await fetchApiRaw(endpoint, options, {
     includeJsonContentType: true,
+    timeout: config?.timeout,
   })
 
   let payload: unknown = null

@@ -14,7 +14,11 @@
     "e2e:ui": "npx playwright test --ui",
     "e2e:headed": "npx playwright test --headed",
     "server": "npx tsx server/index.ts",
-    "dev:all": "concurrently \"npm run dev\" \"npm run server\""
+    "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
+    "db:backup": "bash scripts/db-backup.sh",
+    "db:restore": "bash scripts/db-restore.sh",
+    "db:volume-backup": "bash scripts/db-volume-backup.sh",
+    "db:seed": "psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/seed/master-data-seed.sql"
   },
   "dependencies": {
     "@fontsource/roboto": "5.2.7",

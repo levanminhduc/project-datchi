@@ -1073,7 +1073,6 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
 
       if (!poNumber) errors.push('Thiếu số PO')
       if (!styleCode) errors.push('Thiếu mã hàng')
-      if (quantity <= 0) errors.push('Số lượng phải lớn hơn 0')
       if (finishedProductCode && finishedProductCode.length > 100) errors.push('Mã TP KT tối đa 100 ký tự')
       if (poKey && (poCustomerValues.get(poKey)?.size || 0) > 1) errors.push('PO có nhiều khách hàng khác nhau trong cùng file')
       if (poKey && (poWeekValues.get(poKey)?.size || 0) > 1) errors.push('PO có nhiều week khác nhau trong cùng file')

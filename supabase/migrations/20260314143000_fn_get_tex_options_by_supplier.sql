@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION fn_get_tex_options_by_supplier(p_supplier_id INTEGER)
-RETURNS TABLE(id INTEGER, tex_number NUMERIC, tex_label VARCHAR) AS $$
+RETURNS TABLE(id INTEGER, tex_number VARCHAR, tex_label VARCHAR) AS $$
 BEGIN
   RETURN QUERY
   SELECT DISTINCT ON (tt.tex_number)

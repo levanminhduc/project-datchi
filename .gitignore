@@ -14,6 +14,9 @@ node_modules
 # Docker
 docker/volumes/db/
 
+# Database backups
+backups/
+
 # Log files
 npm-debug.log*
 yarn-debug.log*

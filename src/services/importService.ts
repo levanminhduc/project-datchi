@@ -194,7 +194,7 @@ export const importService = {
     const response = await fetchApi<ApiResponse<POImportPreview>>('/api/import/po-items/parse', {
       method: 'POST',
       body: JSON.stringify({ rows }),
-    })
+    }, { timeout: 60_000 })
     if (response.error) throw new Error(response.error)
     if (!response.data) throw new Error('Không nhận được dữ liệu preview')
     return response.data
@@ -204,7 +204,7 @@ export const importService = {
     const response = await fetchApi<ApiResponse<POImportResult>>('/api/import/po-items/execute', {
       method: 'POST',
       body: JSON.stringify({ rows: validRows }),
-    })
+    }, { timeout: 120_000 })
 
     if (response.error) throw new Error(response.error)
     if (!response.data) throw new Error('Không nhận được kết quả import')
