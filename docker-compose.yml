@@ -37,7 +37,7 @@ services:
     environment:
       PORT: 3000
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
-      NEXT_PUBLIC_SUPABASE_URL: http://host.docker.internal:55421
+      NEXT_PUBLIC_SUPABASE_URL: http://host.docker.internal:54321
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       SUPABASE_JWT_SECRET: ${JWT_SECRET}

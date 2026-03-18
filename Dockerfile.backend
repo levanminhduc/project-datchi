@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+    npm ci --legacy-peer-deps
 
 COPY tsconfig.json tsconfig.node.json tsconfig.server.json ./
 COPY server/ ./server/
@@ -32,7 +32,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev
+    npm ci --omit=dev --legacy-peer-deps
 
 # ============================================
 # Stage 3: Runtime minimal
