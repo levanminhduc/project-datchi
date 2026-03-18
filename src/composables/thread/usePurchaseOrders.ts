@@ -1,9 +1,3 @@
-/**
- * Purchase Orders Composable
- *
- * Provides reactive state and operations for purchase order management.
- */
-
 import { ref, computed } from 'vue'
 import { purchaseOrderService } from '@/services'
 import { useSnackbar } from '../useSnackbar'
@@ -17,31 +11,27 @@ import type {
 } from '@/types/thread'
 
 export function usePurchaseOrders() {
-  // State
   const purchaseOrders = ref<PurchaseOrder[]>([])
   const error = ref<string | null>(null)
   const filters = ref<PurchaseOrderFilter>({})
   const selectedPurchaseOrder = ref<PurchaseOrder | null>(null)
 
-  // Composables
+  const currentPage = ref(1)
+  const pageSize = ref(25)
+  const sortBy = ref('created_at')
+  const descending = ref(true)
+  const totalCount = ref(0)
+
   const snackbar = useSnackbar()
   const loading = useLoading()
 
-  // Computed
   const isLoading = computed(() => loading.isLoading.value)
   const purchaseOrderCount = computed(() => purchaseOrders.value.length)
 
-  /**
-   * Clear error state
-   */
   const clearError = () => {
     error.value = null
   }
 
-  /**
-   * Fetch all purchase orders from API
-   * @param newFilters - Optional filters to apply
-   */
   const fetchPurchaseOrders = async (newFilters?: PurchaseOrderFilter): Promise<void> => {
     clearError()
 
@@ -50,11 +40,21 @@ export function usePurchaseOrders() {
     }
 
     try {
-      const data = await loading.withLoading(async () => {
-        return await purchaseOrderService.getAll(filters.value)
+      const result = await loading.withLoading(async () => {
+        return await purchaseOrderService.getPaginated({
+          page: currentPage.value,
+          pageSize: pageSize.value,
+          sortBy: sortBy.value,
+          descending: descending.value,
+          status: filters.value.status,
+          priority: filters.value.priority,
+          customer_name: filters.value.customer_name,
+          po_number: filters.value.po_number,
+        })
       })
 
-      purchaseOrders.value = data
+      purchaseOrders.value = result.data
+      totalCount.value = result.count
     } catch (err) {
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
@@ -63,10 +63,17 @@ export function usePurchaseOrders() {
     }
   }
 
-  /**
-   * Fetch a single purchase order by ID
-   * @param id - Purchase order ID
-   */
+  const handleTableRequest = async (props: {
+    pagination: { page: number; rowsPerPage: number; sortBy: string; descending: boolean }
+  }): Promise<void> => {
+    const { page, rowsPerPage, sortBy: sort, descending: desc } = props.pagination
+    currentPage.value = page
+    pageSize.value = rowsPerPage
+    sortBy.value = sort || 'created_at'
+    descending.value = desc
+    await fetchPurchaseOrders()
+  }
+
   const fetchPurchaseOrderById = async (id: number): Promise<void> => {
     clearError()
 
@@ -84,10 +91,6 @@ export function usePurchaseOrders() {
     }
   }
 
-  /**
-   * Create a new purchase order
-   * @param data - Purchase order creation data
-   */
   const createPurchaseOrder = async (data: CreatePurchaseOrderDTO): Promise<PurchaseOrder | null> => {
     clearError()
     try {
@@ -107,11 +110,6 @@ export function usePurchaseOrders() {
     }
   }
 
-  /**
-   * Update a purchase order
-   * @param id - Purchase order ID
-   * @param data - Purchase order update data
-   */
   const updatePurchaseOrder = async (id: number, data: UpdatePurchaseOrderDTO): Promise<PurchaseOrder | null> => {
     clearError()
     try {
@@ -131,10 +129,6 @@ export function usePurchaseOrders() {
     }
   }
 
-  /**
-   * Delete a purchase order
-   * @param id - Purchase order ID
-   */
   const deletePurchaseOrder = async (id: number): Promise<boolean> => {
     clearError()
     try {
@@ -155,20 +149,21 @@ export function usePurchaseOrders() {
   }
 
   return {
-    // State
     purchaseOrders,
     error,
     filters,
     selectedPurchaseOrder,
-    // Computed
+    currentPage,
+    pageSize,
+    totalCount,
     isLoading,
     purchaseOrderCount,
-    // Actions
     clearError,
     fetchPurchaseOrders,
     fetchPurchaseOrderById,
     createPurchaseOrder,
     updatePurchaseOrder,
     deletePurchaseOrder,
+    handleTableRequest,
   }
 }
