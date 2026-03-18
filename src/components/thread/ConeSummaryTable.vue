@@ -251,6 +251,7 @@ const emit = defineEmits<{
 
 // Local state
 const filter = ref('')
+const getTexDisplay = (row: ConeSummaryRow): string => row.tex_label || row.tex_number || '-'
 
 // Columns definition
 const columns: QTableColumn[] = [
@@ -278,10 +279,9 @@ const columns: QTableColumn[] = [
   {
     name: 'tex_number',
     label: 'Tex',
-    field: 'tex_number',
+    field: (row: ConeSummaryRow) => getTexDisplay(row),
     align: 'center',
     sortable: true,
-    format: (val) => (val ? String(val) : '-'),
   },
   {
     name: 'full_cones',

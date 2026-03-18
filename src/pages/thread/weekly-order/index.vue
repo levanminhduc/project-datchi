@@ -344,7 +344,7 @@ const {
 const {
   purchaseOrders: poList,
   isLoading: posLoading,
-  fetchPurchaseOrders,
+  fetchAllPurchaseOrders,
 } = usePurchaseOrders()
 
 // Local state
@@ -715,6 +715,6 @@ const handleExport = async () => {
 
 // Lifecycle
 onMounted(async () => {
-  await Promise.all([fetchPurchaseOrders(), fetchWeeks()])
+  await Promise.all([fetchAllPurchaseOrders(), fetchWeeks()])
 })
 </script>

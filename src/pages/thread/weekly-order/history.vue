@@ -368,7 +368,7 @@ const snackbar = useSnackbar();
 const {
   purchaseOrders: poList,
   isLoading: posLoading,
-  fetchPurchaseOrders,
+  fetchAllPurchaseOrders,
 } = usePurchaseOrders();
 const { styles: styleList, isLoading: stylesLoading, fetchStyles } = useStyles();
 
@@ -625,7 +625,7 @@ async function handleExportXlsx() {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchPurchaseOrders(), fetchStyles(), fetchHistory()]);
+  await Promise.all([fetchAllPurchaseOrders(), fetchStyles(), fetchHistory()]);
 });
 </script>
 

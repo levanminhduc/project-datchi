@@ -15,8 +15,8 @@
             <template v-if="threadType?.color_data?.name">
               • {{ threadType.color_data.name }}
             </template>
-            <template v-if="threadType?.tex_number">
-              • Tex {{ threadType.tex_number }}
+            <template v-if="threadType?.tex_label || threadType?.tex_number">
+              • {{ threadType?.tex_label || threadType?.tex_number }}
             </template>
           </div>
         </div>

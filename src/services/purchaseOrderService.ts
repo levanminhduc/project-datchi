@@ -54,14 +54,29 @@ export const purchaseOrderService = {
    * @returns Array of purchase orders
    */
   async getAll(filters?: PurchaseOrderFilter): Promise<PurchaseOrder[]> {
-    const queryString = buildQueryString(filters)
-    const response = await fetchApi<ApiResponse<PurchaseOrder[]>>(`${BASE}${queryString}`)
+    const pageSize = 100
+    const allPurchaseOrders: PurchaseOrder[] = []
+    let page = 1
+    let totalCount = 0
 
-    if (response.error) {
-      throw new Error(response.error)
-    }
+    do {
+      const result = await this.getPaginated({
+        page,
+        pageSize,
+        sortBy: 'created_at',
+        descending: true,
+        status: filters?.status,
+        priority: filters?.priority,
+        customer_name: filters?.customer_name,
+        po_number: filters?.po_number,
+      })
 
-    return response.data || []
+      allPurchaseOrders.push(...result.data)
+      totalCount = result.count
+      page += 1
+    } while (allPurchaseOrders.length < totalCount)
+
+    return allPurchaseOrders
   },
 
   async getPaginated(params: {

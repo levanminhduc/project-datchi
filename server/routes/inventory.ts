@@ -245,7 +245,7 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       color_name: string | null
       color_hex: string | null
       material: string
-      tex_number: number | null
+      tex_number: string | number | null
       meters_per_cone: number | null
       supplier_id: number | null
       full_cones: number
@@ -305,8 +305,29 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
 
     const threadTypeIds = [...new Set(summaryData.map(r => r.thread_type_id))]
     const priceMap = new Map<number, number>()
+    const texMap = new Map<number, { tex_number: string | null; tex_label: string | null }>()
 
     if (threadTypeIds.length > 0) {
+      const { data: threadTypes, error: threadTypesError } = await supabase
+        .from('thread_types')
+        .select('id, tex_number, tex_label')
+        .in('id', threadTypeIds)
+
+      if (threadTypesError) {
+        console.error('Thread type tex lookup error:', threadTypesError)
+        return c.json<ThreadApiResponse<null>>({
+          data: null,
+          error: 'Lỗi khi tải thông tin Tex'
+        }, 500)
+      }
+
+      for (const threadType of threadTypes || []) {
+        texMap.set(threadType.id, {
+          tex_number: threadType.tex_number != null ? String(threadType.tex_number) : null,
+          tex_label: threadType.tex_label ?? null,
+        })
+      }
+
       const { data: prices } = await supabase
         .from('thread_type_supplier')
         .select('thread_type_id, supplier_id, unit_price')
@@ -329,20 +350,33 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       }
     }
 
-    const mapped: ConeSummaryRow[] = summaryData.map(row => ({
+    const getSummaryTex = (threadTypeId: number, fallback: string | number | null) => {
+      const tex = texMap.get(threadTypeId)
+      const texNumber = tex?.tex_number ?? (fallback != null ? String(fallback) : null)
+      const texLabel = tex?.tex_label ?? texNumber
+
+      return { texNumber, texLabel }
+    }
+
+    const mapped: ConeSummaryRow[] = summaryData.map((row) => {
+      const { texNumber, texLabel } = getSummaryTex(row.thread_type_id, row.tex_number)
+
+      return {
       thread_type_id: row.thread_type_id,
       thread_code: row.thread_code,
       thread_name: row.thread_name,
       color_data: row.color_name ? { name: row.color_name, hex_code: row.color_hex } : null,
       material: row.material as ConeSummaryRow['material'],
-      tex_number: row.tex_number,
+      tex_number: texNumber,
+      tex_label: texLabel,
       meters_per_cone: row.meters_per_cone,
       unit_price: priceMap.get(row.thread_type_id) ?? null,
       full_cones: Number(row.full_cones),
       partial_cones: Number(row.partial_cones),
       partial_meters: Number(row.partial_meters),
       partial_weight_grams: Number(row.partial_weight_grams),
-    }))
+      }
+    })
 
     return c.json<ThreadApiResponse<ConeSummaryRow[]>>({
       data: mapped,

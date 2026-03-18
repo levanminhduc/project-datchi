@@ -18,8 +18,8 @@ async function seedTestData() {
     
     // Insert LOCATIONS first
     const locations = [
-      { code: 'DB', name: 'Điện Bàn', location: 'Điện Bàn, Quảng Nam', type: 'LOCATION', parent_id: null, sort_order: 1, is_active: true },
-      { code: 'PT', name: 'Phú Tường', location: 'Phú Tường, Đà Nẵng', type: 'LOCATION', parent_id: null, sort_order: 2, is_active: true }
+      { code: 'DB', name: 'Kho Điện Bàn', location: 'Điện Bàn, Quảng Nam', type: 'LOCATION', parent_id: null, sort_order: 1, is_active: true },
+      { code: 'PT', name: 'Kho Phú Tường', location: 'Phú Tường, Đà Nẵng', type: 'LOCATION', parent_id: null, sort_order: 2, is_active: true }
     ]
     
     for (const loc of locations) {
@@ -48,8 +48,8 @@ async function seedTestData() {
     // Insert STORAGES under Điện Bàn
     const storages = [
       { code: 'DB-DK', name: 'Kho Dệt Kim', location: 'Xưởng Dệt Kim, Điện Bàn', type: 'STORAGE', parent_id: dbId, sort_order: 1, is_active: true },
-      { code: 'DB-XN', name: 'Kho Xưởng Nhật', location: 'Xưởng Nhật, Điện Bàn', type: 'STORAGE', parent_id: dbId, sort_order: 2, is_active: true },
-      { code: 'DB-XT', name: 'Kho Xưởng Trước', location: 'Xưởng Trước, Điện Bàn', type: 'STORAGE', parent_id: dbId, sort_order: 3, is_active: true },
+      { code: 'DB-XT', name: 'Kho Xưởng Trước', location: 'Xưởng Trước, Điện Bàn', type: 'STORAGE', parent_id: dbId, sort_order: 2, is_active: true },
+      { code: 'DB-XN', name: 'Kho Xưởng Nhật', location: 'Xưởng Nhật, Điện Bàn', type: 'STORAGE', parent_id: dbId, sort_order: 3, is_active: true },
       { code: 'PT-01', name: 'Kho Phú Tường', location: 'Kho thuê, Phú Tường', type: 'STORAGE', parent_id: ptId, sort_order: 1, is_active: true }
     ]
     

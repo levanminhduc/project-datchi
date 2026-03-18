@@ -328,7 +328,7 @@ definePage({
 
 // Composables
 const { styles, isLoading: stylesLoading, fetchStyles } = useStyles()
-const { purchaseOrders, isLoading: poLoading, fetchPurchaseOrders } = usePurchaseOrders()
+const { purchaseOrders, isLoading: poLoading, fetchAllPurchaseOrders } = usePurchaseOrders()
 const {
   calculationResult,
   poCalculationResults,
@@ -522,6 +522,6 @@ const confirmCreateAllocations = async () => {
 
 // Lifecycle
 onMounted(async () => {
-  await Promise.all([fetchStyles(), fetchPurchaseOrders()])
+  await Promise.all([fetchStyles(), fetchAllPurchaseOrders()])
 })
 </script>

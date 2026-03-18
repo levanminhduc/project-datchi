@@ -63,6 +63,28 @@ export function usePurchaseOrders() {
     }
   }
 
+  const fetchAllPurchaseOrders = async (newFilters?: PurchaseOrderFilter): Promise<void> => {
+    clearError()
+
+    if (newFilters) {
+      filters.value = { ...filters.value, ...newFilters }
+    }
+
+    try {
+      const data = await loading.withLoading(async () => {
+        return await purchaseOrderService.getAll(filters.value)
+      })
+
+      purchaseOrders.value = data
+      totalCount.value = data.length
+    } catch (err) {
+      const errorMessage = getErrorMessage(err)
+      error.value = errorMessage
+      snackbar.error(errorMessage)
+      console.error('[usePurchaseOrders] fetchAllPurchaseOrders error:', err)
+    }
+  }
+
   const handleTableRequest = async (props: {
     pagination: { page: number; rowsPerPage: number; sortBy: string; descending: boolean }
   }): Promise<void> => {
@@ -160,6 +182,7 @@ export function usePurchaseOrders() {
     purchaseOrderCount,
     clearError,
     fetchPurchaseOrders,
+    fetchAllPurchaseOrders,
     fetchPurchaseOrderById,
     createPurchaseOrder,
     updatePurchaseOrder,

@@ -5,12 +5,20 @@ const isOpen = ref(true)
 
 const navItems: NavItem[] = [
   { label: 'Trang Chủ', icon: 'o_home', to: '/#top' },
-  { 
-    label: 'Nhân Sự', 
-    icon: 'o_people', 
+  {
+    label: 'Nhân Sự',
+    icon: 'o_people',
     to: '/nhan-su#top',
     children: [
       { label: 'Danh Sách Nhân Viên', icon: 'o_list', to: '/nhan-su/danh-sach' }
+    ]
+  },
+  {
+    label: 'Kỹ Thuật',
+    icon: 'o_engineering',
+    to: '/ky-thuat#top',
+    children: [
+      { label: 'Mã Hàng', icon: 'o_checkroom', to: '/thread/styles' }
     ]
   },
   {
@@ -23,6 +31,20 @@ const navItems: NavItem[] = [
     ]
   },
   {
+    label: 'Quản Lý Chỉ',
+    icon: 'o_linear_scale',
+    to: '/thread#top',
+    children: [
+      { label: 'Dashboard', icon: 'o_dashboard', to: '/thread/dashboard' },
+      { label: 'Theo Dõi & Nhập Kho', icon: 'o_local_shipping', to: '/thread/weekly-order/deliveries' },
+      { label: 'Xuất Kho', icon: 'o_output', to: '/thread/issues/v2' },
+      { label: 'Tồn Kho', icon: 'o_inventory', to: '/thread/inventory' },
+      { label: 'Trả Kho', icon: 'o_assignment_return', to: '/thread/issues/v2/return' },
+      { label: 'Mượn Chỉ', icon: 'o_swap_horiz', to: '/thread/loans' },
+    ]
+  },
+  { label: 'Kho', icon: 'o_inventory_2', to: '/kho#top' },
+  {
     label: 'Danh Mục',
     icon: 'o_folder_open',
     to: '/danh-muc#top',
@@ -32,28 +54,6 @@ const navItems: NavItem[] = [
       { label: 'Màu Sắc', icon: 'o_palette', to: '/thread/colors' },
       { label: 'Nhà Cung Cấp', icon: 'o_store', to: '/thread/suppliers' },
       { label: 'Import Sub-Art', icon: 'o_upload_file', to: '/thread/sub-arts' }
-    ]
-  },
-  {
-    label: 'Kỹ Thuật',
-    icon: 'o_engineering',
-    to: '/ky-thuat#top',
-    children: [
-      { label: 'Mã Hàng', icon: 'o_checkroom', to: '/thread/styles' }
-    ]
-  },
-  { label: 'Kho', icon: 'o_inventory_2', to: '/kho#top' },
-  {
-    label: 'Quản Lý Chỉ',
-    icon: 'o_linear_scale',
-    to: '/thread#top',
-    children: [
-      { label: 'Dashboard', icon: 'o_dashboard', to: '/thread/dashboard' },
-      { label: 'Tồn Kho', icon: 'o_inventory', to: '/thread/inventory' },
-      { label: 'Xuất Kho', icon: 'o_output', to: '/thread/issues/v2' },
-      { label: 'Trả Kho V2', icon: 'o_assignment_return', to: '/thread/issues/v2/return' },
-      { label: 'Theo Dõi Giao Hàng', icon: 'o_local_shipping', to: '/thread/weekly-order/deliveries' },
-      { label: 'Mượn Chỉ', icon: 'o_swap_horiz', to: '/thread/loans' }
     ]
   },
   { label: 'Phân Quyền', icon: 'o_admin_panel_settings', to: '/phan-quyen#top' },
