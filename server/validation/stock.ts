@@ -34,6 +34,8 @@ export const AddStockSchema = z.object({
 
   supplier_id: z.number().int().positive().optional().nullable(),
 
+  color_id: z.number().int().positive().optional().nullable(),
+
   lot_number: z.string().trim().optional().nullable(),
 
   qty_full_cones: z.number().int().min(0, 'qty_full_cones không được âm'),

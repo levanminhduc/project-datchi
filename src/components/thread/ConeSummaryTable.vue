@@ -5,7 +5,7 @@
     :columns="columns"
     :loading="loading"
     :filter="filter"
-    row-key="thread_type_id"
+    :row-key="(row: any) => `${row.thread_type_id}-${row.color_id ?? 'no-color'}`"
     :rows-per-page-options="[10, 25, 50, 0]"
     :pagination="{ rowsPerPage: 25 }"
     bordered

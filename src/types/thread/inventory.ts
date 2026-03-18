@@ -17,6 +17,7 @@ export interface Cone {
   id: number
   cone_id: string              // Barcode ID
   thread_type_id: number
+  color_id: number | null
   thread_type?: ThreadType     // Joined data
   warehouse_id: number
   warehouse_code?: string      // Joined
@@ -52,6 +53,7 @@ export interface InventoryFilters {
  */
 export interface ReceiveStockDTO {
   thread_type_id: number
+  color_id?: number
   warehouse_id: number
   quantity_cones: number
   weight_per_cone_grams?: number
@@ -80,6 +82,7 @@ export interface ConeSummaryRow {
   thread_type_id: number
   thread_code: string
   thread_name: string
+  color_id: number | null
   color_data: { name: string; hex_code: string | null } | null
   material: string
   tex_number: string | null

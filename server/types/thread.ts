@@ -117,6 +117,7 @@ export interface ConeRow {
   cone_id: string
   thread_type_id: number
   warehouse_id: number
+  color_id: number | null
   quantity_cones: number
   quantity_meters: number
   weight_grams: number | null
@@ -221,6 +222,7 @@ export interface ReceiveStockDTO {
   lot_number?: string
   expiry_date?: string
   location?: string
+  color_id?: number
 }
 
 export interface CreateAllocationDTO {
@@ -345,6 +347,7 @@ export interface ConeSummaryRow {
   thread_type_id: number
   thread_code: string
   thread_name: string
+  color_id: number | null
   color_data: { name: string; hex_code: string | null } | null
   material: ThreadMaterial
   tex_number: string | null

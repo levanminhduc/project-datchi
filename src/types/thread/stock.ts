@@ -40,6 +40,7 @@ export interface AddStockDTO {
   thread_type_id: number
   warehouse_id: number
   supplier_id?: number | null
+  color_id?: number | null
   lot_number?: string | null
   qty_full_cones: number
   qty_partial_cones?: number

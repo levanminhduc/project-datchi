@@ -351,6 +351,7 @@ stock.post('/', requirePermission('thread.batch.receive'), async (c) => {
       cone_id: string
       thread_type_id: number
       warehouse_id: number
+      color_id: number | null
       quantity_cones: number
       quantity_meters: number
       is_partial: boolean
@@ -366,6 +367,7 @@ stock.post('/', requirePermission('thread.batch.receive'), async (c) => {
         cone_id: `MC-${timestamp}-${String(cones.length + 1).padStart(4, '0')}`,
         thread_type_id: data.thread_type_id,
         warehouse_id: data.warehouse_id,
+        color_id: data.color_id || null,
         quantity_cones: 1,
         quantity_meters: metersPerCone,
         is_partial: false,
@@ -383,6 +385,7 @@ stock.post('/', requirePermission('thread.batch.receive'), async (c) => {
         cone_id: `MC-${timestamp}-${String(cones.length + 1).padStart(4, '0')}`,
         thread_type_id: data.thread_type_id,
         warehouse_id: data.warehouse_id,
+        color_id: data.color_id || null,
         quantity_cones: 1,
         quantity_meters: partialMeters,
         is_partial: true,

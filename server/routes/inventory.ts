@@ -242,6 +242,7 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       thread_type_id: number
       thread_code: string
       thread_name: string
+      color_id: number | null
       color_name: string | null
       color_hex: string | null
       material: string
@@ -365,6 +366,7 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       thread_type_id: row.thread_type_id,
       thread_code: row.thread_code,
       thread_name: row.thread_name,
+      color_id: row.color_id ?? null,
       color_data: row.color_name ? { name: row.color_name, hex_code: row.color_hex } : null,
       material: row.material as ConeSummaryRow['material'],
       tex_number: texNumber,
@@ -726,6 +728,7 @@ inventory.post('/receive', requirePermission('thread.inventory.edit'), async (c)
         cone_id: coneId,
         thread_type_id: body.thread_type_id,
         warehouse_id: body.warehouse_id,
+        color_id: body.color_id || null,
         quantity_cones: 1,
         quantity_meters: quantityMeters,
         weight_grams: body.weight_per_cone_grams,

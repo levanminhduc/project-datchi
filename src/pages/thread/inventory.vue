@@ -310,7 +310,6 @@
           </template>
         </q-table>
       </q-tab-panel>
-
     </q-tab-panels>
 
     <!-- Stock Receipt Dialog -->
@@ -337,7 +336,24 @@
             hide-selected
           />
         </div>
-        
+
+        <div class="col-12 col-sm-6">
+          <AppSelect
+            v-model="receiptData.color_id"
+            label="Màu"
+            :options="receiptColorOptions"
+            :loading="loadingReceiptColors"
+            :disable="!receiptData.thread_type_id || receiptColorOptions.length === 0"
+            emit-value
+            map-options
+            use-input
+            fill-input
+            hide-selected
+            clearable
+            hint="Chọn màu cho cuộn chỉ"
+          />
+        </div>
+
         <div class="col-12 col-sm-6">
           <AppSelect
             v-model="receiptData.warehouse_id"
@@ -1000,12 +1016,46 @@ const printCones = ref<ConeLabelData[]>([])
 // Receipt Form Data
 const receiptData = reactive<ReceiveStockDTO>({
   thread_type_id: 0,
+  color_id: undefined,
   warehouse_id: 1, // Default to first warehouse
   quantity_cones: 1,
   weight_per_cone_grams: undefined,
   lot_number: '',
   expiry_date: '',
   location: '',
+})
+
+const receiptColors = ref<{ id: number; name: string; hex_code: string }[]>([])
+const loadingReceiptColors = ref(false)
+
+const receiptColorOptions = computed(() =>
+  receiptColors.value.map(c => ({
+    label: c.name,
+    value: c.id,
+  }))
+)
+
+watch(() => receiptData.thread_type_id, async (newThreadTypeId) => {
+  receiptData.color_id = undefined
+  receiptColors.value = []
+
+  if (!newThreadTypeId) return
+
+  const selectedType = threadTypes.value.find(t => t.id === newThreadTypeId)
+  const supplierId = (selectedType as any)?.supplier_id
+  if (!supplierId) return
+
+  loadingReceiptColors.value = true
+  try {
+    const colors = await supplierService.getColors(supplierId)
+    receiptColors.value = (colors as Array<{ color: { id: number; name: string; hex_code: string; is_active: boolean } }>)
+      .filter(link => link.color?.is_active)
+      .map(link => link.color)
+  } catch {
+    receiptColors.value = []
+  } finally {
+    loadingReceiptColors.value = false
+  }
 })
 
 // Methods
@@ -1021,6 +1071,7 @@ const closeReceiptDialog = () => {
 const resetReceiptData = () => {
   Object.assign(receiptData, {
     thread_type_id: threadTypes.value[0]?.id || 0,
+    color_id: undefined,
     warehouse_id: 1,
     quantity_cones: 1,
     weight_per_cone_grams: undefined,
@@ -1028,6 +1079,7 @@ const resetReceiptData = () => {
     expiry_date: '',
     location: '',
   })
+  receiptColors.value = []
 }
 
 const handleReceiptSubmit = async () => {
@@ -1219,6 +1271,7 @@ const handleManualEntrySubmit = async () => {
     await stockService.addStock({
       thread_type_id: manualEntryForm.thread_type_id,
       supplier_id: manualEntryForm.supplier_id || undefined,
+      color_id: manualEntryForm.color_id || undefined,
       warehouse_id: manualEntryForm.warehouse_id,
       qty_full_cones: manualEntryForm.qty_full_cones || 0,
       qty_partial_cones: manualEntryForm.qty_partial_cones || 0,
