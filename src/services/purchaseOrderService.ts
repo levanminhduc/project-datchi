@@ -23,6 +23,14 @@ interface ApiResponse<T> {
   message?: string
 }
 
+interface PaginatedResponse<T> {
+  data: T[] | null
+  count: number
+  page: number
+  pageSize: number
+  error: string | null
+}
+
 const BASE = '/api/purchase-orders'
 
 function buildQueryString(filters?: PurchaseOrderFilter): string {
@@ -54,6 +62,42 @@ export const purchaseOrderService = {
     }
 
     return response.data || []
+  },
+
+  async getPaginated(params: {
+    page?: number
+    pageSize?: number
+    sortBy?: string
+    descending?: boolean
+    status?: string
+    priority?: string
+    customer_name?: string
+    po_number?: string
+  } = {}): Promise<{ data: PurchaseOrder[]; count: number }> {
+    const urlParams = new URLSearchParams()
+
+    if (params.page) urlParams.set('page', String(params.page))
+    if (params.pageSize) urlParams.set('pageSize', String(params.pageSize))
+    if (params.sortBy) urlParams.set('sortBy', params.sortBy)
+    if (params.descending !== undefined) urlParams.set('descending', String(params.descending))
+    if (params.status) urlParams.set('status', params.status)
+    if (params.priority) urlParams.set('priority', params.priority)
+    if (params.customer_name) urlParams.set('customer_name', params.customer_name)
+    if (params.po_number) urlParams.set('po_number', params.po_number)
+
+    const queryString = urlParams.toString()
+    const url = `${BASE}${queryString ? `?${queryString}` : ''}`
+
+    const response = await fetchApi<PaginatedResponse<PurchaseOrder>>(url)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return {
+      data: response.data || [],
+      count: response.count ?? 0,
+    }
   },
 
   /**
