@@ -2,20 +2,26 @@ import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
+import { sanitizeFilterValue } from '../utils/sanitize'
 import { CreatePOItemSchema, UpdatePOItemSchema } from '../validation/purchaseOrder'
 import type { AuthContext } from '../types/auth'
 import type { POItemApiResponse, POItem, POItemHistory } from '../types/purchaseOrder'
 
 const purchaseOrders = new Hono()
 
-/**
- * GET /api/purchase-orders - List all purchase orders with optional filtering
- * Query param: include=items to join po_items + styles
- */
+const ALLOWED_SORT_COLUMNS = ['po_number', 'customer_name', 'status', 'priority', 'order_date', 'delivery_date', 'created_at', 'week']
+
 purchaseOrders.get('/', requirePermission('thread.purchase-orders.view'), async (c) => {
   try {
     const query = c.req.query()
     const includeItems = query.include === 'items'
+
+    const page = Math.max(1, parseInt(query.page || '1'))
+    const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize || '25')))
+    const sortBy = ALLOWED_SORT_COLUMNS.includes(query.sortBy || '') ? query.sortBy : 'created_at'
+    const descending = query.descending !== 'false'
+
+    const offset = (page - 1) * pageSize
 
     const selectQuery = includeItems
       ? `*, items:po_items!inner(id, po_id, style_id, quantity, finished_product_code, style:styles(id, style_code, style_name, description))`
@@ -23,9 +29,10 @@ purchaseOrders.get('/', requirePermission('thread.purchase-orders.view'), async 
 
     let dbQuery = supabase
       .from('purchase_orders')
-      .select(selectQuery)
+      .select(selectQuery, { count: 'exact' })
       .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+      .order(sortBy, { ascending: !descending })
+      .range(offset, offset + pageSize - 1)
 
     if (includeItems) {
       dbQuery = dbQuery.is('items.deleted_at', null)
@@ -38,17 +45,19 @@ purchaseOrders.get('/', requirePermission('thread.purchase-orders.view'), async 
       dbQuery = dbQuery.eq('priority', query.priority)
     }
     if (query.customer_name) {
-      dbQuery = dbQuery.ilike('customer_name', `%${query.customer_name}%`)
+      const s = sanitizeFilterValue(query.customer_name)
+      dbQuery = dbQuery.ilike('customer_name', `%${s}%`)
     }
     if (query.po_number) {
-      dbQuery = dbQuery.ilike('po_number', `%${query.po_number}%`)
+      const s = sanitizeFilterValue(query.po_number)
+      dbQuery = dbQuery.ilike('po_number', `%${s}%`)
     }
 
-    const { data, error } = await dbQuery
+    const { data, error, count } = await dbQuery
 
     if (error) throw error
 
-    return c.json({ data, error: null })
+    return c.json({ data, count: count ?? 0, page, pageSize, error: null })
   } catch (err) {
     console.error('Error fetching purchase orders:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
