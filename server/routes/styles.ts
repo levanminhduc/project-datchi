@@ -46,6 +46,20 @@ styles.get('/', async (c) => {
       dbQuery = dbQuery.ilike('fabric_type', `%${query.fabric_type}%`)
     }
 
+    // Filter by sub_art_code (2-step: find style_ids from sub_arts, then filter)
+    if (query.sub_art_code) {
+      const { data: subArtRows } = await supabase
+        .from('sub_arts')
+        .select('style_id')
+        .ilike('sub_art_code', `%${query.sub_art_code.trim()}%`)
+
+      const styleIds = [...new Set((subArtRows || []).map(r => r.style_id))]
+      if (styleIds.length === 0) {
+        return c.json({ data: [], error: null })
+      }
+      dbQuery = dbQuery.in('id', styleIds)
+    }
+
     // Exclude specific IDs (for dropdowns with existing selections)
     if (query.exclude_ids) {
       const ids = query.exclude_ids.split(',').map(Number).filter((n: number) => !isNaN(n))

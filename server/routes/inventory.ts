@@ -421,102 +421,40 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
 
     const usableStatuses: ConeStatus[] = [
       'RECEIVED',
-      'INSPECTED', 
+      'INSPECTED',
       'AVAILABLE',
       'SOFT_ALLOCATED',
       'HARD_ALLOCATED'
     ]
 
-    const { data: cones, error } = await supabase
-      .from('thread_inventory')
-      .select(`
-        warehouse_id,
-        quantity_meters,
-        is_partial,
-        location,
-        lot_id,
-        warehouses(code, name),
-        lots(supplier_id, suppliers(id, code, name)),
-        thread_types!inner(supplier_id, suppliers(id, code, name))
-      `)
-      .eq('thread_type_id', threadTypeId)
-      .in('status', usableStatuses)
+    const [warehouseResult, supplierResult] = await Promise.all([
+      supabase.rpc('fn_warehouse_breakdown', {
+        p_thread_type_id: threadTypeId,
+        p_statuses: usableStatuses,
+      }),
+      supabase.rpc('fn_supplier_breakdown', {
+        p_thread_type_id: threadTypeId,
+        p_statuses: usableStatuses,
+      }),
+    ])
 
-    if (error) {
-      console.error('Supabase error:', error)
+    if (warehouseResult.error || supplierResult.error) {
+      console.error('RPC error:', warehouseResult.error || supplierResult.error)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải chi tiết kho'
       }, 500)
     }
 
-    const breakdownMap: Map<number, ConeWarehouseBreakdown> = new Map()
-    const supplierMap: Map<string, SupplierBreakdown> = new Map()
+    const breakdownList: ConeWarehouseBreakdown[] = (warehouseResult.data || []).map(
+      (row: { warehouse_id: number; warehouse_code: string; warehouse_name: string; locations: string | null; full_cones: number; partial_cones: number; partial_meters: number }) => ({
+        ...row,
+        location: row.locations,
+        locations: undefined,
+      })
+    )
 
-    for (const cone of cones || []) {
-      const whRaw = cone.warehouses
-      const wh = (Array.isArray(whRaw) ? whRaw[0] : whRaw) as { code: string; name: string } | null
-
-      if (!breakdownMap.has(cone.warehouse_id)) {
-        breakdownMap.set(cone.warehouse_id, {
-          warehouse_id: cone.warehouse_id,
-          warehouse_code: wh?.code || '',
-          warehouse_name: wh?.name || '',
-          location: cone.location,
-          full_cones: 0,
-          partial_cones: 0,
-          partial_meters: 0
-        })
-      }
-
-      const row = breakdownMap.get(cone.warehouse_id)!
-      if (cone.is_partial) {
-        row.partial_cones++
-        row.partial_meters += cone.quantity_meters || 0
-      } else {
-        row.full_cones++
-      }
-
-      const lotRaw = cone.lots as unknown
-      const lot = (Array.isArray(lotRaw) ? lotRaw[0] : lotRaw) as { supplier_id: number | null; suppliers: unknown } | null
-      const lotSuppliersRaw = lot?.suppliers
-      const lotSupplier = (Array.isArray(lotSuppliersRaw) ? lotSuppliersRaw[0] : lotSuppliersRaw) as { id: number; code: string; name: string } | null
-
-      const threadTypeRaw = cone.thread_types as unknown
-      const threadType = (Array.isArray(threadTypeRaw) ? threadTypeRaw[0] : threadTypeRaw) as { supplier_id: number | null; suppliers: unknown } | null
-      const typeSuppliersRaw = threadType?.suppliers
-      const typeSupplier = (Array.isArray(typeSuppliersRaw) ? typeSuppliersRaw[0] : typeSuppliersRaw) as { id: number; code: string; name: string } | null
-
-      const supplier = lotSupplier || typeSupplier
-      
-      const supplierId = supplier?.id ?? null
-      const supplierKey = String(supplierId ?? 'null')
-
-      if (!supplierMap.has(supplierKey)) {
-        supplierMap.set(supplierKey, {
-          supplier_id: supplierId,
-          supplier_code: supplier?.code ?? null,
-          supplier_name: supplier?.name ?? 'Không xác định',
-          full_cones: 0,
-          partial_cones: 0,
-          partial_meters: 0
-        })
-      }
-
-      const supplierRow = supplierMap.get(supplierKey)!
-      if (cone.is_partial) {
-        supplierRow.partial_cones++
-        supplierRow.partial_meters += cone.quantity_meters || 0
-      } else {
-        supplierRow.full_cones++
-      }
-    }
-
-    const breakdownList = Array.from(breakdownMap.values())
-      .sort((a, b) => a.warehouse_code.localeCompare(b.warehouse_code))
-
-    const supplierBreakdown = Array.from(supplierMap.values())
-      .sort((a, b) => a.supplier_name.localeCompare(b.supplier_name))
+    const supplierBreakdown: SupplierBreakdown[] = supplierResult.data || []
 
     return c.json<ThreadApiResponse<ConeWarehouseBreakdown[]> & { supplier_breakdown: SupplierBreakdown[] }>({
       data: breakdownList,

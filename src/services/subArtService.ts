@@ -5,6 +5,14 @@ import type { SubArt, ImportSubArtResult } from '@/types/thread/subArt'
 const BASE = '/api/sub-arts'
 
 export const subArtService = {
+  async getAllCodes(): Promise<string[]> {
+    const response = await fetchApi<ApiResponse<string[]>>(`${BASE}/codes`)
+    if (response.error || !response.data) {
+      throw new Error(response.error || 'Không thể tải danh sách mã Sub-Art')
+    }
+    return response.data
+  },
+
   async getByStyleId(styleId: number): Promise<SubArt[]> {
     const response = await fetchApi<ApiResponse<SubArt[]>>(`${BASE}?style_id=${styleId}`)
     if (response.error || !response.data) {

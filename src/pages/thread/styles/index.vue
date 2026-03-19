@@ -28,18 +28,28 @@
             </q-input>
           </div>
           
-          <!-- Fabric Type Filter -->
+          <!-- Sub-Art Filter -->
           <div class="col-12 col-sm-3 col-md-2">
             <q-select
-              v-model="filterFabricType"
-              :options="fabricTypeOptions"
-              label="Loại vải"
+              v-model="filterSubArtCode"
+              :options="filteredSubArtOptions"
+              label="Sub-Art"
               outlined
               dense
               clearable
-              emit-value
-              map-options
-            />
+              use-input
+              input-debounce="200"
+              :loading="loadingSubArtCodes"
+              @filter="handleSubArtFilter"
+            >
+              <template #no-option>
+                <q-item>
+                  <q-item-section class="text-grey">
+                    Không tìm thấy
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
           </div>
           
           <div class="col-12 col-sm-auto">
@@ -99,26 +109,6 @@
               </div>
             </div>
           </div>
-        </q-td>
-      </template>
-
-      <!-- Fabric Type Column -->
-      <template #body-cell-fabric_type="props">
-        <q-td
-          :props="props"
-          align="center"
-        >
-          <q-badge
-            v-if="props.row.fabric_type"
-            color="blue-grey"
-            outline
-          >
-            {{ props.row.fabric_type }}
-          </q-badge>
-          <span
-            v-else
-            class="text-grey-5"
-          >-</span>
         </q-td>
       </template>
 
@@ -286,6 +276,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStyles } from '@/composables/thread/useStyles'
 import { useConfirm } from '@/composables/useConfirm'
+import { subArtService } from '@/services/subArtService'
 import type { Style, CreateStyleDTO, UpdateStyleDTO } from '@/types/thread'
 
 definePage({
@@ -303,7 +294,10 @@ const { confirm } = useConfirm()
 
 // State
 const searchQuery = ref('')
-const filterFabricType = ref<string | null>(null)
+const filterSubArtCode = ref<string | null>(null)
+const subArtCodeOptions = ref<string[]>([])
+const filteredSubArtOptions = ref<string[]>([])
+const loadingSubArtCodes = ref(false)
 const pagination = ref({
   page: 1,
   rowsPerPage: 25,
@@ -311,22 +305,10 @@ const pagination = ref({
   descending: false,
 })
 
-// Fabric type options (will be populated from data)
-const fabricTypeOptions = computed(() => {
-  const types = new Set<string>()
-  styles.value.forEach(s => {
-    if (s.fabric_type) {
-      types.add(s.fabric_type)
-    }
-  })
-  return Array.from(types).map(t => ({ label: t, value: t }))
-})
-
 // Table columns
 const columns = [
   { name: 'style_code', label: 'Mã hàng', field: 'style_code', align: 'left' as const, sortable: true },
   { name: 'style_name', label: 'Tên mã hàng', field: 'style_name', align: 'left' as const, sortable: true },
-  { name: 'fabric_type', label: 'Loại vải', field: 'fabric_type', align: 'center' as const },
   { name: 'description', label: 'Mô tả', field: 'description', align: 'left' as const },
   { name: 'created_at', label: 'Ngày tạo', field: 'created_at', align: 'left' as const, sortable: true },
   { name: 'actions', label: 'Thao tác', field: 'actions', align: 'center' as const },
@@ -350,30 +332,51 @@ function formatDate(dateStr: string): string {
 
 // Computed
 const filteredStyles = computed(() => {
-  let result = styles.value
-
-  // Filter by fabric type
-  if (filterFabricType.value) {
-    result = result.filter((s) => s.fabric_type === filterFabricType.value)
-  }
-
-  // Filter by search
-  if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase().trim()
-    result = result.filter((s) =>
-      s.style_code.toLowerCase().includes(query) ||
-      s.style_name.toLowerCase().includes(query) ||
-      s.description?.toLowerCase().includes(query)
-    )
-  }
-
-  return result
+  if (!searchQuery.value.trim()) return styles.value
+  const query = searchQuery.value.toLowerCase().trim()
+  return styles.value.filter((s) =>
+    s.style_code.toLowerCase().includes(query) ||
+    s.style_name.toLowerCase().includes(query) ||
+    s.description?.toLowerCase().includes(query)
+  )
 })
 
 // Watchers
-watch([searchQuery, filterFabricType], () => {
+watch(searchQuery, () => {
   pagination.value.page = 1
 })
+
+watch(filterSubArtCode, async (code) => {
+  pagination.value.page = 1
+  if (code) {
+    await fetchStyles({ sub_art_code: code })
+  } else {
+    await fetchStyles()
+  }
+})
+
+function handleSubArtFilter(val: string, update: (fn: () => void) => void) {
+  update(() => {
+    if (!val) {
+      filteredSubArtOptions.value = subArtCodeOptions.value
+      return
+    }
+    const needle = val.toLowerCase()
+    filteredSubArtOptions.value = subArtCodeOptions.value.filter(c => c.toLowerCase().includes(needle))
+  })
+}
+
+async function loadSubArtCodes() {
+  loadingSubArtCodes.value = true
+  try {
+    subArtCodeOptions.value = await subArtService.getAllCodes()
+    filteredSubArtOptions.value = subArtCodeOptions.value
+  } catch {
+    subArtCodeOptions.value = []
+  } finally {
+    loadingSubArtCodes.value = false
+  }
+}
 
 // Dialog states
 const formDialog = reactive({
@@ -471,7 +474,7 @@ async function confirmDelete(style: Style) {
 
 // Lifecycle
 onMounted(async () => {
-  await fetchStyles()
+  await Promise.all([fetchStyles(), loadSubArtCodes()])
 })
 </script>
 

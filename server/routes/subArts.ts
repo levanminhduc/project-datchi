@@ -9,6 +9,23 @@ const subArts = new Hono()
 
 subArts.use('*', requirePermission('thread.types.view'))
 
+subArts.get('/codes', async (c) => {
+  try {
+    const { data, error } = await supabase
+      .from('sub_arts')
+      .select('sub_art_code')
+      .order('sub_art_code', { ascending: true })
+
+    if (error) throw error
+
+    const codes = [...new Set((data || []).map(r => r.sub_art_code))]
+    return c.json({ data: codes, error: null })
+  } catch (err) {
+    console.error('Error fetching sub_art codes:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 subArts.get('/', async (c) => {
   try {
     const query = c.req.query()

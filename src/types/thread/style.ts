@@ -28,4 +28,5 @@ export interface StyleFilter {
   style_code?: string
   style_name?: string
   fabric_type?: string
+  sub_art_code?: string
 }

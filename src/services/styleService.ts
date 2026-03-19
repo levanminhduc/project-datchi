@@ -35,6 +35,7 @@ function buildQueryString(filters?: StyleFilter): string {
   if (filters.style_code) params.append('style_code', filters.style_code)
   if (filters.style_name) params.append('style_name', filters.style_name)
   if (filters.fabric_type) params.append('fabric_type', filters.fabric_type)
+  if (filters.sub_art_code) params.append('sub_art_code', filters.sub_art_code)
 
   const queryString = params.toString()
   return queryString ? `?${queryString}` : ''
