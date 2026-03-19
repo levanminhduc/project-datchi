@@ -328,6 +328,10 @@ export function useAuth() {
           }
           return
         }
+        if (empErrorType === 'network') {
+          console.warn('[useAuth] Token refreshed but backend unreachable — keeping current session')
+          return
+        }
 
         const { data: perms, errorType: permsErrorType } = await authService.fetchPermissions()
         if (permsErrorType === 'auth') {
@@ -339,6 +343,10 @@ export function useAuth() {
               window.location.replace('/login')
             })
           }
+          return
+        }
+        if (permsErrorType === 'network') {
+          console.warn('[useAuth] Token refreshed but backend unreachable — keeping current session')
           return
         }
 

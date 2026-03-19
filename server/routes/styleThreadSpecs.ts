@@ -44,6 +44,27 @@ styleThreadSpecs.get('/', async (c) => {
 })
 
 /**
+ * GET /api/style-thread-specs/process-names - Distinct process names
+ */
+styleThreadSpecs.get('/process-names', async (c) => {
+  try {
+    const { data, error } = await supabase
+      .from('style_thread_specs')
+      .select('process_name')
+      .not('process_name', 'eq', '')
+      .not('process_name', 'is', null)
+      .order('process_name')
+
+    if (error) throw error
+
+    const names = [...new Set((data || []).map(r => r.process_name as string))]
+    return c.json({ data: names, error: null })
+  } catch (err) {
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * GET /api/style-thread-specs/:id - Get a single style thread spec by ID
  */
 styleThreadSpecs.get('/:id', async (c) => {

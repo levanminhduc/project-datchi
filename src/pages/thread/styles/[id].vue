@@ -199,13 +199,15 @@
                         dense
                         autofocus
                         use-input
+                        input-debounce="0"
                         fill-input
                         hide-selected
                         new-value-mode="add-unique"
                         label="Tên công đoạn"
                         style="min-width: 200px"
                         @filter="filterProcessOptions"
-                        @keyup.enter="scope.set"
+                        @input-value="(val: string) => { scope.value = val }"
+                        @keydown.stop
                       />
                     </q-popup-edit>
                   </template>
@@ -564,10 +566,15 @@ const getTexOptionsForRow = (row: StyleThreadSpec): { label: string; value: numb
   return texOptionsCache.value[row.supplier_id] ?? []
 }
 
-const processNameOptions = computed(() => {
-  const names = styleThreadSpecs.value.map(s => s.process_name).filter(Boolean)
-  return [...new Set(names)]
-})
+const processNameOptions = ref<string[]>([])
+const fetchProcessNames = async () => {
+  try {
+    const res = await fetchApi<{ data: string[] | null }>('/api/style-thread-specs/process-names')
+    processNameOptions.value = res.data || []
+  } catch {
+    processNameOptions.value = []
+  }
+}
 const filteredProcessOptions = ref<string[]>([])
 const filterProcessOptions = (val: string, update: (fn: () => void) => void) => {
   update(() => {
@@ -704,6 +711,7 @@ onMounted(async () => {
     fetchStyleThreadSpecs({ style_id: id.value }),
     fetchSuppliers(),
     fetchStyleColors(id.value),
+    fetchProcessNames(),
   ])
 
   const supplierIds = [...new Set(styleThreadSpecs.value.map(s => s.supplier_id).filter(Boolean))] as number[]
