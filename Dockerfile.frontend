@@ -5,9 +5,10 @@ FROM node:22-alpine AS deps
 
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json ./
 
-RUN npm install --legacy-peer-deps
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps
 
 # ============================================
 # Stage 2: Build Vue app
@@ -17,17 +18,27 @@ FROM deps AS builder
 ARG VITE_API_URL
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
+ARG SUPABASE_HOST
+ARG SUPABASE_API_PORT
+
+ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
 
 COPY index.html vite.config.mts tsconfig.json tsconfig.app.json tsconfig.node.json ./
 COPY src/ ./src/
 COPY public/ ./public/
 
-RUN npm run build-only
+RUN --mount=type=cache,target=/app/node_modules/.vite \
+    npm run build-only
 
 # ============================================
 # Stage 3: Serve với Nginx Alpine + Brotli
 # ============================================
 FROM alpine:3.20 AS production
+
+ARG SUPABASE_HOST
+ARG SUPABASE_API_PORT
 
 RUN apk add --no-cache nginx nginx-mod-http-brotli curl
 
@@ -35,7 +46,13 @@ RUN mkdir -p /run/nginx /var/cache/nginx
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-COPY nginx.docker.conf /etc/nginx/nginx.conf
+COPY nginx.docker.conf /tmp/nginx.docker.conf
+
+RUN sed \
+    -e "s/__SUPABASE_HOST__/${SUPABASE_HOST:-host.docker.internal}/g" \
+    -e "s/__SUPABASE_API_PORT__/${SUPABASE_API_PORT:-55421}/g" \
+    /tmp/nginx.docker.conf > /etc/nginx/nginx.conf && \
+    rm /tmp/nginx.docker.conf
 
 RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /run/nginx
 

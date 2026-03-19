@@ -1,7 +1,7 @@
 # Docker Deployment Guide
 
 **Project:** Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)
-**Last updated:** 2026-03-14
+**Last updated:** 2026-03-19
 
 ---
 
@@ -134,6 +134,7 @@ Cả 2 chế độ **chạy song song được** — không conflict ports.
 
 - **Stage 1 `deps`:** `node:22-alpine`, `npm install` (không `npm ci` — xem Known Issue #1)
 - **Stage 2 `builder`:** Selective COPY (`index.html`, `src/`, `public/`, config files) — không `COPY . .`
+  - Vite build dùng `--mount=type=cache,target=/app/node_modules/.vite` → cache persist giữa các lần rebuild Docker
 - **Stage 3 `production`:** `alpine:3.20` + nginx + brotli + gzip compression
 - HEALTHCHECK: `curl -f http://localhost:80/` (interval 30s, start 5s)
 - Non-root user: `nginx`
@@ -270,6 +271,29 @@ RUN npm install
 **Nguyên nhân:** `PGPORT=${POSTGRES_PORT}` truyền vào container khiến Postgres listen trên port khác bên trong container.
 
 **Fix:** Hardcode internal port = 5432, chỉ đổi host mapping.
+
+### 6. `sass-embedded` binary mismatch trên Alpine
+
+**Lỗi:** `sass --embedded is unavailable in pure JS mode` — build chậm bất thường.
+
+**Nguyên nhân:** `sass-embedded` dùng Dart Sass native binary (`.exe` trên Windows). Trong Docker Alpine Linux, binary không match → fallback về pure JS mode, SCSS compile chậm 5-10x.
+
+**Fix:** Thay `sass-embedded` bằng `sass` (pure JS, cross-platform):
+
+```bash
+# Trong package.json: đổi devDependencies
+# "sass-embedded": "^1.92.1"  →  "sass": "^1.92.1"
+npm install --legacy-peer-deps
+```
+
+**Thêm Vite build cache** trong `Dockerfile.frontend`:
+```dockerfile
+# Thay RUN npm run build-only bằng:
+RUN --mount=type=cache,target=/app/node_modules/.vite \
+    npm run build-only
+```
+
+**Kết quả:** Vite transform 780 modules bình thường, không còn warning. Lần rebuild sau dùng cache → nhanh hơn.
 
 ---
 

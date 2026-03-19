@@ -7,6 +7,28 @@ const styleColors = new Hono()
 
 styleColors.use('*', requirePermission('thread.types.view'))
 
+async function validateSubArtColorName(styleId: number, colorName: string): Promise<string | null> {
+  const { data: subArts } = await supabase
+    .from('sub_arts')
+    .select('sub_art_code')
+    .eq('style_id', styleId)
+
+  if (!subArts || subArts.length === 0) return null
+
+  const sepIdx = colorName.indexOf(' - ')
+  if (sepIdx === -1) {
+    return 'Tên màu phải có format: {Sub-Art} - {Màu}'
+  }
+
+  const subArtCode = colorName.substring(0, sepIdx)
+  const validCodes = subArts.map(s => s.sub_art_code)
+  if (!validCodes.includes(subArtCode)) {
+    return `Mã Sub-Art "${subArtCode}" không hợp lệ. Hợp lệ: ${validCodes.join(', ')}`
+  }
+
+  return null
+}
+
 styleColors.get('/:styleId', async (c) => {
   try {
     const styleId = parseInt(c.req.param('styleId'))
@@ -40,6 +62,11 @@ styleColors.post('/:styleId', async (c) => {
       return c.json({ data: null, error: 'Tên màu là bắt buộc' }, 400)
     }
 
+    const validationError = await validateSubArtColorName(styleId, body.color_name.trim())
+    if (validationError) {
+      return c.json({ data: null, error: validationError }, 400)
+    }
+
     const { data, error } = await supabase
       .from('style_colors')
       .insert([{
@@ -71,6 +98,15 @@ styleColors.put('/:styleId/:id', async (c) => {
     }
 
     const body = await c.req.json()
+
+    if (body.color_name) {
+      const styleIdParam = parseInt(c.req.param('styleId'))
+      const validationError = await validateSubArtColorName(styleIdParam, body.color_name.trim())
+      if (validationError) {
+        return c.json({ data: null, error: validationError }, 400)
+      }
+    }
+
     const { data, error } = await supabase
       .from('style_colors')
       .update({

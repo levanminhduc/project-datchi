@@ -89,8 +89,14 @@
               class="color-swatch-lg"
               :style="{ backgroundColor: group.color.hex_code || '#ccc' }"
             />
+            <div
+              v-if="hasSubArts && parseColorName(group.color.color_name).subArt"
+              class="text-caption text-grey-7"
+            >
+              {{ parseColorName(group.color.color_name).subArt }}
+            </div>
             <div class="text-subtitle2 text-weight-medium">
-              {{ group.color.color_name }}
+              {{ parseColorName(group.color.color_name).color }}
             </div>
             <q-space />
             <q-btn
@@ -252,6 +258,14 @@
             v-else
             class="q-gutter-sm"
           >
+            <AppSelect
+              v-if="hasSubArts"
+              v-model="selectedSubArt"
+              :options="subArts.map(s => ({ label: s.sub_art_code, value: s.sub_art_code }))"
+              label="Chọn Sub-Art *"
+              dense
+              required
+            />
             <q-input
               v-model="newColorName"
               label="Tên màu *"
@@ -259,6 +273,12 @@
               dense
               placeholder="VD: Đỏ đậm, Xanh navy..."
             />
+            <div
+              v-if="hasSubArts && selectedSubArt && newColorName.trim()"
+              class="text-caption text-grey-7 q-mt-xs"
+            >
+              Tên đầy đủ: <strong>{{ selectedSubArt }} - {{ newColorName.trim() }}</strong>
+            </div>
             <q-input
               v-model="newColorHex"
               label="Mã màu (HEX)"
@@ -315,7 +335,7 @@
             unelevated
             label="Tạo &amp; Thêm"
             color="primary"
-            :disable="!newColorName.trim() || !newColorHex"
+            :disable="!newColorName.trim() || !newColorHex || (hasSubArts && !selectedSubArt)"
             :loading="creatingColor"
             @click="handleCreateColor"
           />
@@ -333,6 +353,8 @@ import type { StyleThreadSpec } from '@/types/thread'
 import type { StyleColor } from '@/types/thread'
 import { styleColorService } from '@/services/styleColorService'
 import { supplierService } from '@/services/supplierService'
+import { subArtService } from '@/services/subArtService'
+import { AppSelect } from '@/components/ui/inputs'
 
 interface Props {
   styleId: number
@@ -391,6 +413,10 @@ const newColorName = ref('')
 const newColorHex = ref('#cccccc')
 const creatingColor = ref(false)
 
+const subArts = ref<{ id: number; sub_art_code: string }[]>([])
+const selectedSubArt = ref<string | null>(null)
+const hasSubArts = computed(() => subArts.value.length > 0)
+
 const supplierColorsCache = ref<Record<number, { id: number; name: string; hex_code: string }[]>>({})
 
 const fetchSupplierColors = async (supplierId: number) => {
@@ -417,6 +443,13 @@ const getColorHex = (colorId: number): string => {
 const getColorDisplayName = (row: ColorSpecRow): string => {
   if (!row.threadColor) return '-'
   return row.threadColor.name
+}
+
+const parseColorName = (colorName: string): { subArt: string | null; color: string } => {
+  if (!hasSubArts.value) return { subArt: null, color: colorName }
+  const idx = colorName.indexOf(' - ')
+  if (idx === -1) return { subArt: null, color: colorName }
+  return { subArt: colorName.substring(0, idx), color: colorName.substring(idx + 3) }
 }
 
 const getColorOptionsForSpec = (spec: StyleThreadSpec): { label: string; value: number }[] => {
@@ -551,10 +584,23 @@ const loadColorSpecs = async () => {
 onMounted(async () => {
   await loadColorSpecs()
   const supplierIds = [...new Set(props.specs.map(s => s.supplier_id).filter(Boolean))]
-  await Promise.all(supplierIds.map(id => fetchSupplierColors(id)))
+  await Promise.all([
+    ...supplierIds.map(id => fetchSupplierColors(id)),
+    subArtService.getByStyleId(props.styleId).then(data => { subArts.value = data }).catch(() => { subArts.value = [] }),
+  ])
 })
 
 watch(() => props.styleId, loadColorSpecs)
+
+watch(showAddColorDialog, (val) => {
+  if (!val) {
+    selectedSubArt.value = null
+    newColorName.value = ''
+    newColorHex.value = '#cccccc'
+    showNewColorForm.value = false
+    selectedNewColorId.value = null
+  }
+})
 
 // Handlers
 const handleAddColor = () => {
@@ -566,17 +612,26 @@ const handleAddColor = () => {
 }
 
 const handleCreateColor = async () => {
-  if (!newColorName.value.trim() || !newColorHex.value) return
+  const colorPart = newColorName.value.trim()
+  if (!colorPart || !newColorHex.value) return
+
+  if (hasSubArts.value && !selectedSubArt.value) return
+
+  const finalColorName = hasSubArts.value && selectedSubArt.value
+    ? `${selectedSubArt.value} - ${colorPart}`
+    : colorPart
+
   creatingColor.value = true
   try {
     const newColor = await styleColorService.create(props.styleId, {
-      color_name: newColorName.value.trim(),
+      color_name: finalColorName,
       hex_code: newColorHex.value,
     })
     addedColors.value.push(newColor.id)
     showNewColorForm.value = false
     newColorName.value = ''
     newColorHex.value = '#cccccc'
+    selectedSubArt.value = null
     showAddColorDialog.value = false
     emit('color-created')
     snackbar.success('Tạo màu mới thành công')
