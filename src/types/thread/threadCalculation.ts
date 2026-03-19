@@ -17,6 +17,7 @@ export interface CalculationResult {
   style_name: string
   total_quantity: number
   calculations: CalculationItem[]
+  warnings?: string[]
 }
 
 export interface CalculationItem {
@@ -65,6 +66,7 @@ export interface POCalculationResult {
   style_name: string
   quantity: number
   calculations: CalculationItem[]
+  warnings?: string[]
 }
 
 export interface CalculateByPOInput {

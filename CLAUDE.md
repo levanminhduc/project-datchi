@@ -97,6 +97,7 @@ UI Components (src/components/ui/) → App* wrappers over Quasar
 
 ### Frontend
 - Use `AppInput`, `AppSelect`, `AppButton` (not raw `q-*` components)
+- Use `DataTable` (not raw `q-table`) for all listing/main tables — exception: small inline tables inside dialogs
 - Use `useSnackbar()` for toasts: `snackbar.success()`, `snackbar.error()`
 - DatePicker with `DD/MM/YYYY` format (not native date input)
 - Excel export with ExcelJS (not CSV). All user-facing messages in Vietnamese
@@ -110,7 +111,7 @@ Trang inventory là reference pattern cho mọi trang có dữ liệu lớn. **K
 
 ### Server-Side Pagination (Bắt buộc cho listing)
 ```
-q-table @request → composable.handleTableRequest() → service.getPaginated({ page, pageSize, sortBy, descending })
+DataTable @request → composable.handleTableRequest() → service.getPaginated({ page, pageSize, sortBy, descending })
 → Hono route: range(offset, offset + pageSize - 1) + { count: 'exact' }
 → DB: LIMIT/OFFSET + COUNT(*)
 ```
@@ -147,6 +148,7 @@ while (hasMore) { query.range(offset, offset + BATCH_SIZE - 1); offset += BATCH_
 | `fetch()` directly | `fetchApi()` wrapper |
 | Supabase from frontend (CRUD) | API call through Hono |
 | `q-input`, `q-select` | `AppInput`, `AppSelect` |
+| `q-table` (listing/main tables) | `DataTable` component (`src/components/ui/tables/`) |
 | Hardcode Vietnamese in logic | Use constants/i18n |
 | Add auth middleware without checking frontend | Verify `fetchApi()` sends `Authorization` header |
 | Guess column names | Check schema with `\d table_name` or read migrations |

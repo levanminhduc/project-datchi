@@ -17,10 +17,10 @@
         <q-btn
           color="primary"
           icon="add"
-          label="Thêm màu hàng"
+          label="Tạo màu hàng mới"
           unelevated
           dense
-          @click="showAddColorDialog = true"
+          @click="showCreateColorDialog = true"
         />
       </div>
     </div>
@@ -48,7 +48,7 @@
 
     <!-- Empty: no color groups yet -->
     <div
-      v-else-if="colorGroups.length === 0 && !colorSpecsLoading"
+      v-if="specs.length > 0 && colorGroups.length === 0 && !colorSpecsLoading"
       class="text-center q-py-xl"
     >
       <q-icon
@@ -57,7 +57,7 @@
         color="grey-5"
       />
       <p class="text-grey-6 q-mt-md">
-        Chưa có màu hàng nào. Bấm "Thêm màu hàng" để bắt đầu.
+        Chưa có màu hàng nào. Bấm "Tạo màu hàng mới" để bắt đầu.
       </p>
     </div>
 
@@ -190,12 +190,12 @@
       </q-card>
     </div>
 
-    <!-- Add Color Dialog -->
-    <q-dialog v-model="showAddColorDialog">
+    <!-- Create New Color Dialog -->
+    <q-dialog v-model="showCreateColorDialog">
       <q-card style="min-width: 350px; max-width: 90vw">
         <q-card-section class="row items-center">
           <div class="text-h6">
-            Thêm màu hàng
+            Tạo màu hàng mới
           </div>
           <q-space />
           <q-btn
@@ -209,105 +209,56 @@
 
         <q-separator />
 
-        <q-card-section>
-          <div class="row items-center q-mb-md">
-            <q-btn-toggle
-              v-model="showNewColorForm"
-              spread
-              no-caps
-              unelevated
-              toggle-color="primary"
-              :options="[
-                { label: 'Chọn màu có sẵn', value: false },
-                { label: 'Tạo màu mới', value: true },
-              ]"
-              class="full-width"
-              dense
-            />
-          </div>
-
-          <!-- Mode 1: Select existing color -->
-          <div v-if="!showNewColorForm">
-            <q-select
-              v-model="selectedNewColorId"
-              :options="availableColorOptions"
-              label="Chọn màu hàng"
-              outlined
-              dense
-              emit-value
-              map-options
-            >
-              <template #option="{ itemProps, opt }">
-                <q-item v-bind="itemProps">
-                  <q-item-section side>
-                    <div
-                      class="color-swatch"
-                      :style="{ backgroundColor: getColorHex(opt.value) }"
-                    />
-                  </q-item-section>
-                  <q-item-section>
-                    <q-item-label>{{ opt.label }}</q-item-label>
-                  </q-item-section>
-                </q-item>
-              </template>
-            </q-select>
-          </div>
-
-          <!-- Mode 2: Create new color manually -->
+        <q-card-section class="q-gutter-sm">
+          <AppSelect
+            v-if="hasSubArts"
+            v-model="selectedSubArt"
+            :options="subArts.map(s => ({ label: s.sub_art_code, value: s.sub_art_code }))"
+            label="Chọn Sub-Art *"
+            dense
+            required
+          />
+          <q-input
+            v-model="newColorName"
+            label="Tên màu *"
+            outlined
+            dense
+            placeholder="VD: Đỏ đậm, Xanh navy..."
+          />
           <div
-            v-else
-            class="q-gutter-sm"
+            v-if="hasSubArts && selectedSubArt && newColorName.trim()"
+            class="text-caption text-grey-7 q-mt-xs"
           >
-            <AppSelect
-              v-if="hasSubArts"
-              v-model="selectedSubArt"
-              :options="subArts.map(s => ({ label: s.sub_art_code, value: s.sub_art_code }))"
-              label="Chọn Sub-Art *"
-              dense
-              required
-            />
-            <q-input
-              v-model="newColorName"
-              label="Tên màu *"
-              outlined
-              dense
-              placeholder="VD: Đỏ đậm, Xanh navy..."
-            />
-            <div
-              v-if="hasSubArts && selectedSubArt && newColorName.trim()"
-              class="text-caption text-grey-7 q-mt-xs"
-            >
-              Tên đầy đủ: <strong>{{ selectedSubArt }} - {{ newColorName.trim() }}</strong>
-            </div>
-            <q-input
-              v-model="newColorHex"
-              label="Mã màu (HEX)"
-              outlined
-              dense
-              placeholder="#FFFFFF"
-            >
-              <template #prepend>
-                <div
-                  class="color-swatch"
-                  :style="{ backgroundColor: newColorHex || '#ccc' }"
-                />
-              </template>
-              <template #append>
-                <q-icon
-                  name="colorize"
-                  class="cursor-pointer"
-                >
-                  <q-popup-proxy
-                    cover
-                    transition-show="scale"
-                    transition-hide="scale"
-                  >
-                    <q-color v-model="newColorHex" />
-                  </q-popup-proxy>
-                </q-icon>
-              </template>
-            </q-input>
+            Tên đầy đủ: <strong>{{ selectedSubArt }} - {{ newColorName.trim() }}</strong>
           </div>
+          <q-input
+            v-model="newColorHex"
+            label="Mã màu (HEX)"
+            outlined
+            dense
+            placeholder="#FFFFFF"
+          >
+            <template #prepend>
+              <div
+                class="color-swatch"
+                :style="{ backgroundColor: newColorHex || '#ccc' }"
+              />
+            </template>
+            <template #append>
+              <q-icon
+                name="colorize"
+                class="cursor-pointer"
+              >
+                <q-popup-proxy
+                  cover
+                  transition-show="scale"
+                  transition-hide="scale"
+                >
+                  <q-color v-model="newColorHex" />
+                </q-popup-proxy>
+              </q-icon>
+            </template>
+          </q-input>
         </q-card-section>
 
         <q-separator />
@@ -323,17 +274,8 @@
             color="grey"
           />
           <q-btn
-            v-if="!showNewColorForm"
             unelevated
-            label="Thêm"
-            color="primary"
-            :disable="!selectedNewColorId"
-            @click="handleAddColor"
-          />
-          <q-btn
-            v-else
-            unelevated
-            label="Tạo &amp; Thêm"
+            label="Tạo"
             color="primary"
             :disable="!newColorName.trim() || !newColorHex || (hasSubArts && !selectedSubArt)"
             :loading="creatingColor"
@@ -405,10 +347,7 @@ const {
 // Local state
 const colorSpecsLoading = ref(false)
 const inlineEditLoading = ref<Record<string, boolean>>({})
-const showAddColorDialog = ref(false)
-const selectedNewColorId = ref<number | null>(null)
-const addedColors = ref<number[]>([]) // Manually added colors not yet in DB
-const showNewColorForm = ref(false)
+const showCreateColorDialog = ref(false)
 const newColorName = ref('')
 const newColorHex = ref('#cccccc')
 const creatingColor = ref(false)
@@ -434,11 +373,6 @@ const fetchSupplierColors = async (supplierId: number) => {
 // Helpers
 const getColorCellKey = (specId: number, colorId: number): string =>
   `${specId}-${colorId}`
-
-const getColorHex = (colorId: number): string => {
-  const c = props.styleColors.find(cl => cl.id === colorId)
-  return c?.hex_code || '#ccc'
-}
 
 const getColorDisplayName = (row: ColorSpecRow): string => {
   if (!row.threadColor) return '-'
@@ -478,24 +412,15 @@ const filterColorOptions = (val: string, update: (fn: () => void) => void, spec:
   })
 }
 
-// Computed: unique color IDs that have data in colorSpecs or were manually added
-const usedColorIds = computed<number[]>(() => {
-  const fromDb = new Set(colorSpecs.value.map(cs => cs.style_color_id))
-  const fromManual = new Set(addedColors.value)
-  return [...new Set([...fromDb, ...fromManual])]
-})
-
-// Computed: color groups built from colorSpecs + addedColors + specs
 const colorGroups = computed<ColorGroup[]>(() => {
-  const groups: ColorGroup[] = []
+  if (props.specs.length === 0) return []
 
-  for (const colorId of usedColorIds.value) {
-    const colorData = props.styleColors.find(c => c.id === colorId)
-    if (!colorData) continue
+  const activeColors = props.styleColors.filter(c => c.is_active)
 
+  return activeColors.map(colorData => {
     const rows: ColorSpecRow[] = props.specs.map(spec => {
       const match = colorSpecs.value.find(
-        cs => cs.style_thread_spec_id === spec.id && cs.style_color_id === colorId
+        cs => cs.style_thread_spec_id === spec.id && cs.style_color_id === colorData.id
       )
 
       return {
@@ -511,25 +436,16 @@ const colorGroups = computed<ColorGroup[]>(() => {
       }
     })
 
-    groups.push({
+    return {
       color: {
         id: colorData.id,
         color_name: colorData.color_name,
         hex_code: colorData.hex_code,
       },
       rows,
-    })
-  }
-
-  return groups.sort((a, b) => a.color.color_name.localeCompare(b.color.color_name))
+    }
+  }).sort((a, b) => a.color.color_name.localeCompare(b.color.color_name))
 })
-
-// Available colors for "add color" dialog (exclude already-used)
-const availableColorOptions = computed(() =>
-  props.styleColors
-    .filter(c => c.is_active && !usedColorIds.value.includes(c.id))
-    .map(c => ({ label: c.color_name, value: c.id }))
-)
 
 // Table columns
 const colorTableColumns: QTableColumn[] = [
@@ -592,25 +508,15 @@ onMounted(async () => {
 
 watch(() => props.styleId, loadColorSpecs)
 
-watch(showAddColorDialog, (val) => {
+watch(showCreateColorDialog, (val) => {
   if (!val) {
     selectedSubArt.value = null
     newColorName.value = ''
     newColorHex.value = '#cccccc'
-    showNewColorForm.value = false
-    selectedNewColorId.value = null
   }
 })
 
 // Handlers
-const handleAddColor = () => {
-  if (!selectedNewColorId.value) return
-
-  addedColors.value.push(selectedNewColorId.value)
-  showAddColorDialog.value = false
-  selectedNewColorId.value = null
-}
-
 const handleCreateColor = async () => {
   const colorPart = newColorName.value.trim()
   if (!colorPart || !newColorHex.value) return
@@ -627,14 +533,14 @@ const handleCreateColor = async () => {
       color_name: finalColorName,
       hex_code: newColorHex.value,
     })
-    addedColors.value.push(newColor.id)
-    showNewColorForm.value = false
-    newColorName.value = ''
-    newColorHex.value = '#cccccc'
-    selectedSubArt.value = null
-    showAddColorDialog.value = false
-    emit('color-created')
-    snackbar.success('Tạo màu mới thành công')
+    if (newColor) {
+      showCreateColorDialog.value = false
+      newColorName.value = ''
+      newColorHex.value = '#cccccc'
+      selectedSubArt.value = null
+      emit('color-created')
+      snackbar.success('Tạo màu mới thành công')
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Không thể tạo màu mới'
     snackbar.error(message)
@@ -656,18 +562,15 @@ const handleDeleteColorGroup = async (color: ColorGroupColor) => {
     await deleteColorSpec(cs.id)
   }
 
-  // Remove from addedColors if manually added
-  addedColors.value = addedColors.value.filter(id => id !== color.id)
-
   // Re-fetch to sync
   await loadColorSpecs()
 }
 
 /**
  * Handle inline edit of "Màu chỉ" column.
- * - New mapping (colorSpecId is null, new value selected) → CREATE
- * - Existing mapping updated → UPDATE
- * - Existing mapping cleared → DELETE
+ * - New mapping (colorSpecId is null, new value selected) → CREATE with thread_type_id
+ * - Existing mapping updated → UPDATE with thread_type_id
+ * - Existing mapping cleared → UPDATE with thread_color_id: null, keep thread_type_id
  */
 const handleColorSpecEdit = async (
   row: ColorSpecRow,
@@ -680,20 +583,26 @@ const handleColorSpecEdit = async (
   const cellKey = getColorCellKey(row.specId, color.id)
   inlineEditLoading.value[cellKey] = true
 
+  const threadTypeId = row.spec.thread_type_id ?? undefined
+
   try {
     if (row.colorSpecId === null && newValue !== null) {
       await addColorSpec(row.specId, {
         style_thread_spec_id: row.specId,
         style_color_id: color.id,
         thread_color_id: newValue,
+        thread_type_id: threadTypeId,
       })
     } else if (row.colorSpecId !== null && newValue !== null) {
       await updateColorSpec(row.colorSpecId, {
         thread_color_id: newValue,
+        thread_type_id: threadTypeId,
       })
     } else if (row.colorSpecId !== null && newValue === null) {
-      // DELETE (cleared)
-      await deleteColorSpec(row.colorSpecId)
+      await updateColorSpec(row.colorSpecId, {
+        thread_color_id: null,
+        thread_type_id: threadTypeId,
+      })
     }
 
     // Re-fetch to get updated joined data

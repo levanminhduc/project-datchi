@@ -89,6 +89,7 @@ export interface AggregatedRow {
   additional_order?: number
   total_final?: number
   quota_cones?: number
+  is_fallback_type?: boolean
 }
 
 export interface StyleOrderEntry {

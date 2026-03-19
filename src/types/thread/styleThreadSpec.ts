@@ -91,6 +91,6 @@ export interface StyleThreadSpecFilter {
 
 export interface UpdateStyleColorThreadSpecDTO {
   thread_type_id?: number
-  thread_color_id?: number
+  thread_color_id?: number | null
   notes?: string
 }

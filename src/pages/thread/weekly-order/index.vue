@@ -183,6 +183,32 @@
       </div>
     </AppBanner>
 
+    <!-- Calculation Warnings -->
+    <q-banner
+      v-if="calculationWarnings.length > 0"
+      rounded
+      class="bg-amber-1 q-mb-md"
+    >
+      <template #avatar>
+        <q-icon
+          name="warning"
+          color="warning"
+        />
+      </template>
+      <div class="text-subtitle2 q-mb-xs text-warning">
+        Cảnh báo định mức chỉ
+      </div>
+      <ul class="q-ma-none q-pl-md">
+        <li
+          v-for="(w, i) in calculationWarnings"
+          :key="i"
+          class="text-body2"
+        >
+          {{ w }}
+        </li>
+      </ul>
+    </q-banner>
+
     <!-- Results Section -->
     <template v-if="hasResults">
       <!-- Result View Toggle -->
@@ -316,6 +342,7 @@ const {
   isReordering,
   calculationProgress,
   calculationErrors,
+  calculationWarnings,
   canCalculate,
   canCalculateReason,
   hasResults,

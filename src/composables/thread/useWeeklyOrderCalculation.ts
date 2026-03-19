@@ -37,6 +37,7 @@ export function useWeeklyOrderCalculation() {
   >([])
   const lastCalculatedAt = ref<number | null>(null)
   const lastModifiedAt = ref<number | null>(null)
+  const calculationWarnings = ref<string[]>([])
 
   // Delivery date overrides: spec_id → YYYY-MM-DD string
   const deliveryDateOverrides = reactive(new Map<number, string>())
@@ -306,6 +307,7 @@ export function useWeeklyOrderCalculation() {
             supplier_id: calc.supplier_id ?? null,
             delivery_date: calc.delivery_date ?? null,
             lead_time_days: calc.lead_time_days ?? null,
+            is_fallback_type: true,
           })
         }
       }
@@ -416,6 +418,7 @@ export function useWeeklyOrderCalculation() {
   const calculateAll = async (currentWeekId?: number) => {
     isCalculating.value = true
     calculationErrors.value = []
+    calculationWarnings.value = []
     perStyleResults.value = []
     deliveryDateOverrides.clear()
 
@@ -458,6 +461,7 @@ export function useWeeklyOrderCalculation() {
     }
 
     perStyleResults.value = successResults
+    calculationWarnings.value = successResults.flatMap((r) => r.warnings || [])
     aggregateResults(successResults)
 
     // Enrich with inventory data
@@ -635,6 +639,7 @@ export function useWeeklyOrderCalculation() {
     isReordering,
     calculationProgress,
     calculationErrors,
+    calculationWarnings,
     lastCalculatedAt,
     lastModifiedAt,
     deliveryDateOverrides,

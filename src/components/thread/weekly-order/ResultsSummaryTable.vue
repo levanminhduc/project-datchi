@@ -18,8 +18,22 @@
         hide-bottom
         :rows-per-page-options="[0]"
       >
+        <template #body-cell-thread_type_name="props">
+          <q-td
+            :props="props"
+            :class="props.row.is_fallback_type ? 'bg-amber-1' : ''"
+          >
+            {{ props.row.thread_type_name }}
+            <q-tooltip v-if="props.row.is_fallback_type">
+              Dùng loại chỉ mặc định (TEX-level) do chưa có định mức màu cụ thể
+            </q-tooltip>
+          </q-td>
+        </template>
         <template #body-cell-thread_color="props">
-          <q-td :props="props">
+          <q-td
+            :props="props"
+            :class="props.row.is_fallback_type ? 'bg-amber-1' : ''"
+          >
             <span
               v-if="props.row.thread_color_code"
               class="q-mr-xs"

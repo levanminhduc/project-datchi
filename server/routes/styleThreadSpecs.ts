@@ -7,6 +7,35 @@ const styleThreadSpecs = new Hono()
 
 styleThreadSpecs.use('*', requirePermission('thread.types.view'))
 
+async function ensureColorSpecs(specId: number, styleId: number, threadTypeId: number | null) {
+  if (!threadTypeId) return
+
+  const { data: styleColors } = await supabase
+    .from('style_colors')
+    .select('id')
+    .eq('style_id', styleId)
+
+  if (!styleColors || styleColors.length === 0) return
+
+  const { data: existing } = await supabase
+    .from('style_color_thread_specs')
+    .select('style_color_id')
+    .eq('style_thread_spec_id', specId)
+
+  const existingColorIds = new Set((existing || []).map(e => e.style_color_id))
+  const missing = styleColors.filter(sc => !existingColorIds.has(sc.id))
+
+  if (missing.length === 0) return
+
+  await supabase
+    .from('style_color_thread_specs')
+    .insert(missing.map(sc => ({
+      style_thread_spec_id: specId,
+      style_color_id: sc.id,
+      thread_type_id: threadTypeId,
+    })))
+}
+
 /**
  * GET /api/style-thread-specs - List all style thread specs with optional filtering
  */
@@ -174,6 +203,8 @@ styleThreadSpecs.post('/', async (c) => {
 
     if (error) throw error
 
+    await ensureColorSpecs(data.id, body.style_id, body.thread_type_id)
+
     return c.json({ data, error: null, message: 'Tạo định mức chỉ thành công' })
   } catch (err) {
     console.error('Error creating style thread spec:', err)
@@ -214,6 +245,11 @@ styleThreadSpecs.put('/:id', async (c) => {
         return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
       }
       throw error
+    }
+
+    if (body.thread_type_id) {
+      const styleId = body.style_id || data.style_id
+      await ensureColorSpecs(id, styleId, body.thread_type_id)
     }
 
     return c.json({ data, error: null, message: 'Cập nhật định mức chỉ thành công' })

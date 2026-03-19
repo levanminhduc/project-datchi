@@ -107,6 +107,7 @@ interface CalculationResult {
   style_code: string
   style_name: string
   total_quantity: number
+  warnings?: string[]
   calculations: {
     spec_id: number
     thread_type_id: number
@@ -304,19 +305,21 @@ async function applyInventoryPreview(results: CalculationResult[]): Promise<void
   }
 }
 
-/** Build a single calculation entry from a spec row, quantity, and optional color data */
 function buildCalculation(
   spec: SpecRow,
+  styleCode: string,
   quantity: number,
   colorBreakdown: { color_id: number; quantity: number }[] | undefined,
   colorSpecs: ColorSpecRow[],
   supplierMpcMap: SupplierMpcMap = new Map()
-) {
+): { calculation: CalculationResult['calculations'][number]; warnings: string[] } {
+  const warnings: string[] = []
+
   const baseMpc =
     supplierMpcMap.get(mpcKey(spec.thread_type_id, spec.suppliers?.id)) ??
     spec.thread_types?.meters_per_cone ?? null
 
-  const baseCalculation: CalculationResult['calculations'][number] = {
+  const calculation: CalculationResult['calculations'][number] = {
     spec_id: spec.id,
     thread_type_id: spec.thread_type_id,
     thread_type_name: spec.thread_types?.name || '',
@@ -349,10 +352,18 @@ function buildCalculation(
       (cs) => cs.style_thread_spec_id === spec.id
     )
 
-    baseCalculation.color_breakdown = colorBreakdown.map((cb) => {
+    calculation.color_breakdown = colorBreakdown.map((cb) => {
       const colorSpec = specColorSpecs.find(
         (sc) => sc.style_color_id === cb.color_id
       )
+
+      if (!colorSpec?.thread_type_id) {
+        const colorName = colorSpec?.colors?.name || `color_id=${cb.color_id}`
+        warnings.push(
+          `Mã hàng ${styleCode}: màu ${colorName} chưa có định mức chỉ chi tiết, dùng loại chỉ mặc định`
+        )
+      }
+
       const resolvedSupplierName =
         colorSpec?.thread_types?.suppliers?.name ||
         spec.suppliers?.name ||
@@ -393,7 +404,7 @@ function buildCalculation(
     })
   }
 
-  return baseCalculation
+  return { calculation, warnings }
 }
 
 // ============ Endpoints ============
@@ -470,9 +481,12 @@ threadCalculation.post('/calculate', async (c) => {
     const supplierMpcMap = await getSupplierMetersPerCone(ttIds, supIds)
 
     // Calculate results
-    const calculations = typedSpecs.map((spec) =>
-      buildCalculation(spec, body.quantity, body.color_breakdown, colorSpecs, supplierMpcMap)
-    )
+    const allWarnings: string[] = []
+    const calculations = typedSpecs.map((spec) => {
+      const { calculation, warnings } = buildCalculation(spec, (style as StyleRow).style_code, body.quantity, body.color_breakdown, colorSpecs, supplierMpcMap)
+      allWarnings.push(...warnings)
+      return calculation
+    })
 
     const result: CalculationResult = {
       style_id: (style as StyleRow).id,
@@ -480,6 +494,7 @@ threadCalculation.post('/calculate', async (c) => {
       style_name: (style as StyleRow).style_name,
       total_quantity: body.quantity,
       calculations,
+      ...(allWarnings.length > 0 && { warnings: allWarnings }),
     }
 
     return c.json({ data: result, error: null })
@@ -601,9 +616,12 @@ threadCalculation.post('/calculate-batch', async (c) => {
         cs => styleSpecIds.has(cs.style_thread_spec_id)
       )
 
-      const calculations = specs.map((spec) =>
-        buildCalculation(spec, item.quantity, item.color_breakdown, relevantColorSpecs, batchMpcMap)
-      )
+      const styleWarnings: string[] = []
+      const calculations = specs.map((spec) => {
+        const { calculation, warnings } = buildCalculation(spec, style.style_code, item.quantity, item.color_breakdown, relevantColorSpecs, batchMpcMap)
+        styleWarnings.push(...warnings)
+        return calculation
+      })
 
       results.push({
         style_id: style.id,
@@ -611,6 +629,7 @@ threadCalculation.post('/calculate-batch', async (c) => {
         style_name: style.style_name,
         total_quantity: item.quantity,
         calculations,
+        ...(styleWarnings.length > 0 && { warnings: styleWarnings }),
       })
     }
 
@@ -752,11 +771,20 @@ threadCalculation.post('/calculate-by-po', async (c) => {
         cs => styleSpecIds.has(cs.style_thread_spec_id)
       )
 
+      const styleWarnings: string[] = []
       const calculations = specs.map((spec) => {
         const colorBreakdown = skus.map((sku) => {
           const colorSpec = relevantColorSpecs.find(
             (cs) => cs.style_thread_spec_id === spec.id && cs.style_color_id === sku.color_id
           )
+
+          if (!colorSpec?.thread_type_id) {
+            const colorName = sku.colors?.name || `color_id=${sku.color_id}`
+            styleWarnings.push(
+              `Mã hàng ${style.style_code}: màu ${colorName} chưa có định mức chỉ chi tiết, dùng loại chỉ mặc định`
+            )
+          }
+
           const resolvedSupplierName =
             colorSpec?.thread_types?.suppliers?.name ||
             spec.suppliers?.name ||
@@ -835,6 +863,7 @@ threadCalculation.post('/calculate-by-po', async (c) => {
         style_name: style.style_name,
         quantity: item.quantity,
         calculations,
+        ...(styleWarnings.length > 0 && { warnings: styleWarnings }),
       })
     }
 
