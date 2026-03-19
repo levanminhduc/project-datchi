@@ -226,10 +226,12 @@ const props = withDefaults(defineProps<{
   poQuantity?: number | null
   alreadyOrdered?: number
   hasSubArts?: boolean
+  initialSubArtCode?: string
 }>(), {
   poQuantity: null,
   alreadyOrdered: 0,
   hasSubArts: false,
+  initialSubArtCode: undefined,
 })
 
 const emit = defineEmits<{
@@ -242,6 +244,12 @@ const emit = defineEmits<{
 
 const selectedColorId = ref<number | null>(null)
 const selectedSubArtCode = ref<string | null>(null)
+
+watch(() => props.initialSubArtCode, (code) => {
+  if (code && props.hasSubArts && !selectedSubArtCode.value) {
+    selectedSubArtCode.value = code
+  }
+}, { immediate: true })
 
 const subArtCodes = computed(() => {
   if (!props.hasSubArts) return []

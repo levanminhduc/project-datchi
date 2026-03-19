@@ -53,6 +53,7 @@ export interface POItem {
   style?: { id: number; style_code: string; style_name: string; description?: string | null }
   ordered_quantity?: number // Sum of weekly order quantities for this PO/style
   has_sub_arts?: boolean
+  sub_arts?: Array<{ id: number; code: string }>
 }
 
 export interface POItemHistory {

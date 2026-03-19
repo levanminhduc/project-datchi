@@ -408,7 +408,7 @@ const handleRemovePO = (poId: number) => {
 }
 
 const handleAddStyleFromPO = (
-  style: { id: number; style_code: string; style_name: string; po_id: number; po_number: string },
+  style: { id: number; style_code: string; style_name: string; po_id: number; po_number: string; sub_art_id?: number; sub_art_code?: string },
 ) => {
   addStyle({
     id: style.id,
@@ -416,6 +416,8 @@ const handleAddStyleFromPO = (
     style_name: style.style_name,
     po_id: style.po_id,
     po_number: style.po_number,
+    sub_art_id: style.sub_art_id,
+    sub_art_code: style.sub_art_code,
   })
 }
 

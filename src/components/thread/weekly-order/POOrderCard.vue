@@ -33,6 +33,34 @@
 
       <!-- Add style from PO items -->
       <div class="row q-col-gutter-sm q-mb-md items-end">
+        <div
+          v-if="hasAnySubArts"
+          class="col-12 col-sm-4 col-md-3"
+        >
+          <AppSelect
+            v-model="selectedSubArt"
+            :options="subArtOptions"
+            label="Tìm theo Sub-art"
+            dense
+            use-input
+            fill-input
+            hide-selected
+            hide-bottom-space
+            clearable
+            option-value="value"
+            option-label="label"
+            emit-value
+            map-options
+          >
+            <template #no-option>
+              <q-item>
+                <q-item-section class="text-grey">
+                  Không tìm thấy sub-art
+                </q-item-section>
+              </q-item>
+            </template>
+          </AppSelect>
+        </div>
         <div class="col-12 col-sm-6 col-md-4">
           <AppSelect
             v-model="selectedStyleId"
@@ -86,6 +114,7 @@
         :po-quantity="getPoQuantity(entry.style_id)"
         :already-ordered="getAlreadyOrdered(entry.style_id)"
         :has-sub-arts="getHasSubArts(entry.style_id)"
+        :initial-sub-art-code="entry.sub_art_code"
         @remove="(styleId, poId, subArtId) => $emit('remove-style', styleId, poId, subArtId)"
         @add-color="(styleId, color, poId, subArtId) => $emit('add-color', styleId, color, poId, subArtId)"
         @remove-color="(styleId, colorId, poId, subArtId) => $emit('remove-color', styleId, colorId, poId, subArtId)"
@@ -123,7 +152,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'remove-po': [poId: number]
-  'add-style': [style: { id: number; style_code: string; style_name: string; po_id: number; po_number: string }]
+  'add-style': [style: { id: number; style_code: string; style_name: string; po_id: number; po_number: string; sub_art_id?: number; sub_art_code?: string }]
   'remove-style': [styleId: number, poId: number | null, subArtId?: number | null]
   'add-color': [styleId: number, color: { color_id: number; color_name: string; hex_code: string; style_color_id: number }, poId: number | null, subArtId?: number | null]
   'remove-color': [styleId: number, colorId: number, poId: number | null, subArtId?: number | null]
@@ -132,6 +161,44 @@ const emit = defineEmits<{
 }>()
 
 const selectedStyleId = ref<number | null>(null)
+const selectedSubArt = ref<string | null>(null)
+
+const hasAnySubArts = computed(() =>
+  props.po.items?.some(item => item.has_sub_arts) ?? false
+)
+
+const subArtOptions = computed(() => {
+  if (!props.po.items) return []
+  const addedStyleIds = new Set(poEntries.value.map(e => e.style_id))
+  return props.po.items
+    .filter(item => item.sub_arts?.length && !addedStyleIds.has(item.style_id))
+    .filter(item => !selectedStyleId.value || item.style_id === selectedStyleId.value)
+    .flatMap(item =>
+      item.sub_arts!.map(sa => ({
+        label: `${sa.code} (${item.style?.style_code ?? '?'})`,
+        value: `${item.style_id}_${sa.id}`,
+        styleId: item.style_id,
+        subArtId: sa.id,
+        subArtCode: sa.code,
+      }))
+    )
+})
+
+watch(selectedSubArt, (compositeKey) => {
+  if (!compositeKey) return
+  const opt = subArtOptions.value.find(o => o.value === compositeKey)
+  if (opt) selectedStyleId.value = opt.styleId
+})
+
+watch(selectedStyleId, (newStyleId) => {
+  if (!selectedSubArt.value) return
+  if (!newStyleId) {
+    selectedSubArt.value = null
+    return
+  }
+  const opt = subArtOptions.value.find(o => o.value === selectedSubArt.value)
+  if (!opt) selectedSubArt.value = null
+})
 
 const specColorsCache = ref(new Map<number, Array<{ id: number; name: string; hex_code: string }>>())
 
@@ -216,15 +283,22 @@ const handleAddStyle = () => {
   const poItem = props.po.items.find((item) => item.style_id === selectedStyleId.value)
   if (!poItem?.style) return
 
+  const subArtOpt = selectedSubArt.value
+    ? subArtOptions.value.find(o => o.value === selectedSubArt.value)
+    : undefined
+
   emit('add-style', {
     id: poItem.style.id,
     style_code: poItem.style.style_code,
     style_name: poItem.style.style_name,
     po_id: props.po.id,
     po_number: props.po.po_number,
+    sub_art_id: subArtOpt?.subArtId,
+    sub_art_code: subArtOpt?.subArtCode,
   })
 
   selectedStyleId.value = null
+  selectedSubArt.value = null
 }
 
 const handleAddAllStyles = () => {
@@ -242,5 +316,6 @@ const handleAddAllStyles = () => {
       po_number: props.po.po_number,
     })
   }
+  selectedSubArt.value = null
 }
 </script>

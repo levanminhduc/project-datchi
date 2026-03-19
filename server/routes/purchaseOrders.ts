@@ -180,20 +180,25 @@ purchaseOrders.get('/:id', requirePermission('thread.purchase-orders.view'), asy
 
       const styleIds = [...new Set(data.items.map((item: { style_id: number }) => item.style_id))]
       const subArtStyleIds = new Set<number>()
+      const subArtCodesMap = new Map<number, Array<{ id: number; code: string }>>()
       if (styleIds.length > 0) {
         const { data: subArtRows } = await supabase
           .from('sub_arts')
-          .select('style_id')
+          .select('id, style_id, sub_art_code')
           .in('style_id', styleIds)
         if (subArtRows) {
           for (const row of subArtRows) {
             subArtStyleIds.add(row.style_id)
+            const entries = subArtCodesMap.get(row.style_id) || []
+            entries.push({ id: row.id, code: row.sub_art_code })
+            subArtCodesMap.set(row.style_id, entries)
           }
         }
       }
       data.items = data.items.map((item: { style_id: number }) => ({
         ...item,
         has_sub_arts: subArtStyleIds.has(item.style_id),
+        sub_arts: subArtCodesMap.get(item.style_id) || undefined,
       }))
     }
 
