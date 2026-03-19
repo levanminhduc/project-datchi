@@ -1,7 +1,7 @@
 # Backend Security Review - 2026-02-21
 
 > **⚠ Point-in-time snapshot:** This review reflects the state of `server/` as of 2026-02-21.
-> The codebase has changed since then (route count: 25 → 28 as of 2026-03-14; global `authMiddleware` applied as of 2026-03 — see C01 remediation status below).
+> The codebase has changed since then (route count: 25 → 28 as of 2026-03-19; global `authMiddleware` applied as of 2026-03 — see C01 remediation status below).
 > Do not treat file/line references as current — re-verify against current code before acting on individual findings.
 
 ## Tổng quan
@@ -14,7 +14,7 @@
 - Route files không có `authMiddleware`: `22`
 - Số write endpoints (POST/PUT/PATCH/DELETE) trong nhóm chưa auth: `99`
 
-## Trạng thái khắc phục (cập nhật 2026-03-14)
+## Trạng thái khắc phục (cập nhật 2026-03-19)
 
 | Finding | Mức độ | Trạng thái |
 |---------|--------|-----------|

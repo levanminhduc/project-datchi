@@ -177,6 +177,24 @@ purchaseOrders.get('/:id', requirePermission('thread.purchase-orders.view'), asy
 
     if (includeItems && data?.items) {
       data.items = data.items.filter((item: { deleted_at: string | null }) => item.deleted_at === null)
+
+      const styleIds = [...new Set(data.items.map((item: { style_id: number }) => item.style_id))]
+      const subArtStyleIds = new Set<number>()
+      if (styleIds.length > 0) {
+        const { data: subArtRows } = await supabase
+          .from('sub_arts')
+          .select('style_id')
+          .in('style_id', styleIds)
+        if (subArtRows) {
+          for (const row of subArtRows) {
+            subArtStyleIds.add(row.style_id)
+          }
+        }
+      }
+      data.items = data.items.map((item: { style_id: number }) => ({
+        ...item,
+        has_sub_arts: subArtStyleIds.has(item.style_id),
+      }))
     }
 
     return c.json({ data, error: null })

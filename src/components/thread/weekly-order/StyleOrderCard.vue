@@ -57,33 +57,12 @@
         </q-banner>
       </div>
 
-      <!-- Sub-art dropdown -->
+      <!-- Sub-art info for legacy entries -->
       <div
-        v-if="subArts.length > 0 || entry.sub_art_id"
-        class="q-mb-sm"
+        v-if="entry.sub_art_code && !hasSubArts"
+        class="q-mb-sm text-caption text-grey-7"
       >
-        <AppSelect
-          v-if="subArts.length > 0 && !isSubArtReadOnly"
-          :model-value="entry.sub_art_id"
-          :options="subArtOptions"
-          label="Sub-art"
-          dense
-          hide-bottom-space
-          clearable
-          option-value="value"
-          option-label="label"
-          emit-value
-          map-options
-          style="max-width: 300px"
-          @update:model-value="handleSubArtChange"
-        />
-        <div
-          v-else-if="isSubArtReadOnly"
-          class="text-caption text-grey-7"
-        >
-          Sub-art: <strong>{{ entry.sub_art_code || `ID #${entry.sub_art_id}` }}</strong>
-          <span class="text-orange-8"> (không còn tồn tại)</span>
-        </div>
+        Sub-art: <strong>{{ entry.sub_art_code }}</strong>
       </div>
 
       <!-- Color entries -->
@@ -139,8 +118,71 @@
         </div>
       </div>
 
-      <!-- Add color -->
-      <div class="row q-col-gutter-sm items-end">
+      <!-- Add color: parallel subart + color dropdowns -->
+      <div
+        v-if="hasSubArts"
+        class="row q-col-gutter-sm items-end"
+      >
+        <div class="col-12 col-sm-4 col-md-3">
+          <AppSelect
+            v-model="selectedSubArtCode"
+            :options="subArtCodeOptions"
+            label="Sub-art"
+            dense
+            use-input
+            fill-input
+            hide-selected
+            hide-bottom-space
+            clearable
+            option-value="value"
+            option-label="label"
+            emit-value
+            map-options
+          />
+        </div>
+        <div class="col-12 col-sm-5 col-md-4">
+          <AppSelect
+            v-model="selectedColorId"
+            :options="availableColors"
+            label="Màu hàng"
+            dense
+            use-input
+            fill-input
+            hide-selected
+            hide-bottom-space
+            clearable
+            option-value="value"
+            option-label="label"
+            emit-value
+            map-options
+          >
+            <template #no-option>
+              <q-item>
+                <q-item-section class="text-grey">
+                  {{ selectedSubArtCode ? 'Không còn màu cho sub-art này' : 'Chọn sub-art trước' }}
+                </q-item-section>
+              </q-item>
+            </template>
+          </AppSelect>
+        </div>
+        <div class="col-auto">
+          <AppButton
+            flat
+            dense
+            icon="add"
+            color="primary"
+            label="Thêm"
+            :disable="!selectedColorId"
+            @click="handleAddColor"
+          />
+        </div>
+      </div>
+
+      <!-- Add color: single dropdown (no sub-arts) -->
+      <div
+        v-else
+        class="row q-col-gutter-sm items-end"
+      >
         <div class="col-12 col-sm-5 col-md-4">
           <AppSelect
             v-model="selectedColorId"
@@ -175,21 +217,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { StyleOrderEntry } from '@/types/thread'
-import type { SubArt } from '@/types/thread/subArt'
-import { subArtService } from '@/services/subArtService'
 
 const props = withDefaults(defineProps<{
   entry: StyleOrderEntry
   colorOptions: Array<{ id: number; name: string; hex_code: string }>
   poQuantity?: number | null
   alreadyOrdered?: number
-  subArtRequired?: Map<number, boolean>
+  hasSubArts?: boolean
 }>(), {
   poQuantity: null,
   alreadyOrdered: 0,
-  subArtRequired: () => new Map(),
+  hasSubArts: false,
 })
 
 const emit = defineEmits<{
@@ -201,35 +241,27 @@ const emit = defineEmits<{
 }>()
 
 const selectedColorId = ref<number | null>(null)
-const subArts = ref<SubArt[]>([])
+const selectedSubArtCode = ref<string | null>(null)
 
-const subArtOptions = computed(() =>
-  subArts.value.map((sa) => ({ label: sa.sub_art_code, value: sa.id }))
-)
-
-const isSubArtReadOnly = computed(() => {
-  if (!props.entry.sub_art_id) return false
-  return subArts.value.length === 0 || !subArts.value.some((sa) => sa.id === props.entry.sub_art_id)
+const subArtCodes = computed(() => {
+  if (!props.hasSubArts) return []
+  const codes = new Set<string>()
+  for (const c of props.colorOptions) {
+    const idx = c.name.indexOf(' - ')
+    if (idx > 0) {
+      codes.add(c.name.substring(0, idx))
+    }
+  }
+  return Array.from(codes).sort()
 })
 
-const fetchSubArts = async () => {
-  try {
-    subArts.value = await subArtService.getByStyleId(props.entry.style_id)
-    props.subArtRequired.set(props.entry.style_id, subArts.value.length > 0)
-  } catch {
-    subArts.value = []
-  }
-}
+const subArtCodeOptions = computed(() =>
+  subArtCodes.value.map(code => ({ label: code, value: code }))
+)
 
-onMounted(fetchSubArts)
-
-watch(() => props.entry.style_id, fetchSubArts)
-
-const handleSubArtChange = (subArtId: number | null) => {
-  const oldSubArtId = props.entry.sub_art_id
-  const subArt = subArts.value.find((sa) => sa.id === subArtId)
-  emit('update-sub-art', props.entry.style_id, props.entry.po_id, subArtId, subArt?.sub_art_code, oldSubArtId)
-}
+watch(selectedSubArtCode, () => {
+  selectedColorId.value = null
+})
 
 const currentTotal = computed(() =>
   props.entry.colors.reduce((sum, c) => sum + c.quantity, 0)
@@ -241,10 +273,6 @@ const maxAllowed = computed(() =>
 
 const remaining = computed(() =>
   maxAllowed.value != null ? maxAllowed.value - currentTotal.value : 0
-)
-
-const isOverLimit = computed(() =>
-  maxAllowed.value != null && remaining.value < 0
 )
 
 const isWarning = computed(() =>
@@ -312,7 +340,14 @@ const handleQuantityChange = (colorId: number, rawQty: number) => {
 
 const availableColors = computed(() => {
   const usedIds = new Set(props.entry.colors.map(c => c.color_id))
-  return props.colorOptions
+  let source = props.colorOptions
+
+  if (props.hasSubArts && selectedSubArtCode.value) {
+    const prefix = selectedSubArtCode.value + ' - '
+    source = source.filter(c => c.name.startsWith(prefix))
+  }
+
+  return source
     .filter(c => !usedIds.has(c.id))
     .map(c => ({ label: c.name, value: c.id }))
 })
@@ -321,6 +356,13 @@ const handleAddColor = () => {
   if (!selectedColorId.value) return
   const color = props.colorOptions.find(c => c.id === selectedColorId.value)
   if (!color) return
+
+  if (props.hasSubArts && !selectedSubArtCode.value) {
+    const idx = color.name.indexOf(' - ')
+    if (idx > 0) {
+      selectedSubArtCode.value = color.name.substring(0, idx)
+    }
+  }
 
   emit('add-color', props.entry.style_id, {
     color_id: color.id,

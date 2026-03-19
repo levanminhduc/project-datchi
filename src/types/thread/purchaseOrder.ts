@@ -52,6 +52,7 @@ export interface POItem {
   deleted_at?: string | null
   style?: { id: number; style_code: string; style_name: string; description?: string | null }
   ordered_quantity?: number // Sum of weekly order quantities for this PO/style
+  has_sub_arts?: boolean
 }
 
 export interface POItemHistory {

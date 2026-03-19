@@ -85,7 +85,7 @@
         :color-options="getColorOptionsForStyle(entry.style_id)"
         :po-quantity="getPoQuantity(entry.style_id)"
         :already-ordered="getAlreadyOrdered(entry.style_id)"
-        :sub-art-required="subArtRequired"
+        :has-sub-arts="getHasSubArts(entry.style_id)"
         @remove="(styleId, poId, subArtId) => $emit('remove-style', styleId, poId, subArtId)"
         @add-color="(styleId, color, poId, subArtId) => $emit('add-color', styleId, color, poId, subArtId)"
         @remove-color="(styleId, colorId, poId, subArtId) => $emit('remove-color', styleId, colorId, poId, subArtId)"
@@ -183,6 +183,21 @@ const availableStyleOptions = computed(() => {
 const getColorOptionsForStyle = (styleId: number): Array<{ id: number; name: string; hex_code: string }> => {
   return specColorsCache.value.get(styleId) || []
 }
+
+const getHasSubArts = (styleId: number): boolean => {
+  if (!props.po.items) return false
+  const poItem = props.po.items.find(item => item.style_id === styleId)
+  return poItem?.has_sub_arts === true
+}
+
+watch(() => props.po.items, (items) => {
+  if (!items) return
+  for (const item of items) {
+    if (item.has_sub_arts !== undefined) {
+      props.subArtRequired.set(item.style_id, item.has_sub_arts)
+    }
+  }
+}, { immediate: true })
 
 watch(
   poEntries,
