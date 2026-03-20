@@ -134,6 +134,36 @@
             </q-td>
           </template>
 
+          <!-- borrowed_in / lent_out loan context -->
+          <template #body-cell-borrowed_in="props">
+            <q-td :props="props">
+              <span
+                v-if="props.row.borrowed_in > 0"
+                class="text-info text-weight-medium"
+              >
+                {{ props.row.borrowed_in }} cuộn
+              </span>
+              <span
+                v-else
+                class="text-grey-5"
+              >—</span>
+            </q-td>
+          </template>
+          <template #body-cell-lent_out="props">
+            <q-td :props="props">
+              <span
+                v-if="props.row.lent_out > 0"
+                class="text-warning text-weight-medium"
+              >
+                {{ props.row.lent_out }} cuộn
+              </span>
+              <span
+                v-else
+                class="text-grey-5"
+              >—</span>
+            </q-td>
+          </template>
+
           <!-- actions -->
           <template #body-cell-actions="props">
             <q-td :props="props">
@@ -336,6 +366,13 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <ReceiveResultDialog
+      v-if="receiveResult"
+      v-model="showResultDialog"
+      :result="receiveResult"
+      @update:model-value="onResultDialogClose"
+    />
   </q-page>
 </template>
 
@@ -351,6 +388,8 @@ import { DeliveryStatus, InventoryReceiptStatus } from '@/types/thread/enums'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+import ReceiveResultDialog from '@/components/thread/weekly-order/ReceiveResultDialog.vue'
+import type { ReceiveResult } from '@/components/thread/weekly-order/ReceiveResultDialog.vue'
 
 const snackbar = useSnackbar()
 const { employee } = useAuth()
@@ -389,6 +428,9 @@ const receiveForm = ref({
   expiry_date: '' as string,
 })
 
+const showResultDialog = ref(false)
+const receiveResult = ref<ReceiveResult | null>(null)
+
 const currentUser = computed(() => {
   return employee.value?.fullName || 'Chưa đăng nhập'
 })
@@ -397,18 +439,35 @@ const warehouseOptions = computed(() => {
   return warehouses.value.map(w => ({ id: w.id, name: `${w.name} (${w.code})` }))
 })
 
-const trackingColumns: QTableColumn[] = [
-  { name: 'week_name', label: 'Tuần', field: 'week_name', align: 'left', sortable: true },
-  { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
-  { name: 'tex_number', label: 'TEX', field: 'tex_number', align: 'center' },
-  { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
-  { name: 'quantity_cones', label: 'Số cuộn', field: 'quantity_cones', align: 'center' }, // Task 7.1: Use quantity_cones
-  { name: 'delivery_date', label: 'Ngày giao dự kiến', field: 'delivery_date', align: 'center', sortable: true },
-  { name: 'days_remaining', label: 'Còn lại', field: 'days_remaining', align: 'center', sortable: true },
-  { name: 'status', label: 'Giao hàng', field: 'status', align: 'center' },
-  { name: 'inventory_status', label: 'Nhập kho', field: 'inventory_status', align: 'center' },
-  { name: 'actions', label: '', field: 'actions', align: 'center' },
-]
+const hasAnyLoans = computed(() => {
+  return deliveries.value.some((d: DeliveryRecord) => (d.borrowed_in || 0) > 0 || (d.lent_out || 0) > 0)
+})
+
+const trackingColumns = computed<QTableColumn[]>(() => {
+  const cols: QTableColumn[] = [
+    { name: 'week_name', label: 'Tuần', field: 'week_name', align: 'left', sortable: true },
+    { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
+    { name: 'tex_number', label: 'TEX', field: 'tex_number', align: 'center' },
+    { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
+    { name: 'quantity_cones', label: 'Đặt NCC', field: 'quantity_cones', align: 'center' },
+    { name: 'received_quantity', label: 'Đã nhận', field: 'received_quantity', align: 'center' },
+    { name: 'pending_cones', label: 'Chờ nhận', field: (row: DeliveryRecord) => (row.quantity_cones || 0) - (row.received_quantity || 0), align: 'center' },
+  ]
+  if (hasAnyLoans.value) {
+    cols.push(
+      { name: 'borrowed_in', label: 'Đã mượn', field: 'borrowed_in', align: 'center' },
+      { name: 'lent_out', label: 'Cho mượn', field: 'lent_out', align: 'center' },
+    )
+  }
+  cols.push(
+    { name: 'delivery_date', label: 'Ngày giao', field: 'delivery_date', align: 'center', sortable: true },
+    { name: 'days_remaining', label: 'Còn lại', field: 'days_remaining', align: 'center', sortable: true },
+    { name: 'status', label: 'Giao hàng', field: 'status', align: 'center' },
+    { name: 'inventory_status', label: 'Nhập kho', field: 'inventory_status', align: 'center' },
+    { name: 'actions', label: '', field: 'actions', align: 'center' },
+  )
+  return cols
+})
 
 const receiveColumns: QTableColumn[] = [
   { name: 'week_name', label: 'Tuần', field: 'week_name', align: 'left', sortable: true },
@@ -483,7 +542,7 @@ async function loadTrackingData() {
     if (statusFilter.value) filters.status = statusFilter.value as DeliveryStatus
     deliveries.value = await deliveryService.getOverview(filters)
   } catch (err) {
-    snackbar.error('Lỗi tải dữ liệu: ' + (err instanceof Error ? err.message : 'Unknown'))
+    snackbar.error('Lỗi tải dữ liệu: ' + (err instanceof Error ? err.message : 'Không xác định'))
   } finally {
     loading.value = false
   }
@@ -496,7 +555,7 @@ async function loadReceiveData() {
     const allDeliveries = await deliveryService.getOverview({ status: DeliveryStatus.DELIVERED })
     pendingReceiveItems.value = allDeliveries.filter(d => d.inventory_status !== InventoryReceiptStatus.RECEIVED)
   } catch (err) {
-    snackbar.error('Lỗi tải dữ liệu: ' + (err instanceof Error ? err.message : 'Unknown'))
+    snackbar.error('Lỗi tải dữ liệu: ' + (err instanceof Error ? err.message : 'Không xác định'))
   } finally {
     loadingReceive.value = false
   }
@@ -516,7 +575,7 @@ async function updateDeliveryDate(deliveryId: number, newDate: string) {
     snackbar.success('Đã cập nhật ngày giao')
     await loadTrackingData()
   } catch (err) {
-    snackbar.error('Lỗi: ' + (err instanceof Error ? err.message : 'Unknown'))
+    snackbar.error('Lỗi: ' + (err instanceof Error ? err.message : 'Không xác định'))
   }
 }
 
@@ -543,7 +602,7 @@ async function confirmDelivered() {
     showDeliveredDialog.value = false
     await loadTrackingData()
   } catch (err) {
-    snackbar.error('Lỗi: ' + (err instanceof Error ? err.message : 'Unknown'))
+    snackbar.error('Lỗi: ' + (err instanceof Error ? err.message : 'Không xác định'))
   } finally {
     updating.value = false
   }
@@ -572,13 +631,21 @@ async function confirmReceive() {
       dto.expiry_date = fromDatePickerFormat(receiveForm.value.expiry_date)
     }
     const result = await deliveryService.receiveDelivery(selectedReceiveDelivery.value.id, dto)
-    snackbar.success(`Đã nhập ${result.cones_created} cuộn vào kho (Lot: ${result.lot_number})`)
     showReceiveDialog.value = false
-    await loadReceiveData()
+    receiveResult.value = result
+    showResultDialog.value = true
   } catch (err) {
-    snackbar.error('Lỗi: ' + (err instanceof Error ? err.message : 'Unknown'))
+    snackbar.error('Lỗi: ' + (err instanceof Error ? err.message : 'Không xác định'))
   } finally {
     receiving.value = false
+  }
+}
+
+async function onResultDialogClose(val: boolean) {
+  if (!val) {
+    showResultDialog.value = false
+    receiveResult.value = null
+    await loadReceiveData()
   }
 }
 

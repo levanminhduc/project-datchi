@@ -189,6 +189,8 @@ export interface DeliveryRecord {
   tex_number?: string
   week_name?: string
   total_cones?: number | null
+  borrowed_in?: number
+  lent_out?: number
 }
 
 export interface ReceiveDeliveryDTO {
@@ -338,4 +340,16 @@ export interface AssignmentSummaryRow {
   reserved_cones: number
   allocated_cones: number
   gap: number
+}
+
+export interface LoanDetailByType {
+  thread_type_id: number
+  thread_code: string
+  thread_name: string
+  color_name: string
+  borrowed_cones: number
+  lent_cones: number
+  ncc_ordered: number
+  ncc_received: number
+  ncc_pending: number
 }

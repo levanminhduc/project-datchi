@@ -7,5 +7,5 @@
 
 ## 2. Manual Testing
 
-- [ ] 2.1 Test manual stock entry via the inventory page dialog: enter qty_full_cones and qty_partial_cones, verify cone records appear in thread_inventory with correct status, lot_number, and quantity_meters
-- [ ] 2.2 Verify FEFO visibility: after manual entry, check that cones appear in allocation queries (status = AVAILABLE, correct FEFO ordering by is_partial DESC, expiry_date ASC, received_date ASC)
+- [x] 2.1 Test manual stock entry via the inventory page dialog: enter qty_full_cones and qty_partial_cones, verify cone records appear in thread_inventory with correct status, lot_number, and quantity_meters
+- [x] 2.2 Verify FEFO visibility: after manual entry, check that cones appear in allocation queries (status = AVAILABLE, correct FEFO ordering by is_partial DESC, expiry_date ASC, received_date ASC)

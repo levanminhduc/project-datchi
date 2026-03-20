@@ -509,7 +509,32 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
     const enriched = Array.from(dedupeMap.values())
       .sort((a, b) => String(a.delivery_date).localeCompare(String(b.delivery_date)))
 
-    return c.json({ data: enriched, error: null })
+    const { data: loanAggs } = await supabase
+      .from('thread_order_loans')
+      .select('from_week_id, to_week_id, thread_type_id, quantity_cones')
+      .eq('status', 'ACTIVE')
+      .is('deleted_at', null)
+      .not('from_week_id', 'is', null)
+
+    const borrowedMap = new Map<string, number>()
+    const lentMap = new Map<string, number>()
+    for (const loan of loanAggs || []) {
+      const borrowKey = `${loan.to_week_id}_${loan.thread_type_id}`
+      borrowedMap.set(borrowKey, (borrowedMap.get(borrowKey) || 0) + loan.quantity_cones)
+      const lentKey = `${loan.from_week_id}_${loan.thread_type_id}`
+      lentMap.set(lentKey, (lentMap.get(lentKey) || 0) + loan.quantity_cones)
+    }
+
+    const withLoanContext = enriched.map((row: any) => {
+      const key = `${row.week_id}_${row.thread_type_id}`
+      return {
+        ...row,
+        borrowed_in: borrowedMap.get(key) || 0,
+        lent_out: lentMap.get(key) || 0,
+      }
+    })
+
+    return c.json({ data: withLoanContext, error: null })
   } catch (err) {
     console.error('Error fetching deliveries overview:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -676,6 +701,7 @@ weeklyOrder.post('/deliveries/:deliveryId/receive', requirePermission('thread.al
         cones_reserved: result?.cones_reserved ?? 0,
         remaining_shortage: result?.remaining_shortage ?? 0,
         lot_number: result?.lot_number ?? null,
+        auto_return: result?.auto_return ?? { settled: 0, returned_cones: 0, details: [] },
       },
       error: null,
       message: `Đã nhập ${quantity} cuộn chỉ vào kho`,
@@ -1185,6 +1211,29 @@ weeklyOrder.get('/assignment-summary', requirePermission('thread.allocations.vie
 })
 
 /**
+ * GET /api/weekly-orders/:id/loan-detail-by-type - Per-thread-type loan breakdown for a week
+ */
+weeklyOrder.get('/:id/loan-detail-by-type', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data, error } = await supabase.rpc('fn_loan_detail_by_thread_type', {
+      p_week_id: id,
+    })
+
+    if (error) throw error
+
+    return c.json({ data: data || [], error: null })
+  } catch (err) {
+    console.error('Error fetching loan detail by type:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * GET /api/weekly-orders/:id/deliveries - List deliveries for a specific week
  */
 weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'), async (c) => {
@@ -1194,24 +1243,48 @@ weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'),
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('thread_order_deliveries')
-      .select(`
-        *,
-        supplier:suppliers(id, name),
-        thread_type:thread_types(id, name, tex_number)
-      `)
-      .eq('week_id', id)
-      .order('delivery_date', { ascending: true })
+    const [deliveriesResult, loansResult] = await Promise.all([
+      supabase
+        .from('thread_order_deliveries')
+        .select(`
+          *,
+          supplier:suppliers(id, name),
+          thread_type:thread_types(id, name, tex_number)
+        `)
+        .eq('week_id', id)
+        .order('delivery_date', { ascending: true }),
+      supabase
+        .from('thread_order_loans')
+        .select('thread_type_id, from_week_id, to_week_id, quantity_cones')
+        .or(`from_week_id.eq.${id},to_week_id.eq.${id}`)
+        .eq('status', 'ACTIVE')
+        .is('deleted_at', null),
+    ])
 
-    if (error) throw error
+    if (deliveriesResult.error) throw deliveriesResult.error
+
+    const loanRows = loansResult.data || []
+    const loanAggregates = new Map<number, { borrowed_in: number; lent_out: number }>()
+    for (const loan of loanRows) {
+      if (!loanAggregates.has(loan.thread_type_id)) {
+        loanAggregates.set(loan.thread_type_id, { borrowed_in: 0, lent_out: 0 })
+      }
+      const agg = loanAggregates.get(loan.thread_type_id)!
+      if (loan.to_week_id === id && loan.from_week_id !== null) {
+        agg.borrowed_in += loan.quantity_cones
+      }
+      if (loan.from_week_id === id) {
+        agg.lent_out += loan.quantity_cones
+      }
+    }
 
     const now = new Date()
     now.setHours(0, 0, 0, 0)
-    const enriched = (data || []).map((row: any) => {
+    const enriched = (deliveriesResult.data || []).map((row: any) => {
       const deliveryDate = new Date(row.delivery_date)
       deliveryDate.setHours(0, 0, 0, 0)
       const days_remaining = Math.ceil((deliveryDate.getTime() - now.getTime()) / 86400000)
+      const loanData = loanAggregates.get(row.thread_type_id) || { borrowed_in: 0, lent_out: 0 }
       return {
         ...row,
         supplier_name: row.supplier?.name || '',
@@ -1219,6 +1292,8 @@ weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'),
         tex_number: row.thread_type?.tex_number || '',
         days_remaining,
         is_overdue: days_remaining < 0 && row.status === 'PENDING',
+        borrowed_in: loanData.borrowed_in,
+        lent_out: loanData.lent_out,
       }
     })
 

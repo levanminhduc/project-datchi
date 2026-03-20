@@ -36,74 +36,113 @@
           :pagination="{ rowsPerPage: 0 }"
           hide-pagination
         >
-          <template #body-cell-week_name="props">
-            <q-td :props="props">
-              <router-link
-                :to="`/thread/weekly-order/${props.row.week_id}`"
-                class="text-primary text-weight-medium"
+          <!-- Expandable thread-type breakdown row -->
+          <template #body="props">
+            <q-tr :props="props">
+              <q-td
+                v-for="col in props.cols"
+                :key="col.name"
+                :props="props"
               >
-                {{ props.row.week_name }}
-              </router-link>
-            </q-td>
-          </template>
-
-          <template #body-cell-shortage="props">
-            <q-td :props="props">
-              <span :class="props.row.shortage > 0 ? 'text-negative text-weight-bold' : 'text-positive'">
-                {{ props.row.shortage }}
-              </span>
-            </q-td>
-          </template>
-
-          <template #body-cell-ncc_status="props">
-            <q-td :props="props">
-              <span
-                v-if="props.row.ncc_pending > 0"
-                class="text-warning"
+                <template v-if="col.name === 'week_name'">
+                  <div class="row items-center no-wrap">
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      size="sm"
+                      :icon="expandedWeeks.includes(props.row.week_id) ? 'expand_less' : 'expand_more'"
+                      @click.stop="toggleWeekDetail(props.row.week_id)"
+                    />
+                    <router-link
+                      :to="`/thread/weekly-order/${props.row.week_id}`"
+                      class="text-primary text-weight-medium"
+                    >
+                      {{ props.row.week_name }}
+                    </router-link>
+                  </div>
+                </template>
+                <template v-else-if="col.name === 'shortage'">
+                  <span :class="props.row.shortage > 0 ? 'text-negative text-weight-bold' : 'text-positive'">
+                    {{ props.row.shortage }}
+                  </span>
+                </template>
+                <template v-else-if="col.name === 'ncc_status'">
+                  <span
+                    v-if="props.row.ncc_pending > 0"
+                    class="text-warning"
+                  >Chờ {{ props.row.ncc_pending }} cuộn</span>
+                  <span
+                    v-else-if="props.row.ncc_ordered > 0"
+                    class="text-positive"
+                  >Đã nhận đủ</span>
+                  <span
+                    v-else
+                    class="text-grey"
+                  >-</span>
+                </template>
+                <template v-else-if="col.name === 'borrowed'">
+                  <span
+                    v-if="props.row.borrowed_cones > 0"
+                    class="text-warning"
+                  >{{ props.row.borrowed_cones }} cuộn ({{ props.row.borrowed_count }} khoản)</span>
+                  <span
+                    v-else
+                    class="text-grey"
+                  >-</span>
+                </template>
+                <template v-else-if="col.name === 'lent'">
+                  <span
+                    v-if="props.row.lent_cones > 0"
+                    class="text-info"
+                  >{{ props.row.lent_cones }} cuộn ({{ props.row.lent_count }} khoản)</span>
+                  <span
+                    v-else
+                    class="text-grey"
+                  >-</span>
+                </template>
+                <template v-else>
+                  {{ col.value }}
+                </template>
+              </q-td>
+            </q-tr>
+            <!-- Expanded detail row -->
+            <q-tr
+              v-if="expandedWeeks.includes(props.row.week_id)"
+              class="bg-grey-1"
+            >
+              <q-td
+                colspan="100%"
+                class="q-pa-sm"
               >
-                Chờ {{ props.row.ncc_pending }} cuộn
-              </span>
-              <span
-                v-else-if="props.row.ncc_ordered > 0"
-                class="text-positive"
-              >
-                Đã nhận đủ
-              </span>
-              <span
-                v-else
-                class="text-grey"
-              >-</span>
-            </q-td>
-          </template>
-
-          <template #body-cell-borrowed="props">
-            <q-td :props="props">
-              <span
-                v-if="props.row.borrowed_cones > 0"
-                class="text-warning"
-              >
-                {{ props.row.borrowed_cones }} cuộn ({{ props.row.borrowed_count }} khoản)
-              </span>
-              <span
-                v-else
-                class="text-grey"
-              >-</span>
-            </q-td>
-          </template>
-
-          <template #body-cell-lent="props">
-            <q-td :props="props">
-              <span
-                v-if="props.row.lent_cones > 0"
-                class="text-info"
-              >
-                {{ props.row.lent_cones }} cuộn ({{ props.row.lent_count }} khoản)
-              </span>
-              <span
-                v-else
-                class="text-grey"
-              >-</span>
-            </q-td>
+                <div
+                  v-if="weekDetailLoading.has(props.row.week_id)"
+                  class="text-center q-pa-md"
+                >
+                  <q-spinner
+                    size="sm"
+                    color="primary"
+                  />
+                  <span class="q-ml-sm text-grey">Đang tải...</span>
+                </div>
+                <DataTable
+                  v-else-if="weekDetailCache.get(props.row.week_id)?.length"
+                  :rows="weekDetailCache.get(props.row.week_id) ?? []"
+                  :columns="detailColumns"
+                  row-key="thread_type_id"
+                  dense
+                  :hide-pagination="true"
+                  class="q-ml-lg"
+                  style="max-width: 800px"
+                />
+                <div
+                  v-else
+                  class="text-center text-grey q-pa-sm"
+                >
+                  Không có dữ liệu chi tiết
+                </div>
+              </q-td>
+            </q-tr>
           </template>
 
           <template #no-data>
@@ -235,13 +274,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
-import type { ThreadOrderLoan, LoanDashboardSummary } from '@/types/thread'
+import type { ThreadOrderLoan, LoanDashboardSummary, LoanDetailByType } from '@/types/thread'
 import type { QTableColumn } from 'quasar'
 import { useSnackbar } from '@/composables/useSnackbar'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppBadge from '@/components/ui/cards/AppBadge.vue'
+import DataTable from '@/components/ui/tables/DataTable.vue'
 
 definePage({
   meta: {
@@ -258,6 +298,10 @@ const loans = ref<ThreadOrderLoan[]>([])
 const loansLoading = ref(false)
 const filter = ref('')
 const statusFilter = ref<'all' | 'ACTIVE' | 'SETTLED'>('all')
+
+const expandedWeeks = ref<number[]>([])
+const weekDetailCache = ref<Map<number, LoanDetailByType[]>>(new Map())
+const weekDetailLoading = ref<Set<number>>(new Set())
 
 const filteredLoans = computed(() => {
   if (statusFilter.value === 'all') return loans.value
@@ -284,6 +328,15 @@ const loanColumns: QTableColumn[] = [
   { name: 'created_at', label: 'Ngày tạo', field: 'created_at', align: 'left', sortable: true, format: (val: string) => new Date(val).toLocaleDateString('vi-VN') },
 ]
 
+const detailColumns: QTableColumn[] = [
+  { name: 'thread_code', label: 'Mã chỉ', field: 'thread_code', align: 'left' },
+  { name: 'thread_name', label: 'Tên chỉ', field: 'thread_name', align: 'left' },
+  { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left' },
+  { name: 'borrowed_cones', label: 'Đang mượn', field: 'borrowed_cones', align: 'right' },
+  { name: 'lent_cones', label: 'Cho mượn', field: 'lent_cones', align: 'right' },
+  { name: 'ncc_pending', label: 'Chờ NCC', field: 'ncc_pending', align: 'right' },
+]
+
 async function loadSummary() {
   summaryLoading.value = true
   try {
@@ -292,6 +345,26 @@ async function loadSummary() {
     snackbar.error(err instanceof Error ? err.message : 'Lỗi tải tổng quan')
   } finally {
     summaryLoading.value = false
+  }
+}
+
+async function toggleWeekDetail(weekId: number) {
+  const idx = expandedWeeks.value.indexOf(weekId)
+  if (idx >= 0) {
+    expandedWeeks.value.splice(idx, 1)
+    return
+  }
+  expandedWeeks.value.push(weekId)
+  if (weekDetailCache.value.has(weekId)) return
+  weekDetailLoading.value.add(weekId)
+  try {
+    const data = await weeklyOrderService.getLoanDetailByType(weekId)
+    weekDetailCache.value.set(weekId, data)
+  } catch (err) {
+    snackbar.error(err instanceof Error ? err.message : 'Lỗi tải chi tiết')
+    expandedWeeks.value.splice(expandedWeeks.value.indexOf(weekId), 1)
+  } finally {
+    weekDetailLoading.value.delete(weekId)
   }
 }
 

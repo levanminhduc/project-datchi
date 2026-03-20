@@ -87,12 +87,12 @@ Target: Create new `src/pages/thread/weekly-order/[id].vue` for detail view (ind
 
 ## 12. Testing & Validation
 
-- [ ] 12.1 Test atomic confirm with multiple thread types (all succeed or all rollback)
-- [ ] 12.2 Test concurrent confirm requests (retry/backoff for SKIP LOCKED)
-- [ ] 12.3 Test cancel blocked when active loans exist
-- [ ] 12.4 Test delivery receipt atomic receive + auto-reserve (no lost-update)
-- [ ] 12.5 Test concurrent delivery receives (row locking works)
-- [ ] 12.6 Test manual borrow atomic with row locking (no over-borrow)
-- [ ] 12.7 Test allocation cancel restores RESERVED_FOR_ORDER if applicable
-- [ ] 12.8 Test soft-deleted loan records excluded from GET endpoints
-- [ ] 12.9 Verify existing issue flow still works with reserved cones ← (verify: all spec scenarios pass, no regression in existing flows, race conditions handled)
+- [x] 12.1 Test atomic confirm with multiple thread types (all succeed or all rollback)
+- [x] 12.2 Test concurrent confirm requests (retry/backoff for SKIP LOCKED)
+- [x] 12.3 Test cancel blocked when active loans exist
+- [x] 12.4 Test delivery receipt atomic receive + auto-reserve (no lost-update)
+- [x] 12.5 Test concurrent delivery receives (row locking works)
+- [x] 12.6 Test manual borrow atomic with row locking (no over-borrow)
+- [x] 12.7 Test allocation cancel restores RESERVED_FOR_ORDER if applicable
+- [x] 12.8 Test soft-deleted loan records excluded from GET endpoints
+- [x] 12.9 Verify existing issue flow still works with reserved cones ← (verify: all spec scenarios pass, no regression in existing flows, race conditions handled)

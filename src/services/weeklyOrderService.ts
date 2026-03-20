@@ -26,6 +26,7 @@ import type {
   ReserveFromStockDTO,
   ReserveFromStockResult,
   AssignmentSummaryRow,
+  LoanDetailByType,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -426,6 +427,12 @@ export const weeklyOrderService = {
     const queryString = params.toString()
     const url = queryString ? `${BASE}/assignment-summary?${queryString}` : `${BASE}/assignment-summary`
     const response = await fetchApi<ApiResponse<AssignmentSummaryRow[]>>(url)
+    if (response.error) throw new Error(response.error)
+    return response.data || []
+  },
+
+  async getLoanDetailByType(weekId: number): Promise<LoanDetailByType[]> {
+    const response = await fetchApi<ApiResponse<LoanDetailByType[]>>(`${BASE}/${weekId}/loan-detail-by-type`)
     if (response.error) throw new Error(response.error)
     return response.data || []
   },

@@ -7,11 +7,24 @@ interface ApiResponse<T> {
   message?: string
 }
 
+export interface AutoReturnDetail {
+  loan_id: number
+  from_week_id: number
+  from_week_name: string
+  cones_returned: number
+  fully_settled: boolean
+}
+
 interface ReceiveDeliveryResponse {
-  delivery: DeliveryRecord
   cones_created: number
+  cones_reserved: number
+  remaining_shortage: number
   lot_number: string
-  cone_ids: string[]
+  auto_return: {
+    settled: number
+    returned_cones: number
+    details: AutoReturnDetail[]
+  }
 }
 
 const BASE = '/api/weekly-orders'

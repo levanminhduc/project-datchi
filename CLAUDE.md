@@ -97,7 +97,7 @@ UI Components (src/components/ui/) → App* wrappers over Quasar
 
 ### Frontend
 - Use `AppInput`, `AppSelect`, `AppButton` (not raw `q-*` components)
-- Use `DataTable` (not raw `q-table`) for all listing/main tables — exception: small inline tables inside dialogs
+- Use `DataTable` (not raw `q-table`) for ALL tables — listing, dialog, inline. Không dùng `q-table` trực tiếp
 - Use `useSnackbar()` for toasts: `snackbar.success()`, `snackbar.error()`
 - DatePicker with `DD/MM/YYYY` format (not native date input)
 - Excel export with ExcelJS (not CSV). All user-facing messages in Vietnamese
@@ -148,7 +148,7 @@ while (hasMore) { query.range(offset, offset + BATCH_SIZE - 1); offset += BATCH_
 | `fetch()` directly | `fetchApi()` wrapper |
 | Supabase from frontend (CRUD) | API call through Hono |
 | `q-input`, `q-select` | `AppInput`, `AppSelect` |
-| `q-table` (listing/main tables) | `DataTable` component (`src/components/ui/tables/`) |
+| `q-table` (mọi nơi) | `DataTable` component (`src/components/ui/tables/`) |
 | Hardcode Vietnamese in logic | Use constants/i18n |
 | Add auth middleware without checking frontend | Verify `fetchApi()` sends `Authorization` header |
 | Guess column names | Check schema with `\d table_name` or read migrations |
