@@ -27,29 +27,16 @@
       </template>
     </PageHeader>
 
-    <q-table
+    <DataTable
       v-model:pagination="pagination"
-      flat
-      bordered
       :rows="filteredEmployees"
       :columns="columns"
-      row-key="id"
       :loading="loading"
-      :rows-per-page-options="rowsPerPageOptions"
+      empty-icon="people"
+      :empty-title="searchQuery ? 'Không tìm thấy nhân viên phù hợp' : 'Chưa có nhân viên nào'"
+      :empty-subtitle="!searchQuery ? 'Nhấn &quot;Thêm Nhân Viên&quot; để bắt đầu' : undefined"
       class="employee-table"
     >
-      <template #loading>
-        <InnerLoading showing />
-      </template>
-
-      <template #no-data>
-        <EmptyState
-          icon="people"
-          :title="searchQuery ? 'Không tìm thấy nhân viên phù hợp' : 'Chưa có nhân viên nào'"
-          :subtitle="!searchQuery ? 'Nhấn &quot;Thêm Nhân Viên&quot; để bắt đầu' : undefined"
-        />
-      </template>
-
       <template #body-cell-full_name="props">
         <q-td
           :props="props"
@@ -189,7 +176,7 @@
           </IconButton>
         </q-td>
       </template>
-    </q-table>
+    </DataTable>
 
     <FormDialog
       v-model="formDialog.isOpen"
@@ -488,7 +475,6 @@ const newPassword = ref('')
 const inlineEditLoading = ref<Record<string, boolean>>({})
 const detailLoading = ref(false)
 const configSaving = ref(false)
-const rowsPerPageOptions = [10, 25, 50, 100]
 
 const pagination = ref({
   page: 1,
@@ -831,11 +817,9 @@ onMounted(() => {
 
 .employee-table :deep(.q-table__middle) {
   overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .employee-table :deep(.q-table) {
-  table-layout: auto;
   min-width: 800px;
 }
 
