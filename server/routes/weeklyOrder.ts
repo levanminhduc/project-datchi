@@ -270,7 +270,8 @@ weeklyOrder.post('/enrich-inventory', requirePermission('thread.allocations.mana
       }
     }
 
-    // SL cần đặt = max(0, Nhu Cầu - Tồn Kho QĐ)
+    // SL cần đặt = max(0, ⌈Nhu Cầu - Tồn Kho QĐ⌉)
+    // Cuộn đã reserve (RESERVED_FOR_ORDER) không nằm trong AVAILABLE → tự trừ
     const enrichedRows = summary_rows.map((row) => {
       const full_cones = fullMap.get(row.thread_type_id) || 0
       const partial_cones = partialMap.get(row.thread_type_id) || 0

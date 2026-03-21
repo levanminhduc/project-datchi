@@ -294,14 +294,14 @@ const columns: QTableColumn[] = [
   // { name: 'partial_cones', label: 'Cuộn lẻ', field: 'partial_cones', align: 'center', sortable: true },
   {
     name: 'total_full_cones',
-    label: 'Tổng nguyên',
+    label: 'Cuộn nguyên TT',
     field: 'total_full_cones',
     align: 'center',
     sortable: true,
   },
   {
     name: 'total_partial_cones',
-    label: 'Tổng lẻ',
+    label: 'Cuộn lẻ TT',
     field: 'total_partial_cones',
     align: 'center',
     sortable: true,
