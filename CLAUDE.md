@@ -1,13 +1,12 @@
 # CLAUDE.md
 
-## Role & Codebase Search
+## Role
 
-Always spawn subagents for testing, review, and finalization.
-
-When asked about the codebase, project structure, or to find code, always use the augment-context-engine MCP tool (codebase-retrieval) in the root workspace first before reading individual files.
-
-
-Your role: analyze requirements, delegate to sub-agents, ensure quality delivery matching specs and architecture.
+Senior developer for this project. Responsibilities:
+- **LUÔN** enhance/diễn giải lại yêu cầu → hỏi xác nhận trước khi bắt đầu làm
+- Analyze requirements, delegate to sub-agents, ensure delivery matches specs + architecture
+- Spawn subagents for testing, review, finalization
+- Use `mcp__auggie__codebase-retrieval` FIRST for all codebase searches before reading files
 
 ## Commands
 
@@ -32,11 +31,6 @@ psql -h 127.0.0.1 -p 54322 -U postgres -d postgres  # Direct DB access
 supabase migration up                                  # Apply new migrations (SAFE)
 ```
 
-## Environment Setup
-
-Copy `.env.example` to `.env`. Required: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `VITE_API_URL`.
-Vite proxies `/api` → `http://localhost:3000` — no CORS in development.
-
 ## CRITICAL SAFETY RULES
 
 | Dangerous Command           | Consequence               | Requirement             |
@@ -49,170 +43,148 @@ Vite proxies `/api` → `http://localhost:3000` — no CORS in development.
 
 ## Project Context
 
-**Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)** — Vietnamese-language business app for garment industry.
+**Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)** — Vietnamese B2B app for garment industry.
 
-**Stack:** Vue 3 + Quasar 2 + TypeScript 5.9 + Vite 7 | Hono 4 backend (Node.js via tsx) | Supabase (PostgreSQL) + Zod 4 validation
+**Stack:** Vue 3 + Quasar 2 + TypeScript 5.9 + Vite 7 | Hono 4 (Node.js via tsx) | Supabase (PostgreSQL) + Zod 4
 
-**Domains:** Thread master data, Inventory (dual UoM: kg + meters), Allocations (FEFO), Recovery, Batch operations, Weekly ordering, Issue V2, Reports, HR/Auth (RBAC)
+**Domains:** Thread master data, Inventory (kg + meters dual UoM), Allocations (FEFO), Recovery, Batch ops, Weekly ordering, Issue V2, Reports, HR/Auth (RBAC), Purchase Orders, Reconciliation, Thread Calculation, Sub-Arts, Style Colors, Styles
+
+**Environment:** Copy `.env.example` → `.env`. Required: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `VITE_API_URL`. Vite proxies `/api` → `http://localhost:3000`.
+
+## Business Rules (Domain-Critical)
+
+### Thread Type Identity — 1 Loại Chỉ = Unique (NCC + Tex + Màu)
+
+```
+thread_types: supplier_id (NCC) + tex_number (Tex) + color_id (Màu)
+```
+
+- Cùng tex + màu nhưng **khác NCC** → **khác `thread_type_id`** → kho riêng biệt
+- Unique constraint: `(supplier_id, tex_number, color_id)`
+- Summary views group by `thread_type_id + color_id`
+- Display: `"NCC - TEX xxx - Màu"`
 
 ## Architecture
 
 ```
 Supabase (PostgreSQL)
-    ↓ supabaseAdmin (service_role key, bypasses RLS)
-Hono API (server/) ← authMiddleware (JWT verify via jose)
+    ↓ supabaseAdmin (service_role, bypasses RLS)
+Hono API (server/) ← authMiddleware (JWT via jose)
     ↓ /api/* routes
 Vite proxy (/api → localhost:3000)
     ↓
-Service Layer (src/services/) → fetchApi() wrapper (auto token + 401 refresh)
+src/services/ → fetchApi() (auto Bearer token + 401 refresh)
     ↓
-Composables (src/composables/) → state + logic + useSnackbar
+src/composables/ → state + logic + useSnackbar
     ↓
-Pages (src/pages/) → file-based routing via unplugin-vue-router
+src/pages/ → file-based routing (unplugin-vue-router)
     ↓
-UI Components (src/components/ui/) → App* wrappers over Quasar
+src/components/ui/ → App* wrappers over Quasar
 ```
 
 **Key principles:**
-- Frontend NEVER calls Supabase directly for CRUD — always through Hono API
-- Exception: Realtime subscriptions via `useRealtime` composable use Supabase client directly
-- Two Supabase clients: `src/lib/supabase.ts` (frontend, anon key) and `server/db/supabase.ts` (backend, `supabaseAdmin` with service_role)
+- Frontend NEVER calls Supabase directly for CRUD → always through Hono API
+- Exception: Realtime subscriptions (`useRealtime`) use Supabase client directly
+- Two clients: `src/lib/supabase.ts` (anon key) | `server/db/supabase.ts` (service_role)
 
-## Auth Flow
-
-1. Frontend authenticates via Supabase Auth → 2. `fetchApi()` attaches Bearer token → 3. Backend `authMiddleware` verifies JWT (HS256/RS256) → 4. JWT claims: `employee_id`, `employee_code`, `is_root`, `roles` → 5. `requirePermission()` checks role hierarchy; ROOT bypasses → 6. On 401, `fetchApi()` auto-refreshes (single-flight)
+**Auth flow:** Supabase Auth → `fetchApi()` attaches Bearer → `authMiddleware` verifies JWT → claims: `employee_id`, `employee_code`, `is_root`, `roles` → `requirePermission()` (ROOT bypasses) → 401 auto-refresh (single-flight)
 
 ## Conventions
 
-### Database
-- Tables: `snake_case` with `created_at`, `updated_at`, `deleted_at` (soft delete)
-- Views: `v_` prefix, Functions: `fn_` prefix
-- Enums: ALL UPPERCASE values (`'PENDING'`, `'ACTIVE'`)
-
-### API (Hono)
-- Response format: `{ data: T|null, error: string|null, message?: string }`
-- Use `fetchApi()` wrapper, never raw `fetch()` (exception: authService, useOfflineSync)
-- Validation with Zod schemas (`server/validation/`)
-- Route order: specific routes (`/:id/return-logs`) BEFORE generic routes (`/:id`)
-
-### Frontend
-- Use `AppInput`, `AppSelect`, `AppButton` (not raw `q-*` components)
-- Use `DataTable` (not raw `q-table`) for ALL tables — listing, dialog, inline. Không dùng `q-table` trực tiếp
-- Use `useSnackbar()` for toasts: `snackbar.success()`, `snackbar.error()`
-- DatePicker with `DD/MM/YYYY` format (not native date input)
-- Excel export with ExcelJS (not CSV). All user-facing messages in Vietnamese
-
-### File-Based Routing
-Pages in `src/pages/` auto-generate routes via `unplugin-vue-router`. Dynamic params use `[id]` convention.
-
-## Large Dataset Architecture (Inventory Pattern)
-
-Trang inventory là reference pattern cho mọi trang có dữ liệu lớn. **KHÔNG load toàn bộ data vào frontend.**
-
-### Server-Side Pagination (Bắt buộc cho listing)
-```
-DataTable @request → composable.handleTableRequest() → service.getPaginated({ page, pageSize, sortBy, descending })
-→ Hono route: range(offset, offset + pageSize - 1) + { count: 'exact' }
-→ DB: LIMIT/OFFSET + COUNT(*)
-```
-- Default 25 rows/page, options `[10, 25, 50, 100]`, backend cap `100`
-- Ref: `src/pages/thread/inventory.vue` + `useInventory.ts` + `server/routes/inventory.ts`
-
-### DB Indexes (Thiết kế theo query pattern)
-- **Partial indexes** cho filter phổ biến: `WHERE status = 'AVAILABLE'`, `WHERE is_partial = TRUE`
-- **Composite index** cho business logic: FEFO `(is_partial DESC, expiry_date ASC, received_date ASC) WHERE status = 'AVAILABLE'`
-- **Aggregation index**: `(thread_type_id, status, is_partial)` cho summary view
-- **Pagination index**: `(received_date DESC, thread_type_id, warehouse_id, status)` cho listing
-
-### Pre-Aggregated Views + RPC (Cho summary/dashboard)
-- `v_cone_summary` — PostgreSQL VIEW, dùng khi không filter
-- `fn_cone_summary_filtered()` — RPC function, dùng khi cần WHERE động (warehouse/supplier)
-- Ref: `supabase/migrations/20260314100000_create_v_cone_summary.sql`
-
-### Batch Fetch (Khi cần ALL records — stocktake/export)
-```typescript
-const BATCH_SIZE = 1000
-while (hasMore) { query.range(offset, offset + BATCH_SIZE - 1); offset += BATCH_SIZE }
-```
-
-### Realtime + Debounce
-- Supabase Realtime subscribe table changes → **smart filter** (chỉ refresh khi match current view) → **debounced refresh** (100ms)
-- Search input: 300ms debounce tại component level
-
-## Anti-patterns
+### Anti-patterns (NEVER do)
 
 | Don't | Do Instead |
 |-------|------------|
 | `<input type="date">` | `<DatePicker>` component |
 | CSV export | XLSX with ExcelJS |
-| `fetch()` directly | `fetchApi()` wrapper |
-| Supabase from frontend (CRUD) | API call through Hono |
-| `q-input`, `q-select` | `AppInput`, `AppSelect` |
-| `q-table` (mọi nơi) | `DataTable` component (`src/components/ui/tables/`) |
+| `fetch('/api/...')` directly | `fetchApi()` wrapper |
+| Supabase CRUD from frontend | API call through Hono |
+| `q-input`, `q-select`, `q-table` | `AppInput`, `AppSelect`, `DataTable` |
 | Hardcode Vietnamese in logic | Use constants/i18n |
-| Add auth middleware without checking frontend | Verify `fetchApi()` sends `Authorization` header |
-| Guess column names | Check schema with `\d table_name` or read migrations |
+| Auth middleware change without frontend check | Verify `fetchApi()` sends `Authorization` header |
+| Guess column names | `\d table_name` or read migrations |
+| Raw `q-table` anywhere | `DataTable` (`src/components/ui/tables/`) |
+
+### Database
+- Tables: `snake_case` + `created_at`, `updated_at`, `deleted_at` (soft delete)
+- Views: `v_` prefix | Functions: `fn_` prefix | Enums: ALL UPPERCASE (`'PENDING'`, `'ACTIVE'`)
+
+### API (Hono)
+- Response: `{ data: T|null, error: string|null, message?: string }`
+- Route order: specific (`/:id/return-logs`) BEFORE generic (`/:id`)
+- Validation: Zod schemas in `server/validation/`
+
+### Frontend
+- Components: `AppInput`, `AppSelect`, `AppButton` (not raw `q-*`)
+- Tables: `DataTable` — listing, dialog, inline — không dùng `q-table` trực tiếp
+- Toasts: `useSnackbar()` → `snackbar.success()` / `snackbar.error()`
+- Dates: `DatePicker` with `DD/MM/YYYY` (not `<input type="date">`)
+- All user-facing messages in Vietnamese
 
 ## Pattern References
 
-| Pattern | Example File | Notes |
-|---------|--------------|-------|
+| Pattern | File | Notes |
+|---------|------|-------|
+| Server-side pagination | `src/pages/thread/inventory.vue` + `useInventory.ts` | Reference cho mọi trang large data |
 | Excel Export | `src/composables/useReports.ts` | Dynamic import ExcelJS |
-| DatePicker | `src/components/ui/pickers/DatePicker.vue` | DD/MM/YYYY format |
-| App Components | `src/components/ui/inputs/` | AppInput, AppSelect wrappers |
-| Notifications | `src/composables/useSnackbar.ts` | Toast helpers |
+| DatePicker | `src/components/ui/pickers/DatePicker.vue` | DD/MM/YYYY |
 | API Service | `src/services/threadService.ts` | fetchApi pattern |
-| Auth middleware | `server/middleware/auth.ts` | JWT verify + permission guards |
+| Auth middleware | `server/middleware/auth.ts` | JWT + permission guards |
 | Zod validation | `server/validation/` | Request body schemas |
+| Cone Summary | `src/composables/useConeSummary.ts` | Pre-aggregated view + RPC |
+| Realtime | `src/composables/useRealtime.ts` | Smart filter + debounce |
+
+## Large Dataset Architecture
+
+**KHÔNG load toàn bộ data vào frontend.** Pattern chuẩn: server-side pagination.
+
+```
+DataTable @request → composable.handleTableRequest()
+→ service.getPaginated({ page, pageSize, sortBy, descending })
+→ Hono: range(offset, offset+pageSize-1) + { count: 'exact' }
+→ DB: LIMIT/OFFSET + COUNT(*)
+```
+
+- Default 25 rows/page, options `[10, 25, 50, 100]`, backend cap `100`
+- Pre-aggregated views: `v_cone_summary` (no filter) | `fn_cone_summary_filtered()` (dynamic WHERE)
+- Batch fetch: `BATCH_SIZE = 1000`, loop với `.range(offset, offset+999)`
+- Realtime: subscribe → smart filter → debounced refresh (100ms) | Search: 300ms debounce
 
 ## Key Files
 
 | Purpose | Location |
 |---------|----------|
-| API routes | `server/routes/` (26 route handlers) |
+| API routes | `server/routes/` |
 | Auth middleware | `server/middleware/auth.ts` |
-| Zod schemas | `server/validation/` (7 schemas) |
-| Supabase clients | `server/db/supabase.ts` (backend), `src/lib/supabase.ts` (frontend) |
+| Zod schemas | `server/validation/` |
+| Supabase clients | `server/db/supabase.ts` (backend) · `src/lib/supabase.ts` (frontend) |
 | fetchApi wrapper | `src/services/api.ts` |
-| Services | `src/services/` (30 API clients) |
-| Composables | `src/composables/` (45 composables) |
-| Types | `src/types/` (37 type files) |
-| UI Components | `src/components/ui/` (67 components in 16 categories) |
-| Domain Components | `src/components/thread/` (47 components) |
-| Pages | `src/pages/` (49 pages, file-based routing) |
-| Migrations | `supabase/migrations/` (83 migrations) |
-| Vite config | `vite.config.mts` |
-| Playwright tests | `tests/e2e/*.spec.ts` |
+| Services | `src/services/` |
+| Composables | `src/composables/` |
+| UI Components | `src/components/ui/` |
+| Domain Components | `src/components/thread/` |
+| Pages | `src/pages/` (file-based routing) |
+| Migrations | `supabase/migrations/` |
 
-## Workflows
+## Workflows & Rules
 
 Rules auto-load from `.claude/rules/`:
 - `development-rules.md` — Code patterns, pre-commit checklist
 - `primary-workflow.md` — Before/during/after code flow
 - `orchestration-protocol.md` — When to spawn subagents
 - `spx-workflow.md` — OpenSpec plan/apply/verify
-- `team-coordination-rules.md` — Agent team file ownership (path-scoped)
-- `documentation-management.md` — Doc update triggers (path-scoped)
+- `team-coordination-rules.md` — Agent team file ownership
+- `documentation-management.md` — Doc update triggers
 
-**SPX quick ref:** `/spx-ff` (plan+artifacts) → `/spx-apply` (implement) → `/spx-verify` (verify)
+**SPX:** `/spx-ff` (plan+artifacts) → `/spx-apply` (implement) → `/spx-verify` (verify)
 
-## Hook Response Protocol
+**Hook Response Protocol** — When blocked by `@@PRIVACY_PROMPT@@`:
+1. Parse JSON between `@@PRIVACY_PROMPT_START@@` / `@@PRIVACY_PROMPT_END@@`
+2. Use `AskUserQuestion` with question data
+3. "Yes" → `bash cat "filepath"` | "No" → continue
 
-When blocked by privacy-block hook (`@@PRIVACY_PROMPT@@`):
-1. Parse JSON between `@@PRIVACY_PROMPT_START@@` and `@@PRIVACY_PROMPT_END@@`
-2. Use `AskUserQuestion` with the question data
-3. "Yes, approve access" → `bash cat "filepath"` | "No, skip this file" → continue
+**Python Scripts (Skills):** Windows: `.claude\skills\.venv\Scripts\python.exe` | Linux/macOS: `.claude/skills/.venv/bin/python3`
 
-## Python Scripts (Skills)
+**Modularization:** Max 200 lines/file → split if exceeded. kebab-case. Not for: Markdown, config, env files.
 
-Use venv Python: **Linux/macOS:** `.claude/skills/.venv/bin/python3` | **Windows:** `.claude\skills\.venv\Scripts\python.exe`
-
-## Modularization
-
-- Max 200 lines/file → modularize if exceeded
-- kebab-case naming, check existing modules first
-- Not for: Markdown, plain text, bash scripts, config files
-
-## Documentation Structure
-
-Docs in `./docs/`: project-overview-pdr, code-standards, codebase-summary, design-guidelines, deployment-guide, system-architecture, project-roadmap. See `documentation-management.md` rule for update triggers.
+**Docs:** `./docs/` — project-overview-pdr, code-standards, codebase-summary, design-guidelines, deployment-guide, system-architecture, project-roadmap.
