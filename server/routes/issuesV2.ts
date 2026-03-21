@@ -1616,6 +1616,8 @@ issuesV2.get('/:id/return-logs', async (c) => {
           id,
           thread_type_id,
           thread_types ( id, name, code ),
+          style_color_id,
+          style_colors:style_color_id ( id, color_name ),
           color_id,
           colors ( id, name )
         `)
@@ -1639,7 +1641,7 @@ issuesV2.get('/:id/return-logs', async (c) => {
         created_at: log.created_at,
         thread_name: line?.thread_types?.name || '',
         thread_code: line?.thread_types?.code || '',
-        color_name: line?.colors?.name || null,
+        color_name: line?.style_colors?.color_name ?? line?.colors?.name ?? null,
       }
     })
 
@@ -1701,6 +1703,7 @@ issuesV2.get('/:id', async (c) => {
         thread_types!inner(id, code, name),
         purchase_orders(id, po_number),
         styles(id, style_code, style_name),
+        style_colors:style_color_id(id, color_name),
         colors(id, name),
         sub_arts(id, sub_art_code)
       `
@@ -1744,12 +1747,13 @@ issuesV2.get('/:id', async (c) => {
           po_number: line.purchase_orders?.po_number,
           style_code: line.styles?.style_code,
           style_name: line.styles?.style_name,
-          color_name: line.colors?.name,
+          color_name: line.style_colors?.color_name ?? line.colors?.name ?? null,
           sub_art_code: line.sub_arts?.sub_art_code || null,
           // Remove nested objects
           thread_types: undefined,
           purchase_orders: undefined,
           styles: undefined,
+          style_colors: undefined,
           colors: undefined,
           sub_arts: undefined,
         }

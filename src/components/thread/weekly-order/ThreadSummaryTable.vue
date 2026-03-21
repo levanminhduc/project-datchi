@@ -14,7 +14,9 @@
     >
       <template #body-cell-thread_type_name="props">
         <q-td :props="props">
-          <div class="text-weight-medium">{{ props.row.thread_type_name }}</div>
+          <div class="text-weight-medium">
+            {{ props.row.thread_type_name }}
+          </div>
           <div class="text-caption text-grey-7">
             {{ [props.row.supplier_name, props.row.tex_number, props.row.thread_color].filter(Boolean).join(' · ') }}
           </div>
