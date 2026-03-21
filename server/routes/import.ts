@@ -356,12 +356,13 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
       const texCacheKey = `${supplierId}-${texNorm}`
       let threadTypeId = threadTypeCache.get(texCacheKey)
       if (threadTypeId) {
-        if (previewRow.tex_number !== texNorm) {
-          await supabase
-            .from('thread_types')
-            .update({ tex_label: previewRow.tex_number })
-            .eq('id', threadTypeId)
+        const updateFields: Record<string, unknown> = {
+          meters_per_cone: previewRow.meters_per_cone,
         }
+        if (previewRow.tex_number !== texNorm) {
+          updateFields.tex_label = previewRow.tex_number
+        }
+        await supabase.from('thread_types').update(updateFields).eq('id', threadTypeId)
       } else {
         const texNumeric = parseFloat(texNorm) || 0
         const densityGramsPerMeter = texNumeric / 1000
@@ -396,12 +397,13 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
           }
 
           threadTypeId = existingTypes[0].id
-          if (previewRow.tex_number !== texNorm) {
-            await supabase
-              .from('thread_types')
-              .update({ tex_label: previewRow.tex_number })
-              .eq('id', threadTypeId)
+          const fallbackUpdateFields: Record<string, unknown> = {
+            meters_per_cone: previewRow.meters_per_cone,
           }
+          if (previewRow.tex_number !== texNorm) {
+            fallbackUpdateFields.tex_label = previewRow.tex_number
+          }
+          await supabase.from('thread_types').update(fallbackUpdateFields).eq('id', threadTypeId)
         } else {
           threadTypeId = newThreadType.id
           thread_types_created++
