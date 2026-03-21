@@ -253,12 +253,14 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       partial_cones: number
       partial_meters: number
       partial_weight_grams: number
+      total_full_cones: number
+      total_partial_cones: number
     }
 
     let summaryData: SummaryViewRow[] = []
 
     if (needsRpc) {
-      const usableStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED']
+      const usableStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED', 'RESERVED_FOR_ORDER']
       const { data, error } = await supabase.rpc('fn_cone_summary_filtered', {
         p_statuses: usableStatuses,
         p_warehouse_id: warehouseId ? parseInt(warehouseId) : null,
@@ -390,6 +392,8 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       partial_cones: Number(row.partial_cones),
       partial_meters: Number(row.partial_meters),
       partial_weight_grams: Number(row.partial_weight_grams),
+      total_full_cones: Number(row.total_full_cones),
+      total_partial_cones: Number(row.total_partial_cones),
       }
     })
 

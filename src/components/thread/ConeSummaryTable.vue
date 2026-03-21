@@ -109,6 +109,39 @@
       </q-td>
     </template>
 
+    <!-- Total full cones column with badge -->
+    <template #body-cell-total_full_cones="props">
+      <q-td
+        :props="props"
+        class="text-center"
+      >
+        <q-badge
+          :color="props.value > 0 ? 'blue-grey' : 'grey'"
+          :label="formatNumber(props.value)"
+          class="q-pa-xs"
+        />
+      </q-td>
+    </template>
+
+    <!-- Total partial cones column with badge -->
+    <template #body-cell-total_partial_cones="props">
+      <q-td
+        :props="props"
+        class="text-center"
+      >
+        <q-badge
+          v-if="props.value > 0"
+          color="blue-grey-4"
+          :label="formatNumber(props.value)"
+          class="q-pa-xs"
+        />
+        <span
+          v-else
+          class="text-grey"
+        >-</span>
+      </q-td>
+    </template>
+
     <!-- Partial meters column -->
     <template #body-cell-partial_meters="props">
       <q-td
@@ -184,6 +217,20 @@
           />
           <span v-else>-</span>
         </q-td>
+        <q-td class="text-center">
+          <q-badge
+            color="blue-grey"
+            :label="formatNumber(grandTotalFullCones)"
+          />
+        </q-td>
+        <q-td class="text-center">
+          <q-badge
+            v-if="grandTotalPartialCones > 0"
+            color="blue-grey-4"
+            :label="formatNumber(grandTotalPartialCones)"
+          />
+          <span v-else>-</span>
+        </q-td>
         <q-td class="text-right">
           {{ formatNumber(Math.round(totalPartialMeters)) }} m
         </q-td>
@@ -197,7 +244,7 @@
         class="bg-blue-1 text-weight-bold"
       >
         <q-td
-          colspan="8"
+          colspan="10"
           class="text-right text-subtitle2"
         >
           <q-icon
@@ -300,6 +347,20 @@ const columns: QTableColumn[] = [
     sortable: true,
   },
   {
+    name: 'total_full_cones',
+    label: 'Tổng nguyên',
+    field: 'total_full_cones',
+    align: 'center',
+    sortable: true,
+  },
+  {
+    name: 'total_partial_cones',
+    label: 'Tổng lẻ',
+    field: 'total_partial_cones',
+    align: 'center',
+    sortable: true,
+  },
+  {
     name: 'partial_meters',
     label: 'Mét lẻ',
     field: 'partial_meters',
@@ -333,6 +394,12 @@ const totalPartialMeters = computed(() =>
 )
 const totalPartialWeight = computed(() =>
   props.rows.reduce((sum, row) => sum + row.partial_weight_grams, 0)
+)
+const grandTotalFullCones = computed(() =>
+  props.rows.reduce((sum, row) => sum + (row.total_full_cones ?? row.full_cones), 0)
+)
+const grandTotalPartialCones = computed(() =>
+  props.rows.reduce((sum, row) => sum + (row.total_partial_cones ?? row.partial_cones), 0)
 )
 const totalInventoryValue = computed(() =>
   props.rows.reduce((sum, row) => {

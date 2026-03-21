@@ -359,6 +359,8 @@ export interface ConeSummaryRow {
   partial_cones: number
   partial_meters: number
   partial_weight_grams: number
+  total_full_cones: number
+  total_partial_cones: number
 }
 
 /**
