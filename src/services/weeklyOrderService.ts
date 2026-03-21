@@ -27,6 +27,9 @@ import type {
   ReserveFromStockResult,
   AssignmentSummaryRow,
   LoanDetailByType,
+  LoanReturnLog,
+  ManualReturnDTO,
+  ManualReturnResult,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -435,5 +438,21 @@ export const weeklyOrderService = {
     const response = await fetchApi<ApiResponse<LoanDetailByType[]>>(`${BASE}/${weekId}/loan-detail-by-type`)
     if (response.error) throw new Error(response.error)
     return response.data || []
+  },
+
+  async getReturnLogs(loanId: number): Promise<LoanReturnLog[]> {
+    const response = await fetchApi<ApiResponse<LoanReturnLog[]>>(`${BASE}/loans/${loanId}/return-logs`)
+    if (response.error) throw new Error(response.error)
+    return response.data || []
+  },
+
+  async manualReturn(weekId: number, loanId: number, dto: ManualReturnDTO): Promise<ManualReturnResult> {
+    const response = await fetchApi<ApiResponse<ManualReturnResult>>(
+      `${BASE}/${weekId}/loans/${loanId}/manual-return`,
+      { method: 'POST', body: JSON.stringify(dto) },
+    )
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không thể trả chỉ')
+    return response.data
   },
 }

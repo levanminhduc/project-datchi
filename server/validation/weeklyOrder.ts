@@ -142,3 +142,13 @@ export const ReserveFromStockSchema = z.object({
     .positive('Số lượng phải lớn hơn 0'),
   reason: z.string().max(500, 'Lý do tối đa 500 ký tự').optional(),
 })
+
+// ============ MANUAL RETURN SCHEMA ============
+
+export const ManualReturnSchema = z.object({
+  quantity: z
+    .number({ required_error: 'Số cuộn là bắt buộc' })
+    .int()
+    .positive('Số cuộn phải lớn hơn 0'),
+  notes: z.string().max(500, 'Ghi chú tối đa 500 ký tự').optional(),
+})

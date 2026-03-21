@@ -252,7 +252,7 @@
         <AppButton
           color="primary"
           icon="save"
-          label="Lưu tuần"
+          label="Lưu Đơn Hàng"
           :loading="weekLoading"
           :disable="!hasResults"
           @click="handleSave"
@@ -260,16 +260,13 @@
         <AppButton
           color="positive"
           icon="check_circle"
-          label="Xác nhận tuần"
-          :disable="!selectedWeek || selectedWeek.status === OrderWeekStatus.CONFIRMED || !resultsSaved"
+          label="Xác Nhận Đặt Hàng"
+          :disable="!hasResults || selectedWeek?.status === OrderWeekStatus.CONFIRMED"
           :loading="confirmingWeek"
           @click="handleConfirmWeek"
         >
-          <AppTooltip v-if="!resultsSaved">
-            Cần lưu kết quả tính toán trước
-          </AppTooltip>
-          <AppTooltip v-else-if="selectedWeek?.status === OrderWeekStatus.CONFIRMED">
-            Tuần này đã được xác nhận
+          <AppTooltip v-if="selectedWeek?.status === OrderWeekStatus.CONFIRMED">
+            Đơn hàng đã được xác nhận
           </AppTooltip>
         </AppButton>
         <AppButton
@@ -642,26 +639,29 @@ const handleWeekNameBlur = async () => {
 }
 
 const handleConfirmWeek = async () => {
-  if (!selectedWeek.value) {
-    snackbar.warning('Chưa chọn tuần đặt hàng')
-    return
-  }
-
-  if (selectedWeek.value.status === OrderWeekStatus.CONFIRMED) {
-    snackbar.info('Tuần này đã được xác nhận')
-    return
-  }
+  if (!hasResults.value) return
 
   confirmingWeek.value = true
   try {
+    await handleSave()
+
+    if (!selectedWeek.value) {
+      snackbar.error('Không thể lưu đơn hàng. Vui lòng thử lại.')
+      return
+    }
+
+    if (selectedWeek.value.status === OrderWeekStatus.CONFIRMED) {
+      snackbar.info('Đơn hàng đã được xác nhận')
+      return
+    }
+
     await weeklyOrderService.updateStatus(selectedWeek.value.id, OrderWeekStatus.CONFIRMED)
     selectedWeek.value.status = OrderWeekStatus.CONFIRMED
-    snackbar.success('Đã xác nhận tuần đặt hàng thành công')
-    // Refresh weeks list to update status
+    snackbar.success('Đã xác nhận đặt hàng thành công')
     await fetchWeeks()
   } catch (err) {
     console.error('Failed to confirm week:', err)
-    snackbar.error('Không thể xác nhận tuần. Vui lòng thử lại.')
+    snackbar.error('Không thể xác nhận. Vui lòng thử lại.')
   } finally {
     confirmingWeek.value = false
   }

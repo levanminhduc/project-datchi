@@ -106,16 +106,27 @@ export interface ThreadOrderLoan {
   to_week_id: number
   thread_type_id: number
   quantity_cones: number
+  returned_cones: number
   quantity_meters: number | null
   reason: string | null
+  status: 'ACTIVE' | 'SETTLED'
   created_by: string
   created_at: string
   updated_at: string
   deleted_at: string | null
-  // Joined data
   from_week?: { id: number; week_name: string }
   to_week?: { id: number; week_name: string }
   thread_type?: { id: number; code: string; name: string }
+}
+
+export interface LoanReturnLog {
+  id: number
+  loan_id: number
+  cones_returned: number
+  return_type: 'AUTO' | 'MANUAL'
+  returned_by: string
+  notes: string | null
+  created_at: string
 }
 
 export interface ReservationSummary {

@@ -228,8 +228,10 @@ export interface LoanDashboardSummary {
   ncc_pending: number
   borrowed_cones: number
   borrowed_count: number
+  borrowed_returned_cones: number
   lent_cones: number
   lent_count: number
+  lent_returned_cones: number
 }
 
 export interface ThreadOrderLoan {
@@ -238,6 +240,7 @@ export interface ThreadOrderLoan {
   to_week_id: number
   thread_type_id: number
   quantity_cones: number
+  returned_cones: number
   quantity_meters: number | null
   reason: string | null
   status: LoanStatus
@@ -248,6 +251,28 @@ export interface ThreadOrderLoan {
   from_week?: { id: number; week_name: string } | null
   to_week?: { id: number; week_name: string }
   thread_type?: { id: number; code: string; name: string }
+}
+
+export interface LoanReturnLog {
+  id: number
+  loan_id: number
+  cones_returned: number
+  return_type: 'AUTO' | 'MANUAL'
+  returned_by: string
+  notes: string | null
+  created_at: string
+}
+
+export interface ManualReturnDTO {
+  quantity: number
+  notes?: string
+}
+
+export interface ManualReturnResult {
+  success: boolean
+  returned: number
+  remaining: number
+  settled: boolean
 }
 
 export interface ReservationSummary {
@@ -348,7 +373,9 @@ export interface LoanDetailByType {
   thread_name: string
   color_name: string
   borrowed_cones: number
+  borrowed_returned_cones: number
   lent_cones: number
+  lent_returned_cones: number
   ncc_ordered: number
   ncc_received: number
   ncc_pending: number

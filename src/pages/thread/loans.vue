@@ -36,7 +36,6 @@
           :pagination="{ rowsPerPage: 0 }"
           hide-pagination
         >
-          <!-- Expandable thread-type breakdown row -->
           <template #body="props">
             <q-tr :props="props">
               <q-td
@@ -91,6 +90,16 @@
                     class="text-grey"
                   >-</span>
                 </template>
+                <template v-else-if="col.name === 'borrowed_returned'">
+                  <span
+                    v-if="props.row.borrowed_returned_cones > 0"
+                    class="text-positive"
+                  >{{ props.row.borrowed_returned_cones }} cuộn</span>
+                  <span
+                    v-else
+                    class="text-grey"
+                  >-</span>
+                </template>
                 <template v-else-if="col.name === 'lent'">
                   <span
                     v-if="props.row.lent_cones > 0"
@@ -100,6 +109,30 @@
                     v-else
                     class="text-grey"
                   >-</span>
+                </template>
+                <template v-else-if="col.name === 'lent_returned'">
+                  <span
+                    v-if="props.row.lent_returned_cones > 0"
+                    class="text-positive"
+                  >{{ props.row.lent_returned_cones }} cuộn</span>
+                  <span
+                    v-else
+                    class="text-grey"
+                  >-</span>
+                </template>
+                <template v-else-if="col.name === 'actions'">
+                  <div class="row justify-center">
+                    <AppButton
+                      v-if="props.row.week_status === 'CONFIRMED'"
+                      flat
+                      dense
+                      color="primary"
+                      icon="swap_horiz"
+                      size="sm"
+                      label="Mượn chỉ"
+                      @click.stop="openLoanDialog(props.row.week_id, props.row.week_name)"
+                    />
+                  </div>
                 </template>
                 <template v-else>
                   {{ col.value }}
@@ -133,7 +166,7 @@
                   dense
                   :hide-pagination="true"
                   class="q-ml-lg"
-                  style="max-width: 800px"
+                  style="max-width: 900px"
                 />
                 <div
                   v-else
@@ -186,7 +219,7 @@
       </q-card-section>
 
       <q-card-section>
-        <q-table
+        <DataTable
           :rows="filteredLoans"
           :columns="loanColumns"
           row-key="id"
@@ -210,47 +243,161 @@
             </AppInput>
           </template>
 
-          <template #body-cell-from_week="props">
-            <q-td :props="props">
-              <router-link
-                v-if="props.row.from_week"
-                :to="`/thread/weekly-order/${props.row.from_week.id}`"
-                class="text-primary"
+          <template #body="props">
+            <!-- Main row -->
+            <q-tr
+              :props="props"
+              class="cursor-pointer"
+              @click="openDetail(props.row)"
+            >
+              <q-td
+                v-for="col in props.cols"
+                :key="col.name"
+                :props="props"
+                @click.stop="col.name === 'actions' || col.name === 'expand' ? undefined : openDetail(props.row)"
               >
-                {{ props.row.from_week.week_name }}
-              </router-link>
-              <span
-                v-else
-                class="text-grey"
-              >Tồn kho</span>
-            </q-td>
-          </template>
+                <template v-if="col.name === 'expand'">
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    size="xs"
+                    :icon="expandedLoans.includes(props.row.id) ? 'expand_less' : 'expand_more'"
+                    @click.stop="toggleLoanExpand(props.row.id)"
+                  />
+                </template>
+                <template v-else-if="col.name === 'from_week'">
+                  <router-link
+                    v-if="props.row.from_week"
+                    :to="`/thread/weekly-order/${props.row.from_week.id}`"
+                    class="text-primary"
+                    @click.stop
+                  >
+                    {{ props.row.from_week.week_name }}
+                  </router-link>
+                  <span
+                    v-else
+                    class="text-grey"
+                  >Tồn kho</span>
+                </template>
+                <template v-else-if="col.name === 'to_week'">
+                  <router-link
+                    :to="`/thread/weekly-order/${props.row.to_week?.id}`"
+                    class="text-primary"
+                    @click.stop
+                  >
+                    {{ props.row.to_week?.week_name || '-' }}
+                  </router-link>
+                </template>
+                <template v-else-if="col.name === 'thread_type'">
+                  <span class="text-weight-medium">{{ props.row.thread_type?.code }}</span>
+                  <span class="text-grey-6 q-ml-xs">{{ props.row.thread_type?.name }}</span>
+                </template>
+                <template v-else-if="col.name === 'returned'">
+                  <span :class="props.row.status === 'SETTLED' ? 'text-positive text-weight-medium' : 'text-body2'">
+                    {{ props.row.returned_cones }}/{{ props.row.quantity_cones }}
+                  </span>
+                </template>
+                <template v-else-if="col.name === 'status'">
+                  <AppBadge
+                    :label="props.row.status === 'SETTLED' ? 'Đã trả' : 'Đang mượn'"
+                    :color="props.row.status === 'SETTLED' ? 'positive' : 'warning'"
+                  />
+                </template>
+                <template v-else-if="col.name === 'actions'">
+                  <div @click.stop>
+                    <AppButton
+                      v-if="props.row.status === 'ACTIVE'"
+                      flat
+                      dense
+                      color="primary"
+                      icon="undo"
+                      size="sm"
+                      label="Trả"
+                      @click="openManualReturn(props.row)"
+                    />
+                  </div>
+                </template>
+                <template v-else>
+                  {{ col.value }}
+                </template>
+              </q-td>
+            </q-tr>
 
-          <template #body-cell-to_week="props">
-            <q-td :props="props">
-              <router-link
-                :to="`/thread/weekly-order/${props.row.to_week?.id}`"
-                class="text-primary"
-              >
-                {{ props.row.to_week?.week_name || '-' }}
-              </router-link>
-            </q-td>
-          </template>
-
-          <template #body-cell-thread_type="props">
-            <q-td :props="props">
-              <span class="text-weight-medium">{{ props.row.thread_type?.code }}</span>
-              <span class="text-grey-6 q-ml-xs">{{ props.row.thread_type?.name }}</span>
-            </q-td>
-          </template>
-
-          <template #body-cell-status="props">
-            <q-td :props="props">
-              <AppBadge
-                :label="props.row.status === 'SETTLED' ? 'Đã trả' : 'Đang mượn'"
-                :color="props.row.status === 'SETTLED' ? 'positive' : 'warning'"
-              />
-            </q-td>
+            <!-- Expandable return log preview row -->
+            <q-tr
+              v-if="expandedLoans.includes(props.row.id)"
+              class="bg-grey-1"
+            >
+              <q-td colspan="100%">
+                <div
+                  v-if="loanLogLoading.has(props.row.id)"
+                  class="row items-center q-pa-sm q-gutter-xs text-grey"
+                >
+                  <q-spinner
+                    size="xs"
+                    color="primary"
+                  />
+                  <span>Đang tải lịch sử...</span>
+                </div>
+                <div
+                  v-else-if="loanLogErrors.has(props.row.id)"
+                  class="row items-center q-pa-sm q-gutter-xs text-negative text-caption"
+                >
+                  <q-icon
+                    name="error_outline"
+                    size="xs"
+                  />
+                  <span>Lỗi tải lịch sử</span>
+                  <AppButton
+                    flat
+                    dense
+                    size="xs"
+                    label="Thử lại"
+                    @click.stop="retryLoadLogs(props.row.id)"
+                  />
+                </div>
+                <div
+                  v-else-if="!loanLogCache.has(props.row.id) || loanLogCache.get(props.row.id)?.length === 0"
+                  class="text-grey text-caption q-pa-sm"
+                >
+                  Chưa có lần trả nào
+                </div>
+                <div
+                  v-else
+                  class="q-pa-sm"
+                >
+                  <div
+                    v-for="log in loanLogCache.get(props.row.id)!.slice(0, 3)"
+                    :key="log.id"
+                    class="row items-center q-gutter-xs q-mb-xs text-caption"
+                  >
+                    <q-icon
+                      :name="log.return_type === 'AUTO' ? 'smart_toy' : 'build'"
+                      size="xs"
+                      :color="log.return_type === 'AUTO' ? 'grey-6' : 'primary'"
+                    />
+                    <span class="text-grey-7">{{ formatLogDate(log.created_at) }}</span>
+                    <span class="text-weight-medium">{{ log.cones_returned }} cuộn</span>
+                    <span class="text-grey-6">–</span>
+                    <span>{{ log.returned_by }}</span>
+                    <span
+                      v-if="log.notes"
+                      class="text-grey-6"
+                    >({{ log.notes }})</span>
+                  </div>
+                  <AppButton
+                    v-if="(loanLogCache.get(props.row.id)?.length ?? 0) > 3"
+                    flat
+                    dense
+                    size="xs"
+                    color="primary"
+                    :label="`Xem đầy đủ (${loanLogCache.get(props.row.id)?.length})`"
+                    @click.stop="openDetail(props.row)"
+                  />
+                </div>
+              </q-td>
+            </q-tr>
           </template>
 
           <template #no-data>
@@ -265,16 +412,41 @@
               </div>
             </div>
           </template>
-        </q-table>
+        </DataTable>
       </q-card-section>
     </q-card>
+
+    <!-- Dialogs -->
+    <LoanDialog
+      v-if="loanDialog.weekId !== null"
+      v-model="loanDialog.open"
+      :to-week-id="loanDialog.weekId"
+      :to-week-name="loanDialog.weekName"
+      @created="handleLoanChanged"
+    />
+
+    <LoanDetailDialog
+      v-if="detailDialog.loan"
+      v-model="detailDialog.open"
+      :loan-id="detailDialog.loan.id"
+      :initial-loan="detailDialog.loan"
+      @returned="handleLoanChanged"
+    />
+
+    <ManualReturnDialog
+      v-if="manualReturnDialog.loan"
+      v-model="manualReturnDialog.open"
+      :loan="manualReturnDialog.loan"
+      :week-id="manualReturnDialog.loan.to_week_id"
+      @returned="handleLoanChanged"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
-import type { ThreadOrderLoan, LoanDashboardSummary, LoanDetailByType } from '@/types/thread'
+import type { ThreadOrderLoan, LoanDashboardSummary, LoanDetailByType, LoanReturnLog } from '@/types/thread'
 import type { QTableColumn } from 'quasar'
 import { useSnackbar } from '@/composables/useSnackbar'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
@@ -282,6 +454,9 @@ import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppBadge from '@/components/ui/cards/AppBadge.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
+import LoanDialog from '@/components/thread/weekly-order/LoanDialog.vue'
+import LoanDetailDialog from '@/components/thread/weekly-order/LoanDetailDialog.vue'
+import ManualReturnDialog from '@/components/thread/weekly-order/ManualReturnDialog.vue'
 
 definePage({
   meta: {
@@ -303,6 +478,19 @@ const expandedWeeks = ref<number[]>([])
 const weekDetailCache = ref<Map<number, LoanDetailByType[]>>(new Map())
 const weekDetailLoading = ref<Set<number>>(new Set())
 
+const expandedLoans = ref<number[]>([])
+const loanLogCache = ref<Map<number, LoanReturnLog[]>>(new Map())
+const loanLogLoading = ref<Set<number>>(new Set())
+const loanLogErrors = ref<Set<number>>(new Set())
+
+const loanDialog = reactive<{ open: boolean; weekId: number | null; weekName: string }>({
+  open: false,
+  weekId: null,
+  weekName: '',
+})
+const detailDialog = reactive<{ open: boolean; loan: ThreadOrderLoan | null }>({ open: false, loan: null })
+const manualReturnDialog = reactive<{ open: boolean; loan: ThreadOrderLoan | null }>({ open: false, loan: null })
+
 const filteredLoans = computed(() => {
   if (statusFilter.value === 'all') return loans.value
   return loans.value.filter((l) => l.status === statusFilter.value)
@@ -315,27 +503,87 @@ const summaryColumns: QTableColumn[] = [
   { name: 'shortage', label: 'Thiếu', field: 'shortage', align: 'right', sortable: true },
   { name: 'ncc_status', label: 'NCC giao hàng', field: 'ncc_pending', align: 'left' },
   { name: 'borrowed', label: 'Đang mượn', field: 'borrowed_cones', align: 'left' },
+  { name: 'borrowed_returned', label: 'Đã trả (mượn)', field: 'borrowed_returned_cones', align: 'right' },
   { name: 'lent', label: 'Đang cho mượn', field: 'lent_cones', align: 'left' },
+  { name: 'lent_returned', label: 'Đã thu (cho mượn)', field: 'lent_returned_cones', align: 'right' },
+  { name: 'actions', label: '', field: 'week_id', align: 'center' },
 ]
 
 const loanColumns: QTableColumn[] = [
+  { name: 'expand', label: '', field: 'id', align: 'center', style: 'width: 32px' },
   { name: 'from_week', label: 'Tuần cho mượn', field: (row) => row.from_week?.week_name, align: 'left', sortable: true },
   { name: 'to_week', label: 'Tuần mượn', field: (row) => row.to_week?.week_name, align: 'left', sortable: true },
   { name: 'thread_type', label: 'Loại chỉ', field: (row) => row.thread_type?.code, align: 'left', sortable: true },
-  { name: 'quantity_cones', label: 'Số cuộn', field: 'quantity_cones', align: 'right', sortable: true },
+  { name: 'returned', label: 'Đã trả/Tổng', field: (row) => row.returned_cones, align: 'right', sortable: true },
   { name: 'status', label: 'Trạng thái', field: 'status', align: 'center' },
   { name: 'reason', label: 'Lý do', field: 'reason', align: 'left' },
   { name: 'created_at', label: 'Ngày tạo', field: 'created_at', align: 'left', sortable: true, format: (val: string) => new Date(val).toLocaleDateString('vi-VN') },
+  { name: 'actions', label: '', field: 'id', align: 'center' },
 ]
 
 const detailColumns: QTableColumn[] = [
   { name: 'thread_code', label: 'Mã chỉ', field: 'thread_code', align: 'left' },
   { name: 'thread_name', label: 'Tên chỉ', field: 'thread_name', align: 'left' },
   { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left' },
-  { name: 'borrowed_cones', label: 'Đang mượn', field: 'borrowed_cones', align: 'right' },
+  { name: 'borrowed_cones', label: 'Mượn', field: 'borrowed_cones', align: 'right' },
+  { name: 'borrowed_returned', label: 'Đã trả (mượn)', field: 'borrowed_returned_cones', align: 'right' },
   { name: 'lent_cones', label: 'Cho mượn', field: 'lent_cones', align: 'right' },
+  { name: 'lent_returned', label: 'Đã thu (cho mượn)', field: 'lent_returned_cones', align: 'right' },
   { name: 'ncc_pending', label: 'Chờ NCC', field: 'ncc_pending', align: 'right' },
 ]
+
+function openDetail(loan: ThreadOrderLoan) {
+  detailDialog.loan = loan
+  detailDialog.open = true
+}
+
+function openManualReturn(loan: ThreadOrderLoan) {
+  manualReturnDialog.loan = loan
+  manualReturnDialog.open = true
+}
+
+function openLoanDialog(weekId: number, weekName: string) {
+  loanDialog.weekId = weekId
+  loanDialog.weekName = weekName
+  loanDialog.open = true
+}
+
+async function toggleLoanExpand(loanId: number) {
+  const idx = expandedLoans.value.indexOf(loanId)
+  if (idx >= 0) {
+    expandedLoans.value.splice(idx, 1)
+    return
+  }
+  expandedLoans.value.push(loanId)
+  if (loanLogCache.value.has(loanId)) return
+  await fetchLoanLogs(loanId)
+}
+
+async function fetchLoanLogs(loanId: number) {
+  loanLogLoading.value.add(loanId)
+  loanLogErrors.value.delete(loanId)
+  try {
+    const data = await weeklyOrderService.getReturnLogs(loanId)
+    loanLogCache.value.set(loanId, data)
+  } catch {
+    loanLogErrors.value.add(loanId)
+  } finally {
+    loanLogLoading.value.delete(loanId)
+  }
+}
+
+async function retryLoadLogs(loanId: number) {
+  await fetchLoanLogs(loanId)
+}
+
+function formatLogDate(isoDate: string): string {
+  const d = new Date(isoDate)
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${dd}/${mm} ${hh}:${min}`
+}
 
 async function loadSummary() {
   summaryLoading.value = true
@@ -377,6 +625,17 @@ async function loadLoans() {
   } finally {
     loansLoading.value = false
   }
+}
+
+async function handleLoanChanged() {
+  loanDialog.open = false
+  expandedWeeks.value = []
+  expandedLoans.value = []
+  weekDetailCache.value = new Map()
+  loanLogCache.value = new Map()
+  loanLogLoading.value = new Set()
+  loanLogErrors.value = new Set()
+  await Promise.all([loadSummary(), loadLoans()])
 }
 
 onMounted(() => {

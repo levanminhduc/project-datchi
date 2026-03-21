@@ -225,7 +225,7 @@
             />
           </div>
 
-          <q-table
+          <DataTable
             :rows="loans"
             :columns="loanColumns"
             row-key="id"
@@ -234,6 +234,8 @@
             dense
             :loading="loansLoading"
             :rows-per-page-options="[20, 50, 0]"
+            style="cursor: pointer"
+            @row-click="(_evt: Event, row: ThreadOrderLoan) => openLoanDetail(row)"
           >
             <template #body-cell-direction="props">
               <q-td :props="props">
@@ -257,12 +259,36 @@
                 />
               </q-td>
             </template>
+            <template #body-cell-returned="props">
+              <q-td :props="props">
+                <span :class="props.row.status === 'SETTLED' ? 'text-positive text-weight-medium' : 'text-body2'">
+                  {{ props.row.returned_cones }}/{{ props.row.quantity_cones }}
+                </span>
+              </q-td>
+            </template>
+            <template #body-cell-actions="props">
+              <q-td
+                :props="props"
+                @click.stop
+              >
+                <AppButton
+                  v-if="props.row.status === 'ACTIVE' && props.row.to_week_id === weekId"
+                  flat
+                  dense
+                  color="primary"
+                  icon="undo"
+                  size="sm"
+                  label="Trả"
+                  @click="openLoanManualReturn(props.row)"
+                />
+              </q-td>
+            </template>
             <template #no-data>
               <div class="text-center text-grey q-pa-md">
                 Chưa có khoản mượn chỉ nào
               </div>
             </template>
-          </q-table>
+          </DataTable>
         </q-tab-panel>
 
         <!-- Tab: Deliveries -->
@@ -302,11 +328,27 @@
       :thread-type-name="selectedThreadTypeName"
       @reserved="onReserveFromStockComplete"
     />
+
+    <LoanDetailDialog
+      v-if="loanDetailDialog.loan"
+      v-model="loanDetailDialog.open"
+      :loan-id="loanDetailDialog.loan.id"
+      :initial-loan="loanDetailDialog.loan"
+      @returned="loadLoans"
+    />
+
+    <ManualReturnDialog
+      v-if="loanManualReturnDialog.loan"
+      v-model="loanManualReturnDialog.open"
+      :loan="loanManualReturnDialog.loan"
+      :week-id="weekId"
+      @returned="loadLoans"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useWeeklyOrderReservations } from '@/composables/thread/useWeeklyOrderReservations'
@@ -315,8 +357,11 @@ import type { QTableColumn } from 'quasar'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppBadge from '@/components/ui/cards/AppBadge.vue'
+import DataTable from '@/components/ui/tables/DataTable.vue'
 import LoanDialog from '@/components/thread/weekly-order/LoanDialog.vue'
 import ReserveFromStockDialog from '@/components/thread/weekly-order/ReserveFromStockDialog.vue'
+import LoanDetailDialog from '@/components/thread/weekly-order/LoanDetailDialog.vue'
+import ManualReturnDialog from '@/components/thread/weekly-order/ManualReturnDialog.vue'
 
 definePage({
   meta: {
@@ -352,6 +397,19 @@ const selectedThreadTypeName = ref('')
 
 const loans = ref<ThreadOrderLoan[]>([])
 const loansLoading = ref(false)
+
+const loanDetailDialog = reactive<{ open: boolean; loan: ThreadOrderLoan | null }>({ open: false, loan: null })
+const loanManualReturnDialog = reactive<{ open: boolean; loan: ThreadOrderLoan | null }>({ open: false, loan: null })
+
+function openLoanDetail(loan: ThreadOrderLoan) {
+  loanDetailDialog.loan = loan
+  loanDetailDialog.open = true
+}
+
+function openLoanManualReturn(loan: ThreadOrderLoan) {
+  loanManualReturnDialog.loan = loan
+  loanManualReturnDialog.open = true
+}
 
 const { reservationSummary, reservedCones, isLoading: reservationLoading, fetchReservations } = useWeeklyOrderReservations()
 
@@ -472,8 +530,9 @@ const loanColumns: QTableColumn[] = [
   { name: 'from_week', label: 'Nguồn', field: (row: ThreadOrderLoan) => row.from_week_id === null ? 'Tồn kho' : (row.from_week?.week_name || '-'), align: 'left' },
   { name: 'to_week', label: 'Tuần nhận', field: (row: ThreadOrderLoan) => row.to_week?.week_name || '-', align: 'left' },
   { name: 'thread_type', label: 'Loại chỉ', field: (row: ThreadOrderLoan) => row.thread_type?.name || '-', align: 'left' },
-  { name: 'quantity_cones', label: 'Cuộn', field: 'quantity_cones', align: 'right' },
+  { name: 'returned', label: 'Đã trả/Tổng', field: (row: ThreadOrderLoan) => row.returned_cones, align: 'right' },
   { name: 'reason', label: 'Lý do', field: 'reason', align: 'left' },
   { name: 'created_at', label: 'Thời gian', field: (row: ThreadOrderLoan) => formatDateTime(row.created_at), align: 'left' },
+  { name: 'actions', label: '', field: 'id', align: 'center' },
 ]
 </script>

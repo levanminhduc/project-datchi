@@ -19,6 +19,7 @@ import {
   CreateLoanSchema,
   CreateBatchLoanSchema,
   ReserveFromStockSchema,
+  ManualReturnSchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
 
@@ -2282,6 +2283,86 @@ weeklyOrder.get('/loans/all', requirePermission('thread.allocations.view'), asyn
     return c.json({ data: loans, error: null })
   } catch (err) {
     console.error('Error fetching all loans:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * GET /api/weekly-orders/loans/:loanId/return-logs
+ * Return history for a loan (newest first)
+ * Static route MUST be before /:id/loans
+ */
+weeklyOrder.get('/loans/:loanId/return-logs', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const loanId = parseInt(c.req.param('loanId'))
+    if (isNaN(loanId)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data: logs, error } = await supabase
+      .from('thread_loan_return_logs')
+      .select('*')
+      .eq('loan_id', loanId)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    return c.json({ data: logs || [], error: null })
+  } catch (err) {
+    console.error('Error fetching loan return logs:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * POST /api/weekly-orders/:weekId/loans/:loanId/manual-return
+ * Manual return of borrowed cones via fn_manual_return_loan RPC
+ * Specific route MUST be before POST /:id/loans
+ */
+weeklyOrder.post('/:weekId/loans/:loanId/manual-return', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const loanId = parseInt(c.req.param('loanId'))
+    if (isNaN(loanId)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = ManualReturnSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    const auth = c.get('auth')
+    let returnedBy = 'unknown'
+    if (auth?.employeeId) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', auth.employeeId)
+        .single()
+      returnedBy = emp?.full_name || auth.employeeCode || 'unknown'
+    }
+
+    const { data: result, error: rpcError } = await supabase.rpc('fn_manual_return_loan', {
+      p_loan_id: loanId,
+      p_quantity: validated.quantity,
+      p_returned_by: returnedBy,
+      p_notes: validated.notes || null,
+    })
+
+    if (rpcError) {
+      return c.json({ data: null, error: rpcError.message }, 400)
+    }
+
+    return c.json({ data: result, error: null, message: `Đã trả ${validated.quantity} cuộn thành công` })
+  } catch (err) {
+    console.error('Error processing manual return:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })
