@@ -322,7 +322,7 @@ async function getConfirmedIssuedEquivalent(
     )
     .eq('po_id', poId)
     .eq('style_id', styleId)
-    .eq('color_id', colorId)
+    .eq('style_color_id', colorId)
     .eq('thread_type_id', threadTypeId)
     .eq('thread_issues.status', 'CONFIRMED')
 
@@ -366,7 +366,7 @@ async function getConfirmedIssuedGross(
     )
     .eq('po_id', poId)
     .eq('style_id', styleId)
-    .eq('color_id', colorId)
+    .eq('style_color_id', colorId)
     .eq('thread_type_id', threadTypeId)
     .eq('thread_issues.status', 'CONFIRMED')
 
@@ -393,7 +393,7 @@ async function getBaseQuotaCones(
     .select(`quantity, thread_order_weeks!inner(status)`)
     .eq('po_id', poId)
     .eq('style_id', styleId)
-    .eq('color_id', colorId)
+    .eq('style_color_id', colorId)
     .eq('thread_order_weeks.status', 'CONFIRMED')
 
   if (error) return null
@@ -407,7 +407,7 @@ async function getBaseQuotaCones(
   const { data: specs } = await supabase
     .from('style_color_thread_specs')
     .select(`thread_type_id, style_thread_specs:style_thread_spec_id(style_id, meters_per_unit)`)
-    .eq('color_id', colorId)
+    .eq('style_color_id', colorId)
     .eq('thread_type_id', threadTypeId)
 
   const matchingSpec = (specs || []).find((s: any) => s.style_thread_specs?.style_id === styleId) as any
@@ -452,7 +452,7 @@ async function getQuotaCones(
     )
     .eq('po_id', poId)
     .eq('style_id', styleId)
-    .eq('color_id', colorId)
+    .eq('style_color_id', colorId)
     .eq('thread_order_weeks.status', 'CONFIRMED')
 
   if (error) {
@@ -482,7 +482,7 @@ async function getQuotaCones(
         meters_per_unit
       )
     `)
-    .eq('color_id', colorId)
+    .eq('style_color_id', colorId)
     .eq('thread_type_id', threadTypeId)
 
   if (specError) {
@@ -636,89 +636,47 @@ issuesV2.get('/order-options', async (c) => {
 
     // Case 3: Return Colors for specific PO + Style
     if (po_id && style_id) {
-      const { data: colors, error } = await supabase
+      const { data: weekIds } = await supabase
+        .from('thread_order_weeks')
+        .select('id')
+        .eq('status', 'CONFIRMED')
+
+      if (!weekIds || weekIds.length === 0) {
+        return c.json({ data: [], error: null })
+      }
+
+      const { data: colorItems, error: colorError } = await supabase
         .from('thread_order_items')
         .select(`
-          color_id,
-          colors:color_id (
+          style_color_id,
+          style_colors:style_color_id (
             id,
-            name,
+            color_name,
             hex_code
           )
         `)
         .eq('po_id', po_id)
         .eq('style_id', style_id)
-        .not('color_id', 'is', null)
-        .eq('thread_order_weeks.status', 'CONFIRMED')
+        .not('style_color_id', 'is', null)
+        .in('week_id', weekIds.map((w) => w.id))
 
-      if (error) {
-        // Try alternative query without join filter
-        const { data: weekIds } = await supabase
-          .from('thread_order_weeks')
-          .select('id')
-          .eq('status', 'CONFIRMED')
+      if (colorError) {
+        return c.json({ data: null, error: 'Loi truy van mau sac' }, 500)
+      }
 
-        if (!weekIds || weekIds.length === 0) {
-          return c.json({
-            data: [],
-            error: null,
+      const uniqueColors = new Map()
+      for (const item of colorItems || []) {
+        if (item.style_colors && !uniqueColors.has(item.style_color_id)) {
+          const sc = item.style_colors as { id: number; color_name: string; hex_code: string | null }
+          uniqueColors.set(item.style_color_id, {
+            id: sc.id,
+            name: sc.color_name,
+            hex_code: sc.hex_code,
           })
         }
-
-        const { data: colorItems, error: colorError } = await supabase
-          .from('thread_order_items')
-          .select(`
-            color_id,
-            colors:color_id (
-              id,
-              name,
-              hex_code
-            )
-          `)
-          .eq('po_id', po_id)
-          .eq('style_id', style_id)
-          .not('color_id', 'is', null)
-          .in(
-            'week_id',
-            weekIds.map((w) => w.id)
-          )
-
-        if (colorError) {
-          return c.json(
-            {
-              data: null,
-              error: 'Loi truy van mau sac',
-            },
-            500
-          )
-        }
-
-        // Extract unique colors
-        const uniqueColors = new Map()
-        for (const item of colorItems || []) {
-          if (item.colors && !uniqueColors.has(item.color_id)) {
-            uniqueColors.set(item.color_id, item.colors)
-          }
-        }
-
-        return c.json({
-          data: Array.from(uniqueColors.values()),
-          error: null,
-        })
       }
 
-      // Extract unique colors
-      const uniqueColors = new Map()
-      for (const item of colors || []) {
-        if (item.colors && !uniqueColors.has(item.color_id)) {
-          uniqueColors.set(item.color_id, item.colors)
-        }
-      }
-
-      return c.json({
-        data: Array.from(uniqueColors.values()),
-        error: null,
-      })
+      return c.json({ data: Array.from(uniqueColors.values()), error: null })
     }
 
     // Case 2: Return Styles for specific PO
@@ -957,7 +915,8 @@ issuesV2.post('/validate-line', async (c) => {
       throw err
     }
 
-    const { thread_type_id, issued_full, issued_partial, po_id, style_id, color_id, sub_art_id } = validated
+    const { thread_type_id, issued_full, issued_partial, po_id, style_id, style_color_id, color_id, sub_art_id } = validated
+    const effectiveColorId = style_color_id || color_id
 
     const subArtError = await validateSubArtId(style_id, sub_art_id)
     if (subArtError) {
@@ -971,7 +930,7 @@ issuesV2.post('/validate-line', async (c) => {
 
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
-    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id, ratio)
+    const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio)
 
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
 
@@ -1042,6 +1001,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       notes,
       po_id,
       style_id,
+      style_color_id,
       color_id,
       sub_art_id,
       thread_type_id,
@@ -1049,6 +1009,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       issued_partial,
       over_quota_notes,
     } = validated
+    const effectiveColorId = style_color_id || color_id
 
     const subArtError = await validateSubArtId(style_id, sub_art_id)
     if (subArtError) {
@@ -1061,7 +1022,7 @@ issuesV2.post('/create-with-lines', async (c) => {
     const ratio = await getPartialConeRatio()
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
-    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id, ratio)
+    const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio)
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
 
     if (isOverQuota && !over_quota_notes?.trim()) {
@@ -1120,6 +1081,7 @@ issuesV2.post('/create-with-lines', async (c) => {
         issue_id: issue.id,
         po_id: po_id || null,
         style_id: style_id || null,
+        style_color_id: style_color_id || null,
         color_id: color_id || null,
         sub_art_id: sub_art_id || null,
         thread_type_id,
@@ -1162,9 +1124,11 @@ issuesV2.post('/create-with-lines', async (c) => {
           .single()
       : { data: null }
 
-    const { data: colorData } = color_id
-      ? await supabase.from('colors').select('id, name').eq('id', color_id).single()
-      : { data: null }
+    const { data: colorData } = style_color_id
+      ? await supabase.from('style_colors').select('id, color_name').eq('id', style_color_id).single()
+      : color_id
+        ? await supabase.from('colors').select('id, name').eq('id', color_id).single()
+        : { data: null }
 
     const subArtCode = await getSubArtCode(sub_art_id)
 
@@ -1179,7 +1143,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       po_number: (poData as any)?.po_number,
       style_code: (styleData as any)?.style_code,
       style_name: (styleData as any)?.style_name,
-      color_name: (colorData as any)?.name,
+      color_name: (colorData as any)?.color_name ?? (colorData as any)?.name ?? null,
       sub_art_code: subArtCode,
     }
 
@@ -1229,7 +1193,8 @@ issuesV2.get('/form-data', async (c) => {
       throw err
     }
 
-    const { po_id, style_id, color_id } = validated
+    const { po_id, style_id, style_color_id, color_id } = validated
+    const effectiveColorId = style_color_id || color_id
 
     // Get thread types from BOM (style_color_thread_specs -> style_thread_specs)
     // style_color_thread_specs has: style_thread_spec_id, color_id, thread_type_id
@@ -1239,7 +1204,7 @@ issuesV2.get('/form-data', async (c) => {
       .select(
         `
         thread_type_id,
-        color_id,
+        style_color_id,
         style_thread_specs:style_thread_spec_id(
           id,
           style_id,
@@ -1248,7 +1213,7 @@ issuesV2.get('/form-data', async (c) => {
         thread_types:thread_type_id(id, code, name, meters_per_cone)
       `
       )
-      .eq('color_id', color_id)
+      .eq('style_color_id', effectiveColorId)
 
     if (specsError) {
       console.error('Error fetching thread specs:', specsError)
@@ -1278,9 +1243,9 @@ issuesV2.get('/form-data', async (c) => {
         const threadType = spec?.thread_types as any
         const [stock, quotaCones, baseQuota, confirmedGross] = await Promise.all([
           getStockAvailability(threadTypeId),
-          getQuotaCones(po_id, style_id, color_id, threadTypeId, ratio),
-          getBaseQuotaCones(po_id, style_id, color_id, threadTypeId),
-          getConfirmedIssuedGross(po_id, style_id, color_id, threadTypeId, ratio),
+          getQuotaCones(po_id, style_id, effectiveColorId, threadTypeId, ratio),
+          getBaseQuotaCones(po_id, style_id, effectiveColorId, threadTypeId),
+          getConfirmedIssuedGross(po_id, style_id, effectiveColorId, threadTypeId, ratio),
         ])
 
         return {
@@ -1338,7 +1303,8 @@ issuesV2.post('/:id/lines/validate', async (c) => {
       throw err
     }
 
-    const { thread_type_id, issued_full, issued_partial, po_id, style_id, color_id, sub_art_id: validateSubArt } = validated
+    const { thread_type_id, issued_full, issued_partial, po_id, style_id, style_color_id: validateStyleColorId, color_id: validateColorId, sub_art_id: validateSubArt } = validated
+    const validateEffectiveColorId = validateStyleColorId || validateColorId
 
     const subArtValidateError = await validateSubArtId(style_id, validateSubArt)
     if (subArtValidateError) {
@@ -1355,7 +1321,7 @@ issuesV2.post('/:id/lines/validate', async (c) => {
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
     // Get quota
-    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id, ratio)
+    const quotaCones = await getQuotaCones(po_id, style_id, validateEffectiveColorId, thread_type_id, ratio)
 
     // Check if over quota
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
@@ -1471,6 +1437,7 @@ issuesV2.post('/:id/lines', async (c) => {
     const {
       po_id,
       style_id,
+      style_color_id,
       color_id,
       sub_art_id,
       thread_type_id,
@@ -1478,6 +1445,7 @@ issuesV2.post('/:id/lines', async (c) => {
       issued_partial,
       over_quota_notes,
     } = validated
+    const effectiveColorId = style_color_id || color_id
 
     const subArtError = await validateSubArtId(style_id, sub_art_id)
     if (subArtError) {
@@ -1490,7 +1458,7 @@ issuesV2.post('/:id/lines', async (c) => {
     // Get quota
     // Get partial cone ratio and calculate issued equivalent
     const ratio = await getPartialConeRatio()
-    const quotaCones = await getQuotaCones(po_id, style_id, color_id, thread_type_id, ratio)
+    const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio)
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
     // Check if over quota
@@ -1531,6 +1499,7 @@ issuesV2.post('/:id/lines', async (c) => {
         issue_id: issueId,
         po_id: po_id || null,
         style_id: style_id || null,
+        style_color_id: style_color_id || null,
         color_id: color_id || null,
         sub_art_id: sub_art_id || null,
         thread_type_id,

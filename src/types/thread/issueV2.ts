@@ -50,6 +50,7 @@ export interface IssueLineV2 {
   po_id: number | null
   style_id: number | null
   color_id: number | null
+  style_color_id: number | null
   sub_art_id: number | null
   thread_type_id: number
   quota_cones: number | null
@@ -107,6 +108,7 @@ export interface CreateIssueWithLineDTO {
   po_id?: number | null
   style_id?: number | null
   color_id?: number | null
+  style_color_id?: number | null
   sub_art_id?: number | null
   thread_type_id: number
   issued_full?: number
@@ -118,6 +120,7 @@ export interface AddIssueLineV2DTO {
   po_id?: number | null
   style_id?: number | null
   color_id?: number | null
+  style_color_id?: number | null
   sub_art_id?: number | null
   thread_type_id: number
   issued_full?: number
@@ -135,6 +138,7 @@ export interface ValidateIssueLineV2DTO {
   po_id?: number | null
   style_id?: number | null
   color_id?: number | null
+  style_color_id?: number | null
   sub_art_id?: number | null
 }
 

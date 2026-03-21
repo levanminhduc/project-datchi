@@ -306,6 +306,7 @@ const debouncedValidate = useDebounceFn(async (threadTypeId: number) => {
     po_id: selectedPoId.value,
     style_id: selectedStyleId.value,
     color_id: selectedColorId.value,
+    style_color_id: selectedColorId.value,
     sub_art_id: selectedSubArtId.value,
   })
 
@@ -402,6 +403,7 @@ async function handleAddLine(threadType: ThreadTypeForIssue) {
       po_id: selectedPoId.value,
       style_id: selectedStyleId.value,
       color_id: selectedColorId.value,
+      style_color_id: selectedColorId.value,
       sub_art_id: selectedSubArtId.value,
       thread_type_id: threadType.thread_type_id,
       issued_full: input.full,
@@ -422,6 +424,7 @@ async function handleAddLine(threadType: ThreadTypeForIssue) {
     po_id: selectedPoId.value,
     style_id: selectedStyleId.value,
     color_id: selectedColorId.value,
+    style_color_id: selectedColorId.value,
     sub_art_id: selectedSubArtId.value,
     thread_type_id: threadType.thread_type_id,
     issued_full: input.full,

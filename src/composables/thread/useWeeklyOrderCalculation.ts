@@ -519,14 +519,15 @@ export function useWeeklyOrderCalculation() {
 
       const entry = entryMap.get(key)!
 
-      const colorExists = entry.colors.some((c) => c.color_id === item.color_id)
+      const colorKey = item.style_color_id ?? item.color_id
+      const colorExists = entry.colors.some((c) => c.style_color_id === colorKey || c.color_id === colorKey)
       if (!colorExists) {
         entry.colors.push({
-          color_id: item.color_id,
-          color_name: item.style_color?.color_name || item.color?.name || `Color #${item.color_id}`,
+          color_id: colorKey,
+          color_name: item.style_color?.color_name || item.color?.name || `Color #${colorKey}`,
           hex_code: item.style_color?.hex_code || item.color?.hex_code || '#000000',
           quantity: item.quantity,
-          style_color_id: item.style_color_id || item.color_id,
+          style_color_id: item.style_color_id ?? item.color_id,
         })
       }
     }

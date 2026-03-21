@@ -148,7 +148,7 @@ export const issueV2Service = {
     const params = new URLSearchParams({
       po_id: String(poId),
       style_id: String(styleId),
-      color_id: String(colorId),
+      style_color_id: String(colorId),
     })
     const response = await fetchApi<ApiResponse<IssueFormData>>(`${BASE}/form-data?${params}`)
 

@@ -200,16 +200,16 @@ watch(selectedStyleId, (newStyleId) => {
   if (!opt) selectedSubArt.value = null
 })
 
-const specColorsCache = ref(new Map<number, Array<{ id: number; name: string; hex_code: string }>>())
+const specColorsCache = ref<Record<number, Array<{ id: number; name: string; hex_code: string }>>>({})
 
 const fetchSpecColors = async (styleId: number) => {
-  if (specColorsCache.value.has(styleId)) return
+  if (styleId in specColorsCache.value) return
   try {
     const colors = await styleService.getSpecColors(styleId)
-    specColorsCache.value.set(styleId, colors.map(c => ({ id: c.id, name: c.color_name, hex_code: c.hex_code })))
+    specColorsCache.value[styleId] = colors.map(c => ({ id: c.id, name: c.color_name, hex_code: c.hex_code }))
   } catch (err) {
     console.error(`Error fetching spec colors for style ${styleId}:`, err)
-    specColorsCache.value.set(styleId, [])
+    specColorsCache.value[styleId] = []
   }
 }
 
@@ -248,7 +248,7 @@ const availableStyleOptions = computed(() => {
 })
 
 const getColorOptionsForStyle = (styleId: number): Array<{ id: number; name: string; hex_code: string }> => {
-  return specColorsCache.value.get(styleId) || []
+  return specColorsCache.value[styleId] || []
 }
 
 const getHasSubArts = (styleId: number): boolean => {
@@ -270,7 +270,7 @@ watch(
   poEntries,
   (entries) => {
     for (const entry of entries) {
-      if (!specColorsCache.value.has(entry.style_id)) {
+      if (!(entry.style_id in specColorsCache.value)) {
         fetchSpecColors(entry.style_id)
       }
     }

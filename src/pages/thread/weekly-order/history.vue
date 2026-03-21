@@ -468,10 +468,6 @@ async function loadThreadSummary(weekId: number) {
       return;
     }
 
-    const enriched = await weeklyOrderService.enrichInventory(
-      resultsData.summary_data, weekId
-    );
-
     if (expandedWeekId.value !== weekId) return;
 
     const pendingByType = new Map<number, number>();
@@ -482,18 +478,20 @@ async function loadThreadSummary(weekId: number) {
         pendingByType.set(d.thread_type_id, current + (d.quantity_cones || 0));
       });
 
-    threadSummary.value = enriched.map(row => {
+    threadSummary.value = resultsData.summary_data.map((row) => {
       const pending = pendingByType.get(row.thread_type_id) || 0;
       const available = row.equivalent_cones || 0;
+      const totalCones = row.total_cones || 0;
       return {
         thread_type_id: row.thread_type_id,
         thread_type_name: row.thread_type_name,
         supplier_name: row.supplier_name,
         tex_number: row.tex_number,
-        total_cones: row.total_cones,
+        thread_color: row.thread_color || null,
+        total_cones: totalCones,
         equivalent_cones: available,
         pending_cones: pending,
-        shortage: Math.max(0, row.total_cones - available - pending),
+        shortage: Math.max(0, totalCones - available - pending),
       };
     });
   } catch {

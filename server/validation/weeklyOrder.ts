@@ -3,7 +3,8 @@ import { z } from 'zod'
 const OrderItemSchema = z.object({
   po_id: z.number().int().positive('po_id phải là số nguyên dương').nullable().optional(),
   style_id: z.number().int().positive('style_id phải là số nguyên dương'),
-  color_id: z.number().int().positive('color_id phải là số nguyên dương'),
+  style_color_id: z.number().int().positive('style_color_id phải là số nguyên dương'),
+  color_id: z.number().int().positive('color_id phải là số nguyên dương').nullable().optional(),
   quantity: z.number().positive('Số lượng phải lớn hơn 0'),
   sub_art_id: z.number().int().positive('sub_art_id phải là số nguyên dương').nullable().optional(),
 })

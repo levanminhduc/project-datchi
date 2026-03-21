@@ -34,6 +34,7 @@ export const CreateIssueWithLineSchema = z.object({
   notes: z.string().optional(),
   po_id: z.number().int().positive().optional().nullable(),
   style_id: z.number().int().positive().optional().nullable(),
+  style_color_id: z.number().int().positive().optional().nullable(),
   color_id: z.number().int().positive().optional().nullable(),
   sub_art_id: z.number().int().positive().optional().nullable(),
   thread_type_id: z.number().int().positive('thread_type_id phai la so nguyen duong'),
@@ -51,6 +52,7 @@ export type CreateIssueWithLineDTO = z.infer<typeof CreateIssueWithLineSchema>
 export const AddIssueLineV2Schema = z.object({
   po_id: z.number().int().positive().optional().nullable(),
   style_id: z.number().int().positive().optional().nullable(),
+  style_color_id: z.number().int().positive().optional().nullable(),
   color_id: z.number().int().positive().optional().nullable(),
   sub_art_id: z.number().int().positive().optional().nullable(),
   thread_type_id: z.number().int().positive('thread_type_id phai la so nguyen duong'),
@@ -71,6 +73,7 @@ export const ValidateIssueLineV2Schema = z.object({
   issued_partial: z.number().int().min(0, 'So cuon le phai >= 0').default(0),
   po_id: z.number().int().positive().optional().nullable(),
   style_id: z.number().int().positive().optional().nullable(),
+  style_color_id: z.number().int().positive().optional().nullable(),
   color_id: z.number().int().positive().optional().nullable(),
   sub_art_id: z.number().int().positive().optional().nullable(),
 })
@@ -99,6 +102,7 @@ export type IssueV2FiltersDTO = z.infer<typeof IssueV2FiltersSchema>
 export const FormDataQuerySchema = z.object({
   po_id: z.coerce.number().int().positive().optional(),
   style_id: z.coerce.number().int().positive().optional(),
+  style_color_id: z.coerce.number().int().positive().optional(),
   color_id: z.coerce.number().int().positive().optional(),
 })
 

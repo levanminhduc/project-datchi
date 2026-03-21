@@ -12,6 +12,14 @@
       :rows-per-page-options="[0]"
       :loading="loading"
     >
+      <template #body-cell-thread_type_name="props">
+        <q-td :props="props">
+          <div class="text-weight-medium">{{ props.row.thread_type_name }}</div>
+          <div class="text-caption text-grey-7">
+            {{ [props.row.supplier_name, props.row.tex_number, props.row.thread_color].filter(Boolean).join(' · ') }}
+          </div>
+        </q-td>
+      </template>
       <template #body-cell-shortage="props">
         <q-td :props="props">
           <span
@@ -43,8 +51,6 @@ defineProps<{
 
 const columns: QTableColumn[] = [
   { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
-  { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left', sortable: true },
-  { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'center' },
   { name: 'total_cones', label: 'Cần đặt', field: 'total_cones', align: 'right', format: (v: number) => v.toLocaleString('vi-VN') },
   { name: 'equivalent_cones', label: 'Sẵn kho', field: 'equivalent_cones', align: 'right', format: (v: number) => v.toLocaleString('vi-VN') },
   { name: 'pending_cones', label: 'Chờ về', field: 'pending_cones', align: 'right', format: (v: number) => v.toLocaleString('vi-VN') },
