@@ -215,10 +215,11 @@ async function getSupplierMetersPerCone(
 async function getAvailableInventory(threadTypeIds: number[]): Promise<Map<number, number>> {
   if (threadTypeIds.length === 0) return new Map()
 
+  const usableStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED']
   const { data, error } = await supabase
     .from('thread_inventory')
     .select('thread_type_id')
-    .eq('status', 'AVAILABLE')
+    .in('status', usableStatuses)
     .in('thread_type_id', threadTypeIds)
 
   if (error) throw error

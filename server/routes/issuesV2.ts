@@ -232,7 +232,7 @@ async function getStockAvailability(
     .from('thread_inventory')
     .select('is_partial')
     .eq('thread_type_id', threadTypeId)
-    .eq('status', 'AVAILABLE')
+    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED', 'SOFT_ALLOCATED', 'HARD_ALLOCATED'])
 
   if (warehouseId) {
     query = query.eq('warehouse_id', warehouseId)
@@ -549,7 +549,7 @@ async function deductStock(
     .from('thread_inventory')
     .select('id')
     .eq('thread_type_id', threadTypeId)
-    .eq('status', 'AVAILABLE')
+    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
     .eq('is_partial', false)
     .order('expiry_date', { ascending: true, nullsFirst: false })
     .order('received_date', { ascending: true })
@@ -570,7 +570,7 @@ async function deductStock(
     .from('thread_inventory')
     .select('id')
     .eq('thread_type_id', threadTypeId)
-    .eq('status', 'AVAILABLE')
+    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
     .eq('is_partial', true)
     .order('expiry_date', { ascending: true, nullsFirst: false })
     .order('received_date', { ascending: true })

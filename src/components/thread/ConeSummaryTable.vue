@@ -116,7 +116,7 @@
         class="text-center"
       >
         <q-badge
-          :color="props.value > 0 ? 'blue-grey' : 'grey'"
+          :color="props.value > 0 ? 'positive' : 'grey'"
           :label="formatNumber(props.value)"
           class="q-pa-xs"
         />
@@ -131,7 +131,7 @@
       >
         <q-badge
           v-if="props.value > 0"
-          color="blue-grey-4"
+          color="warning"
           :label="formatNumber(props.value)"
           class="q-pa-xs"
         />
@@ -196,49 +196,6 @@
 
     <!-- Summary row at bottom -->
     <template #bottom-row>
-      <q-tr class="bg-grey-2 text-weight-bold">
-        <q-td
-          colspan="3"
-          class="text-right"
-        >
-          Tổng cộng:
-        </q-td>
-        <q-td class="text-center">
-          <q-badge
-            color="positive"
-            :label="formatNumber(totalFullCones)"
-          />
-        </q-td>
-        <q-td class="text-center">
-          <q-badge
-            v-if="totalPartialCones > 0"
-            color="warning"
-            :label="formatNumber(totalPartialCones)"
-          />
-          <span v-else>-</span>
-        </q-td>
-        <q-td class="text-center">
-          <q-badge
-            color="blue-grey"
-            :label="formatNumber(grandTotalFullCones)"
-          />
-        </q-td>
-        <q-td class="text-center">
-          <q-badge
-            v-if="grandTotalPartialCones > 0"
-            color="blue-grey-4"
-            :label="formatNumber(grandTotalPartialCones)"
-          />
-          <span v-else>-</span>
-        </q-td>
-        <q-td class="text-right">
-          {{ formatNumber(Math.round(totalPartialMeters)) }} m
-        </q-td>
-        <q-td class="text-right">
-          {{ formatNumber(Math.round(totalPartialWeight)) }} g
-        </q-td>
-        <q-td />
-      </q-tr>
       <q-tr
         v-if="totalInventoryValue > 0"
         class="bg-blue-1 text-weight-bold"
@@ -332,20 +289,9 @@ const columns: QTableColumn[] = [
     align: 'left',
     sortable: true,
   },
-  {
-    name: 'full_cones',
-    label: 'Cuộn nguyên',
-    field: 'full_cones',
-    align: 'center',
-    sortable: true,
-  },
-  {
-    name: 'partial_cones',
-    label: 'Cuộn lẻ',
-    field: 'partial_cones',
-    align: 'center',
-    sortable: true,
-  },
+  // TODO: tạm ẩn Cuộn nguyên + Cuộn lẻ
+  // { name: 'full_cones', label: 'Cuộn nguyên', field: 'full_cones', align: 'center', sortable: true },
+  // { name: 'partial_cones', label: 'Cuộn lẻ', field: 'partial_cones', align: 'center', sortable: true },
   {
     name: 'total_full_cones',
     label: 'Tổng nguyên',
@@ -403,8 +349,9 @@ const grandTotalPartialCones = computed(() =>
 )
 const totalInventoryValue = computed(() =>
   props.rows.reduce((sum, row) => {
-    if (row.unit_price && row.full_cones > 0) {
-      return sum + row.full_cones * row.unit_price
+    const cones = row.total_full_cones ?? row.full_cones
+    if (row.unit_price && cones > 0) {
+      return sum + cones * row.unit_price
     }
     return sum
   }, 0)
