@@ -72,6 +72,20 @@
           :pagination="{ rowsPerPage: 20 }"
           :row-class="(row: DeliveryRecord) => row.is_overdue ? 'bg-red-1' : ''"
         >
+          <!-- color_name with color dot -->
+          <template #body-cell-color_name="props">
+            <q-td :props="props">
+              <div class="row items-center q-gutter-x-xs no-wrap">
+                <div
+                  v-if="props.row.color_hex"
+                  style="width: 12px; height: 12px; border-radius: 50%; border: 1px solid #ccc"
+                  :style="{ backgroundColor: props.row.color_hex }"
+                />
+                <span>{{ props.row.color_name || '—' }}</span>
+              </div>
+            </q-td>
+          </template>
+
           <!-- delivery_date cell with popup edit -->
           <template #body-cell-delivery_date="props">
             <q-td :props="props">
@@ -207,6 +221,20 @@
           :rows-per-page-options="[20, 50, 0]"
           :pagination="{ rowsPerPage: 20 }"
         >
+          <!-- color_name with color dot -->
+          <template #body-cell-color_name="props">
+            <q-td :props="props">
+              <div class="row items-center q-gutter-x-xs no-wrap">
+                <div
+                  v-if="props.row.color_hex"
+                  style="width: 12px; height: 12px; border-radius: 50%; border: 1px solid #ccc"
+                  :style="{ backgroundColor: props.row.color_hex }"
+                />
+                <span>{{ props.row.color_name || '—' }}</span>
+              </div>
+            </q-td>
+          </template>
+
           <!-- inventory_status badge -->
           <template #body-cell-inventory_status="props">
             <q-td :props="props">
@@ -445,10 +473,10 @@ const hasAnyLoans = computed(() => {
 
 const trackingColumns = computed<QTableColumn[]>(() => {
   const cols: QTableColumn[] = [
-    { name: 'week_name', label: 'Tuần', field: 'week_name', align: 'left', sortable: true },
-    { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
-    { name: 'tex_number', label: 'TEX', field: 'tex_number', align: 'center' },
+    { name: 'week_name', label: 'Đơn Hàng', field: 'week_name', align: 'left', sortable: true },
     { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
+    { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'center' },
+    { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left', sortable: true },
     { name: 'quantity_cones', label: 'Đặt NCC', field: 'quantity_cones', align: 'center' },
     { name: 'received_quantity', label: 'Đã nhận', field: 'received_quantity', align: 'center' },
     { name: 'pending_cones', label: 'Chờ nhận', field: (row: DeliveryRecord) => (row.quantity_cones || 0) - (row.received_quantity || 0), align: 'center' },
@@ -470,10 +498,11 @@ const trackingColumns = computed<QTableColumn[]>(() => {
 })
 
 const receiveColumns: QTableColumn[] = [
-  { name: 'week_name', label: 'Tuần', field: 'week_name', align: 'left', sortable: true },
-  { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
+  { name: 'week_name', label: 'Đơn Hàng', field: 'week_name', align: 'left', sortable: true },
   { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
-  { name: 'quantity_cones', label: 'Số đặt', field: 'quantity_cones', align: 'center' }, // Task 7.3: Use quantity_cones
+  { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'center' },
+  { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left', sortable: true },
+  { name: 'quantity_cones', label: 'Số đặt', field: 'quantity_cones', align: 'center' },
   { name: 'received_quantity', label: 'Đã nhập', field: 'received_quantity', align: 'center' },
   { name: 'pending_quantity', label: 'Còn thiếu', field: 'pending_quantity', align: 'center' },
   { name: 'inventory_status', label: 'Trạng thái', field: 'inventory_status', align: 'center' },

@@ -408,7 +408,7 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
       .select(`
         *,
         supplier:suppliers(id, name),
-        thread_type:thread_types(id, name, tex_number),
+        thread_type:thread_types(id, name, tex_number, color_data:colors!color_id(name, hex_code)),
         week:thread_order_weeks(id, week_name)
       `)
       .order('delivery_date', { ascending: true })
@@ -464,6 +464,8 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
           supplier_name: row.supplier?.name || '',
           thread_type_name: row.thread_type?.name || '',
           tex_number: row.thread_type?.tex_number || '',
+          color_name: row.thread_type?.color_data?.name || '',
+          color_hex: row.thread_type?.color_data?.hex_code || '',
           week_name: row.week?.week_name || '',
           days_remaining,
           is_overdue: days_remaining < 0 && row.status === 'PENDING',
@@ -1246,7 +1248,7 @@ weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'),
         .select(`
           *,
           supplier:suppliers(id, name),
-          thread_type:thread_types(id, name, tex_number)
+          thread_type:thread_types(id, name, tex_number, color_data:colors!color_id(name, hex_code))
         `)
         .eq('week_id', id)
         .order('delivery_date', { ascending: true }),
@@ -1287,6 +1289,8 @@ weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'),
         supplier_name: row.supplier?.name || '',
         thread_type_name: row.thread_type?.name || '',
         tex_number: row.thread_type?.tex_number || '',
+        color_name: row.thread_type?.color_data?.name || '',
+        color_hex: row.thread_type?.color_data?.hex_code || '',
         days_remaining,
         is_overdue: days_remaining < 0 && row.status === 'PENDING',
         borrowed_in: loanData.borrowed_in,

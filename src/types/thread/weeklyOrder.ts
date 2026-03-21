@@ -187,6 +187,8 @@ export interface DeliveryRecord {
   supplier_name?: string
   thread_type_name?: string
   tex_number?: string
+  color_name?: string
+  color_hex?: string
   week_name?: string
   total_cones?: number | null
   borrowed_in?: number
