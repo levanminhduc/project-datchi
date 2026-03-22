@@ -2154,6 +2154,13 @@ issuesV2.post('/:id/confirm', async (c) => {
     const ratio = await getPartialConeRatio()
     const errors: string[] = []
 
+    const weekIdsMap = new Map<number, number[]>()
+    for (const line of lines) {
+      const lineColorId = line.style_color_id || line.color_id
+      const weekIds = await findConfirmedWeekIds(line.po_id, line.style_id, lineColorId)
+      weekIdsMap.set(line.id, weekIds)
+    }
+
     for (const line of lines) {
       const issuedEquivalent = calculateIssuedEquivalent(line.issued_full, line.issued_partial, ratio)
       const isOverQuota = line.quota_cones !== null && issuedEquivalent > line.quota_cones
@@ -2167,8 +2174,7 @@ issuesV2.post('/:id/confirm', async (c) => {
         errors.push(`${threadType?.name || 'Loai chi'}: Vuot dinh muc nhung chua co ghi chu`)
       }
 
-      const lineColorId = line.style_color_id || line.color_id
-      const lineWeekIds = await findConfirmedWeekIds(line.po_id, line.style_id, lineColorId)
+      const lineWeekIds = weekIdsMap.get(line.id) || []
       const stock = await getStockAvailability(line.thread_type_id, undefined, lineWeekIds)
       if (line.issued_full > stock.full_cones || line.issued_partial > stock.partial_cones) {
         const { data: threadType } = await supabase
@@ -2201,8 +2207,7 @@ issuesV2.post('/:id/confirm', async (c) => {
 
     const succeededLineIds: number[] = []
     for (const line of lines) {
-      const deductColorId = line.style_color_id || line.color_id
-      const weekIds = await findConfirmedWeekIds(line.po_id, line.style_id, deductColorId)
+      const weekIds = weekIdsMap.get(line.id) || []
       const result = await deductStock(line.thread_type_id, line.issued_full, line.issued_partial, line.id, performedBy, weekIds)
       if (!result.success) {
         await supabase
