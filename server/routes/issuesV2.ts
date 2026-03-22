@@ -2201,7 +2201,8 @@ issuesV2.post('/:id/confirm', async (c) => {
 
     const succeededLineIds: number[] = []
     for (const line of lines) {
-      const weekIds = await findConfirmedWeekIds(line.po_id, line.style_id, line.style_color_id)
+      const deductColorId = line.style_color_id || line.color_id
+      const weekIds = await findConfirmedWeekIds(line.po_id, line.style_id, deductColorId)
       const result = await deductStock(line.thread_type_id, line.issued_full, line.issued_partial, line.id, performedBy, weekIds)
       if (!result.success) {
         await supabase
