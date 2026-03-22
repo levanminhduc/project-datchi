@@ -232,7 +232,7 @@ async function getStockAvailability(
     .from('thread_inventory')
     .select('is_partial')
     .eq('thread_type_id', threadTypeId)
-    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED', 'SOFT_ALLOCATED', 'HARD_ALLOCATED'])
+    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED', 'RESERVED_FOR_ORDER', 'SOFT_ALLOCATED', 'HARD_ALLOCATED'])
 
   if (warehouseId) {
     query = query.eq('warehouse_id', warehouseId)
@@ -527,6 +527,26 @@ async function getQuotaCones(
   return roundToTwoDecimals(remainingQuotaCones)
 }
 
+async function findConfirmedWeekIds(
+  poId: number | null | undefined,
+  styleId: number | null | undefined,
+  styleColorId: number | null | undefined
+): Promise<number[]> {
+  if (!poId || !styleId || !styleColorId) return []
+
+  const { data: items, error } = await supabase
+    .from('thread_order_items')
+    .select('week_id, thread_order_weeks!inner(status)')
+    .eq('po_id', poId)
+    .eq('style_id', styleId)
+    .eq('style_color_id', styleColorId)
+    .eq('thread_order_weeks.status', 'CONFIRMED')
+
+  if (error || !items) return []
+
+  return [...new Set(items.map((i: { week_id: number }) => i.week_id))]
+}
+
 /**
  * Deduct stock using FEFO (First Expired First Out)
  * Uses RPC fn_issue_cones_with_movements for atomic operation with movement logging
@@ -536,59 +556,108 @@ async function deductStock(
   deductFull: number,
   deductPartial: number,
   issueLineId: number,
-  performedBy: string
+  performedBy: string,
+  weekIds: number[] = []
 ): Promise<{ success: boolean; message?: string; allocatedConeIds?: number[] }> {
-  const allocatedConeIds: number[] = []
-
   const totalCones = deductFull + deductPartial
   if (totalCones === 0) {
     return { success: true, allocatedConeIds: [] }
   }
 
-  const { data: fullCones, error: fullError } = await supabase
-    .from('thread_inventory')
-    .select('id')
-    .eq('thread_type_id', threadTypeId)
-    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-    .eq('is_partial', false)
-    .order('expiry_date', { ascending: true, nullsFirst: false })
-    .order('received_date', { ascending: true })
-    .limit(deductFull)
+  const fullIds: number[] = []
+  const partialIds: number[] = []
 
-  if (fullError) {
-    return { success: false, message: 'Loi truy van ton kho cuon nguyen' }
-  }
+  let remainingFull = deductFull
+  let remainingPartial = deductPartial
 
-  if (deductFull > 0 && (!fullCones || fullCones.length < deductFull)) {
-    return {
-      success: false,
-      message: `Khong du cuon nguyen. Can ${deductFull}, chi co ${fullCones?.length || 0}`,
+  if (weekIds.length > 0) {
+    if (remainingFull > 0) {
+      const { data: reservedFull } = await supabase
+        .from('thread_inventory')
+        .select('id')
+        .eq('thread_type_id', threadTypeId)
+        .eq('status', 'RESERVED_FOR_ORDER')
+        .in('reserved_week_id', weekIds)
+        .eq('is_partial', false)
+        .order('expiry_date', { ascending: true, nullsFirst: false })
+        .order('received_date', { ascending: true })
+        .limit(remainingFull)
+
+      if (reservedFull?.length) {
+        fullIds.push(...reservedFull.map((c) => c.id))
+        remainingFull -= reservedFull.length
+      }
+    }
+
+    if (remainingPartial > 0) {
+      const { data: reservedPartial } = await supabase
+        .from('thread_inventory')
+        .select('id')
+        .eq('thread_type_id', threadTypeId)
+        .eq('status', 'RESERVED_FOR_ORDER')
+        .in('reserved_week_id', weekIds)
+        .eq('is_partial', true)
+        .order('expiry_date', { ascending: true, nullsFirst: false })
+        .order('received_date', { ascending: true })
+        .limit(remainingPartial)
+
+      if (reservedPartial?.length) {
+        partialIds.push(...reservedPartial.map((c) => c.id))
+        remainingPartial -= reservedPartial.length
+      }
     }
   }
 
-  const { data: partialCones, error: partialError } = await supabase
-    .from('thread_inventory')
-    .select('id')
-    .eq('thread_type_id', threadTypeId)
-    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-    .eq('is_partial', true)
-    .order('expiry_date', { ascending: true, nullsFirst: false })
-    .order('received_date', { ascending: true })
-    .limit(deductPartial)
+  if (remainingFull > 0) {
+    const { data: availFull, error: fullError } = await supabase
+      .from('thread_inventory')
+      .select('id')
+      .eq('thread_type_id', threadTypeId)
+      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
+      .eq('is_partial', false)
+      .order('expiry_date', { ascending: true, nullsFirst: false })
+      .order('received_date', { ascending: true })
+      .limit(remainingFull)
 
-  if (partialError) {
-    return { success: false, message: 'Loi truy van ton kho cuon le' }
-  }
-
-  if (deductPartial > 0 && (!partialCones || partialCones.length < deductPartial)) {
-    return {
-      success: false,
-      message: `Khong du cuon le. Can ${deductPartial}, chi co ${partialCones?.length || 0}`,
+    if (fullError) {
+      return { success: false, message: 'Loi truy van ton kho cuon nguyen' }
     }
+
+    if (!availFull || availFull.length < remainingFull) {
+      return {
+        success: false,
+        message: `Khong du cuon nguyen. Can ${deductFull}, co ${fullIds.length + (availFull?.length || 0)}`,
+      }
+    }
+
+    fullIds.push(...availFull.map((c) => c.id))
   }
 
-  const fullIds = fullCones?.map((c) => c.id) || []
-  const partialIds = partialCones?.map((c) => c.id) || []
+  if (remainingPartial > 0) {
+    const { data: availPartial, error: partialError } = await supabase
+      .from('thread_inventory')
+      .select('id')
+      .eq('thread_type_id', threadTypeId)
+      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
+      .eq('is_partial', true)
+      .order('expiry_date', { ascending: true, nullsFirst: false })
+      .order('received_date', { ascending: true })
+      .limit(remainingPartial)
+
+    if (partialError) {
+      return { success: false, message: 'Loi truy van ton kho cuon le' }
+    }
+
+    if (!availPartial || availPartial.length < remainingPartial) {
+      return {
+        success: false,
+        message: `Khong du cuon le. Can ${deductPartial}, co ${partialIds.length + (availPartial?.length || 0)}`,
+      }
+    }
+
+    partialIds.push(...availPartial.map((c) => c.id))
+  }
+
   const allConeIds = [...fullIds, ...partialIds]
 
   if (allConeIds.length === 0) {
@@ -606,8 +675,7 @@ async function deductStock(
     return { success: false, message: rpcError.message || 'Loi xu ly xuat kho' }
   }
 
-  allocatedConeIds.push(...allConeIds)
-  return { success: true, allocatedConeIds }
+  return { success: true, allocatedConeIds: allConeIds }
 }
 
 // Note: addStock function was inlined into the return endpoint for better
@@ -2091,7 +2159,8 @@ issuesV2.post('/:id/confirm', async (c) => {
 
     const succeededLineIds: number[] = []
     for (const line of lines) {
-      const result = await deductStock(line.thread_type_id, line.issued_full, line.issued_partial, line.id, performedBy)
+      const weekIds = await findConfirmedWeekIds(line.po_id, line.style_id, line.style_color_id)
+      const result = await deductStock(line.thread_type_id, line.issued_full, line.issued_partial, line.id, performedBy, weekIds)
       if (!result.success) {
         await supabase
           .from('issue_operations_log')
