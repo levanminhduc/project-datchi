@@ -293,6 +293,7 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
         p_supplier_id: parsedSupplierId,
         p_material: material || null,
         p_search: sanitizedSearch,
+        p_only_unreserved: false,
       }),
       supabase.rpc('fn_cone_summary_filtered', {
         p_statuses: kdStatuses,
@@ -300,6 +301,7 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
         p_supplier_id: parsedSupplierId,
         p_material: material || null,
         p_search: sanitizedSearch,
+        p_only_unreserved: true,
       })
     ])
 

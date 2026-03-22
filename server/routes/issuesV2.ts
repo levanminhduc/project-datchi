@@ -157,51 +157,6 @@ function validateReturnQuantities(
   return { valid: errors.length === 0, errors }
 }
 
-interface FoundCones {
-  ids: number[]
-  requested: number
-  found: number
-}
-
-async function tryFindHardAllocatedCones(
-  threadTypeId: number,
-  count: number,
-  isPartial: boolean,
-  excludeIds: Set<number>
-): Promise<FoundCones> {
-  if (count <= 0) {
-    return { ids: [], requested: 0, found: 0 }
-  }
-
-  const excludeList = excludeIds.size > 0 ? Array.from(excludeIds).join(',') : '0'
-
-  let query = supabase
-    .from('thread_inventory')
-    .select('id')
-    .eq('thread_type_id', threadTypeId)
-    .eq('status', 'HARD_ALLOCATED')
-    .eq('is_partial', isPartial)
-    .order('updated_at', { ascending: false })
-    .limit(count)
-
-  if (excludeIds.size > 0) {
-    query = query.not('id', 'in', `(${excludeList})`)
-  }
-
-  const { data: cones, error } = await query
-
-  if (error) {
-    console.error(`[return] Error finding HARD_ALLOCATED cones:`, error)
-    return { ids: [], requested: count, found: 0 }
-  }
-
-  return {
-    ids: cones?.map((c) => c.id) || [],
-    requested: count,
-    found: cones?.length || 0,
-  }
-}
-
 /**
  * Generate issue code in format XK-YYYYMMDD-NNN
  */
@@ -2523,11 +2478,11 @@ issuesV2.post('/:id/return', async (c) => {
         continue
       }
 
-      const { data: hardAllocatedFullCones, error: fullConesError } = await supabase
+      const { data: returnableFullConesRaw, error: fullConesError } = await supabase
         .from('thread_inventory')
-        .select('id, quantity_meters')
+        .select('id, quantity_meters, status')
         .eq('issued_line_id', returnLine.line_id)
-        .eq('status', 'HARD_ALLOCATED')
+        .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
         .eq('is_partial', false)
         .order('id', { ascending: true })
 
@@ -2537,7 +2492,7 @@ issuesV2.post('/:id/return', async (c) => {
           .update({
             status: 'FAILED',
             succeeded_line_ids: succeededLineIds,
-            error_info: `Khong the tai cuon nguyen HARD_ALLOCATED cho dong ${returnLine.line_id}`,
+            error_info: `Khong the tai cuon nguyen dang xuat cho dong ${returnLine.line_id}`,
             completed_at: new Date().toISOString(),
           })
           .eq('idempotency_key', idempotency_key)
@@ -2548,11 +2503,11 @@ issuesV2.post('/:id/return', async (c) => {
         )
       }
 
-      const { data: hardAllocatedPartialCones, error: partialConesError } = await supabase
+      const { data: returnablePartialConesRaw, error: partialConesError } = await supabase
         .from('thread_inventory')
-        .select('id')
+        .select('id, status')
         .eq('issued_line_id', returnLine.line_id)
-        .eq('status', 'HARD_ALLOCATED')
+        .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
         .eq('is_partial', true)
         .order('id', { ascending: true })
 
@@ -2562,7 +2517,7 @@ issuesV2.post('/:id/return', async (c) => {
           .update({
             status: 'FAILED',
             succeeded_line_ids: succeededLineIds,
-            error_info: `Khong the tai cuon le HARD_ALLOCATED cho dong ${returnLine.line_id}`,
+            error_info: `Khong the tai cuon le dang xuat cho dong ${returnLine.line_id}`,
             completed_at: new Date().toISOString(),
           })
           .eq('idempotency_key', idempotency_key)
@@ -2573,8 +2528,20 @@ issuesV2.post('/:id/return', async (c) => {
         )
       }
 
-      const fullCones = hardAllocatedFullCones || []
-      const partialCones = hardAllocatedPartialCones || []
+      const statusRank = (status: string): number => {
+        if (status === 'IN_PRODUCTION') return 0
+        if (status === 'HARD_ALLOCATED') return 1
+        return 2
+      }
+
+      const fullCones = (returnableFullConesRaw || []).sort((a, b) => {
+        const rankDiff = statusRank(a.status) - statusRank(b.status)
+        return rankDiff !== 0 ? rankDiff : a.id - b.id
+      })
+      const partialCones = (returnablePartialConesRaw || []).sort((a, b) => {
+        const rankDiff = statusRank(a.status) - statusRank(b.status)
+        return rankDiff !== 0 ? rankDiff : a.id - b.id
+      })
 
       if (requestedFull > fullCones.length) {
         const errorMessage = `Dong ${line.id}: Khong du cuon nguyen de tra (${requestedFull}/${fullCones.length})`
