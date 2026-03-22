@@ -226,29 +226,50 @@ async function generateIssueCode(): Promise<string> {
  */
 async function getStockAvailability(
   threadTypeId: number,
-  warehouseId?: number
+  warehouseId?: number,
+  weekIds?: number[]
 ): Promise<{ full_cones: number; partial_cones: number }> {
-  let query = supabase
+  let fullCount = 0
+  let partialCount = 0
+
+  if (weekIds && weekIds.length > 0) {
+    let reservedQuery = supabase
+      .from('thread_inventory')
+      .select('is_partial')
+      .eq('thread_type_id', threadTypeId)
+      .eq('status', 'RESERVED_FOR_ORDER')
+      .in('reserved_week_id', weekIds)
+
+    if (warehouseId) {
+      reservedQuery = reservedQuery.eq('warehouse_id', warehouseId)
+    }
+
+    const { data: reserved } = await reservedQuery
+
+    if (reserved) {
+      fullCount += reserved.filter((r) => !r.is_partial).length
+      partialCount += reserved.filter((r) => r.is_partial).length
+    }
+  }
+
+  let freeQuery = supabase
     .from('thread_inventory')
     .select('is_partial')
     .eq('thread_type_id', threadTypeId)
-    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED', 'RESERVED_FOR_ORDER', 'SOFT_ALLOCATED', 'HARD_ALLOCATED'])
+    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
 
   if (warehouseId) {
-    query = query.eq('warehouse_id', warehouseId)
+    freeQuery = freeQuery.eq('warehouse_id', warehouseId)
   }
 
-  const { data, error } = await query
+  const { data: free } = await freeQuery
 
-  if (error || !data || data.length === 0) {
-    return { full_cones: 0, partial_cones: 0 }
+  if (free) {
+    fullCount += free.filter((r) => !r.is_partial).length
+    partialCount += free.filter((r) => r.is_partial).length
   }
 
-  // Count full cones (is_partial = false) and partial cones (is_partial = true)
-  const fullCones = data.filter((row) => !row.is_partial).length
-  const partialCones = data.filter((row) => row.is_partial).length
-
-  return { full_cones: fullCones, partial_cones: partialCones }
+  return { full_cones: fullCount, partial_cones: partialCount }
 }
 
 async function validateSubArtId(
@@ -1014,7 +1035,8 @@ issuesV2.post('/validate-line', async (c) => {
 
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
 
-    const stock = await getStockAvailability(thread_type_id)
+    const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
+    const stock = await getStockAvailability(thread_type_id, undefined, weekIds)
 
     const stockSufficient =
       (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
@@ -1115,7 +1137,8 @@ issuesV2.post('/create-with-lines', async (c) => {
       )
     }
 
-    const stock = await getStockAvailability(thread_type_id)
+    const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
+    const stock = await getStockAvailability(thread_type_id, undefined, weekIds)
     const stockSufficient =
       (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
 
@@ -1315,6 +1338,7 @@ issuesV2.get('/form-data', async (c) => {
     const uniqueThreadTypeIds = [...new Set(filteredSpecs.map((s: any) => s.thread_type_id))]
 
     const ratio = await getPartialConeRatio()
+    const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
 
     // Get stock for each unique thread type
     const threadTypes = await Promise.all(
@@ -1322,7 +1346,7 @@ issuesV2.get('/form-data', async (c) => {
         const spec = filteredSpecs.find((s: any) => s.thread_type_id === threadTypeId) as any
         const threadType = spec?.thread_types as any
         const [stock, quotaCones, baseQuota, confirmedGross] = await Promise.all([
-          getStockAvailability(threadTypeId),
+          getStockAvailability(threadTypeId, undefined, weekIds),
           getQuotaCones(po_id, style_id, effectiveColorId, threadTypeId, ratio),
           getBaseQuotaCones(po_id, style_id, effectiveColorId, threadTypeId),
           getConfirmedIssuedGross(po_id, style_id, effectiveColorId, threadTypeId, ratio),
@@ -1407,7 +1431,8 @@ issuesV2.post('/:id/lines/validate', async (c) => {
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
 
     // Get stock availability
-    const stock = await getStockAvailability(thread_type_id)
+    const weekIds = await findConfirmedWeekIds(po_id, style_id, validateEffectiveColorId)
+    const stock = await getStockAvailability(thread_type_id, undefined, weekIds)
 
     // Check if stock is sufficient
     const stockSufficient =
@@ -1556,7 +1581,8 @@ issuesV2.post('/:id/lines', async (c) => {
     }
 
     // Check stock availability before adding line
-    const stock = await getStockAvailability(thread_type_id)
+    const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
+    const stock = await getStockAvailability(thread_type_id, undefined, weekIds)
     const stockSufficient =
       (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
 
@@ -1814,7 +1840,9 @@ issuesV2.get('/:id', async (c) => {
           ratio
         )
         const isOverQuota = line.quota_cones !== null && issuedEquivalent > line.quota_cones
-        const stock = await getStockAvailability(line.thread_type_id)
+        const lineColorId = line.style_color_id || line.color_id
+        const lineWeekIds = await findConfirmedWeekIds(line.po_id, line.style_id, lineColorId)
+        const stock = await getStockAvailability(line.thread_type_id, undefined, lineWeekIds)
 
         return {
           ...line,
@@ -2139,7 +2167,9 @@ issuesV2.post('/:id/confirm', async (c) => {
         errors.push(`${threadType?.name || 'Loai chi'}: Vuot dinh muc nhung chua co ghi chu`)
       }
 
-      const stock = await getStockAvailability(line.thread_type_id)
+      const lineColorId = line.style_color_id || line.color_id
+      const lineWeekIds = await findConfirmedWeekIds(line.po_id, line.style_id, lineColorId)
+      const stock = await getStockAvailability(line.thread_type_id, undefined, lineWeekIds)
       if (line.issued_full > stock.full_cones || line.issued_partial > stock.partial_cones) {
         const { data: threadType } = await supabase
           .from('thread_types')
