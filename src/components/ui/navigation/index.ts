@@ -1,7 +1,0 @@
-export { default as AppBreadcrumbs } from './AppBreadcrumbs.vue'
-export { default as AppPagination } from './AppPagination.vue'
-export { default as AppTabs } from './AppTabs.vue'
-export { default as TabPanel } from './TabPanel.vue'
-export { default as AppStepper } from './AppStepper.vue'
-export { default as StepperStep } from './StepperStep.vue'
-export { default as SidebarItem } from './SidebarItem.vue'
