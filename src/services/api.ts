@@ -22,6 +22,36 @@ export class ApiError extends Error {
 let refreshPromise: Promise<Session> | null = null
 let isLoggingOut = false
 
+const CROSS_TAB_CHANNEL_NAME = 'datchi-auth-refresh'
+const CROSS_TAB_WAIT_MS = 500
+
+type RefreshMessage = { type: 'REFRESH_START' } | { type: 'REFRESH_DONE' }
+
+let refreshChannel: BroadcastChannel | null = null
+let otherTabRefreshing = false
+
+function getRefreshChannel(): BroadcastChannel | null {
+  if (typeof BroadcastChannel === 'undefined') return null
+  if (!refreshChannel) {
+    refreshChannel = new BroadcastChannel(CROSS_TAB_CHANNEL_NAME)
+    refreshChannel.onmessage = (event: MessageEvent<RefreshMessage>) => {
+      if (event.data.type === 'REFRESH_START') {
+        otherTabRefreshing = true
+      }
+      if (event.data.type === 'REFRESH_DONE') {
+        otherTabRefreshing = false
+      }
+    }
+  }
+  return refreshChannel
+}
+
+async function waitForOtherTabRefresh(): Promise<Session | null> {
+  await new Promise(r => setTimeout(r, CROSS_TAB_WAIT_MS))
+  const { data: { session } } = await supabase.auth.getSession()
+  return session
+}
+
 function clearSupabaseTokens() {
   if (typeof window === 'undefined') return
 
@@ -85,8 +115,16 @@ export async function getRefreshedSession(): Promise<Session> {
     return refreshPromise
   }
 
+  if (otherTabRefreshing) {
+    const session = await waitForOtherTabRefresh()
+    if (session) return session
+  }
+
   const doRefresh = async (): Promise<Session> => {
+    const channel = getRefreshChannel()
     try {
+      channel?.postMessage({ type: 'REFRESH_START' } satisfies RefreshMessage)
+
       const { data, error } = await supabase.auth.refreshSession()
 
       if (error) {
@@ -106,6 +144,7 @@ export async function getRefreshedSession(): Promise<Session> {
 
       return data.session
     } finally {
+      channel?.postMessage({ type: 'REFRESH_DONE' } satisfies RefreshMessage)
       refreshPromise = null
     }
   }

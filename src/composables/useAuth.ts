@@ -41,6 +41,7 @@ const RETRY_DELAYS = [0, 500, 1000]
 const GET_USER_TIMEOUT = 8000
 const GET_SESSION_TIMEOUT = 8000
 const RESUME_REINIT_DEBOUNCE_MS = 1500
+const SESSION_NEAR_EXPIRY_MS = 5 * 60 * 1000
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -291,7 +292,7 @@ export function useAuth() {
     let handlingTokenRefresh = false
 
     const handleSignedOutEvent = async () => {
-      if (signingOut) return
+      if (signingOut || isLogoutInProgress()) return
       resetState()
       initialized = false
       const isOnLoginPage = router.currentRoute.value.path === '/login'
@@ -383,12 +384,25 @@ export function useAuth() {
   function setupSessionResumeListener() {
     if (typeof window === 'undefined' || sessionResumeListenerCleanup) return
 
-    const revalidateAuthOnResume = () => {
+    const revalidateAuthOnResume = async () => {
       if (document.visibilityState === 'hidden') return
       if (signingOut || loggedOut || !state.value.isAuthenticated) return
 
       const now = Date.now()
       if (now - lastResumeReinitAt < RESUME_REINIT_DEBOUNCE_MS) {
+        return
+      }
+
+      const session = await getSessionSafe(3000)
+      if (!session) {
+        lastResumeReinitAt = now
+        initialized = false
+        void init()
+        return
+      }
+
+      const expiresAt = session.expires_at ? session.expires_at * 1000 : 0
+      if (expiresAt - now > SESSION_NEAR_EXPIRY_MS) {
         return
       }
 

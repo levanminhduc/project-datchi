@@ -21,7 +21,7 @@ const AUTH_ERROR_MESSAGES = [
 export function isAuthError(error: AuthError | null): boolean {
   if (!error) return false
   if (error.name === 'AuthSessionMissingError') return true
-  if (error.status === 400 || error.status === 401 || error.status === 403) return true
+  if (error.status === 401 || error.status === 403) return true
   if (AUTH_ERROR_MESSAGES.some((msg) => error.message?.includes(msg))) return true
   return AUTH_ERROR_CODES.some(
     (code) => error.message?.includes(code) || error.code === code
