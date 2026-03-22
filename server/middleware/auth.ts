@@ -83,18 +83,28 @@ export async function authMiddleware(c: Context, next: Next) {
     const payload = await verifySupabaseToken(token)
     const jwtPayload = payload as unknown as JwtPayload
 
-    if (!jwtPayload.employee_id || !jwtPayload.employee_code) {
-      console.error('Auth middleware: JWT missing custom claims (employee_id, employee_code). Check custom_access_token_hook is enabled in Supabase Auth.')
-      return c.json({ error: true, message: 'Token thiếu thông tin nhân viên. Vui lòng đăng nhập lại.' }, 401)
-    }
+    let resolvedEmployeeId = jwtPayload.employee_id
+    let resolvedEmployeeCode = jwtPayload.employee_code
+    let roles = Array.isArray(jwtPayload.roles) ? jwtPayload.roles : []
+    let isRoot = jwtPayload.is_root
 
-    const { data: employeeStatus, error: employeeStatusError } = await retryOnDbError(() =>
-      supabaseAdmin
+    const missingEmployeeClaims = !resolvedEmployeeId || !resolvedEmployeeCode
+
+    const { data: employeeStatus, error: employeeStatusError } = await retryOnDbError(() => {
+      if (missingEmployeeClaims) {
+        return supabaseAdmin
+          .from('employees')
+          .select('id, employee_id, is_active, deleted_at')
+          .eq('auth_user_id', jwtPayload.sub)
+          .maybeSingle()
+      }
+
+      return supabaseAdmin
         .from('employees')
-        .select('id, is_active, deleted_at')
-        .eq('id', jwtPayload.employee_id)
+        .select('id, employee_id, is_active, deleted_at')
+        .eq('id', resolvedEmployeeId)
         .maybeSingle()
-    )
+    })
 
     if (employeeStatusError) {
       console.error('Auth middleware: failed to fetch employee status:', employeeStatusError)
@@ -109,25 +119,34 @@ export async function authMiddleware(c: Context, next: Next) {
       return c.json({ error: true, message: 'Tài khoản không tồn tại hoặc đã bị xóa' }, 403)
     }
 
+    if (missingEmployeeClaims) {
+      resolvedEmployeeId = employeeStatus.id
+      resolvedEmployeeCode = employeeStatus.employee_id
+    }
+
     if (!employeeStatus.is_active) {
       return c.json({ error: true, message: 'Tài khoản đã bị vô hiệu hóa' }, 403)
     }
 
-    let permissions: string[]
-    if (jwtPayload.is_root) {
-      permissions = ['*']
-    } else {
-      permissions = await getEmployeePermissions(jwtPayload.employee_id)
+    if (missingEmployeeClaims || roles.length === 0) {
+      roles = await getEmployeeRoleCodes(resolvedEmployeeId)
+      isRoot = roles.includes('root')
     }
 
-    const roles = Array.isArray(jwtPayload.roles) ? jwtPayload.roles : []
-    const isAdmin = jwtPayload.is_root || roles.includes('admin')
+    let permissions: string[]
+    if (isRoot) {
+      permissions = ['*']
+    } else {
+      permissions = await getEmployeePermissions(resolvedEmployeeId)
+    }
+
+    const isAdmin = isRoot || roles.includes('admin')
 
     c.set('auth', {
-      employeeId: jwtPayload.employee_id,
-      employeeCode: jwtPayload.employee_code,
+      employeeId: resolvedEmployeeId,
+      employeeCode: resolvedEmployeeCode,
       roles,
-      isRoot: jwtPayload.is_root,
+      isRoot,
       isAdmin,
       permissions,
     } as AuthContext & { permissions: string[] })
@@ -277,6 +296,18 @@ async function getEmployeePermissions(employeeId: number): Promise<string[]> {
   })
 
   return Array.from(permissionSet)
+}
+
+async function getEmployeeRoleCodes(employeeId: number): Promise<string[]> {
+  const { data: employeeRoles } = await supabaseAdmin
+    .from('employee_roles')
+    .select('roles(code)')
+    .eq('employee_id', employeeId)
+
+  return (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    employeeRoles?.map((er: any) => er.roles?.code).filter((code: unknown): code is string => typeof code === 'string') ?? []
+  )
 }
 
 export async function canManageEmployee(

@@ -131,7 +131,7 @@ export function useReturnV2() {
         selectedIssue.value = updatedIssue
       })
 
-      snackbar.success('Đã nhập lại thành công')
+      snackbar.success('Đã nhập lại thành công, cuộn trả về đã ở trạng thái khả dụng')
       return true
     } catch (err) {
       const errorMessage = getErrorMessage(err, 'Không thể nhập lại')
@@ -167,7 +167,8 @@ export function useReturnV2() {
 
   /**
    * Validate return quantities locally (for UI feedback)
-   * Uses total-based validation to allow cross-type returns
+   * Uses total-based validation to allow cross-type returns.
+   * Backend is source of truth and may convert partial returns from full cones.
    * Rule 1: returned_full <= issued_full (can't create full cones from nothing)
    * Rule 2: total_returned <= total_issued (total can't exceed total issued)
    */

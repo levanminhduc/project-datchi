@@ -78,8 +78,10 @@ export function getErrorMessage(
 
   // Handle ApiError specifically
   if (error instanceof ApiError) {
-    // ApiError messages are already in Vietnamese from the backend
-    if (hasVietnameseCharacters(error.message)) {
+    // Prefer explicit backend message whenever available.
+    // Backend currently returns many Vietnamese messages without diacritics.
+    const apiMessage = error.message?.trim()
+    if (apiMessage && apiMessage !== 'Đã xảy ra lỗi') {
       return error.message
     }
     

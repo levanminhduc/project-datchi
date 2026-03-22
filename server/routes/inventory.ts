@@ -228,15 +228,13 @@ inventory.get('/by-warehouse/:warehouseId', requirePermission('thread.inventory.
   }
 })
 
-// GET /api/inventory/summary/by-cone - Cone-based inventory summary via SQL view/RPC
+// GET /api/inventory/summary/by-cone - Cone-based inventory summary
 inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const warehouseId = c.req.query('warehouse_id')
     const supplierId = c.req.query('supplier_id')
     const material = c.req.query('material')
     const search = c.req.query('search')
-
-    const needsRpc = !!warehouseId || !!supplierId
 
     type SummaryViewRow = {
       thread_type_id: number
@@ -257,54 +255,81 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       total_partial_cones: number
     }
 
-    let summaryData: SummaryViewRow[] = []
+    const parsedWarehouseId = warehouseId ? parseInt(warehouseId) : null
+    const parsedSupplierId = supplierId ? parseInt(supplierId) : null
+    const sanitizedSearch = search ? `%${sanitizeFilterValue(search)}%` : null
 
-    if (needsRpc) {
-      const usableStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED', 'RESERVED_FOR_ORDER']
-      const { data, error } = await supabase.rpc('fn_cone_summary_filtered', {
-        p_statuses: usableStatuses,
-        p_warehouse_id: warehouseId ? parseInt(warehouseId) : null,
-        p_supplier_id: supplierId ? parseInt(supplierId) : null,
-        p_material: material || null,
-        p_search: search ? `%${sanitizeFilterValue(search)}%` : null,
-      })
-
-      if (error) {
-        console.error('RPC error:', error)
-        return c.json<ThreadApiResponse<null>>({
-          data: null,
-          error: 'Lỗi khi tải tổng hợp tồn kho'
-        }, 500)
-      }
-
-      summaryData = (data || []) as SummaryViewRow[]
-    } else {
-      let query = supabase
-        .from('v_cone_summary')
-        .select('*')
-        .order('thread_code')
-
-      if (material) {
-        query = query.eq('material', material)
-      }
-
-      if (search) {
-        const s = sanitizeFilterValue(search)
-        query = query.or(`thread_code.ilike.%${s}%,thread_name.ilike.%${s}%,color_name.ilike.%${s}%`)
-      }
-
-      const { data, error } = await query
-
-      if (error) {
-        console.error('Supabase error:', error)
-        return c.json<ThreadApiResponse<null>>({
-          data: null,
-          error: 'Lỗi khi tải tổng hợp tồn kho'
-        }, 500)
-      }
-
-      summaryData = (data || []) as SummaryViewRow[]
+    if (warehouseId && (parsedWarehouseId == null || Number.isNaN(parsedWarehouseId))) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID kho không hợp lệ'
+      }, 400)
     }
+
+    if (supplierId && (parsedSupplierId == null || Number.isNaN(parsedSupplierId))) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID nhà cung cấp không hợp lệ'
+      }, 400)
+    }
+
+    // Physical totals: all usable cones including allocated/reserved.
+    const totalStatuses: ConeStatus[] = [
+      'RECEIVED',
+      'INSPECTED',
+      'AVAILABLE',
+      'SOFT_ALLOCATED',
+      'HARD_ALLOCATED',
+      'RESERVED_FOR_ORDER'
+    ]
+
+    // KD columns: only free cones.
+    const kdStatuses: ConeStatus[] = ['RECEIVED', 'INSPECTED', 'AVAILABLE']
+
+    const [totalResult, kdResult] = await Promise.all([
+      supabase.rpc('fn_cone_summary_filtered', {
+        p_statuses: totalStatuses,
+        p_warehouse_id: parsedWarehouseId,
+        p_supplier_id: parsedSupplierId,
+        p_material: material || null,
+        p_search: sanitizedSearch,
+      }),
+      supabase.rpc('fn_cone_summary_filtered', {
+        p_statuses: kdStatuses,
+        p_warehouse_id: parsedWarehouseId,
+        p_supplier_id: parsedSupplierId,
+        p_material: material || null,
+        p_search: sanitizedSearch,
+      })
+    ])
+
+    if (totalResult.error || kdResult.error) {
+      console.error('RPC error:', totalResult.error || kdResult.error)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi tải tổng hợp tồn kho'
+      }, 500)
+    }
+
+    const makeSummaryKey = (row: SummaryViewRow): string =>
+      `${row.thread_type_id}|${row.color_id ?? 'null'}|${row.supplier_id ?? 'null'}`
+
+    const kdMap = new Map<string, SummaryViewRow>()
+    for (const row of (kdResult.data || []) as SummaryViewRow[]) {
+      kdMap.set(makeSummaryKey(row), row)
+    }
+
+    const summaryData: SummaryViewRow[] = ((totalResult.data || []) as SummaryViewRow[]).map((row) => {
+      const kd = kdMap.get(makeSummaryKey(row))
+
+      return {
+        ...row,
+        full_cones: Number(kd?.full_cones || 0),
+        partial_cones: Number(kd?.partial_cones || 0),
+        partial_meters: Number(kd?.partial_meters || 0),
+        partial_weight_grams: Number(kd?.partial_weight_grams || 0),
+      }
+    })
 
     const threadTypeIds = [...new Set(summaryData.map(r => r.thread_type_id))]
     const supplierIds = [...new Set(summaryData.map(r => r.supplier_id).filter(Boolean))] as number[]

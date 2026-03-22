@@ -108,6 +108,21 @@ interface ReturnLineInput {
   returned_partial: number
 }
 
+interface ReturnPartialPayloadItem {
+  original_cone_id: number
+  return_quantity_meters: number
+}
+
+interface ReturnRpcResult {
+  success?: boolean
+  full_returns?: number
+  partial_returns?: number
+  full_returned?: number
+  partial_existing_returned?: number
+  partial_created_returned?: number
+  line_id?: number
+}
+
 function validateReturnQuantities(
   returnLines: ReturnLineInput[],
   lineMap: Map<number, IssueLine>
@@ -2301,8 +2316,10 @@ issuesV2.post('/:id/confirm', async (c) => {
  *
  * Body: { lines: [{ line_id, returned_full, returned_partial }], idempotency_key: string }
  * Validates: returned_full <= issued_full AND (returned_full + returned_partial) <= (issued_full + issued_partial)
+ * Enforces exact cone availability by line before updating counters
+ * Supports partial return conversion from full cones using partial_cone_ratio
  * Uses RPC fn_return_cones_with_movements for atomic operation with movement logging
- * Updates line returned quantities
+ * Updates line returned quantities based on actual processed cones
  * If all returned (total_returned >= total_issued) → set status=RETURNED
  */
 issuesV2.post('/:id/return', async (c) => {
@@ -2474,47 +2491,151 @@ issuesV2.post('/:id/return', async (c) => {
       )
     }
 
+    const partialConeRatio = await getPartialConeRatio()
+    if (!partialConeRatio || partialConeRatio <= 0) {
+      await supabase
+        .from('issue_operations_log')
+        .update({
+          status: 'FAILED',
+          error_info: `Ty le cuon le khong hop le (${partialConeRatio})`,
+          completed_at: new Date().toISOString(),
+        })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'RETURN')
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: `Ty le cuon le khong hop le (${partialConeRatio})`,
+        },
+        400
+      )
+    }
+
     const succeededLineIds: number[] = []
+    const returnLogRows: Array<{ line_id: number; returned_full: number; returned_partial: number }> = []
 
     for (const returnLine of validated.lines) {
       const line = lineMap.get(returnLine.line_id)!
+      const requestedFull = returnLine.returned_full || 0
+      const requestedPartial = returnLine.returned_partial || 0
 
-      const { data: fullCones } = await supabase
+      if (requestedFull <= 0 && requestedPartial <= 0) {
+        continue
+      }
+
+      const { data: hardAllocatedFullCones, error: fullConesError } = await supabase
         .from('thread_inventory')
-        .select('id')
+        .select('id, quantity_meters')
         .eq('issued_line_id', returnLine.line_id)
         .eq('status', 'HARD_ALLOCATED')
         .eq('is_partial', false)
-        .limit(returnLine.returned_full)
+        .order('id', { ascending: true })
 
-      const { data: partialCones } = await supabase
+      if (fullConesError) {
+        await supabase
+          .from('issue_operations_log')
+          .update({
+            status: 'FAILED',
+            succeeded_line_ids: succeededLineIds,
+            error_info: `Khong the tai cuon nguyen HARD_ALLOCATED cho dong ${returnLine.line_id}`,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('idempotency_key', idempotency_key)
+          .eq('operation_type', 'RETURN')
+        return c.json<ThreadApiResponse<null>>(
+          { data: null, error: 'Khong the tai du lieu ton kho de tra hang' },
+          500
+        )
+      }
+
+      const { data: hardAllocatedPartialCones, error: partialConesError } = await supabase
         .from('thread_inventory')
         .select('id')
         .eq('issued_line_id', returnLine.line_id)
         .eq('status', 'HARD_ALLOCATED')
         .eq('is_partial', true)
-        .limit(returnLine.returned_partial)
+        .order('id', { ascending: true })
 
-      const fullConeIds = fullCones?.map((c) => c.id) || []
-      const partialConeIds = partialCones?.map((c) => c.id) || []
-      const allConeIds = [...fullConeIds, ...partialConeIds]
+      if (partialConesError) {
+        await supabase
+          .from('issue_operations_log')
+          .update({
+            status: 'FAILED',
+            succeeded_line_ids: succeededLineIds,
+            error_info: `Khong the tai cuon le HARD_ALLOCATED cho dong ${returnLine.line_id}`,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('idempotency_key', idempotency_key)
+          .eq('operation_type', 'RETURN')
+        return c.json<ThreadApiResponse<null>>(
+          { data: null, error: 'Khong the tai du lieu ton kho de tra hang' },
+          500
+        )
+      }
 
-      if (allConeIds.length > 0) {
-        const { data: rpcResult, error: rpcError } = await supabase.rpc('fn_return_cones_with_movements', {
-          p_cone_ids: allConeIds,
-          p_line_id: returnLine.line_id,
-          p_performed_by: performedBy,
-          p_partial_returns: null,
-        })
+      const fullCones = hardAllocatedFullCones || []
+      const partialCones = hardAllocatedPartialCones || []
 
-        if (rpcError) {
-          console.error('[return] RPC error for line', returnLine.line_id, ':', rpcError)
+      if (requestedFull > fullCones.length) {
+        const errorMessage = `Dong ${line.id}: Khong du cuon nguyen de tra (${requestedFull}/${fullCones.length})`
+        await supabase
+          .from('issue_operations_log')
+          .update({
+            status: 'FAILED',
+            succeeded_line_ids: succeededLineIds,
+            error_info: errorMessage,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('idempotency_key', idempotency_key)
+          .eq('operation_type', 'RETURN')
+        return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
+          {
+            data: { succeeded_line_ids: succeededLineIds },
+            error: errorMessage,
+          },
+          400
+        )
+      }
+
+      const fullConesForReturn = fullCones.slice(0, requestedFull)
+      const remainingFullCones = fullCones.slice(requestedFull)
+      const partialFromExistingCount = Math.min(requestedPartial, partialCones.length)
+      const partialConesForReturn = partialCones.slice(0, partialFromExistingCount)
+      const partialNeedConvertCount = requestedPartial - partialFromExistingCount
+
+      if (partialNeedConvertCount > remainingFullCones.length) {
+        const availableEquivalentPartial = partialCones.length + remainingFullCones.length
+        const errorMessage = `Dong ${line.id}: Khong du cuon le de tra (${requestedPartial}/${availableEquivalentPartial})`
+        await supabase
+          .from('issue_operations_log')
+          .update({
+            status: 'FAILED',
+            succeeded_line_ids: succeededLineIds,
+            error_info: errorMessage,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('idempotency_key', idempotency_key)
+          .eq('operation_type', 'RETURN')
+        return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
+          {
+            data: { succeeded_line_ids: succeededLineIds },
+            error: errorMessage,
+          },
+          400
+        )
+      }
+
+      const partialReturnsPayload: ReturnPartialPayloadItem[] = []
+      if (partialNeedConvertCount > 0) {
+        const metersPerCone = await getMetersPerCone(line.thread_type_id)
+        if (!metersPerCone || metersPerCone <= 0) {
+          const errorMessage = `Dong ${line.id}: Khong lay duoc meters_per_cone hop le`
           await supabase
             .from('issue_operations_log')
             .update({
               status: 'FAILED',
               succeeded_line_ids: succeededLineIds,
-              error_info: rpcError.message || 'Loi xu ly tra hang',
+              error_info: errorMessage,
               completed_at: new Date().toISOString(),
             })
             .eq('idempotency_key', idempotency_key)
@@ -2522,15 +2643,134 @@ issuesV2.post('/:id/return', async (c) => {
           return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
             {
               data: { succeeded_line_ids: succeededLineIds },
-              error: rpcError.message || 'Loi xu ly tra hang',
+              error: errorMessage,
             },
-            500
+            400
           )
+        }
+
+        const partialMeters = Number((metersPerCone * partialConeRatio).toFixed(4))
+        if (partialMeters <= 0 || partialMeters >= metersPerCone) {
+          const errorMessage = `Dong ${line.id}: Ty le cuon le khong hop le cho phep tach cuon (${partialConeRatio})`
+          await supabase
+            .from('issue_operations_log')
+            .update({
+              status: 'FAILED',
+              succeeded_line_ids: succeededLineIds,
+              error_info: errorMessage,
+              completed_at: new Date().toISOString(),
+            })
+            .eq('idempotency_key', idempotency_key)
+            .eq('operation_type', 'RETURN')
+          return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
+            {
+              data: { succeeded_line_ids: succeededLineIds },
+              error: errorMessage,
+            },
+            400
+          )
+        }
+
+        const sourceFullCones = remainingFullCones.slice(0, partialNeedConvertCount)
+        for (const sourceCone of sourceFullCones) {
+          if (sourceCone.quantity_meters < partialMeters) {
+            const errorMessage = `Dong ${line.id}: Cuon ${sourceCone.id} khong du met de tach cuon le`
+            await supabase
+              .from('issue_operations_log')
+              .update({
+                status: 'FAILED',
+                succeeded_line_ids: succeededLineIds,
+                error_info: errorMessage,
+                completed_at: new Date().toISOString(),
+              })
+              .eq('idempotency_key', idempotency_key)
+              .eq('operation_type', 'RETURN')
+            return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
+              {
+                data: { succeeded_line_ids: succeededLineIds },
+                error: errorMessage,
+              },
+              400
+            )
+          }
+
+          partialReturnsPayload.push({
+            original_cone_id: sourceCone.id,
+            return_quantity_meters: partialMeters,
+          })
         }
       }
 
-      const newReturnedFull = (line.returned_full || 0) + returnLine.returned_full
-      const newReturnedPartial = (line.returned_partial || 0) + returnLine.returned_partial
+      const coneIdsForDirectReturn = [
+        ...fullConesForReturn.map((c) => c.id),
+        ...partialConesForReturn.map((c) => c.id),
+      ]
+
+      const { data: rpcResultRaw, error: rpcError } = await supabase.rpc(
+        'fn_return_cones_with_movements',
+        {
+          p_cone_ids: coneIdsForDirectReturn.length > 0 ? coneIdsForDirectReturn : null,
+          p_line_id: returnLine.line_id,
+          p_performed_by: performedBy,
+          p_partial_returns: partialReturnsPayload.length > 0 ? partialReturnsPayload : null,
+        }
+      )
+
+      if (rpcError) {
+        console.error('[return] RPC error for line', returnLine.line_id, ':', rpcError)
+        await supabase
+          .from('issue_operations_log')
+          .update({
+            status: 'FAILED',
+            succeeded_line_ids: succeededLineIds,
+            error_info: rpcError.message || 'Loi xu ly tra hang',
+            completed_at: new Date().toISOString(),
+          })
+          .eq('idempotency_key', idempotency_key)
+          .eq('operation_type', 'RETURN')
+        return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
+          {
+            data: { succeeded_line_ids: succeededLineIds },
+            error: rpcError.message || 'Loi xu ly tra hang',
+          },
+          500
+        )
+      }
+
+      const rpcResult = (rpcResultRaw || {}) as ReturnRpcResult
+      const actualReturnedFull =
+        typeof rpcResult.full_returned === 'number'
+          ? rpcResult.full_returned
+          : fullConesForReturn.length
+      const actualReturnedPartial =
+        typeof rpcResult.partial_existing_returned === 'number' ||
+        typeof rpcResult.partial_created_returned === 'number'
+          ? (rpcResult.partial_existing_returned || 0) + (rpcResult.partial_created_returned || 0)
+          : partialConesForReturn.length + partialReturnsPayload.length
+
+      if (actualReturnedFull !== requestedFull || actualReturnedPartial !== requestedPartial) {
+        const errorMessage = `Dong ${line.id}: Ket qua tra kho khong khop yeu cau`
+        await supabase
+          .from('issue_operations_log')
+          .update({
+            status: 'FAILED',
+            succeeded_line_ids: succeededLineIds,
+            error_info: errorMessage,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('idempotency_key', idempotency_key)
+          .eq('operation_type', 'RETURN')
+        return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
+          {
+            data: { succeeded_line_ids: succeededLineIds },
+            error: errorMessage,
+          },
+          500
+        )
+      }
+
+      const newReturnedFull = (line.returned_full || 0) + actualReturnedFull
+      const newReturnedPartial = (line.returned_partial || 0) + actualReturnedPartial
 
       const { error: updateError } = await supabase
         .from('thread_issue_lines')
@@ -2559,17 +2799,41 @@ issuesV2.post('/:id/return', async (c) => {
       }
 
       succeededLineIds.push(returnLine.line_id)
+      returnLogRows.push({
+        line_id: returnLine.line_id,
+        returned_full: actualReturnedFull,
+        returned_partial: actualReturnedPartial,
+      })
+    }
+
+    if (succeededLineIds.length === 0) {
+      await supabase
+        .from('issue_operations_log')
+        .update({
+          status: 'FAILED',
+          error_info: 'Khong co so luong tra hop le',
+          completed_at: new Date().toISOString(),
+        })
+        .eq('idempotency_key', idempotency_key)
+        .eq('operation_type', 'RETURN')
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Khong co so luong tra hop le',
+        },
+        400
+      )
     }
 
     try {
-      for (const returnLine of validated.lines) {
+      for (const logRow of returnLogRows) {
         await supabase
           .from('thread_issue_return_logs')
           .insert({
             issue_id: issueId,
-            line_id: returnLine.line_id,
-            returned_full: returnLine.returned_full,
-            returned_partial: returnLine.returned_partial,
+            line_id: logRow.line_id,
+            returned_full: logRow.returned_full,
+            returned_partial: logRow.returned_partial,
           })
       }
     } catch (logError) {
