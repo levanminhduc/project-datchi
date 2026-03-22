@@ -609,7 +609,7 @@ async function deductStock(
   }
 
   if (remainingFull > 0) {
-    const { data: availFull, error: fullError } = await supabase
+    let availFullQuery = supabase
       .from('thread_inventory')
       .select('id')
       .eq('thread_type_id', threadTypeId)
@@ -618,6 +618,12 @@ async function deductStock(
       .order('expiry_date', { ascending: true, nullsFirst: false })
       .order('received_date', { ascending: true })
       .limit(remainingFull)
+
+    if (fullIds.length > 0) {
+      availFullQuery = availFullQuery.not('id', 'in', `(${fullIds.join(',')})`)
+    }
+
+    const { data: availFull, error: fullError } = await availFullQuery
 
     if (fullError) {
       return { success: false, message: 'Loi truy van ton kho cuon nguyen' }
@@ -634,7 +640,7 @@ async function deductStock(
   }
 
   if (remainingPartial > 0) {
-    const { data: availPartial, error: partialError } = await supabase
+    let availPartialQuery = supabase
       .from('thread_inventory')
       .select('id')
       .eq('thread_type_id', threadTypeId)
@@ -643,6 +649,12 @@ async function deductStock(
       .order('expiry_date', { ascending: true, nullsFirst: false })
       .order('received_date', { ascending: true })
       .limit(remainingPartial)
+
+    if (partialIds.length > 0) {
+      availPartialQuery = availPartialQuery.not('id', 'in', `(${partialIds.join(',')})`)
+    }
+
+    const { data: availPartial, error: partialError } = await availPartialQuery
 
     if (partialError) {
       return { success: false, message: 'Loi truy van ton kho cuon le' }
