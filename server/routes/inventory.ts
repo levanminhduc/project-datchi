@@ -415,6 +415,8 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
 inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('thread.inventory.view'), async (c) => {
   try {
     const threadTypeId = parseInt(c.req.param('threadTypeId'))
+    const colorIdParam = c.req.query('color_id')
+    const colorId = colorIdParam ? parseInt(colorIdParam) : null
 
     if (isNaN(threadTypeId)) {
       return c.json<ThreadApiResponse<null>>({
@@ -428,17 +430,20 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
       'INSPECTED',
       'AVAILABLE',
       'SOFT_ALLOCATED',
-      'HARD_ALLOCATED'
+      'HARD_ALLOCATED',
+      'RESERVED_FOR_ORDER'
     ]
 
     const [warehouseResult, supplierResult] = await Promise.all([
       supabase.rpc('fn_warehouse_breakdown', {
         p_thread_type_id: threadTypeId,
         p_statuses: usableStatuses,
+        p_color_id: colorId,
       }),
       supabase.rpc('fn_supplier_breakdown', {
         p_thread_type_id: threadTypeId,
         p_statuses: usableStatuses,
+        p_color_id: colorId,
       }),
     ])
 

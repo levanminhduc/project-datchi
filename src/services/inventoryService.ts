@@ -253,9 +253,10 @@ export const inventoryService = {
    * @param threadTypeId - Thread type ID
    * @returns Array of ConeWarehouseBreakdown
    */
-  async getWarehouseBreakdown(threadTypeId: number): Promise<{ data: ConeWarehouseBreakdown[]; supplier_breakdown: SupplierBreakdown[] }> {
+  async getWarehouseBreakdown(threadTypeId: number, colorId?: number | null): Promise<{ data: ConeWarehouseBreakdown[]; supplier_breakdown: SupplierBreakdown[] }> {
+    const params = colorId != null ? `?color_id=${colorId}` : ''
     const response = await fetchApi<ApiResponse<ConeWarehouseBreakdown[]> & { supplier_breakdown: SupplierBreakdown[] }>(
-      `/api/inventory/summary/by-cone/${threadTypeId}/warehouses`
+      `/api/inventory/summary/by-cone/${threadTypeId}/warehouses${params}`
     )
 
     if (response.error) {

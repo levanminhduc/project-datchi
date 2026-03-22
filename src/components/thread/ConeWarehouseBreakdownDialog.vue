@@ -39,7 +39,7 @@
         >
           <q-card-section class="q-pa-sm text-center">
             <div class="text-h5 text-positive">
-              {{ formatNumber(threadType?.full_cones || 0) }}
+              {{ formatNumber(threadType?.total_full_cones || 0) }}
             </div>
             <div class="text-caption text-grey">
               Cuộn nguyên
@@ -54,7 +54,7 @@
         >
           <q-card-section class="q-pa-sm text-center">
             <div class="text-h5 text-warning">
-              {{ formatNumber(threadType?.partial_cones || 0) }}
+              {{ formatNumber(threadType?.total_partial_cones || 0) }}
             </div>
             <div class="text-caption text-grey">
               Cuộn lẻ
@@ -69,7 +69,7 @@
         >
           <q-card-section class="q-pa-sm text-center">
             <div class="text-h5 text-primary">
-              {{ formatNumber(Math.round(threadType?.partial_meters || 0)) }}
+              {{ formatNumber(Math.round(totalPartialMeters)) }}
             </div>
             <div class="text-caption text-grey">
               Mét lẻ
@@ -390,6 +390,9 @@ const supplierColumns: QTableColumn[] = [
 
 const warehouseCount = computed(() => props.breakdown.length)
 const hasSupplierData = computed(() => (props.supplierBreakdown?.length || 0) > 0)
+const totalPartialMeters = computed(() =>
+  props.breakdown.reduce((sum, row) => sum + (row.partial_meters || 0), 0)
+)
 
 const formatNumber = (num: number): string => {
   return new Intl.NumberFormat('vi-VN').format(num)

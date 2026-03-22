@@ -92,12 +92,12 @@ export function useConeSummary() {
    * Fetch warehouse breakdown for a specific thread type
    * @param threadTypeId - Thread type ID
    */
-  const fetchWarehouseBreakdown = async (threadTypeId: number): Promise<void> => {
+  const fetchWarehouseBreakdown = async (threadTypeId: number, colorId?: number | null): Promise<void> => {
     clearError()
     breakdownLoading.value = true
 
     try {
-      const response = await inventoryService.getWarehouseBreakdown(threadTypeId)
+      const response = await inventoryService.getWarehouseBreakdown(threadTypeId, colorId)
       warehouseBreakdown.value = response.data
       supplierBreakdown.value = response.supplier_breakdown
     } catch (err) {
@@ -125,7 +125,7 @@ export function useConeSummary() {
     }
 
     if (row) {
-      await fetchWarehouseBreakdown(row.thread_type_id)
+      await fetchWarehouseBreakdown(row.thread_type_id, row.color_id)
     } else {
       warehouseBreakdown.value = []
       supplierBreakdown.value = []
@@ -170,7 +170,7 @@ export function useConeSummary() {
       await fetchSummary()
       // Also refresh breakdown if a thread type is selected
       if (selectedThreadType.value) {
-        await fetchWarehouseBreakdown(selectedThreadType.value.thread_type_id)
+        await fetchWarehouseBreakdown(selectedThreadType.value.thread_type_id, selectedThreadType.value.color_id)
       }
       debounceTimer.value = null
     }, delay)

@@ -118,10 +118,10 @@ batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
       }
     }
 
-    // Get thread type for meters calculation
+    // Get thread type for meters calculation + color_id
     const { data: threadType } = await supabase
       .from('thread_types')
-      .select('meters_per_cone, density_grams_per_meter')
+      .select('meters_per_cone, density_grams_per_meter, color_id')
       .eq('id', body.thread_type_id)
       .single()
 
@@ -141,7 +141,8 @@ batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
       lot_number: lotNumber || null,
       lot_id: lotId || null,
       expiry_date: body.expiry_date || null,
-      received_date: new Date().toISOString().split('T')[0]
+      received_date: new Date().toISOString().split('T')[0],
+      color_id: threadType?.color_id ?? null,
     }))
 
     const { data: insertedCones, error: insertError } = await supabase

@@ -433,14 +433,18 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
       .select('week_id, summary_data')
       .in('week_id', weekIds)
 
-    // Build a map: week_id -> thread_type_id -> total_final
-    const summaryMap = new Map<number, Map<number, number>>()
+    // Build a map: week_id -> thread_type_id -> { total_final, thread_color, thread_color_code }
+    const summaryMap = new Map<number, Map<number, { total_final: number; thread_color?: string; thread_color_code?: string }>>()
     for (const result of resultsData || []) {
       if (result.summary_data && Array.isArray(result.summary_data)) {
-        const threadMap = new Map<number, number>()
-        for (const row of result.summary_data as Array<{ thread_type_id: number; total_final?: number }>) {
+        const threadMap = new Map<number, { total_final: number; thread_color?: string; thread_color_code?: string }>()
+        for (const row of result.summary_data as Array<{ thread_type_id: number; total_final?: number; thread_color?: string; thread_color_code?: string }>) {
           if (row.thread_type_id && row.total_final !== undefined) {
-            threadMap.set(row.thread_type_id, row.total_final)
+            threadMap.set(row.thread_type_id, {
+              total_final: row.total_final,
+              thread_color: row.thread_color || undefined,
+              thread_color_code: row.thread_color_code || undefined,
+            })
           }
         }
         summaryMap.set(result.week_id, threadMap)
@@ -457,15 +461,16 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
 
         // Get total_final from summary_data
         const threadMap = summaryMap.get(row.week_id)
-        const total_cones = threadMap?.get(row.thread_type_id) ?? null
+        const summaryInfo = threadMap?.get(row.thread_type_id)
+        const total_cones = summaryInfo?.total_final ?? null
 
         return {
           ...row,
           supplier_name: row.supplier?.name || '',
           thread_type_name: row.thread_type?.name || '',
           tex_number: row.thread_type?.tex_number || '',
-          color_name: row.thread_type?.color_data?.name || '',
-          color_hex: row.thread_type?.color_data?.hex_code || '',
+          color_name: row.thread_type?.color_data?.name || summaryInfo?.thread_color || '',
+          color_hex: row.thread_type?.color_data?.hex_code || summaryInfo?.thread_color_code || '',
           week_name: row.week?.week_name || '',
           days_remaining,
           is_overdue: days_remaining < 0 && row.status === 'PENDING',
@@ -1242,7 +1247,7 @@ weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'),
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const [deliveriesResult, loansResult] = await Promise.all([
+    const [deliveriesResult, loansResult, summaryResult] = await Promise.all([
       supabase
         .from('thread_order_deliveries')
         .select(`
@@ -1258,9 +1263,26 @@ weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'),
         .or(`from_week_id.eq.${id},to_week_id.eq.${id}`)
         .eq('status', 'ACTIVE')
         .is('deleted_at', null),
+      supabase
+        .from('thread_order_results')
+        .select('summary_data')
+        .eq('week_id', id)
+        .single(),
     ])
 
     if (deliveriesResult.error) throw deliveriesResult.error
+
+    const summaryColorMap = new Map<number, { thread_color: string; thread_color_code: string }>()
+    if (summaryResult.data?.summary_data && Array.isArray(summaryResult.data.summary_data)) {
+      for (const row of summaryResult.data.summary_data as Array<{ thread_type_id: number; thread_color?: string; thread_color_code?: string }>) {
+        if (row.thread_type_id && row.thread_color) {
+          summaryColorMap.set(row.thread_type_id, {
+            thread_color: row.thread_color,
+            thread_color_code: row.thread_color_code || '',
+          })
+        }
+      }
+    }
 
     const loanRows = loansResult.data || []
     const loanAggregates = new Map<number, { borrowed_in: number; lent_out: number }>()
@@ -1284,13 +1306,14 @@ weeklyOrder.get('/:id/deliveries', requirePermission('thread.allocations.view'),
       deliveryDate.setHours(0, 0, 0, 0)
       const days_remaining = Math.ceil((deliveryDate.getTime() - now.getTime()) / 86400000)
       const loanData = loanAggregates.get(row.thread_type_id) || { borrowed_in: 0, lent_out: 0 }
+      const summaryColor = summaryColorMap.get(row.thread_type_id)
       return {
         ...row,
         supplier_name: row.supplier?.name || '',
         thread_type_name: row.thread_type?.name || '',
         tex_number: row.thread_type?.tex_number || '',
-        color_name: row.thread_type?.color_data?.name || '',
-        color_hex: row.thread_type?.color_data?.hex_code || '',
+        color_name: row.thread_type?.color_data?.name || summaryColor?.thread_color || '',
+        color_hex: row.thread_type?.color_data?.hex_code || summaryColor?.thread_color_code || '',
         days_remaining,
         is_overdue: days_remaining < 0 && row.status === 'PENDING',
         borrowed_in: loanData.borrowed_in,
