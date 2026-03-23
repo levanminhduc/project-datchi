@@ -1,0 +1,58 @@
+# Dependencies
+node_modules
+
+# Build output
+/dist
+
+# Environment files (NEVER commit secrets)
+.env
+.env.local
+.env.production
+.env.docker
+.env.*.local
+
+# Docker
+docker/volumes/db/
+
+# Database backups
+backups/
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+nul
+
+# Aider
+.aider*
+.aider.tags.cache.v3/
+
+# OpenCode
+opencode.json
+.opencode/
+
+# Claude Code
+.claude/
+
+# Playwright
+*.png
+.playwright-mcp/
+playwright-report/
+test-results/
+plans/
+docs/
+playwright.config.ts
+tests/e2e/auth-session-expired.spec.ts

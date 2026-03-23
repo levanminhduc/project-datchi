@@ -1,0 +1,130 @@
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { secureHeaders } from 'hono/secure-headers'
+import { serve } from '@hono/node-server'
+import { existsSync } from 'fs'
+import dotenv from 'dotenv'
+
+if (existsSync('.env')) {
+  dotenv.config()
+}
+
+import authRouter from './routes/auth'
+import employeesRouter from './routes/employees'
+import positionsRouter from './routes/positions'
+import inventoryRouter from './routes/inventory'
+import threadsRouter from './routes/threads'
+import allocationsRouter from './routes/allocations'
+import recoveryRouter from './routes/recovery'
+import dashboardRouter from './routes/dashboard'
+import warehousesRouter from './routes/warehouses'
+import reportsRouter from './routes/reports'
+import lotsRouter from './routes/lots'
+import batchRouter from './routes/batch'
+import colorsRouter from './routes/colors'
+import suppliersRouter from './routes/suppliers'
+import threadTypeSuppliersRouter from './routes/thread-type-supplier'
+import purchaseOrdersRouter from './routes/purchaseOrders'
+import stylesRouter from './routes/styles'
+import styleThreadSpecsRouter from './routes/styleThreadSpecs'
+import threadCalculationRouter from './routes/threadCalculation'
+import weeklyOrderRouter from './routes/weeklyOrder'
+import reconciliationRouter from './routes/reconciliation'
+import settingsRouter from './routes/settings'
+import stockRouter from './routes/stock'
+import issuesV2Router from './routes/issuesV2'
+import notificationsRouter from './routes/notifications'
+import importRouter from './routes/import'
+import subArtsRouter from './routes/subArts'
+import styleColorsRouter from './routes/styleColors'
+import { authMiddleware } from './middleware/auth'
+
+const app = new Hono()
+
+const PORT = parseInt(process.env.PORT || '3000', 10)
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
+
+app.use('*', secureHeaders())
+
+app.use(
+  '/api/*',
+  cors({
+    origin: [FRONTEND_URL, 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:5174', 'http://localhost:5174', 'https://datchi.ithoathodb.xyz'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  })
+)
+
+app.use(
+  '/api/*',
+  authMiddleware
+)
+
+app.get('/health', (c) => {
+  return c.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    service: 'employee-management-api',
+  })
+})
+
+app.route('/api/auth', authRouter)
+app.route('/api/employees', employeesRouter)
+app.route('/api/positions', positionsRouter)
+app.route('/api/inventory', inventoryRouter)
+app.route('/api/threads', threadsRouter)
+app.route('/api/allocations', allocationsRouter)
+app.route('/api/recovery', recoveryRouter)
+app.route('/api/dashboard', dashboardRouter)
+app.route('/api/warehouses', warehousesRouter)
+app.route('/api/reports', reportsRouter)
+app.route('/api/lots', lotsRouter)
+app.route('/api/batch', batchRouter)
+app.route('/api/colors', colorsRouter)
+app.route('/api/suppliers', suppliersRouter)
+app.route('/api/thread-type-suppliers', threadTypeSuppliersRouter)
+app.route('/api/purchase-orders', purchaseOrdersRouter)
+app.route('/api/styles', stylesRouter)
+app.route('/api/style-thread-specs', styleThreadSpecsRouter)
+app.route('/api/thread-calculation', threadCalculationRouter)
+app.route('/api/weekly-orders', weeklyOrderRouter)
+app.route('/api/issues/reconciliation', reconciliationRouter)
+app.route('/api/issues/v2', issuesV2Router)
+app.route('/api/settings', settingsRouter)
+app.route('/api/stock', stockRouter)
+app.route('/api/notifications', notificationsRouter)
+app.route('/api/import', importRouter)
+app.route('/api/sub-arts', subArtsRouter)
+app.route('/api/style-colors', styleColorsRouter)
+
+app.onError((err, c) => {
+  console.error('Unhandled error:', err)
+  return c.json(
+    {
+      data: null,
+      error: 'Lỗi hệ thống',
+    },
+    500
+  )
+})
+
+app.notFound((c) => {
+  return c.json(
+    {
+      data: null,
+      error: 'Không tìm thấy endpoint',
+    },
+    404
+  )
+})
+
+console.log(`Starting server on port ${PORT}...`)
+console.log(`CORS enabled for: ${FRONTEND_URL}`)
+
+serve({
+  fetch: app.fetch,
+  port: PORT,
+})
+
+console.log(`Server is running at http://localhost:${PORT}`)
