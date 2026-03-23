@@ -217,13 +217,6 @@ function handleReset() {
           </q-badge>
         </div>
 
-        <q-banner class="bg-blue-1 text-primary q-mb-md">
-          <template #avatar>
-            <q-icon name="info" />
-          </template>
-          Cuộn nguyên trả về sẽ vào cuộn nguyên khả dụng (KD). Cuộn lẻ trả về sẽ vào cuộn lẻ khả dụng (KD), có thể tách từ cuộn nguyên theo tỷ lệ cuộn lẻ trong Cài đặt.
-        </q-banner>
-
         <q-banner
           v-if="validationErrors.length > 0"
           class="bg-negative text-white q-mb-md"
