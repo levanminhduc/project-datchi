@@ -59,14 +59,7 @@
           <!-- Note: Forgot password requires admin reset for employee-based auth -->
         </div>
 
-        <AppButton
-          type="submit"
-          label="Đăng nhập"
-          color="primary"
-          :loading="isLoading"
-          class="full-width"
-          size="lg"
-        />
+        <div><AppButton type="submit" label="Đăng nhập" color="primary" :loading="isLoading" block /></div>
       </q-form>
 
       <!-- Error Display -->
@@ -83,7 +76,7 @@
 
       <!-- Help Text -->
       <div class="text-center q-mt-md text-grey-6 text-caption">
-        Quên mật khẩu? Liên hệ quản trị viên để đặt lại.
+        Quên mật khẩu? Liên hệ IT để cấp lại mật khẩu.
       </div>
     </q-card>
   </q-page>
@@ -137,3 +130,4 @@ async function handleLogin() {
   border-radius: 12px;
 }
 </style>
+
