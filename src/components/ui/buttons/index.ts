@@ -1,5 +1,0 @@
-export { default as AppButton } from './AppButton.vue'
-export { default as IconButton } from './IconButton.vue'
-export { default as ButtonGroup } from './ButtonGroup.vue'
-export { default as ButtonToggle } from './ButtonToggle.vue'
-export { default as ButtonDropdown } from './ButtonDropdown.vue'
