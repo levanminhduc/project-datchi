@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <q-page class="flex flex-center bg-grey-2">
     <q-card
       class="login-card q-pa-lg"
@@ -24,18 +24,14 @@
         class="q-gutter-md"
         @submit="handleLogin"
       >
-        <AppInput
-          v-model="form.employeeId"
-          label="Mã Nhân Viên"
+        <AppInput v-model="form.employeeId" name="username" id="username" label="Mã Nhân Viên"
           prepend-icon="badge"
           :rules="[required]"
           autocomplete="username"
           hint="Ví dụ: NV001"
         />
 
-        <AppInput
-          v-model="form.password"
-          label="Mật khẩu"
+        <AppInput v-model="form.password" name="password" id="password" label="Mật khẩu"
           :type="showPassword ? 'text' : 'password'"
           prepend-icon="lock"
           :rules="[required]"
@@ -130,4 +126,5 @@ async function handleLogin() {
   border-radius: 12px;
 }
 </style>
+
 
