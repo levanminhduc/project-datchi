@@ -27,10 +27,17 @@ const returnInputs = ref<Map<number, { full: number; partial: number }>>(new Map
 const validationErrors = ref<string[]>([])
 
 const issueOptions = computed(() => {
-  return confirmedIssues.value.map((issue) => ({
-    value: issue.id,
-    label: `${issue.issue_code} - ${issue.department} (${formatDate(issue.created_at)})`,
-  }))
+  return confirmedIssues.value.map((issue) => {
+    const parts = [
+      issue.po_number || '?',
+      issue.style_code || '?',
+      issue.color_name || '?',
+    ].join(' / ')
+    return {
+      value: issue.id,
+      label: `${parts} (${formatDate(issue.created_at)})`,
+    }
+  })
 })
 
 const hasReturnInputs = computed(() => {

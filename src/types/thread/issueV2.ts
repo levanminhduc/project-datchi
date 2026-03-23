@@ -40,6 +40,13 @@ export interface IssueV2 {
   updated_at: string
 }
 
+export interface IssueV2WithSummary extends IssueV2 {
+  po_number?: string
+  style_code?: string
+  color_name?: string
+  line_count?: number
+}
+
 /**
  * Thread Issue V2 line entity
  * Matches thread_issue_lines table structure

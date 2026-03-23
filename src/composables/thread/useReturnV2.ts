@@ -15,7 +15,7 @@ import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
 import type {
-  IssueV2,
+  IssueV2WithSummary,
   IssueV2WithLines,
   ReturnLog,
 } from '@/types/thread/issueV2'
@@ -31,7 +31,7 @@ export interface ReturnLineInput {
 
 export function useReturnV2() {
   // State
-  const confirmedIssues = ref<IssueV2[]>([])
+  const confirmedIssues = ref<IssueV2WithSummary[]>([])
   const selectedIssue = ref<IssueV2WithLines | null>(null)
   const returnLogs = ref<ReturnLog[]>([])
   const error = ref<string | null>(null)
@@ -60,7 +60,7 @@ export function useReturnV2() {
 
     try {
       const result = await loading.withLoading(async () => {
-        const response = await fetchApi<ApiResponse<{ data: IssueV2[]; total: number }>>(
+        const response = await fetchApi<ApiResponse<{ data: IssueV2WithSummary[]; total: number }>>(
           '/api/issues/v2?status=CONFIRMED'
         )
         return response.data || { data: [], total: 0 }

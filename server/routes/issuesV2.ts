@@ -2030,10 +2030,41 @@ issuesV2.get('/', async (c) => {
       )
     }
 
-    // Flatten the count
+    // Fetch first line's PO/Style/Color for each issue
+    const issueIds = (data || []).map((row: any) => row.id)
+    const lineSummaryMap: Record<number, { po_number?: string; style_code?: string; color_name?: string }> = {}
+
+    if (issueIds.length > 0) {
+      const { data: linesSummary } = await supabase
+        .from('thread_issue_lines')
+        .select(`
+          issue_id,
+          purchase_orders:po_id(po_number),
+          styles:style_id(style_code),
+          style_colors:style_color_id(color_name),
+          colors:color_id(name)
+        `)
+        .in('issue_id', issueIds)
+        .order('created_at', { ascending: true })
+
+      if (linesSummary) {
+        for (const line of linesSummary) {
+          if (!lineSummaryMap[line.issue_id]) {
+            lineSummaryMap[line.issue_id] = {
+              po_number: (line.purchase_orders as any)?.po_number || undefined,
+              style_code: (line.styles as any)?.style_code || undefined,
+              color_name: (line.style_colors as any)?.color_name ?? (line.colors as any)?.name ?? undefined,
+            }
+          }
+        }
+      }
+    }
+
+    // Flatten and merge
     const result = (data || []).map((row: any) => ({
       ...row,
       line_count: row.line_count?.[0]?.count ?? 0,
+      ...(lineSummaryMap[row.id] || {}),
     }))
 
     const total = count ?? 0
