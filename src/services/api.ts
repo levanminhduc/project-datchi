@@ -208,6 +208,16 @@ export async function fetchApiRaw(
   const token = session?.access_token
 
   const response = await makeRequest(token)
+
+  if (response.status === 503) {
+    await new Promise(r => setTimeout(r, 1500))
+    const retryResponse = await makeRequest(token)
+    if (retryResponse.status === 503) {
+      throw new ApiError(503, 'Hệ thống đang tải, vui lòng thử lại sau')
+    }
+    return retryResponse
+  }
+
   if (response.status === 401) {
     if (!token) {
       await forceBackToLogin()

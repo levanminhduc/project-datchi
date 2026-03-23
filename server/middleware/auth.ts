@@ -5,7 +5,7 @@ import type { JwtPayload, AuthContext } from '../types/auth'
 
 export type { JwtPayload, AuthContext }
 
-const DB_RETRY_CODES = new Set(['PGRST000', 'PGRST503', '57P01', '57P03', '08006'])
+const DB_RETRY_CODES = new Set(['PGRST000', 'PGRST001', 'PGRST002', 'PGRST503', '57P01', '57P03', '08006'])
 const MAX_RETRIES = 2
 const RETRY_DELAY_MS = 300
 

@@ -1,0 +1,15 @@
+declare var __VLS_52: {}, __VLS_72: {};
+type __VLS_Slots = {} & {
+    overlay?: (props: typeof __VLS_52) => any;
+} & {
+    actions?: (props: typeof __VLS_72) => any;
+};
+declare const __VLS_base: any;
+declare const __VLS_export: __VLS_WithSlots<typeof __VLS_base, __VLS_Slots>;
+declare const _default: typeof __VLS_export;
+export default _default;
+type __VLS_WithSlots<T, S> = T & {
+    new (): {
+        $slots: S;
+    };
+};

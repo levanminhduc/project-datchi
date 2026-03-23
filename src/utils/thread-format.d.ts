@@ -1,0 +1,1 @@
+export declare function formatThreadTypeDisplay(supplierName: string | null | undefined, texNumber: number | string | null | undefined, colorName: string | null | undefined, fallbackName?: string): string;
