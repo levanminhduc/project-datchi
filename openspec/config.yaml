@@ -1,0 +1,24 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Vue 3 + Quasar 2 + TypeScript 5.9 + Vite 7 (frontend) | Hono 4 on Node.js via tsx (backend API) | Supabase PostgreSQL (database)
+  Domain: Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ) — Vietnamese B2B garment industry app
+  Frontend NEVER calls Supabase directly for CRUD — always through Hono API endpoints
+  UI components: AppInput, AppSelect, AppButton, DataTable (wrappers over Quasar)
+  All user-facing messages in Vietnamese
+  Database: snake_case tables, soft delete (deleted_at), enums ALL UPPERCASE, functions fn_ prefix, views v_ prefix
+  API response format: { data: T|null, error: string|null, message?: string }
+  Validation: Zod schemas in server/validation/
+  Auth: Supabase Auth → JWT via jose → requirePermission() middleware
+  File-based routing: unplugin-vue-router (src/pages/)
+  State: composables pattern (src/composables/)
+  Services: fetchApi() wrapper (src/services/api.ts)
+
+rules:
+  tasks:
+    - Annotate verify points on last task of each major group or high-risk tasks
+    - Tasks must reference actual file paths in the codebase
+    - Route-specific tasks must note route ordering (specific before generic /:id)
+  design:
+    - Reference existing patterns/functions in codebase when applicable
+    - Note Supabase RPC functions for atomic DB operations
