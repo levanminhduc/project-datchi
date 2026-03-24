@@ -213,6 +213,17 @@ export interface ReturnGroupedDTO {
   }[]
 }
 
+export interface CompletionWeekInfo {
+  week_id: number
+  week_name: string
+  item_ids: number[]
+}
+
+export interface CompletionInfo {
+  auto_completed: CompletionWeekInfo[]
+  pending_selection: CompletionWeekInfo[]
+}
+
 export interface ReturnGroupedResponse {
   total_returned_full: number
   total_returned_partial: number
@@ -222,6 +233,7 @@ export interface ReturnGroupedResponse {
     returned_full: number
     returned_partial: number
   }[]
+  completion_info?: CompletionInfo
 }
 
 export interface GroupedReturnLog {
