@@ -55,6 +55,7 @@
                 v-model="formData.to_warehouse_id"
                 label="Kho đích"
                 required
+                :exclude-ids="formData.from_warehouse_id ? [formData.from_warehouse_id] : []"
               />
               <q-banner
                 v-if="formData.to_warehouse_id === formData.from_warehouse_id && formData.to_warehouse_id !== null"
@@ -102,8 +103,6 @@
             <ThreadTypeTransferPanel
               ref="transferPanelRef"
               :warehouse-id="formData.from_warehouse_id"
-              @transfer-ready="onTransferReady"
-              @selection-cleared="transferPayload = null"
             />
           </div>
 
@@ -334,8 +333,8 @@
                   Số cuộn
                 </div>
                 <div class="text-h6 text-weight-bold">
-                  <template v-if="selectionMode === 'thread-type' && transferPayload">
-                    {{ transferPayload.quantity.toLocaleString() }}
+                  <template v-if="selectionMode === 'thread-type'">
+                    {{ transferItems.reduce((s, i) => s + i.quantity, 0).toLocaleString() }}
                   </template>
                   <template v-else>
                     {{ validCones.length }}
@@ -370,62 +369,66 @@
             </div>
 
             <div
-              v-if="selectionMode === 'thread-type' && transferPayload"
+              v-if="selectionMode === 'thread-type' && transferItems.length > 0"
               class="col-12"
             >
-              <q-card
-                flat
-                bordered
+              <DataTable
+                :rows="transferItems"
+                :columns="transferColumns"
+                row-key="thread_type_id"
+                dense
+                hide-bottom
+                :title="`Chi tiết chuyển kho (${transferItems.length} loại)`"
               >
-                <q-card-section>
-                  <div class="text-subtitle1 text-weight-medium q-mb-md">
-                    Chi tiết chuyển kho
-                  </div>
-                  <div class="row items-center q-mb-sm">
-                    <q-avatar
-                      size="36px"
-                      :style="transferPayload.color_hex
-                        ? { backgroundColor: transferPayload.color_hex }
-                        : { backgroundColor: '#ccc' }"
-                      class="q-mr-md"
+                <template #body-cell-stt="props">
+                  <q-td :props="props">
+                    {{ props.rowIndex + 1 }}
+                  </q-td>
+                </template>
+                <template #body-cell-thread_type="props">
+                  <q-td :props="props">
+                    <div class="row items-center no-wrap">
+                      <q-avatar
+                        size="28px"
+                        class="q-mr-sm"
+                        :style="props.row.color_hex
+                          ? { backgroundColor: props.row.color_hex }
+                          : { backgroundColor: '#ccc' }"
+                      >
+                        <span class="text-caption text-weight-bold text-white">
+                          {{ props.row.tex_number }}
+                        </span>
+                      </q-avatar>
+                      {{ props.row.supplier_name }} - TEX {{ props.row.tex_number }} - {{ props.row.color_name }}
+                    </div>
+                  </q-td>
+                </template>
+                <template #body-cell-quantity="props">
+                  <q-td :props="props">
+                    <q-badge
+                      :color="props.row.include_reserved ? 'warning' : 'positive'"
+                      :label="`${props.row.quantity.toLocaleString()} cuộn`"
+                    />
+                  </q-td>
+                </template>
+                <template #body-cell-note="props">
+                  <q-td :props="props">
+                    <span
+                      v-if="props.row.include_reserved"
+                      class="text-caption text-warning"
                     >
-                      <span class="text-caption text-weight-bold text-white">
-                        {{ transferPayload.tex_number }}
-                      </span>
-                    </q-avatar>
-                    <div>
-                      <div class="text-body1 text-weight-medium">
-                        {{ transferPayload.supplier_name }} - TEX {{ transferPayload.tex_number }} - {{ transferPayload.color_name }}
-                      </div>
-                      <div class="text-caption text-grey-7">
-                        {{ transferPayload.quantity.toLocaleString() }} cuộn sẽ được chuyển
-                      </div>
-                    </div>
-                  </div>
-                  <q-separator class="q-my-sm" />
-                  <div class="row q-col-gutter-md">
-                    <div class="col-6 col-md-3">
-                      <div class="text-caption text-grey-7">
-                        Cuộn khả dụng
-                      </div>
-                      <div class="text-body1 text-positive text-weight-medium">
-                        {{ Math.min(transferPayload.quantity, transferPayload.transferable_count).toLocaleString() }}
-                      </div>
-                    </div>
-                    <div
-                      v-if="transferPayload.include_reserved"
-                      class="col-6 col-md-3"
+                      {{ Math.min(props.row.quantity, props.row.transferable_count).toLocaleString() }} khả dụng
+                      + {{ (props.row.quantity - props.row.transferable_count).toLocaleString() }} từ đơn hàng
+                    </span>
+                    <span
+                      v-else
+                      class="text-caption text-grey-6"
                     >
-                      <div class="text-caption text-grey-7">
-                        Cuộn từ đơn hàng
-                      </div>
-                      <div class="text-body1 text-warning text-weight-medium">
-                        {{ (transferPayload.quantity - transferPayload.transferable_count).toLocaleString() }}
-                      </div>
-                    </div>
-                  </div>
-                </q-card-section>
-              </q-card>
+                      Tất cả khả dụng
+                    </span>
+                  </q-td>
+                </template>
+              </DataTable>
             </div>
 
             <div
@@ -521,7 +524,7 @@
             Chuyển kho thành công!
           </div>
           <div class="text-grey-6 q-mt-sm">
-            Đã chuyển {{ lastResult?.cone_count }} cuộn
+            Đã chuyển {{ selectionMode === 'thread-type' ? lastTransferTotal : lastResult?.cone_count }} cuộn
           </div>
         </q-card-section>
         <q-card-actions
@@ -556,6 +559,8 @@ import AppWarehouseSelect from '@/components/ui/inputs/AppWarehouseSelect.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
 import { inventoryService } from '@/services/inventoryService'
 import ThreadTypeTransferPanel from '@/components/thread/ThreadTypeTransferPanel.vue'
+import DataTable from '@/components/ui/tables/DataTable.vue'
+import type { QTableColumn } from 'quasar'
 
 const router = useRouter()
 const $q = useQuasar()
@@ -605,18 +610,8 @@ const showSuccessDialog = ref(false)
 
 const transferPanelRef = ref<InstanceType<typeof ThreadTypeTransferPanel> | null>(null)
 
-const transferPayload = ref<{
-  thread_type_id: number
-  color_id: number
-  quantity: number
-  include_reserved: boolean
-  supplier_name: string
-  tex_number: string
-  color_name: string
-  color_hex: string | null
-  transferable_count: number
-  reserved_count: number
-} | null>(null)
+const transferItems = ref<{ thread_type_id: number; color_id: number; quantity: number; include_reserved: boolean; supplier_name: string; tex_number: string; color_name: string; color_hex: string | null; transferable_count: number; reserved_count: number }[]>([])
+const lastTransferTotal = ref(0)
 
 const formData = ref({
   from_warehouse_id: null as number | null,
@@ -626,6 +621,13 @@ const formData = ref({
 const selectionModeOptions = [
   { label: 'Theo loại chỉ', value: 'thread-type' },
   { label: 'Quét/nhập', value: 'scan' }
+]
+
+const transferColumns: QTableColumn[] = [
+  { name: 'stt', label: '#', field: 'thread_type_id', align: 'center', style: 'width: 50px' },
+  { name: 'thread_type', label: 'Loại chỉ', field: 'supplier_name', align: 'left' },
+  { name: 'quantity', label: 'Số cuộn', field: 'quantity', align: 'center', style: 'width: 120px' },
+  { name: 'note', label: 'Ghi chú', field: 'include_reserved', align: 'left' }
 ]
 
 const isDestinationValid = computed(() => {
@@ -645,8 +647,7 @@ const destWarehouseName = computed(() => {
 
 const canProceedStep2 = computed(() => {
   if (selectionMode.value === 'thread-type') {
-    const panel = transferPanelRef.value
-    return panel?.selectedItem !== null && (panel?.quantity ?? 0) > 0
+    return (transferPanelRef.value?.transferItems?.length ?? 0) > 0
   }
   return validCones.value.length > 0
 })
@@ -657,20 +658,14 @@ function goToStep(step: number) {
 
 function onSourceWarehouseChange() {
   coneBuffer.value = []
-  transferPayload.value = null
-}
-
-function onTransferReady(payload: typeof transferPayload.value) {
-  transferPayload.value = payload
-  goToStep(3)
+  transferItems.value = []
 }
 
 function handleStep2Next() {
   if (selectionMode.value === 'thread-type') {
-    transferPanelRef.value?.handleProceed()
-  } else {
-    goToStep(3)
+    transferItems.value = [...(transferPanelRef.value?.transferItems || [])]
   }
+  goToStep(3)
 }
 
 function toggleScanner() {
@@ -761,18 +756,22 @@ async function handleClearBuffer() {
 }
 
 async function handleConfirm() {
-  if (selectionMode.value === 'thread-type' && transferPayload.value) {
-    const result = await batchTransfer({
-      thread_type_id: transferPayload.value.thread_type_id,
-      color_id: transferPayload.value.color_id,
-      quantity: transferPayload.value.quantity,
-      include_reserved: transferPayload.value.include_reserved,
-      from_warehouse_id: formData.value.from_warehouse_id!,
-      to_warehouse_id: formData.value.to_warehouse_id!
-    })
-    if (result) {
+  if (selectionMode.value === 'thread-type' && transferItems.value.length > 0) {
+    lastTransferTotal.value = 0
+    for (const item of transferItems.value) {
+      const result = await batchTransfer({
+        thread_type_id: item.thread_type_id,
+        color_id: item.color_id,
+        quantity: item.quantity,
+        include_reserved: item.include_reserved,
+        from_warehouse_id: formData.value.from_warehouse_id!,
+        to_warehouse_id: formData.value.to_warehouse_id!
+      })
+      if (result) lastTransferTotal.value += result.cone_count
+    }
+    if (lastTransferTotal.value > 0) {
       showSuccessDialog.value = true
-      transferPayload.value = null
+      transferItems.value = []
     }
   } else {
     const coneIds = validCones.value.map(item => item.id)
@@ -795,7 +794,8 @@ async function handleConfirm() {
 function handleNewBatch() {
   showSuccessDialog.value = false
   currentStep.value = 1
-  transferPayload.value = null
+  transferItems.value = []
+  lastTransferTotal.value = 0
 }
 
 async function handleBack() {

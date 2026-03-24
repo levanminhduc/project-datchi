@@ -128,9 +128,10 @@ async function handleLogin() {
   })
 
   if (success) {
-    if (employee.value?.mustChangePassword) {
-      return
-    }
+    // TODO: bật lại khi cần force đổi mật khẩu lần đầu
+    // if (employee.value?.mustChangePassword) {
+    //   return
+    // }
     const redirect = route.query.redirect as string
     router.push(redirect?.startsWith('/') && !redirect.startsWith('//') ? redirect : '/')
   }

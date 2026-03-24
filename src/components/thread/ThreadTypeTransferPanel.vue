@@ -100,8 +100,83 @@
             ]"
           />
         </div>
+        <div class="col-auto q-pb-lg">
+          <q-btn
+            color="primary"
+            label="Thêm"
+            icon="add"
+            :disable="!quantity || quantity <= 0 || quantity > maxQuantity"
+            @click="handleAdd"
+          />
+        </div>
       </div>
     </template>
+
+    <q-card
+      v-if="transferItems.length > 0"
+      flat
+      bordered
+      class="q-mt-lg"
+    >
+      <q-card-section class="q-pb-none">
+        <div class="row items-center">
+          <span class="text-subtitle1 text-weight-medium">
+            Danh sách chuyển ({{ transferItems.length }} loại — {{ totalCones.toLocaleString() }} cuộn)
+          </span>
+          <q-space />
+          <q-btn
+            flat
+            dense
+            color="negative"
+            label="Xóa tất cả"
+            icon="delete_sweep"
+            @click="transferItems = []"
+          />
+        </div>
+      </q-card-section>
+      <q-list separator>
+        <q-item
+          v-for="(item, idx) in transferItems"
+          :key="`${item.thread_type_id}-${item.color_id}`"
+        >
+          <q-item-section avatar>
+            <q-avatar
+              size="32px"
+              :style="item.color_hex ? { backgroundColor: item.color_hex } : { backgroundColor: '#ccc' }"
+            >
+              <span class="text-caption text-weight-bold text-white">
+                {{ item.tex_number }}
+              </span>
+            </q-avatar>
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>
+              {{ item.supplier_name }} - TEX {{ item.tex_number }} - {{ item.color_name }}
+            </q-item-label>
+            <q-item-label caption>
+              {{ item.quantity.toLocaleString() }} cuộn
+              <span
+                v-if="item.include_reserved"
+                class="text-warning"
+              >
+                ({{ (item.quantity - item.transferable_count).toLocaleString() }} từ đơn hàng)
+              </span>
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-btn
+              flat
+              round
+              dense
+              icon="close"
+              color="negative"
+              size="sm"
+              @click="removeItem(idx)"
+            />
+          </q-item-section>
+        </q-item>
+      </q-list>
+    </q-card>
 
     <q-dialog v-model="showReservedDialog">
       <q-card style="width: 100%; max-width: 420px">
@@ -158,27 +233,24 @@ import type { TransferableSummaryItem } from '@/types/thread/batch'
 
 const TRANSFER_LIMIT = 10000
 
+export interface TransferItem {
+  thread_type_id: number
+  color_id: number
+  quantity: number
+  include_reserved: boolean
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  color_hex: string | null
+  transferable_count: number
+  reserved_count: number
+}
+
 interface Props {
   warehouseId: number | null
 }
 
 const props = defineProps<Props>()
-
-const emit = defineEmits<{
-  'transfer-ready': [payload: {
-    thread_type_id: number
-    color_id: number
-    quantity: number
-    include_reserved: boolean
-    supplier_name: string
-    tex_number: string
-    color_name: string
-    color_hex: string | null
-    transferable_count: number
-    reserved_count: number
-  }]
-  'selection-cleared': []
-}>()
 
 const snackbar = useSnackbar()
 const loading = ref(false)
@@ -187,6 +259,11 @@ const filteredItems = ref<TransferableSummaryItem[]>([])
 const selectedItem = ref<TransferableSummaryItem | null>(null)
 const quantity = ref(0)
 const showReservedDialog = ref(false)
+const transferItems = ref<TransferItem[]>([])
+
+const totalCones = computed(() =>
+  transferItems.value.reduce((sum, i) => sum + i.quantity, 0)
+)
 
 const maxQuantity = computed(() => {
   if (!selectedItem.value) return 0
@@ -208,12 +285,30 @@ function formatOptionLabel(item: TransferableSummaryItem) {
   return `${item.supplier_name} - TEX ${item.tex_number} - ${item.color_name}`
 }
 
+function isInBuffer(item: TransferableSummaryItem) {
+  return transferItems.value.some(
+    i => i.thread_type_id === item.thread_type_id && i.color_id === item.color_id
+  )
+}
+
 function handleFilter(val: string, update: (fn: () => void) => void) {
   update(() => {
-    const needle = val.toLowerCase()
-    filteredItems.value = items.value.filter(i =>
-      formatOptionLabel(i).toLowerCase().includes(needle)
-    )
+    const available = items.value.filter(i => !isInBuffer(i))
+    if (!val) {
+      filteredItems.value = available
+      return
+    }
+    const terms = val.toLowerCase().split(/\s+/).filter(Boolean)
+    filteredItems.value = available.filter(i => {
+      const fields = [
+        i.supplier_name,
+        i.tex_number,
+        i.color_name,
+        i.thread_code,
+        i.thread_name
+      ].map(f => (f || '').toLowerCase())
+      return terms.every(term => fields.some(f => f.includes(term)))
+    })
   })
 }
 
@@ -235,9 +330,9 @@ async function fetchSummary() {
   }
 }
 
-function emitTransferReady(includeReserved: boolean) {
+function addToBuffer(includeReserved: boolean) {
   if (!selectedItem.value || quantity.value <= 0) return
-  emit('transfer-ready', {
+  transferItems.value.push({
     thread_type_id: selectedItem.value.thread_type_id,
     color_id: selectedItem.value.color_id,
     quantity: quantity.value,
@@ -249,33 +344,44 @@ function emitTransferReady(includeReserved: boolean) {
     transferable_count: selectedItem.value.transferable_count,
     reserved_count: selectedItem.value.reserved_count
   })
+  selectedItem.value = null
+  quantity.value = 0
 }
 
-function handleProceed() {
+function handleAdd() {
   if (!selectedItem.value || quantity.value <= 0) return
+
+  if (isInBuffer(selectedItem.value)) {
+    snackbar.warning('Loại chỉ này đã có trong danh sách')
+    return
+  }
 
   if (quantity.value > selectedItem.value.transferable_count) {
     showReservedDialog.value = true
   } else {
-    emitTransferReady(false)
+    addToBuffer(false)
   }
 }
 
 function confirmWithReserved() {
   showReservedDialog.value = false
-  emitTransferReady(true)
+  addToBuffer(true)
+}
+
+function removeItem(idx: number) {
+  transferItems.value.splice(idx, 1)
 }
 
 watch(() => props.warehouseId, () => {
   selectedItem.value = null
   quantity.value = 0
+  transferItems.value = []
   fetchSummary()
 }, { immediate: true })
 
 watch(selectedItem, () => {
   quantity.value = 0
-  if (!selectedItem.value) emit('selection-cleared')
 })
 
-defineExpose({ handleProceed, quantity, selectedItem, maxQuantity })
+defineExpose({ transferItems, totalCones })
 </script>
