@@ -10,7 +10,7 @@
         @click="$router.back()"
       />
       <div class="q-ml-md">
-        <h1 class="text-h5 q-my-none text-weight-bold">
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           {{ lot?.lot_number || 'Chi tiết lô' }}
         </h1>
         <div

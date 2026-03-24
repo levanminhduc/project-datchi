@@ -9,7 +9,7 @@
         @click="$router.back()"
       />
       <div class="q-ml-md">
-        <h1 class="text-h5 q-my-none text-weight-bold">
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           {{ purchaseOrder?.po_number || 'Chi tiết PO' }}
         </h1>
         <div
