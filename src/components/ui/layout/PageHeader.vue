@@ -62,7 +62,7 @@ const headerClass = computed(() => ({
 
     <!-- Title & Subtitle -->
     <div class="col">
-      <div class="text-h5 text-weight-medium">
+      <div class="text-h5 text-weight-bold text-primary">
         {{ title }}
       </div>
       <div
