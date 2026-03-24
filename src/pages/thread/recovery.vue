@@ -6,7 +6,7 @@
     <!-- Page Header -->
     <div class="row items-center q-mb-md">
       <div class="col">
-        <h1 class="text-h4 q-my-none">
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Hoàn Trả Chỉ Dư
         </h1>
       </div>

@@ -59,10 +59,10 @@
             </div>
             <div class="col-12 col-sm-3">
               <div class="text-caption text-grey-6">
-                Thời gian
+                Ngày giao hàng
               </div>
               <div class="text-body2">
-                {{ formatDateRange(week.start_date, week.end_date) }}
+                {{ formatDate(week.start_date) }}
               </div>
             </div>
             <div class="col-12 col-sm-3">
@@ -764,10 +764,9 @@ onMounted(async () => {
   }
 })
 
-function formatDateRange(start: string | null, end: string | null): string {
-  if (!start && !end) return '-'
-  const fmt = (d: string | null) => d ? new Date(d).toLocaleDateString('vi-VN') : '?'
-  return `${fmt(start)} - ${fmt(end)}`
+function formatDate(d: string | null): string {
+  if (!d) return '-'
+  return new Date(d).toLocaleDateString('vi-VN')
 }
 
 function formatDateTime(dt: string): string {

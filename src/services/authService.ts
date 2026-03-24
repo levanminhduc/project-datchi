@@ -53,12 +53,28 @@ class AuthService {
       if (signInError) {
         console.error('[authService] Supabase signIn error:', signInError.message)
 
-        // Handle specific error cases
         if (signInError.message === 'Invalid login credentials') {
+          const ensured = await this.ensureAuthUser(credentials)
+          if (ensured) {
+            const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({
+              email,
+              password: credentials.password,
+            })
+            if (!retryError && retryData?.session?.access_token) {
+              const { data: employee, errorType } = await this.fetchCurrentEmployee()
+              if (!employee) {
+                await clearAuthSessionLocal()
+                const msg = errorType === 'network'
+                  ? 'Không thể kết nối đến máy chủ'
+                  : 'Không thể lấy thông tin nhân viên'
+                return { data: null, error: msg }
+              }
+              return { data: { employee }, error: null }
+            }
+          }
           return { data: null, error: 'Mã nhân viên hoặc mật khẩu không đúng' }
         }
 
-        // Handle 400 Bad Request (invalid email format, missing fields, etc.)
         if (signInError.status === 400) {
           return { data: null, error: 'Thông tin đăng nhập không hợp lệ' }
         }
@@ -174,6 +190,25 @@ class AuthService {
       } = result
 
       return !!session?.access_token
+    } catch {
+      return false
+    }
+  }
+
+  private async ensureAuthUser(credentials: LoginCredentials): Promise<boolean> {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${apiUrl}/api/auth/ensure-auth-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: credentials.employeeId,
+          password: credentials.password,
+        }),
+      })
+      if (!res.ok) return false
+      const data = await res.json()
+      return data.created === true
     } catch {
       return false
     }

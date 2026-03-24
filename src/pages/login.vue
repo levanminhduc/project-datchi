@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <q-page class="flex flex-center bg-grey-2">
     <q-card
       class="login-card q-pa-lg"
@@ -25,7 +25,9 @@
         @submit="handleLogin"
       >
         <AppInput
+          id="username"
           v-model="form.employeeId"
+          name="username"
           label="Mã Nhân Viên"
           prepend-icon="badge"
           :rules="[required]"
@@ -34,7 +36,9 @@
         />
 
         <AppInput
+          id="password"
           v-model="form.password"
+          name="password"
           label="Mật khẩu"
           :type="showPassword ? 'text' : 'password'"
           prepend-icon="lock"
@@ -59,14 +63,15 @@
           <!-- Note: Forgot password requires admin reset for employee-based auth -->
         </div>
 
-        <AppButton
-          type="submit"
-          label="Đăng nhập"
-          color="primary"
-          :loading="isLoading"
-          class="full-width"
-          size="lg"
-        />
+        <div>
+          <AppButton
+            type="submit"
+            label="Đăng nhập"
+            color="primary"
+            :loading="isLoading"
+            block
+          />
+        </div>
       </q-form>
 
       <!-- Error Display -->
@@ -83,7 +88,7 @@
 
       <!-- Help Text -->
       <div class="text-center q-mt-md text-grey-6 text-caption">
-        Quên mật khẩu? Liên hệ quản trị viên để đặt lại.
+        Quên mật khẩu? Liên hệ IT để cấp lại mật khẩu.
       </div>
     </q-card>
   </q-page>
@@ -123,9 +128,10 @@ async function handleLogin() {
   })
 
   if (success) {
-    if (employee.value?.mustChangePassword) {
-      return
-    }
+    // TODO: bật lại khi cần force đổi mật khẩu lần đầu
+    // if (employee.value?.mustChangePassword) {
+    //   return
+    // }
     const redirect = route.query.redirect as string
     router.push(redirect?.startsWith('/') && !redirect.startsWith('//') ? redirect : '/')
   }
@@ -137,3 +143,5 @@ async function handleLogin() {
   border-radius: 12px;
 }
 </style>
+
+

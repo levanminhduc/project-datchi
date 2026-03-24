@@ -252,9 +252,9 @@ onMounted(async () => {
     <!-- Header -->
     <div class="row items-center q-mb-md">
       <div class="col">
-        <h5 class="q-my-none">
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Yêu Cầu Chỉ
-        </h5>
+        </h1>
         <p class="text-grey-7 q-mb-none">
           Quản lý yêu cầu chỉ từ xưởng sản xuất
         </p>

@@ -1,6 +1,5 @@
 <template>
   <q-page padding>
-    <!-- Page Header -->
     <div class="row items-center q-mb-lg">
       <q-btn
         flat
@@ -10,7 +9,7 @@
         @click="handleBack"
       />
       <div class="q-ml-md">
-        <h1 class="text-h5 q-my-none text-weight-bold">
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Chuyển Kho Hàng Loạt
         </h1>
         <div class="text-grey-6">
@@ -19,7 +18,6 @@
       </div>
     </div>
 
-    <!-- Stepper -->
     <q-stepper
       v-model="currentStep"
       color="primary"
@@ -29,16 +27,15 @@
       class="batch-stepper"
       :vertical="$q.screen.lt.sm"
     >
-      <!-- Step 1: Select Source Warehouse & Cones -->
+      <!-- Step 1: Source + Destination Warehouse -->
       <q-step
         :name="1"
-        title="Chọn Nguồn"
-        icon="output"
+        title="Chọn Kho"
+        icon="warehouse"
         :done="currentStep > 1"
       >
         <div class="q-pa-md">
           <div class="row q-col-gutter-lg">
-            <!-- Left: Source Selection -->
             <div class="col-12 col-md-6">
               <p class="text-body1 q-mb-md text-weight-medium">
                 Kho nguồn:
@@ -47,47 +44,71 @@
                 v-model="formData.from_warehouse_id"
                 label="Chọn kho chuyển đi"
                 required
-                class="q-mb-lg"
                 @update:model-value="onSourceWarehouseChange"
               />
-
-              <q-separator class="q-my-md" />
-
+            </div>
+            <div class="col-12 col-md-6">
               <p class="text-body1 q-mb-md text-weight-medium">
-                Chọn cuộn theo:
+                Kho đích:
               </p>
-              <q-option-group
-                v-model="selectionMode"
-                :options="selectionModeOptions"
-                color="primary"
-                inline
-                class="q-mb-md"
-                :disable="!formData.from_warehouse_id"
+              <AppWarehouseSelect
+                v-model="formData.to_warehouse_id"
+                label="Kho đích"
+                required
+                :exclude-ids="formData.from_warehouse_id ? [formData.from_warehouse_id] : []"
               />
+              <q-banner
+                v-if="formData.to_warehouse_id === formData.from_warehouse_id && formData.to_warehouse_id !== null"
+                class="bg-warning text-white q-mt-md"
+                rounded
+              >
+                <template #avatar>
+                  <q-icon name="warning" />
+                </template>
+                Kho đích không được trùng với kho nguồn
+              </q-banner>
+            </div>
+          </div>
+        </div>
+        <q-stepper-navigation>
+          <q-btn
+            color="primary"
+            label="Tiếp theo"
+            :disable="!formData.from_warehouse_id || !isDestinationValid"
+            @click="goToStep(2)"
+          />
+        </q-stepper-navigation>
+      </q-step>
 
-              <!-- By Lot -->
-              <div v-if="selectionMode === 'lot' && formData.from_warehouse_id">
-                <LotSelector
-                  ref="lotSelectorRef"
-                  v-model="formData.lot_id"
-                  :warehouse-id="formData.from_warehouse_id"
-                  label="Chọn lô hoặc loại chỉ"
-                  :include-unassigned="true"
-                  @lot-selected="onLotSelected"
-                  @unassigned-selected="onUnassignedSelected"
-                />
-                <q-btn
-                  v-if="hasSelection"
-                  color="secondary"
-                  :label="selectedUnassigned ? 'Thêm tất cả cuộn chưa phân lô' : 'Thêm tất cả cuộn trong lô'"
-                  icon="add"
-                  class="q-mt-md"
-                  @click="addLotCones"
-                />
-              </div>
+      <!-- Step 2: Cone Selection -->
+      <q-step
+        :name="2"
+        title="Chọn Cuộn"
+        icon="inventory_2"
+        :done="currentStep > 2"
+      >
+        <div class="q-pa-md">
+          <p class="text-body1 q-mb-md text-weight-medium">
+            Chọn cuộn theo:
+          </p>
+          <q-option-group
+            v-model="selectionMode"
+            :options="selectionModeOptions"
+            color="primary"
+            inline
+            class="q-mb-md"
+          />
 
-              <!-- By Scanning -->
-              <div v-if="selectionMode === 'scan' && formData.from_warehouse_id">
+          <div v-if="selectionMode === 'thread-type'">
+            <ThreadTypeTransferPanel
+              ref="transferPanelRef"
+              :warehouse-id="formData.from_warehouse_id"
+            />
+          </div>
+
+          <div v-if="selectionMode === 'scan'">
+            <div class="row q-col-gutter-lg">
+              <div class="col-12 col-md-6">
                 <q-card
                   flat
                   bordered
@@ -137,110 +158,108 @@
                   @click="handleManualAdd"
                 />
               </div>
-            </div>
 
-            <!-- Right: Selected Cones List -->
-            <div class="col-12 col-md-6">
-              <q-card
-                flat
-                bordered
-                class="selected-list-card"
-              >
-                <q-card-section class="q-pb-none">
-                  <div class="row items-center">
-                    <span class="text-subtitle1 text-weight-medium">
-                      Cuộn đã chọn ({{ coneBuffer.length }})
-                    </span>
-                    <q-space />
-                    <q-btn
-                      v-if="coneBuffer.length > 0"
-                      flat
-                      dense
-                      color="negative"
-                      label="Xóa tất cả"
-                      icon="delete_sweep"
-                      @click="handleClearBuffer"
-                    />
-                  </div>
-                  <!-- Summary for invalid cones -->
-                  <div
-                    v-if="invalidCones.length > 0"
-                    class="text-warning q-mt-sm text-body2"
-                  >
-                    <q-icon
-                      name="warning"
-                      size="xs"
-                      class="q-mr-xs"
-                    />
-                    {{ validCones.length }}/{{ coneBuffer.length }} cuộn hợp lệ sẽ được chuyển
-                  </div>
-                </q-card-section>
-                <q-card-section class="selected-list-container">
-                  <q-list
-                    v-if="coneBuffer.length > 0"
-                    separator
-                    dense
-                  >
-                    <q-item
-                      v-for="(item, index) in coneBuffer"
-                      :key="item.id"
-                      dense
-                      :class="{ 'bg-red-1': !isTransferable(item.status) }"
-                    >
-                      <q-item-section avatar>
-                        <q-avatar
-                          size="24px"
-                          :color="isTransferable(item.status) ? 'info' : 'negative'"
-                          text-color="white"
-                        >
-                          <template v-if="isTransferable(item.status)">
-                            {{ index + 1 }}
-                          </template>
-                          <q-icon
-                            v-else
-                            name="warning"
-                            size="14px"
-                          />
-                        </q-avatar>
-                      </q-item-section>
-                      <q-item-section>
-                        <q-item-label class="text-body2">
-                          {{ item.cone_id }}
-                        </q-item-label>
-                        <q-item-label
-                          caption
-                          :class="isTransferable(item.status) ? 'text-positive' : 'text-negative'"
-                        >
-                          {{ statusLabels[item.status] || item.status }}
-                        </q-item-label>
-                      </q-item-section>
-                      <q-item-section side>
-                        <q-btn
-                          flat
-                          round
-                          dense
-                          icon="close"
-                          color="negative"
-                          size="sm"
-                          @click="removeFromBuffer(item)"
-                        />
-                      </q-item-section>
-                    </q-item>
-                  </q-list>
-                  <div
-                    v-else
-                    class="text-center text-grey-5 q-py-xl"
-                  >
-                    <q-icon
-                      name="inbox"
-                      size="48px"
-                    />
-                    <div class="q-mt-sm">
-                      Chưa chọn cuộn nào
+              <div class="col-12 col-md-6">
+                <q-card
+                  flat
+                  bordered
+                  class="selected-list-card"
+                >
+                  <q-card-section class="q-pb-none">
+                    <div class="row items-center">
+                      <span class="text-subtitle1 text-weight-medium">
+                        Cuộn đã chọn ({{ coneBuffer.length }})
+                      </span>
+                      <q-space />
+                      <q-btn
+                        v-if="coneBuffer.length > 0"
+                        flat
+                        dense
+                        color="negative"
+                        label="Xóa tất cả"
+                        icon="delete_sweep"
+                        @click="handleClearBuffer"
+                      />
                     </div>
-                  </div>
-                </q-card-section>
-              </q-card>
+                    <div
+                      v-if="invalidCones.length > 0"
+                      class="text-warning q-mt-sm text-body2"
+                    >
+                      <q-icon
+                        name="warning"
+                        size="xs"
+                        class="q-mr-xs"
+                      />
+                      {{ validCones.length }}/{{ coneBuffer.length }} cuộn hợp lệ sẽ được chuyển
+                    </div>
+                  </q-card-section>
+                  <q-card-section class="selected-list-container">
+                    <q-list
+                      v-if="coneBuffer.length > 0"
+                      separator
+                      dense
+                    >
+                      <q-item
+                        v-for="(item, index) in coneBuffer"
+                        :key="item.id"
+                        dense
+                        :class="{ 'bg-red-1': !isTransferable(item.status) }"
+                      >
+                        <q-item-section avatar>
+                          <q-avatar
+                            size="24px"
+                            :color="isTransferable(item.status) ? 'info' : 'negative'"
+                            text-color="white"
+                          >
+                            <template v-if="isTransferable(item.status)">
+                              {{ index + 1 }}
+                            </template>
+                            <q-icon
+                              v-else
+                              name="warning"
+                              size="14px"
+                            />
+                          </q-avatar>
+                        </q-item-section>
+                        <q-item-section>
+                          <q-item-label class="text-body2">
+                            {{ item.cone_id }}
+                          </q-item-label>
+                          <q-item-label
+                            caption
+                            :class="isTransferable(item.status) ? 'text-positive' : 'text-negative'"
+                          >
+                            {{ statusLabels[item.status] || item.status }}
+                          </q-item-label>
+                        </q-item-section>
+                        <q-item-section side>
+                          <q-btn
+                            flat
+                            round
+                            dense
+                            icon="close"
+                            color="negative"
+                            size="sm"
+                            @click="removeFromBuffer(item)"
+                          />
+                        </q-item-section>
+                      </q-item>
+                    </q-list>
+                    <div
+                      v-else
+                      class="text-center text-grey-5 q-py-xl"
+                    >
+                      <q-icon
+                        name="inbox"
+                        size="48px"
+                      />
+                      <div class="q-mt-sm">
+                        Chưa chọn cuộn nào
+                      </div>
+                    </div>
+                  </q-card-section>
+                </q-card>
+              </div>
             </div>
           </div>
         </div>
@@ -249,54 +268,8 @@
           <q-btn
             color="primary"
             label="Tiếp theo"
-            :disable="validCones.length === 0"
-            @click="goToStep(2)"
-          />
-          <div
-            v-if="coneBuffer.length > 0 && validCones.length === 0"
-            class="text-negative text-body2 q-mt-sm"
-          >
-            Không có cuộn hợp lệ để chuyển
-          </div>
-        </q-stepper-navigation>
-      </q-step>
-
-      <!-- Step 2: Select Destination -->
-      <q-step
-        :name="2"
-        title="Chọn Đích"
-        icon="input"
-        :done="currentStep > 2"
-      >
-        <div class="q-pa-md">
-          <p class="text-body1 q-mb-md">
-            Chọn kho nhận hàng:
-          </p>
-          <AppWarehouseSelect
-            v-model="formData.to_warehouse_id"
-            label="Kho đích"
-            required
-            class="q-mb-md"
-            style="max-width: 400px"
-          />
-          <q-banner
-            v-if="formData.to_warehouse_id === formData.from_warehouse_id"
-            class="bg-warning text-white q-mt-md"
-            rounded
-          >
-            <template #avatar>
-              <q-icon name="warning" />
-            </template>
-            Kho đích không được trùng với kho nguồn
-          </q-banner>
-        </div>
-
-        <q-stepper-navigation>
-          <q-btn
-            color="primary"
-            label="Xem lại"
-            :disable="!isDestinationValid"
-            @click="goToStep(3)"
+            :disable="!canProceedStep2"
+            @click="handleStep2Next"
           />
           <q-btn
             flat
@@ -326,7 +299,6 @@
           </q-banner>
 
           <div class="row q-col-gutter-md">
-            <!-- Transfer Summary -->
             <div class="col-12 col-md-4">
               <q-card
                 flat
@@ -361,13 +333,18 @@
                   Số cuộn
                 </div>
                 <div class="text-h6 text-weight-bold">
-                  {{ validCones.length }}
-                  <span
-                    v-if="invalidCones.length > 0"
-                    class="text-body2 text-negative"
-                  >
-                    ({{ invalidCones.length }} không hợp lệ)
-                  </span>
+                  <template v-if="selectionMode === 'thread-type'">
+                    {{ transferItems.reduce((s, i) => s + i.quantity, 0).toLocaleString() }}
+                  </template>
+                  <template v-else>
+                    {{ validCones.length }}
+                    <span
+                      v-if="invalidCones.length > 0"
+                      class="text-body2 text-negative"
+                    >
+                      ({{ invalidCones.length }} không hợp lệ)
+                    </span>
+                  </template>
                 </div>
               </q-card>
             </div>
@@ -391,8 +368,73 @@
               </q-card>
             </div>
 
-            <!-- Cone List Preview -->
-            <div class="col-12">
+            <div
+              v-if="selectionMode === 'thread-type' && transferItems.length > 0"
+              class="col-12"
+            >
+              <DataTable
+                :rows="transferItems"
+                :columns="transferColumns"
+                row-key="thread_type_id"
+                dense
+                hide-bottom
+                :title="`Chi tiết chuyển kho (${transferItems.length} loại)`"
+              >
+                <template #body-cell-stt="props">
+                  <q-td :props="props">
+                    {{ props.rowIndex + 1 }}
+                  </q-td>
+                </template>
+                <template #body-cell-thread_type="props">
+                  <q-td :props="props">
+                    <div class="row items-center no-wrap">
+                      <q-avatar
+                        size="28px"
+                        class="q-mr-sm"
+                        :style="props.row.color_hex
+                          ? { backgroundColor: props.row.color_hex }
+                          : { backgroundColor: '#ccc' }"
+                      >
+                        <span class="text-caption text-weight-bold text-white">
+                          {{ props.row.tex_number }}
+                        </span>
+                      </q-avatar>
+                      {{ props.row.supplier_name }} - TEX {{ props.row.tex_number }} - {{ props.row.color_name }}
+                    </div>
+                  </q-td>
+                </template>
+                <template #body-cell-quantity="props">
+                  <q-td :props="props">
+                    <q-badge
+                      :color="props.row.include_reserved ? 'warning' : 'positive'"
+                      :label="`${props.row.quantity.toLocaleString()} cuộn`"
+                    />
+                  </q-td>
+                </template>
+                <template #body-cell-note="props">
+                  <q-td :props="props">
+                    <span
+                      v-if="props.row.include_reserved"
+                      class="text-caption text-warning"
+                    >
+                      {{ Math.min(props.row.quantity, props.row.transferable_count).toLocaleString() }} khả dụng
+                      + {{ (props.row.quantity - props.row.transferable_count).toLocaleString() }} từ đơn hàng
+                    </span>
+                    <span
+                      v-else
+                      class="text-caption text-grey-6"
+                    >
+                      Tất cả khả dụng
+                    </span>
+                  </q-td>
+                </template>
+              </DataTable>
+            </div>
+
+            <div
+              v-if="selectionMode === 'scan'"
+              class="col-12"
+            >
               <q-card
                 flat
                 bordered
@@ -429,9 +471,7 @@
                         class="q-mr-xs"
                       />
                       {{ item.cone_id }}
-                      <q-tooltip>
-                        {{ statusLabels[item.status] || item.status }}
-                      </q-tooltip>
+                      <q-tooltip>{{ statusLabels[item.status] || item.status }}</q-tooltip>
                     </q-chip>
                     <q-chip
                       v-if="coneBuffer.length > 20"
@@ -484,7 +524,7 @@
             Chuyển kho thành công!
           </div>
           <div class="text-grey-6 q-mt-sm">
-            Đã chuyển {{ lastResult?.cone_count }} cuộn
+            Đã chuyển {{ selectionMode === 'thread-type' ? lastTransferTotal : lastResult?.cone_count }} cuộn
           </div>
         </q-card-section>
         <q-card-actions
@@ -514,20 +554,19 @@ import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useBatchOperations } from '@/composables/useBatchOperations'
 import { useWarehouses, useConfirm, useSnackbar } from '@/composables'
-import { useLots } from '@/composables/useLots'
 import { QrScannerStream } from '@/components/qr'
 import AppWarehouseSelect from '@/components/ui/inputs/AppWarehouseSelect.vue'
 import AppTextarea from '@/components/ui/inputs/AppTextarea.vue'
 import { inventoryService } from '@/services/inventoryService'
-import LotSelector from '@/components/thread/LotSelector.vue'
-import type { Lot, UnassignedThreadGroup } from '@/types/thread/lot'
+import ThreadTypeTransferPanel from '@/components/thread/ThreadTypeTransferPanel.vue'
+import DataTable from '@/components/ui/tables/DataTable.vue'
+import type { QTableColumn } from 'quasar'
 
 const router = useRouter()
 const $q = useQuasar()
 const { confirm } = useConfirm()
 const snackbar = useSnackbar()
 const { warehouses, fetchWarehouses } = useWarehouses()
-const { fetchLotCones, currentCones } = useLots()
 
 const {
   loading,
@@ -535,15 +574,13 @@ const {
   batchTransfer
 } = useBatchOperations()
 
-// Local buffer stores id (for API), cone_id (for display), and status (for validation)
 interface ConeBufferItem {
-  id: number       // Database primary key - sent to API
-  cone_id: string  // Barcode ID - shown in UI
-  status: string   // Cone status - for transfer validation
+  id: number
+  cone_id: string
+  status: string
 }
 const coneBuffer = ref<ConeBufferItem[]>([])
 
-// Status constants and labels
 const TRANSFERABLE_STATUSES = ['AVAILABLE', 'RECEIVED', 'INSPECTED']
 
 const statusLabels: Record<string, string> = {
@@ -565,29 +602,34 @@ const isTransferable = (status: string) => TRANSFERABLE_STATUSES.includes(status
 const validCones = computed(() => coneBuffer.value.filter(c => isTransferable(c.status)))
 const invalidCones = computed(() => coneBuffer.value.filter(c => !isTransferable(c.status)))
 
-// State
 const currentStep = ref(1)
-const selectionMode = ref<'lot' | 'scan'>('lot')
+const selectionMode = ref<'thread-type' | 'scan'>('thread-type')
 const isScanning = ref(false)
 const manualInput = ref('')
 const showSuccessDialog = ref(false)
-const selectedLot = ref<Lot | null>(null)
-const selectedUnassigned = ref<UnassignedThreadGroup | null>(null)
-const lotSelectorRef = ref<InstanceType<typeof LotSelector> | null>(null)
+
+const transferPanelRef = ref<InstanceType<typeof ThreadTypeTransferPanel> | null>(null)
+
+const transferItems = ref<{ thread_type_id: number; color_id: number; quantity: number; include_reserved: boolean; supplier_name: string; tex_number: string; color_name: string; color_hex: string | null; transferable_count: number; reserved_count: number }[]>([])
+const lastTransferTotal = ref(0)
 
 const formData = ref({
   from_warehouse_id: null as number | null,
-  to_warehouse_id: null as number | null,
-  lot_id: null as number | string | null
+  to_warehouse_id: null as number | null
 })
 
-// Options
 const selectionModeOptions = [
-  { label: 'Theo lô/loại chỉ', value: 'lot' },
+  { label: 'Theo loại chỉ', value: 'thread-type' },
   { label: 'Quét/nhập', value: 'scan' }
 ]
 
-// Computed
+const transferColumns: QTableColumn[] = [
+  { name: 'stt', label: '#', field: 'thread_type_id', align: 'center', style: 'width: 50px' },
+  { name: 'thread_type', label: 'Loại chỉ', field: 'supplier_name', align: 'left' },
+  { name: 'quantity', label: 'Số cuộn', field: 'quantity', align: 'center', style: 'width: 120px' },
+  { name: 'note', label: 'Ghi chú', field: 'include_reserved', align: 'left' }
+]
+
 const isDestinationValid = computed(() => {
   return formData.value.to_warehouse_id !== null &&
     formData.value.to_warehouse_id !== formData.value.from_warehouse_id
@@ -603,88 +645,27 @@ const destWarehouseName = computed(() => {
   return w?.name || '-'
 })
 
-// Methods
+const canProceedStep2 = computed(() => {
+  if (selectionMode.value === 'thread-type') {
+    return (transferPanelRef.value?.transferItems?.length ?? 0) > 0
+  }
+  return validCones.value.length > 0
+})
+
 function goToStep(step: number) {
   currentStep.value = step
 }
 
 function onSourceWarehouseChange() {
-  formData.value.lot_id = null
-  selectedLot.value = null
-  selectedUnassigned.value = null
   coneBuffer.value = []
+  transferItems.value = []
 }
 
-function onLotSelected(lot: Lot | null) {
-  selectedLot.value = lot
-  selectedUnassigned.value = null
-}
-
-function onUnassignedSelected(group: UnassignedThreadGroup | null) {
-  selectedUnassigned.value = group
-  selectedLot.value = null
-}
-
-const hasSelection = computed(() => {
-  return selectedLot.value !== null || selectedUnassigned.value !== null
-})
-
-async function addLotCones() {
-  if (!formData.value.lot_id) return
-  
-  if (selectedUnassigned.value) {
-    const coneIds = selectedUnassigned.value.cone_ids
-    
-    const fetchPromises = coneIds
-      .filter(id => !coneBuffer.value.some(item => item.id === id))
-      .map(id => inventoryService.getById(id).catch(() => null))
-    
-    const cones = await Promise.all(fetchPromises)
-    
-    let added = 0
-    for (const cone of cones) {
-      if (cone && isTransferable(cone.status)) {
-        coneBuffer.value.push({ id: cone.id, cone_id: cone.cone_id, status: cone.status })
-        added++
-      }
-    }
-    
-    if (added > 0) {
-      snackbar.success(`Đã thêm ${added} cuộn chưa phân lô`)
-    } else {
-      snackbar.info('Không có cuộn nào để thêm')
-    }
-    return
+function handleStep2Next() {
+  if (selectionMode.value === 'thread-type') {
+    transferItems.value = [...(transferPanelRef.value?.transferItems || [])]
   }
-  
-  if (typeof formData.value.lot_id !== 'number') return
-  
-  await fetchLotCones(formData.value.lot_id)
-  
-  let added = 0
-  let skipped = 0
-  for (const cone of currentCones.value) {
-    // Check if cone is already in buffer by database id
-    if (!coneBuffer.value.some(item => item.id === cone.id)) {
-      if (isTransferable(cone.status)) {
-        coneBuffer.value.push({ id: cone.id, cone_id: cone.cone_id, status: cone.status })
-        added++
-      } else {
-        skipped++
-      }
-    }
-  }
-  
-  if (added > 0) {
-    snackbar.success(`Đã thêm ${added} cuộn hợp lệ từ lô`)
-    if (skipped > 0) {
-      snackbar.warning(`Bỏ qua ${skipped} cuộn không thể chuyển (đang sản xuất, đã cấp phát, v.v.)`)
-    }
-  } else if (skipped > 0) {
-    snackbar.warning(`Không có cuộn nào hợp lệ để chuyển trong lô này`)
-  } else {
-    snackbar.info('Không có cuộn nào trong lô')
-  }
+  goToStep(3)
 }
 
 function toggleScanner() {
@@ -694,25 +675,22 @@ function toggleScanner() {
 async function handleScan(codes: { rawValue: string }[]) {
   const firstCode = codes[0]
   if (!firstCode) return
-  
+
   const scannedConeId = firstCode.rawValue.trim()
-  
-  // Check if already in buffer by cone_id
+
   if (coneBuffer.value.some(item => item.cone_id === scannedConeId)) {
     snackbar.warning('Đã quét rồi')
     return
   }
-  
-  // Look up the cone by barcode to get database id
+
   try {
     const cone = await inventoryService.getByBarcode(scannedConeId)
-    
-    // Verify cone is in the selected source warehouse
+
     if (cone.warehouse_id !== formData.value.from_warehouse_id) {
       snackbar.error(`Cuộn ${scannedConeId} không thuộc kho nguồn đã chọn`)
       return
     }
-    
+
     coneBuffer.value.push({ id: cone.id, cone_id: cone.cone_id, status: cone.status })
     snackbar.success(`✓ ${scannedConeId}`)
   } catch {
@@ -725,37 +703,35 @@ async function handleManualAdd() {
     .split(/[,\n\r]+/)
     .map(s => s.trim())
     .filter(s => s.length > 0)
-  
+
   let added = 0
-  let errors: string[] = []
-  
+  const errors: string[] = []
+
   for (const scannedConeId of ids) {
-    // Skip if already in buffer
     if (coneBuffer.value.some(item => item.cone_id === scannedConeId)) {
       continue
     }
-    
+
     try {
       const cone = await inventoryService.getByBarcode(scannedConeId)
-      
-      // Verify cone is in the selected source warehouse
+
       if (cone.warehouse_id !== formData.value.from_warehouse_id) {
         errors.push(`${scannedConeId} không thuộc kho nguồn`)
         continue
       }
-      
+
       coneBuffer.value.push({ id: cone.id, cone_id: cone.cone_id, status: cone.status })
       added++
     } catch {
       errors.push(scannedConeId)
     }
   }
-  
+
   if (added > 0) {
     manualInput.value = ''
     snackbar.success(`Đã thêm ${added} cuộn`)
   }
-  
+
   if (errors.length > 0) {
     snackbar.error(`Không tìm thấy: ${errors.join(', ')}`)
   }
@@ -780,32 +756,46 @@ async function handleClearBuffer() {
 }
 
 async function handleConfirm() {
-  // Only send valid (transferable) cones to API
-  const coneIds = validCones.value.map(item => item.id)
-  
-  if (coneIds.length === 0) {
-    snackbar.error('Không có cuộn hợp lệ để chuyển')
-    return
-  }
-  
-  const result = await batchTransfer({
-    cone_ids: coneIds,
-    from_warehouse_id: formData.value.from_warehouse_id!,
-    to_warehouse_id: formData.value.to_warehouse_id!
-  })
-  
-  if (result) {
-    showSuccessDialog.value = true
-    coneBuffer.value = []
+  if (selectionMode.value === 'thread-type' && transferItems.value.length > 0) {
+    lastTransferTotal.value = 0
+    for (const item of transferItems.value) {
+      const result = await batchTransfer({
+        thread_type_id: item.thread_type_id,
+        color_id: item.color_id,
+        quantity: item.quantity,
+        include_reserved: item.include_reserved,
+        from_warehouse_id: formData.value.from_warehouse_id!,
+        to_warehouse_id: formData.value.to_warehouse_id!
+      })
+      if (result) lastTransferTotal.value += result.cone_count
+    }
+    if (lastTransferTotal.value > 0) {
+      showSuccessDialog.value = true
+      transferItems.value = []
+    }
+  } else {
+    const coneIds = validCones.value.map(item => item.id)
+    if (coneIds.length === 0) {
+      snackbar.error('Không có cuộn hợp lệ để chuyển')
+      return
+    }
+    const result = await batchTransfer({
+      cone_ids: coneIds,
+      from_warehouse_id: formData.value.from_warehouse_id!,
+      to_warehouse_id: formData.value.to_warehouse_id!
+    })
+    if (result) {
+      showSuccessDialog.value = true
+      coneBuffer.value = []
+    }
   }
 }
 
 function handleNewBatch() {
   showSuccessDialog.value = false
   currentStep.value = 1
-  formData.value.lot_id = null
-  selectedLot.value = null
-  selectedUnassigned.value = null
+  transferItems.value = []
+  lastTransferTotal.value = 0
 }
 
 async function handleBack() {
@@ -820,7 +810,6 @@ async function handleBack() {
   router.back()
 }
 
-// Lifecycle
 onMounted(async () => {
   await fetchWarehouses()
 })
@@ -864,7 +853,6 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-/* Ensure proper stepper content overflow on resize */
 :deep(.q-stepper__content) {
   overflow-x: auto;
 }

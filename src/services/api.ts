@@ -129,12 +129,14 @@ export async function getRefreshedSession(): Promise<Session> {
 
       if (error) {
         if (isAuthError(error)) {
+          await clearAuthSessionLocal()
           throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại')
         }
         throw new Error('Lỗi kết nối, vui lòng thử lại')
       }
 
       if (!data.session) {
+        await clearAuthSessionLocal()
         throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại')
       }
 
@@ -164,6 +166,20 @@ export async function clearAuthSessionLocal(): Promise<void> {
   } catch {
   } finally {
     clearSupabaseTokens()
+  }
+}
+
+const TOKEN_REFRESH_BUFFER_MS = 60_000
+
+function isTokenExpiringSoon(token: string): boolean {
+  try {
+    const payloadB64 = token.split('.')[1]
+    if (!payloadB64) return false
+    const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')))
+    if (typeof payload.exp !== 'number') return false
+    return (payload.exp * 1000) - Date.now() < TOKEN_REFRESH_BUFFER_MS
+  } catch {
+    return false
   }
 }
 
@@ -205,7 +221,15 @@ export async function fetchApiRaw(
   const {
     data: { session },
   } = await supabase.auth.getSession()
-  const token = session?.access_token
+  let token = session?.access_token
+
+  if (token && isTokenExpiringSoon(token)) {
+    try {
+      const refreshed = await getRefreshedSession()
+      token = refreshed.access_token
+    } catch {
+    }
+  }
 
   const response = await makeRequest(token)
 

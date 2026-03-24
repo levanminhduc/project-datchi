@@ -7,6 +7,7 @@ import { issueV2Service } from '@/services/issueV2Service'
 import { subArtService } from '@/services/subArtService'
 import type { SubArt } from '@/types/thread/subArt'
 import { employeeService } from '@/services/employeeService'
+import { settingsService } from '@/services/settingsService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useAuth } from '@/composables/useAuth'
 import { useConfirm } from '@/composables/useConfirm'
@@ -247,14 +248,22 @@ watch(activeTab, (newTab) => {
 async function loadInitialOptions() {
   loadingOptions.value = true
   try {
-    const pos = await issueV2Service.getOrderOptions()
+    const [pos, depts, deptSetting] = await Promise.all([
+      issueV2Service.getOrderOptions(),
+      employeeService.getDepartments(),
+      settingsService.get('issue_department_options').catch(() => null),
+    ])
     poOptions.value = (pos as OrderOptionPO[]).map((po) => ({
       value: po.id,
       label: po.po_number,
     }))
 
-    const depts = await employeeService.getDepartments()
-    departmentOptions.value = depts.map((d) => ({ value: d, label: d }))
+    const config = (deptSetting?.value as { hidden?: string[]; custom?: string[] }) ?? {}
+    const hidden = config.hidden ?? []
+    const custom = config.custom ?? []
+    const filtered = depts.filter(d => !hidden.includes(d))
+    const final = [...filtered, ...custom].sort((a, b) => a.localeCompare(b, 'vi'))
+    departmentOptions.value = final.map((d) => ({ value: d, label: d }))
   } catch (err) {
     console.error('Failed to load options:', err)
     snackbar.error('Không thể tải dữ liệu')

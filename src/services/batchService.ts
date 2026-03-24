@@ -12,7 +12,8 @@ import type {
   BatchReturnRequest,
   BatchOperationResponse,
   BatchTransaction,
-  BatchTransactionFilters
+  BatchTransactionFilters,
+  TransferableSummaryItem
 } from '@/types/thread/batch'
 
 interface ApiResponse<T> {
@@ -102,5 +103,13 @@ export const batchService = {
     const response = await fetchApi<ApiResponse<BatchTransaction>>(`/api/batch/transactions/${id}`)
     if (response.error) throw new Error(response.error)
     return response.data!
+  },
+
+  async getTransferableSummary(warehouseId: number): Promise<TransferableSummaryItem[]> {
+    const response = await fetchApi<ApiResponse<TransferableSummaryItem[]>>(
+      `/api/batch/transferable-summary?warehouse_id=${warehouseId}`
+    )
+    if (response.error) throw new Error(response.error)
+    return response.data || []
   }
 }

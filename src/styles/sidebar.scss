@@ -232,7 +232,7 @@
 @media (prefers-reduced-motion: reduce) {
   .sidebar-item,
   .sidebar-item .q-icon,
-  .sidebar .q-expansion-item :deep(.q-expansion-item__toggle-icon),
+  .sidebar .q-expansion-item .q-expansion-item__toggle-icon,
   .sidebar .q-slide-transition,
   .sidebar .q-expansion-item__content {
     transition: none !important;

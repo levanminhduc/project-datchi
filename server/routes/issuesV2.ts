@@ -28,6 +28,7 @@ import {
   OrderOptionsQuerySchema,
 } from '../validation/issuesV2'
 import type { ThreadApiResponse } from '../types/thread'
+import returnGroupedRoutes from './issues-v2-return-grouped'
 
 const issuesV2 = new Hono()
 
@@ -123,6 +124,218 @@ interface ReturnRpcResult {
   line_id?: number
 }
 
+interface ProcessReturnLineResult {
+  success: boolean
+  line_id: number
+  returned_full: number
+  returned_partial: number
+  error?: string
+}
+
+async function processReturnForLine(
+  lineId: number,
+  line: IssueLine,
+  requestedFull: number,
+  requestedPartial: number,
+  performedBy: string,
+  partialConeRatio: number,
+): Promise<ProcessReturnLineResult> {
+  if (requestedFull <= 0 && requestedPartial <= 0) {
+    return { success: true, line_id: lineId, returned_full: 0, returned_partial: 0 }
+  }
+
+  const { data: returnableFullConesRaw, error: fullConesError } = await supabase
+    .from('thread_inventory')
+    .select('id, quantity_meters, status')
+    .eq('issued_line_id', lineId)
+    .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
+    .eq('is_partial', false)
+    .order('id', { ascending: true })
+    .limit(10000)
+
+  if (fullConesError) {
+    return {
+      success: false,
+      line_id: lineId,
+      returned_full: 0,
+      returned_partial: 0,
+      error: `Khong the tai cuon nguyen dang xuat cho dong ${lineId}`,
+    }
+  }
+
+  const { data: returnablePartialConesRaw, error: partialConesError } = await supabase
+    .from('thread_inventory')
+    .select('id, status')
+    .eq('issued_line_id', lineId)
+    .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
+    .eq('is_partial', true)
+    .order('id', { ascending: true })
+    .limit(10000)
+
+  if (partialConesError) {
+    return {
+      success: false,
+      line_id: lineId,
+      returned_full: 0,
+      returned_partial: 0,
+      error: `Khong the tai cuon le dang xuat cho dong ${lineId}`,
+    }
+  }
+
+  const statusRank = (status: string): number => {
+    if (status === 'IN_PRODUCTION') return 0
+    if (status === 'HARD_ALLOCATED') return 1
+    return 2
+  }
+
+  const fullCones = (returnableFullConesRaw || []).sort((a, b) => {
+    const rankDiff = statusRank(a.status) - statusRank(b.status)
+    return rankDiff !== 0 ? rankDiff : a.id - b.id
+  })
+  const partialCones = (returnablePartialConesRaw || []).sort((a, b) => {
+    const rankDiff = statusRank(a.status) - statusRank(b.status)
+    return rankDiff !== 0 ? rankDiff : a.id - b.id
+  })
+
+  if (requestedFull > fullCones.length) {
+    return {
+      success: false,
+      line_id: lineId,
+      returned_full: 0,
+      returned_partial: 0,
+      error: `Dong ${line.id}: Khong du cuon nguyen de tra (${requestedFull}/${fullCones.length})`,
+    }
+  }
+
+  const fullConesForReturn = fullCones.slice(0, requestedFull)
+  const remainingFullCones = fullCones.slice(requestedFull)
+  const partialFromExistingCount = Math.min(requestedPartial, partialCones.length)
+  const partialConesForReturn = partialCones.slice(0, partialFromExistingCount)
+  const partialNeedConvertCount = requestedPartial - partialFromExistingCount
+
+  if (partialNeedConvertCount > remainingFullCones.length) {
+    const availableEquivalentPartial = partialCones.length + remainingFullCones.length
+    return {
+      success: false,
+      line_id: lineId,
+      returned_full: 0,
+      returned_partial: 0,
+      error: `Dong ${line.id}: Khong du cuon le de tra (${requestedPartial}/${availableEquivalentPartial})`,
+    }
+  }
+
+  const partialReturnsPayload: ReturnPartialPayloadItem[] = []
+  if (partialNeedConvertCount > 0) {
+    const metersPerCone = await getMetersPerCone(line.thread_type_id)
+    if (!metersPerCone || metersPerCone <= 0) {
+      return {
+        success: false,
+        line_id: lineId,
+        returned_full: 0,
+        returned_partial: 0,
+        error: `Dong ${line.id}: Khong lay duoc meters_per_cone hop le`,
+      }
+    }
+
+    const partialMeters = Number((metersPerCone * partialConeRatio).toFixed(4))
+    if (partialMeters <= 0 || partialMeters >= metersPerCone) {
+      return {
+        success: false,
+        line_id: lineId,
+        returned_full: 0,
+        returned_partial: 0,
+        error: `Dong ${line.id}: Ty le cuon le khong hop le cho phep tach cuon (${partialConeRatio})`,
+      }
+    }
+
+    const sourceFullCones = remainingFullCones.slice(0, partialNeedConvertCount)
+    for (const sourceCone of sourceFullCones) {
+      if ((sourceCone as any).quantity_meters < partialMeters) {
+        return {
+          success: false,
+          line_id: lineId,
+          returned_full: 0,
+          returned_partial: 0,
+          error: `Dong ${line.id}: Cuon ${sourceCone.id} khong du met de tach cuon le`,
+        }
+      }
+      partialReturnsPayload.push({
+        original_cone_id: sourceCone.id,
+        return_quantity_meters: partialMeters,
+      })
+    }
+  }
+
+  const coneIdsForDirectReturn = [
+    ...fullConesForReturn.map((c) => c.id),
+    ...partialConesForReturn.map((c) => c.id),
+  ]
+
+  const { data: rpcResultRaw, error: rpcError } = await supabase.rpc(
+    'fn_return_cones_with_movements',
+    {
+      p_cone_ids: coneIdsForDirectReturn.length > 0 ? coneIdsForDirectReturn : null,
+      p_line_id: lineId,
+      p_performed_by: performedBy,
+      p_partial_returns: partialReturnsPayload.length > 0 ? partialReturnsPayload : null,
+    }
+  )
+
+  if (rpcError) {
+    return {
+      success: false,
+      line_id: lineId,
+      returned_full: 0,
+      returned_partial: 0,
+      error: rpcError.message || 'Loi xu ly tra hang',
+    }
+  }
+
+  const rpcResult = (rpcResultRaw || {}) as ReturnRpcResult
+  const actualReturnedFull =
+    typeof rpcResult.full_returned === 'number'
+      ? rpcResult.full_returned
+      : fullConesForReturn.length
+  const actualReturnedPartial =
+    typeof rpcResult.partial_existing_returned === 'number' ||
+    typeof rpcResult.partial_created_returned === 'number'
+      ? (rpcResult.partial_existing_returned || 0) + (rpcResult.partial_created_returned || 0)
+      : partialConesForReturn.length + partialReturnsPayload.length
+
+  if (actualReturnedFull !== requestedFull || actualReturnedPartial !== requestedPartial) {
+    return {
+      success: false,
+      line_id: lineId,
+      returned_full: 0,
+      returned_partial: 0,
+      error: `Dong ${line.id}: Ket qua tra kho khong khop yeu cau`,
+    }
+  }
+
+  const newReturnedFull = (line.returned_full || 0) + actualReturnedFull
+  const newReturnedPartial = (line.returned_partial || 0) + actualReturnedPartial
+
+  const { error: updateError } = await supabase
+    .from('thread_issue_lines')
+    .update({
+      returned_full: newReturnedFull,
+      returned_partial: newReturnedPartial,
+    })
+    .eq('id', lineId)
+
+  if (updateError) {
+    return {
+      success: false,
+      line_id: lineId,
+      returned_full: 0,
+      returned_partial: 0,
+      error: 'Khong the cap nhat dong tra',
+    }
+  }
+
+  return { success: true, line_id: lineId, returned_full: actualReturnedFull, returned_partial: actualReturnedPartial }
+}
+
 function validateReturnQuantities(
   returnLines: ReturnLineInput[],
   lineMap: Map<number, IssueLine>
@@ -214,7 +427,7 @@ async function getStockAvailability(
       reservedQuery = reservedQuery.eq('warehouse_id', warehouseId)
     }
 
-    const { data: reserved } = await reservedQuery
+    const { data: reserved } = await reservedQuery.limit(10000)
 
     if (reserved) {
       fullCount += reserved.filter((r) => !r.is_partial).length
@@ -232,7 +445,7 @@ async function getStockAvailability(
     freeQuery = freeQuery.eq('warehouse_id', warehouseId)
   }
 
-  const { data: free } = await freeQuery
+  const { data: free } = await freeQuery.limit(10000)
 
   if (free) {
     fullCount += free.filter((r) => !r.is_partial).length
@@ -751,7 +964,7 @@ async function deductStock(
     return { success: true, allocatedConeIds: [] }
   }
 
-  const { data: rpcResult, error: rpcError } = await supabase.rpc('fn_issue_cones_with_movements', {
+  const { error: rpcError } = await supabase.rpc('fn_issue_cones_with_movements', {
     p_cone_ids: allConeIds,
     p_line_id: issueLineId,
     p_performed_by: performedBy,
@@ -1450,6 +1663,8 @@ issuesV2.get('/form-data', async (c) => {
  * Body: { thread_type_id, issued_full, issued_partial, po_id?, style_id?, color_id? }
  * Returns: { issued_equivalent, is_over_quota, stock_sufficient, quota_cones, stock_available_full, stock_available_partial, message? }
  */
+issuesV2.route('/', returnGroupedRoutes)
+
 issuesV2.post('/:id/lines/validate', async (c) => {
   try {
     const body = await c.req.json()
@@ -2633,226 +2848,22 @@ issuesV2.post('/:id/return', async (c) => {
 
     for (const returnLine of validated.lines) {
       const line = lineMap.get(returnLine.line_id)!
-      const requestedFull = returnLine.returned_full || 0
-      const requestedPartial = returnLine.returned_partial || 0
-
-      if (requestedFull <= 0 && requestedPartial <= 0) {
-        continue
-      }
-
-      const { data: returnableFullConesRaw, error: fullConesError } = await supabase
-        .from('thread_inventory')
-        .select('id, quantity_meters, status')
-        .eq('issued_line_id', returnLine.line_id)
-        .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
-        .eq('is_partial', false)
-        .order('id', { ascending: true })
-
-      if (fullConesError) {
-        await supabase
-          .from('issue_operations_log')
-          .update({
-            status: 'FAILED',
-            succeeded_line_ids: succeededLineIds,
-            error_info: `Khong the tai cuon nguyen dang xuat cho dong ${returnLine.line_id}`,
-            completed_at: new Date().toISOString(),
-          })
-          .eq('idempotency_key', idempotency_key)
-          .eq('operation_type', 'RETURN')
-        return c.json<ThreadApiResponse<null>>(
-          { data: null, error: 'Khong the tai du lieu ton kho de tra hang' },
-          500
-        )
-      }
-
-      const { data: returnablePartialConesRaw, error: partialConesError } = await supabase
-        .from('thread_inventory')
-        .select('id, status')
-        .eq('issued_line_id', returnLine.line_id)
-        .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
-        .eq('is_partial', true)
-        .order('id', { ascending: true })
-
-      if (partialConesError) {
-        await supabase
-          .from('issue_operations_log')
-          .update({
-            status: 'FAILED',
-            succeeded_line_ids: succeededLineIds,
-            error_info: `Khong the tai cuon le dang xuat cho dong ${returnLine.line_id}`,
-            completed_at: new Date().toISOString(),
-          })
-          .eq('idempotency_key', idempotency_key)
-          .eq('operation_type', 'RETURN')
-        return c.json<ThreadApiResponse<null>>(
-          { data: null, error: 'Khong the tai du lieu ton kho de tra hang' },
-          500
-        )
-      }
-
-      const statusRank = (status: string): number => {
-        if (status === 'IN_PRODUCTION') return 0
-        if (status === 'HARD_ALLOCATED') return 1
-        return 2
-      }
-
-      const fullCones = (returnableFullConesRaw || []).sort((a, b) => {
-        const rankDiff = statusRank(a.status) - statusRank(b.status)
-        return rankDiff !== 0 ? rankDiff : a.id - b.id
-      })
-      const partialCones = (returnablePartialConesRaw || []).sort((a, b) => {
-        const rankDiff = statusRank(a.status) - statusRank(b.status)
-        return rankDiff !== 0 ? rankDiff : a.id - b.id
-      })
-
-      if (requestedFull > fullCones.length) {
-        const errorMessage = `Dong ${line.id}: Khong du cuon nguyen de tra (${requestedFull}/${fullCones.length})`
-        await supabase
-          .from('issue_operations_log')
-          .update({
-            status: 'FAILED',
-            succeeded_line_ids: succeededLineIds,
-            error_info: errorMessage,
-            completed_at: new Date().toISOString(),
-          })
-          .eq('idempotency_key', idempotency_key)
-          .eq('operation_type', 'RETURN')
-        return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
-          {
-            data: { succeeded_line_ids: succeededLineIds },
-            error: errorMessage,
-          },
-          400
-        )
-      }
-
-      const fullConesForReturn = fullCones.slice(0, requestedFull)
-      const remainingFullCones = fullCones.slice(requestedFull)
-      const partialFromExistingCount = Math.min(requestedPartial, partialCones.length)
-      const partialConesForReturn = partialCones.slice(0, partialFromExistingCount)
-      const partialNeedConvertCount = requestedPartial - partialFromExistingCount
-
-      if (partialNeedConvertCount > remainingFullCones.length) {
-        const availableEquivalentPartial = partialCones.length + remainingFullCones.length
-        const errorMessage = `Dong ${line.id}: Khong du cuon le de tra (${requestedPartial}/${availableEquivalentPartial})`
-        await supabase
-          .from('issue_operations_log')
-          .update({
-            status: 'FAILED',
-            succeeded_line_ids: succeededLineIds,
-            error_info: errorMessage,
-            completed_at: new Date().toISOString(),
-          })
-          .eq('idempotency_key', idempotency_key)
-          .eq('operation_type', 'RETURN')
-        return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
-          {
-            data: { succeeded_line_ids: succeededLineIds },
-            error: errorMessage,
-          },
-          400
-        )
-      }
-
-      const partialReturnsPayload: ReturnPartialPayloadItem[] = []
-      if (partialNeedConvertCount > 0) {
-        const metersPerCone = await getMetersPerCone(line.thread_type_id)
-        if (!metersPerCone || metersPerCone <= 0) {
-          const errorMessage = `Dong ${line.id}: Khong lay duoc meters_per_cone hop le`
-          await supabase
-            .from('issue_operations_log')
-            .update({
-              status: 'FAILED',
-              succeeded_line_ids: succeededLineIds,
-              error_info: errorMessage,
-              completed_at: new Date().toISOString(),
-            })
-            .eq('idempotency_key', idempotency_key)
-            .eq('operation_type', 'RETURN')
-          return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
-            {
-              data: { succeeded_line_ids: succeededLineIds },
-              error: errorMessage,
-            },
-            400
-          )
-        }
-
-        const partialMeters = Number((metersPerCone * partialConeRatio).toFixed(4))
-        if (partialMeters <= 0 || partialMeters >= metersPerCone) {
-          const errorMessage = `Dong ${line.id}: Ty le cuon le khong hop le cho phep tach cuon (${partialConeRatio})`
-          await supabase
-            .from('issue_operations_log')
-            .update({
-              status: 'FAILED',
-              succeeded_line_ids: succeededLineIds,
-              error_info: errorMessage,
-              completed_at: new Date().toISOString(),
-            })
-            .eq('idempotency_key', idempotency_key)
-            .eq('operation_type', 'RETURN')
-          return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
-            {
-              data: { succeeded_line_ids: succeededLineIds },
-              error: errorMessage,
-            },
-            400
-          )
-        }
-
-        const sourceFullCones = remainingFullCones.slice(0, partialNeedConvertCount)
-        for (const sourceCone of sourceFullCones) {
-          if (sourceCone.quantity_meters < partialMeters) {
-            const errorMessage = `Dong ${line.id}: Cuon ${sourceCone.id} khong du met de tach cuon le`
-            await supabase
-              .from('issue_operations_log')
-              .update({
-                status: 'FAILED',
-                succeeded_line_ids: succeededLineIds,
-                error_info: errorMessage,
-                completed_at: new Date().toISOString(),
-              })
-              .eq('idempotency_key', idempotency_key)
-              .eq('operation_type', 'RETURN')
-            return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
-              {
-                data: { succeeded_line_ids: succeededLineIds },
-                error: errorMessage,
-              },
-              400
-            )
-          }
-
-          partialReturnsPayload.push({
-            original_cone_id: sourceCone.id,
-            return_quantity_meters: partialMeters,
-          })
-        }
-      }
-
-      const coneIdsForDirectReturn = [
-        ...fullConesForReturn.map((c) => c.id),
-        ...partialConesForReturn.map((c) => c.id),
-      ]
-
-      const { data: rpcResultRaw, error: rpcError } = await supabase.rpc(
-        'fn_return_cones_with_movements',
-        {
-          p_cone_ids: coneIdsForDirectReturn.length > 0 ? coneIdsForDirectReturn : null,
-          p_line_id: returnLine.line_id,
-          p_performed_by: performedBy,
-          p_partial_returns: partialReturnsPayload.length > 0 ? partialReturnsPayload : null,
-        }
+      const result = await processReturnForLine(
+        returnLine.line_id,
+        line,
+        returnLine.returned_full || 0,
+        returnLine.returned_partial || 0,
+        performedBy,
+        partialConeRatio,
       )
 
-      if (rpcError) {
-        console.error('[return] RPC error for line', returnLine.line_id, ':', rpcError)
+      if (!result.success) {
         await supabase
           .from('issue_operations_log')
           .update({
             status: 'FAILED',
             succeeded_line_ids: succeededLineIds,
-            error_info: rpcError.message || 'Loi xu ly tra hang',
+            error_info: result.error || 'Loi xu ly tra hang',
             completed_at: new Date().toISOString(),
           })
           .eq('idempotency_key', idempotency_key)
@@ -2860,78 +2871,21 @@ issuesV2.post('/:id/return', async (c) => {
         return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
           {
             data: { succeeded_line_ids: succeededLineIds },
-            error: rpcError.message || 'Loi xu ly tra hang',
+            error: result.error || 'Loi xu ly tra hang',
           },
-          500
+          400
         )
       }
 
-      const rpcResult = (rpcResultRaw || {}) as ReturnRpcResult
-      const actualReturnedFull =
-        typeof rpcResult.full_returned === 'number'
-          ? rpcResult.full_returned
-          : fullConesForReturn.length
-      const actualReturnedPartial =
-        typeof rpcResult.partial_existing_returned === 'number' ||
-        typeof rpcResult.partial_created_returned === 'number'
-          ? (rpcResult.partial_existing_returned || 0) + (rpcResult.partial_created_returned || 0)
-          : partialConesForReturn.length + partialReturnsPayload.length
-
-      if (actualReturnedFull !== requestedFull || actualReturnedPartial !== requestedPartial) {
-        const errorMessage = `Dong ${line.id}: Ket qua tra kho khong khop yeu cau`
-        await supabase
-          .from('issue_operations_log')
-          .update({
-            status: 'FAILED',
-            succeeded_line_ids: succeededLineIds,
-            error_info: errorMessage,
-            completed_at: new Date().toISOString(),
-          })
-          .eq('idempotency_key', idempotency_key)
-          .eq('operation_type', 'RETURN')
-        return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
-          {
-            data: { succeeded_line_ids: succeededLineIds },
-            error: errorMessage,
-          },
-          500
-        )
-      }
-
-      const newReturnedFull = (line.returned_full || 0) + actualReturnedFull
-      const newReturnedPartial = (line.returned_partial || 0) + actualReturnedPartial
-
-      const { error: updateError } = await supabase
-        .from('thread_issue_lines')
-        .update({
-          returned_full: newReturnedFull,
-          returned_partial: newReturnedPartial,
-        })
-        .eq('id', returnLine.line_id)
-
-      if (updateError) {
-        console.error('[return] Error updating line:', updateError)
-        await supabase
-          .from('issue_operations_log')
-          .update({
-            status: 'FAILED',
-            succeeded_line_ids: succeededLineIds,
-            error_info: 'Khong the cap nhat dong tra',
-            completed_at: new Date().toISOString(),
-          })
-          .eq('idempotency_key', idempotency_key)
-          .eq('operation_type', 'RETURN')
-        return c.json<ThreadApiResponse<null>>(
-          { data: null, error: 'Khong the cap nhat dong tra' },
-          500
-        )
+      if (result.returned_full === 0 && result.returned_partial === 0) {
+        continue
       }
 
       succeededLineIds.push(returnLine.line_id)
       returnLogRows.push({
         line_id: returnLine.line_id,
-        returned_full: actualReturnedFull,
-        returned_partial: actualReturnedPartial,
+        returned_full: result.returned_full,
+        returned_partial: result.returned_partial,
       })
     }
 
@@ -3182,5 +3136,16 @@ issuesV2.delete('/:id/lines/:lineId', async (c) => {
     )
   }
 })
+
+export {
+  processReturnForLine,
+  formatZodError,
+  getPerformedBy,
+  hashPayload,
+  getMetersPerCone,
+  type IssueLine,
+  type ProcessReturnLineResult,
+  type ReturnPartialPayloadItem,
+}
 
 export default issuesV2

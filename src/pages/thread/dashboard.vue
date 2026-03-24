@@ -3,7 +3,7 @@
     <!-- 1. Page Header -->
     <div class="row items-center justify-between q-mb-lg">
       <div>
-        <div class="text-h5 text-weight-bold">
+        <div class="text-h5 text-weight-bold text-primary">
           Dashboard Quản Lý Chỉ
         </div>
         <div class="text-caption text-grey-7">

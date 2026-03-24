@@ -503,4 +503,30 @@ export const weeklyOrderService = {
     if (!response.data) throw new Error('Không thể trả dư')
     return response.data
   },
+
+  async batchComplete(itemIds: number[]): Promise<{ completed_count: number; skipped_count: number }> {
+    const response = await fetchApi<ApiResponse<{ completed_count: number; skipped_count: number }>>(
+      `${BASE}/batch-complete`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ item_ids: itemIds }),
+      },
+    )
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không thể đánh dấu hoàn tất')
+    return response.data
+  },
+
+  async completionLookup(poId: number, styleId: number, styleColorId: number | null): Promise<{ weeks: Array<{ week_id: number; week_name: string; item_ids: number[] }> }> {
+    const response = await fetchApi<ApiResponse<{ weeks: Array<{ week_id: number; week_name: string; item_ids: number[] }> }>>(
+      `${BASE}/completion-lookup`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ po_id: poId, style_id: styleId, style_color_id: styleColorId }),
+      },
+    )
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không thể tra cứu tuần hoàn tất')
+    return response.data
+  },
 }

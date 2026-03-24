@@ -16,6 +16,7 @@ import type {
 const batch = new Hono()
 
 const BATCH_LIMIT = 500
+const TRANSFER_BATCH_LIMIT = 10000
 
 /**
  * POST /api/batch/receive - Batch receive cones into inventory
@@ -222,6 +223,141 @@ batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
 })
 
 /**
+ * GET /api/batch/transferable-summary - Aggregate transferable cones by thread type + color
+ */
+batch.get('/transferable-summary', requirePermission('thread.batch.transfer'), async (c) => {
+  try {
+    const warehouseId = Number(c.req.query('warehouse_id'))
+    if (!warehouseId) {
+      return c.json<BatchApiResponse<null>>({
+        data: null,
+        error: 'warehouse_id là bắt buộc'
+      }, 400)
+    }
+
+    const TRANSFERABLE_STATUSES = ['AVAILABLE', 'RECEIVED', 'INSPECTED']
+
+    const { data: cones, error: coneError } = await supabase
+      .from('thread_inventory')
+      .select(`
+        id, thread_type_id, color_id, status,
+        reserved_week_id,
+        thread_types!inner(code, name, tex_number, supplier_id, suppliers(name)),
+        colors!color_id(name, hex_code)
+      `)
+      .eq('warehouse_id', warehouseId)
+      .in('status', [...TRANSFERABLE_STATUSES, 'RESERVED_FOR_ORDER'])
+      .limit(10000)
+
+    if (coneError) {
+      console.error('Transferable summary error:', coneError)
+      return c.json<BatchApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi tải tổng hợp khả chuyển'
+      }, 500)
+    }
+
+    interface GroupData {
+      thread_type_id: number
+      thread_code: string
+      thread_name: string
+      supplier_name: string
+      tex_number: string
+      color_id: number
+      color_name: string
+      color_hex: string | null
+      transferable_count: number
+      reserved_count: number
+      reserved_by_week_map: Map<number, { week_id: number; week_name: string; count: number }>
+    }
+
+    const groups = new Map<string, GroupData>()
+
+    const weekIds = new Set<number>()
+    for (const cone of cones || []) {
+      if ((cone as any).reserved_week_id) weekIds.add((cone as any).reserved_week_id)
+    }
+
+    const weekMap = new Map<number, string>()
+    if (weekIds.size > 0) {
+      const { data: weeks } = await supabase
+        .from('thread_order_weeks')
+        .select('id, week_name')
+        .in('id', [...weekIds])
+      for (const w of weeks || []) {
+        weekMap.set(w.id, w.week_name)
+      }
+    }
+
+    for (const cone of cones || []) {
+      const tt = cone.thread_types as any
+      const color = cone.colors as any
+      const colorId = (cone as any).color_id || 0
+      const key = `${cone.thread_type_id}-${colorId}`
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          thread_type_id: cone.thread_type_id,
+          thread_code: tt?.code || '',
+          thread_name: tt?.name || '',
+          supplier_name: tt?.suppliers?.name || '',
+          tex_number: tt?.tex_number || '',
+          color_id: colorId,
+          color_name: color?.name || '',
+          color_hex: color?.hex_code || null,
+          transferable_count: 0,
+          reserved_count: 0,
+          reserved_by_week_map: new Map()
+        })
+      }
+
+      const group = groups.get(key)!
+      if (TRANSFERABLE_STATUSES.includes(cone.status!)) {
+        group.transferable_count++
+      } else if (cone.status === 'RESERVED_FOR_ORDER') {
+        group.reserved_count++
+        const weekId = (cone as any).reserved_week_id
+        if (weekId) {
+          if (!group.reserved_by_week_map.has(weekId)) {
+            group.reserved_by_week_map.set(weekId, {
+              week_id: weekId,
+              week_name: weekMap.get(weekId) || `Week ${weekId}`,
+              count: 0
+            })
+          }
+          group.reserved_by_week_map.get(weekId)!.count++
+        }
+      }
+    }
+
+    const result = [...groups.values()].map(g => ({
+      thread_type_id: g.thread_type_id,
+      thread_code: g.thread_code,
+      thread_name: g.thread_name,
+      supplier_name: g.supplier_name,
+      tex_number: g.tex_number,
+      color_id: g.color_id,
+      color_name: g.color_name,
+      color_hex: g.color_hex,
+      transferable_count: g.transferable_count,
+      reserved_count: g.reserved_count,
+      reserved_by_week: [...g.reserved_by_week_map.values()]
+    }))
+
+    return c.json<BatchApiResponse<typeof result>>({
+      data: result,
+      error: null
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<BatchApiResponse<null>>({
+      data: null,
+      error: 'Lỗi hệ thống'
+    }, 500)
+  }
+})
+
+/**
  * POST /api/batch/transfer - Batch transfer cones between warehouses
  */
 batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) => {
@@ -244,19 +380,64 @@ batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) =>
     }
 
     let coneIds: number[] = []
+    let transferableMoved = 0
+    let reservedMoved = 0
 
-    // Get cones by lot or by explicit IDs
-    if (body.lot_id) {
+    if (body.thread_type_id && body.color_id && body.quantity) {
+      if (body.quantity > TRANSFER_BATCH_LIMIT) {
+        return c.json<BatchApiResponse<null>>({
+          data: null,
+          error: `Tối đa ${TRANSFER_BATCH_LIMIT.toLocaleString()} cuộn mỗi lần chuyển`
+        }, 400)
+      }
+
+      const TRANSFERABLE_STATUSES = ['AVAILABLE', 'RECEIVED', 'INSPECTED']
+      let remaining = body.quantity
+
+      const { data: transferableCones } = await supabase
+        .from('thread_inventory')
+        .select('id')
+        .eq('thread_type_id', body.thread_type_id)
+        .eq('color_id', body.color_id)
+        .eq('warehouse_id', body.from_warehouse_id)
+        .in('status', TRANSFERABLE_STATUSES)
+        .order('id', { ascending: true })
+        .limit(remaining)
+
+      const transferableIds = (transferableCones || []).map(c => c.id)
+      transferableMoved = transferableIds.length
+      coneIds.push(...transferableIds)
+      remaining -= transferableIds.length
+
+      if (remaining > 0 && body.include_reserved) {
+        const { data: reservedCones } = await supabase
+          .from('thread_inventory')
+          .select('id')
+          .eq('thread_type_id', body.thread_type_id)
+          .eq('color_id', body.color_id)
+          .eq('warehouse_id', body.from_warehouse_id)
+          .eq('status', 'RESERVED_FOR_ORDER')
+          .order('id', { ascending: true })
+          .limit(remaining)
+
+        const reservedIds = (reservedCones || []).map(c => c.id)
+        reservedMoved = reservedIds.length
+        coneIds.push(...reservedIds)
+      }
+
+    } else if (body.lot_id) {
       const { data: lotCones } = await supabase
         .from('thread_inventory')
         .select('id, warehouse_id, status')
         .eq('lot_id', body.lot_id)
         .eq('warehouse_id', body.from_warehouse_id)
         .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-
       coneIds = lotCones?.map(c => c.id) || []
+      transferableMoved = coneIds.length
+
     } else if (body.cone_ids && body.cone_ids.length > 0) {
       coneIds = body.cone_ids
+      transferableMoved = coneIds.length
     }
 
     if (coneIds.length === 0) {
@@ -266,29 +447,30 @@ batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) =>
       }, 400)
     }
 
-    if (coneIds.length > BATCH_LIMIT) {
+    if (!body.thread_type_id && coneIds.length > BATCH_LIMIT) {
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: `Vượt quá giới hạn ${BATCH_LIMIT} cuộn mỗi lần chuyển`
       }, 400)
     }
 
-    // Validate all cones are in source warehouse with valid status
-    const { data: validCones } = await supabase
-      .from('thread_inventory')
-      .select('id, warehouse_id, status')
-      .in('id', coneIds)
+    if (!body.thread_type_id) {
+      const { data: validCones } = await supabase
+        .from('thread_inventory')
+        .select('id, warehouse_id, status')
+        .in('id', coneIds)
 
-    const invalidCones = validCones?.filter(
-      c => c.warehouse_id !== body.from_warehouse_id ||
-           !['AVAILABLE', 'RECEIVED', 'INSPECTED'].includes(c.status)
-    ) || []
+      const invalidCones = validCones?.filter(
+        c => c.warehouse_id !== body.from_warehouse_id ||
+             !['AVAILABLE', 'RECEIVED', 'INSPECTED'].includes(c.status)
+      ) || []
 
-    if (invalidCones.length > 0) {
-      return c.json<BatchApiResponse<null>>({
-        data: null,
-        error: `${invalidCones.length} cuộn không hợp lệ để chuyển (sai kho hoặc trạng thái)`
-      }, 400)
+      if (invalidCones.length > 0) {
+        return c.json<BatchApiResponse<null>>({
+          data: null,
+          error: `${invalidCones.length} cuộn không hợp lệ để chuyển (sai kho hoặc trạng thái)`
+        }, 400)
+      }
     }
 
     // Update warehouse_id for all cones
@@ -341,12 +523,14 @@ batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) =>
       .select('id')
       .single()
 
-    return c.json<BatchApiResponse<BatchOperationResult>>({
+    return c.json<BatchApiResponse<BatchOperationResult & { transferable_moved?: number; reserved_moved?: number }>>({
       data: {
         transaction_id: transaction?.id || 0,
         operation_type: 'TRANSFER',
         cone_count: coneIds.length,
-        lot_id: body.lot_id || undefined
+        lot_id: body.lot_id || undefined,
+        transferable_moved: transferableMoved,
+        reserved_moved: reservedMoved
       },
       error: null,
       message: `Đã chuyển ${coneIds.length} cuộn`

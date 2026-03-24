@@ -23,6 +23,10 @@ import type {
   IssueLineV2WithComputed,
   ReturnIssueV2DTO,
   OrderOptionsResponse,
+  ReturnGroup,
+  ReturnGroupedDTO,
+  ReturnGroupedResponse,
+  GroupedReturnLog,
 } from '@/types/thread/issueV2'
 
 const BASE = '/api/issues/v2'
@@ -284,5 +288,39 @@ export const issueV2Service = {
     }
 
     return response.data
+  },
+
+  async getReturnGroups(): Promise<ReturnGroup[]> {
+    const response = await fetchApi<ApiResponse<ReturnGroup[]>>(`${BASE}/return-groups`)
+    if (response.error) {
+      throw new Error(response.error)
+    }
+    return response.data || []
+  },
+
+  async returnGrouped(data: ReturnGroupedDTO): Promise<ReturnGroupedResponse> {
+    const response = await fetchApi<ApiResponse<ReturnGroupedResponse>>(`${BASE}/return-grouped`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+    if (response.error || !response.data) {
+      throw new Error(response.error || 'Khong the tra hang theo nhom')
+    }
+    return response.data
+  },
+
+  async getGroupedReturnLogs(poId: number, styleId: number, styleColorId?: number, colorId?: number): Promise<GroupedReturnLog[]> {
+    const params = new URLSearchParams({
+      po_id: String(poId),
+      style_id: String(styleId),
+    })
+    if (styleColorId) params.append('style_color_id', String(styleColorId))
+    else if (colorId) params.append('color_id', String(colorId))
+
+    const response = await fetchApi<ApiResponse<GroupedReturnLog[]>>(`${BASE}/return-groups/logs?${params}`)
+    if (response.error) {
+      throw new Error(response.error)
+    }
+    return response.data || []
   },
 }

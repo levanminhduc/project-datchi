@@ -104,10 +104,13 @@ src/components/ui/ → App* wrappers over Quasar
 | Auth middleware change without frontend check | Verify `fetchApi()` sends `Authorization` header |
 | Guess column names | `\d table_name` or read migrations |
 | Raw `q-table` anywhere | `DataTable` (`src/components/ui/tables/`) |
+| Supabase `.select()` without `.limit()` | LUÔN thêm `.limit(N)` hoặc `.single()` / `.maybeSingle()` |
+| Query N+1 (loop gọi DB từng record) | **TUYỆT ĐỐI KHÔNG.** Batch: `.in('id', ids)` / RPC / view |
 
 ### Database
 - Tables: `snake_case` + `created_at`, `updated_at`, `deleted_at` (soft delete)
 - Views: `v_` prefix | Functions: `fn_` prefix | Enums: ALL UPPERCASE (`'PENDING'`, `'ACTIVE'`)
+- **Supabase PostgREST default limit = 1000 rows.** Mọi `.select()` trả nhiều rows PHẢI có `.limit(N)` hoặc `.single()` / `.range()`. Không có → âm thầm cắt data, gây sai lệch nghiêm trọng.
 
 ### API (Hono)
 - Response: `{ data: T|null, error: string|null, message?: string }`

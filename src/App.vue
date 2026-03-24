@@ -15,9 +15,8 @@ const { isOpen, navItems, toggle } = useSidebar();
 const { startPolling, stopPolling } = useNotifications();
 const { employee, isAuthenticated, tempPassword } = useAuth();
 
-const showChangePasswordModal = computed(
-  () => employee.value?.mustChangePassword === true && isAuthenticated.value
-);
+// TODO: bật lại khi cần force đổi mật khẩu lần đầu
+const showChangePasswordModal = computed(() => false);
 
 function onPasswordChanged() {
   if (route.path === "/login") {

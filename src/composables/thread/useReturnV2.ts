@@ -1,229 +1,206 @@
-/**
- * Thread Return V2 Composable
- * Nhap lai chi - Return Thread Cones
- *
- * Provides API calls for returning issued thread cones.
- * IMPORTANT: This composable only makes API calls and displays results.
- * All calculations are done by the backend.
- */
-
 import { ref, computed } from 'vue'
-import { fetchApi } from '@/services/api'
 import { issueV2Service } from '@/services/issueV2Service'
-import type { ApiResponse } from '@/types'
+import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
 import type {
-  IssueV2WithSummary,
-  IssueV2WithLines,
-  ReturnLog,
+  ReturnGroup,
+  ReturnGroupThread,
+  ReturnGroupedResponse,
+  GroupedReturnLog,
+  CompletionInfo,
 } from '@/types/thread/issueV2'
 
-/**
- * Return line input from user
- */
-export interface ReturnLineInput {
-  line_id: number
-  returned_full: number
-  returned_partial: number
-}
-
 export function useReturnV2() {
-  // State
-  const confirmedIssues = ref<IssueV2WithSummary[]>([])
-  const selectedIssue = ref<IssueV2WithLines | null>(null)
-  const returnLogs = ref<ReturnLog[]>([])
+  const returnGroups = ref<ReturnGroup[]>([])
+  const selectedGroup = ref<ReturnGroup | null>(null)
+  const returnLogs = ref<GroupedReturnLog[]>([])
   const error = ref<string | null>(null)
+  const completionInfo = ref<CompletionInfo | null>(null)
 
-  // Composables
   const snackbar = useSnackbar()
   const loading = useLoading()
 
-  // Computed
   const isLoading = computed(() => loading.isLoading.value)
-  const hasConfirmedIssues = computed(() => confirmedIssues.value.length > 0)
+  const hasGroups = computed(() => returnGroups.value.length > 0)
 
-  /**
-   * Clear error state
-   */
   const clearError = () => {
     error.value = null
   }
 
-  /**
-   * Load confirmed issues that have outstanding items to return
-   * Calls GET /api/issues/v2?status=CONFIRMED
-   */
-  const loadConfirmedIssues = async (): Promise<void> => {
+  const clearCompletionInfo = () => {
+    completionInfo.value = null
+  }
+
+  const loadReturnGroups = async (): Promise<void> => {
     clearError()
-
     try {
-      const result = await loading.withLoading(async () => {
-        const response = await fetchApi<ApiResponse<{ data: IssueV2WithSummary[]; total: number }>>(
-          '/api/issues/v2?status=CONFIRMED'
-        )
-        return response.data || { data: [], total: 0 }
-      })
-
-      confirmedIssues.value = result.data
+      const result = await loading.withLoading(() => issueV2Service.getReturnGroups())
+      returnGroups.value = result
     } catch (err) {
-      const errorMessage = getErrorMessage(err, 'Không thể tải danh sách phiếu xuất')
-      error.value = errorMessage
-      snackbar.error(errorMessage)
-      console.error('[useReturnV2] loadConfirmedIssues error:', err)
+      const msg = getErrorMessage(err, 'Không thể tải danh sách nhóm trả')
+      error.value = msg
+      snackbar.error(msg)
     }
   }
 
-  /**
-   * Load issue details with lines for return
-   * Calls GET /api/issues/v2/:id
-   * @param issueId - Issue ID to load
-   */
-  const loadIssueDetails = async (issueId: number): Promise<void> => {
-    clearError()
-
-    try {
-      selectedIssue.value = await loading.withLoading(async () => {
-        const response = await fetchApi<ApiResponse<IssueV2WithLines>>(
-          `/api/issues/v2/${issueId}`
-        )
-        if (!response.data) {
-          throw new Error(response.error || 'Không tìm thấy phiếu xuất')
-        }
-        return response.data
-      })
-    } catch (err) {
-      const errorMessage = getErrorMessage(err, 'Không thể tải chi tiết phiếu xuất')
-      error.value = errorMessage
-      snackbar.error(errorMessage)
-      console.error('[useReturnV2] loadIssueDetails error:', err)
+  const selectGroup = (group: ReturnGroup | null) => {
+    selectedGroup.value = group
+    returnLogs.value = []
+    clearCompletionInfo()
+    if (group) {
+      loadGroupedReturnLogs(group)
     }
   }
 
-  /**
-   * Submit return for an issue
-   * Calls POST /api/issues/v2/:id/return
-   * @param issueId - Issue ID to return
-   * @param lines - Lines with return quantities
-   * @returns true on success, false on failure
-   */
-  const submitReturn = async (
-    issueId: number,
-    lines: ReturnLineInput[]
-  ): Promise<boolean> => {
+  const submitGroupedReturn = async (
+    group: ReturnGroup,
+    lines: { thread_type_id: number; returned_full: number; returned_partial: number }[]
+  ): Promise<ReturnGroupedResponse | null> => {
     clearError()
-
-    // Filter out lines with no return quantities
-    const linesToSubmit = lines.filter(
-      (line) => line.returned_full > 0 || line.returned_partial > 0
-    )
-
+    clearCompletionInfo()
+    const linesToSubmit = lines.filter((l) => l.returned_full > 0 || l.returned_partial > 0)
     if (linesToSubmit.length === 0) {
       snackbar.warning('Vui lòng nhập số lượng trả')
-      return false
+      return null
     }
 
     try {
-      await loading.withLoading(async () => {
-        await issueV2Service.returnItems(issueId, { lines: linesToSubmit })
-        const updatedIssue = await issueV2Service.getById(issueId)
-        selectedIssue.value = updatedIssue
-      })
+      const result = await loading.withLoading(() =>
+        issueV2Service.returnGrouped({
+          po_id: group.po_id,
+          style_id: group.style_id,
+          style_color_id: group.style_color_id,
+          color_id: group.color_id,
+          idempotency_key: crypto.randomUUID(),
+          lines: linesToSubmit,
+        })
+      )
 
-      snackbar.success('Đã nhập lại thành công, cuộn trả về đã ở trạng thái khả dụng')
+      if (result.completion_info) {
+        completionInfo.value = result.completion_info
+      }
+
+      const autoCompleted = result.completion_info?.auto_completed ?? []
+      const firstWeek = autoCompleted[0]
+      if (firstWeek) {
+        snackbar.success(`Đã nhập lại và đánh dấu hoàn tất xuất chỉ cho tuần ${firstWeek.week_name}`)
+      } else {
+        snackbar.success('Đã nhập lại thành công')
+      }
+
+      await loadReturnGroups()
+      const updatedGroup = returnGroups.value.find((g) => g.group_key === group.group_key)
+      selectedGroup.value = updatedGroup || null
+      if (updatedGroup) {
+        await loadGroupedReturnLogs(updatedGroup)
+      }
+      return result
+    } catch (err) {
+      const msg = getErrorMessage(err, 'Không thể nhập lại')
+      error.value = msg
+      snackbar.error(msg)
+      return null
+    }
+  }
+
+  const confirmBatchCompletion = async (itemIds: number[]): Promise<boolean> => {
+    if (itemIds.length === 0) return false
+    try {
+      await weeklyOrderService.batchComplete(itemIds)
+      snackbar.success('Đã đánh dấu hoàn tất xuất chỉ')
+      clearCompletionInfo()
+      await loadReturnGroups()
+      selectedGroup.value = null
       return true
     } catch (err) {
-      const errorMessage = getErrorMessage(err, 'Không thể nhập lại')
-      error.value = errorMessage
-      snackbar.error(errorMessage)
-      console.error('[useReturnV2] submitReturn error:', err)
+      snackbar.error(getErrorMessage(err, 'Không thể đánh dấu hoàn tất'))
       return false
     }
   }
 
-  /**
-   * Clear selected issue
-   */
-  const loadReturnLogs = async (issueId: number): Promise<void> => {
+  const loadGroupedReturnLogs = async (group: ReturnGroup): Promise<void> => {
     try {
-      const result = await loading.withLoading(async () => {
-        const response = await fetchApi<ApiResponse<ReturnLog[]>>(
-          `/api/issues/v2/${issueId}/return-logs`
+      const result = await loading.withLoading(() =>
+        issueV2Service.getGroupedReturnLogs(
+          group.po_id,
+          group.style_id,
+          group.style_color_id || undefined,
+          group.color_id || undefined
         )
-        return response.data || []
-      })
+      )
       returnLogs.value = result
     } catch (err) {
-      const errorMessage = getErrorMessage(err, 'Không thể tải lịch sử trả kho')
-      snackbar.error(errorMessage)
-      console.error('[useReturnV2] loadReturnLogs error:', err)
+      snackbar.error(getErrorMessage(err, 'Không thể tải lịch sử trả'))
     }
   }
 
-  const clearSelectedIssue = () => {
-    selectedIssue.value = null
-  }
-
-  /**
-   * Validate return quantities locally (for UI feedback)
-   * Uses total-based validation to allow cross-type returns.
-   * Backend is source of truth and may convert partial returns from full cones.
-   * Rule 1: returned_full <= issued_full (can't create full cones from nothing)
-   * Rule 2: total_returned <= total_issued (total can't exceed total issued)
-   */
   const validateReturnQuantities = (
-    lines: ReturnLineInput[],
-    issueLines: IssueV2WithLines['lines']
+    lines: { thread_type_id: number; returned_full: number; returned_partial: number }[],
+    threads: ReturnGroupThread[]
   ): { valid: boolean; errors: string[] } => {
     const errors: string[] = []
-
     for (const line of lines) {
-      const issueLine = issueLines.find((l) => l.id === line.line_id)
-      if (!issueLine) continue
-
-      const totalReturnedFull = issueLine.returned_full + line.returned_full
-      const totalReturnedPartial = issueLine.returned_partial + line.returned_partial
-      const totalReturned = totalReturnedFull + totalReturnedPartial
-      const totalIssued = issueLine.issued_full + issueLine.issued_partial
-
-      // Rule 1: returned_full cannot exceed issued_full
-      if (totalReturnedFull > issueLine.issued_full) {
+      const thread = threads.find((t) => t.thread_type_id === line.thread_type_id)
+      if (!thread) continue
+      if (line.returned_full > thread.outstanding_full) {
         errors.push(
-          `${issueLine.thread_name || issueLine.thread_code}: Số cuộn nguyên trả (${totalReturnedFull}) vượt quá số đã xuất (${issueLine.issued_full})`
+          `${thread.thread_name}: Nguyên trả (${line.returned_full}) vượt outstanding (${thread.outstanding_full})`
         )
       }
-
-      // Rule 2: total returned cannot exceed total issued
-      if (totalReturned > totalIssued) {
+      if (line.returned_partial > thread.outstanding_partial) {
         errors.push(
-          `${issueLine.thread_name || issueLine.thread_code}: Tổng trả (${totalReturned}) vượt quá tổng đã xuất (${totalIssued})`
+          `${thread.thread_name}: Lẻ trả (${line.returned_partial}) vượt outstanding (${thread.outstanding_partial})`
         )
       }
     }
+    return { valid: errors.length === 0, errors }
+  }
 
-    return {
-      valid: errors.length === 0,
-      errors,
+  const lookupAndMarkCompletion = async (group: ReturnGroup): Promise<void> => {
+    clearCompletionInfo()
+    try {
+      const result = await weeklyOrderService.completionLookup(
+        group.po_id,
+        group.style_id,
+        group.style_color_id || null,
+      )
+      const weeks = result.weeks
+      if (weeks.length === 0) {
+        snackbar.warning('Không tìm thấy tuần phù hợp để đánh dấu hoàn tất')
+        return
+      }
+      const firstWeek = weeks[0]
+      if (weeks.length === 1 && firstWeek) {
+        await weeklyOrderService.batchComplete(firstWeek.item_ids)
+        snackbar.success(`Đã đánh dấu hoàn tất xuất chỉ cho tuần ${firstWeek.week_name}`)
+        await loadReturnGroups()
+        selectedGroup.value = null
+        return
+      }
+      completionInfo.value = { auto_completed: [], pending_selection: weeks }
+    } catch (err) {
+      snackbar.error(getErrorMessage(err, 'Không thể tra cứu tuần hoàn tất'))
     }
   }
 
   return {
-    // State
-    confirmedIssues,
-    selectedIssue,
+    returnGroups,
+    selectedGroup,
     returnLogs,
     error,
-    // Computed
     isLoading,
-    hasConfirmedIssues,
-    // Actions
-    loadConfirmedIssues,
-    loadIssueDetails,
-    loadReturnLogs,
-    submitReturn,
-    clearError,
-    clearSelectedIssue,
+    hasGroups,
+    completionInfo,
+    loadReturnGroups,
+    selectGroup,
+    submitGroupedReturn,
+    loadGroupedReturnLogs,
     validateReturnQuantities,
+    confirmBatchCompletion,
+    lookupAndMarkCompletion,
+    clearCompletionInfo,
+    clearError,
   }
 }

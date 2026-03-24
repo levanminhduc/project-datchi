@@ -138,6 +138,8 @@ interface Props {
   errorMessage?: string
   /** Auto-fetch warehouses on mount */
   autoFetch?: boolean
+  /** Exclude these warehouse IDs from options */
+  excludeIds?: number[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -157,6 +159,7 @@ const props = withDefaults(defineProps<Props>(), {
   behavior: 'menu',
   required: false,
   autoFetch: true,
+  excludeIds: () => [],
 })
 
 const emit = defineEmits<{
@@ -184,31 +187,30 @@ const optionDisable = (opt: Warehouse) => opt.type === 'LOCATION'
  * Build options list based on props
  */
 const allOptions = computed(() => {
+  const excluded = new Set(props.excludeIds)
+
   if (props.storageOnly) {
-    // Return only STORAGE warehouses
-    let storages = warehouses.value.filter(w => w.type === 'STORAGE')
-    
-    // Filter by location if specified
+    let storages = warehouses.value.filter(w => w.type === 'STORAGE' && !excluded.has(w.id))
+
     if (props.locationId) {
       storages = storages.filter(w => w.parent_id === props.locationId)
     }
-    
+
     return storages
   }
 
-  // Return grouped list with LOCATION headers
   const options: Warehouse[] = []
-  
+
   for (const location of warehouseTree.value) {
-    // Add location as header
     options.push(location)
-    
-    // Add children
+
     for (const storage of location.children) {
-      options.push(storage)
+      if (!excluded.has(storage.id)) {
+        options.push(storage)
+      }
     }
   }
-  
+
   return options
 })
 

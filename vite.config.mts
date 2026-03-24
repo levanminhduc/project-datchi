@@ -38,6 +38,9 @@ export default defineConfig({
     }),
   ],
   define: { 'process.env': {} },
+  build: {
+    chunkSizeWarningLimit: 1000,
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('src', import.meta.url)),

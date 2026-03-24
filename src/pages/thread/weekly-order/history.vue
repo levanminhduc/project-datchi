@@ -9,7 +9,7 @@
         @click="$router.push('/thread/weekly-order')"
       />
       <div class="q-ml-md">
-        <h1 class="text-h5 q-my-none text-weight-bold">
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Lịch Sử Đặt Hàng Chỉ
         </h1>
         <div class="text-grey-6">

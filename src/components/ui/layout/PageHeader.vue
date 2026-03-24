@@ -38,46 +38,42 @@ const headerClass = computed(() => ({
 
 <template>
   <div
-    class="page-header row items-center q-mb-md"
+    class="page-header row wrap items-center q-mb-md"
     :class="headerClass"
   >
-    <!-- Back button -->
-    <q-btn
-      v-if="showBack"
-      flat
-      round
-      icon="arrow_back"
-      color="primary"
-      class="q-mr-sm"
-      @click="goBack"
-    />
-
-    <!-- Icon -->
-    <q-icon
-      v-if="icon"
-      :name="icon"
-      size="28px"
-      class="q-mr-sm"
-    />
-
-    <!-- Title & Subtitle -->
-    <div class="col">
-      <div class="text-h5 text-weight-medium">
-        {{ title }}
-      </div>
-      <div
-        v-if="subtitle"
-        class="text-caption text-grey"
-      >
-        {{ subtitle }}
+    <!-- Back button + Icon + Title -->
+    <div class="col-12 col-sm row items-center no-wrap">
+      <q-btn
+        v-if="showBack"
+        flat
+        round
+        icon="arrow_back"
+        color="primary"
+        class="q-mr-sm"
+        @click="goBack"
+      />
+      <q-icon
+        v-if="icon"
+        :name="icon"
+        size="28px"
+        class="q-mr-sm"
+      />
+      <div>
+        <div class="text-h5 text-weight-bold text-primary">
+          {{ title }}
+        </div>
+        <div
+          v-if="subtitle"
+          class="text-caption text-grey"
+        >
+          {{ subtitle }}
+        </div>
       </div>
     </div>
 
-    <!-- Breadcrumbs slot -->
-    <slot name="breadcrumbs" />
-
-    <!-- Actions slot -->
-    <div class="row q-gutter-sm">
+    <!-- Breadcrumbs + Actions -->
+    <div class="col-12 col-sm-auto row items-center q-gutter-sm">
+      <slot name="breadcrumbs" />
       <slot name="actions" />
     </div>
   </div>
