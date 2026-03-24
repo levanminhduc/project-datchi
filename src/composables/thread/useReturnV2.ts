@@ -156,6 +156,31 @@ export function useReturnV2() {
     return { valid: errors.length === 0, errors }
   }
 
+  const lookupAndMarkCompletion = async (group: ReturnGroup): Promise<void> => {
+    clearCompletionInfo()
+    try {
+      const result = await weeklyOrderService.completionLookup(
+        group.po_id,
+        group.style_id,
+        group.style_color_id || null,
+      )
+      const weeks = result.weeks
+      if (weeks.length === 0) {
+        snackbar.warning('Không tìm thấy tuần CONFIRMED phù hợp')
+        return
+      }
+      const firstWeek = weeks[0]
+      if (weeks.length === 1 && firstWeek) {
+        await weeklyOrderService.batchComplete(firstWeek.item_ids)
+        snackbar.success(`Đã đánh dấu hoàn tất xuất chỉ cho tuần ${firstWeek.week_name}`)
+        return
+      }
+      completionInfo.value = { auto_completed: [], pending_selection: weeks }
+    } catch (err) {
+      snackbar.error(getErrorMessage(err, 'Không thể tra cứu tuần hoàn tất'))
+    }
+  }
+
   return {
     returnGroups,
     selectedGroup,
@@ -170,6 +195,7 @@ export function useReturnV2() {
     loadGroupedReturnLogs,
     validateReturnQuantities,
     confirmBatchCompletion,
+    lookupAndMarkCompletion,
     clearCompletionInfo,
     clearError,
   }

@@ -18,6 +18,7 @@ const {
   submitGroupedReturn,
   validateReturnQuantities,
   confirmBatchCompletion,
+  lookupAndMarkCompletion,
   clearCompletionInfo,
 } = useReturnV2()
 
@@ -98,6 +99,15 @@ async function handleConfirmWeeks() {
 function handleDismissDialog() {
   showWeekDialog.value = false
   clearCompletionInfo()
+}
+
+async function handleMarkCompletion() {
+  if (!selectedGroup.value) return
+  await lookupAndMarkCompletion(selectedGroup.value)
+  if (completionInfo.value?.pending_selection?.length) {
+    selectedWeekIds.value = completionInfo.value.pending_selection.map((w) => w.week_id)
+    showWeekDialog.value = true
+  }
 }
 
 watch(selectedGroupKey, (key) => {
@@ -233,6 +243,15 @@ onMounted(() => {
           variant="flat"
           label="Đặt lại"
           @click="handleReset"
+        />
+        <q-space />
+        <AppButton
+          variant="flat"
+          color="teal"
+          label="Đánh dấu hoàn tất xuất chỉ"
+          icon="check_circle"
+          :loading="isLoading"
+          @click="handleMarkCompletion"
         />
         <AppButton
           label="Nhập lại kho"
