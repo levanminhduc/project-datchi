@@ -503,4 +503,17 @@ export const weeklyOrderService = {
     if (!response.data) throw new Error('Không thể trả dư')
     return response.data
   },
+
+  async batchComplete(itemIds: number[]): Promise<{ completed_count: number; skipped_count: number }> {
+    const response = await fetchApi<ApiResponse<{ completed_count: number; skipped_count: number }>>(
+      `${BASE}/batch-complete`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ item_ids: itemIds }),
+      },
+    )
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không thể đánh dấu hoàn tất')
+    return response.data
+  },
 }
