@@ -41,7 +41,7 @@ const RETRY_DELAYS = [0, 500, 1000]
 const GET_USER_TIMEOUT = 8000
 const GET_SESSION_TIMEOUT = 8000
 const RESUME_REINIT_DEBOUNCE_MS = 1500
-const SESSION_NEAR_EXPIRY_MS = 5 * 60 * 1000
+const SESSION_NEAR_EXPIRY_MS = 15 * 60 * 1000
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))

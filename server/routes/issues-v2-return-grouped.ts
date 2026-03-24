@@ -432,7 +432,7 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
       }
     }
 
-    let completionInfo: { auto_completed: Array<{ week_id: number; week_name: string; item_ids: number[] }>; pending_selection: Array<{ week_id: number; week_name: string; item_ids: number[] }> } = {
+    const completionInfo: { auto_completed: Array<{ week_id: number; week_name: string; item_ids: number[] }>; pending_selection: Array<{ week_id: number; week_name: string; item_ids: number[] }> } = {
       auto_completed: [],
       pending_selection: [],
     }
