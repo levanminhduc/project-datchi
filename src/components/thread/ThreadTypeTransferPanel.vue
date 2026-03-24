@@ -170,6 +170,12 @@ const emit = defineEmits<{
     color_id: number
     quantity: number
     include_reserved: boolean
+    supplier_name: string
+    tex_number: string
+    color_name: string
+    color_hex: string | null
+    transferable_count: number
+    reserved_count: number
   }]
   'selection-cleared': []
 }>()
@@ -235,7 +241,13 @@ function emitTransferReady(includeReserved: boolean) {
     thread_type_id: selectedItem.value.thread_type_id,
     color_id: selectedItem.value.color_id,
     quantity: quantity.value,
-    include_reserved: includeReserved
+    include_reserved: includeReserved,
+    supplier_name: selectedItem.value.supplier_name,
+    tex_number: selectedItem.value.tex_number,
+    color_name: selectedItem.value.color_name,
+    color_hex: selectedItem.value.color_hex,
+    transferable_count: selectedItem.value.transferable_count,
+    reserved_count: selectedItem.value.reserved_count
   })
 }
 

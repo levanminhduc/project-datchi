@@ -336,12 +336,6 @@
                 <div class="text-h6 text-weight-bold">
                   <template v-if="selectionMode === 'thread-type' && transferPayload">
                     {{ transferPayload.quantity.toLocaleString() }}
-                    <div
-                      v-if="transferPayload.include_reserved"
-                      class="text-body2 text-warning"
-                    >
-                      (bao gồm cuộn từ đơn hàng)
-                    </div>
                   </template>
                   <template v-else>
                     {{ validCones.length }}
@@ -372,6 +366,65 @@
                 <div class="text-h6 text-weight-bold">
                   {{ destWarehouseName }}
                 </div>
+              </q-card>
+            </div>
+
+            <div
+              v-if="selectionMode === 'thread-type' && transferPayload"
+              class="col-12"
+            >
+              <q-card
+                flat
+                bordered
+              >
+                <q-card-section>
+                  <div class="text-subtitle1 text-weight-medium q-mb-md">
+                    Chi tiết chuyển kho
+                  </div>
+                  <div class="row items-center q-mb-sm">
+                    <q-avatar
+                      size="36px"
+                      :style="transferPayload.color_hex
+                        ? { backgroundColor: transferPayload.color_hex }
+                        : { backgroundColor: '#ccc' }"
+                      class="q-mr-md"
+                    >
+                      <span class="text-caption text-weight-bold text-white">
+                        {{ transferPayload.tex_number }}
+                      </span>
+                    </q-avatar>
+                    <div>
+                      <div class="text-body1 text-weight-medium">
+                        {{ transferPayload.supplier_name }} - TEX {{ transferPayload.tex_number }} - {{ transferPayload.color_name }}
+                      </div>
+                      <div class="text-caption text-grey-7">
+                        {{ transferPayload.quantity.toLocaleString() }} cuộn sẽ được chuyển
+                      </div>
+                    </div>
+                  </div>
+                  <q-separator class="q-my-sm" />
+                  <div class="row q-col-gutter-md">
+                    <div class="col-6 col-md-3">
+                      <div class="text-caption text-grey-7">
+                        Cuộn khả dụng
+                      </div>
+                      <div class="text-body1 text-positive text-weight-medium">
+                        {{ Math.min(transferPayload.quantity, transferPayload.transferable_count).toLocaleString() }}
+                      </div>
+                    </div>
+                    <div
+                      v-if="transferPayload.include_reserved"
+                      class="col-6 col-md-3"
+                    >
+                      <div class="text-caption text-grey-7">
+                        Cuộn từ đơn hàng
+                      </div>
+                      <div class="text-body1 text-warning text-weight-medium">
+                        {{ (transferPayload.quantity - transferPayload.transferable_count).toLocaleString() }}
+                      </div>
+                    </div>
+                  </div>
+                </q-card-section>
               </q-card>
             </div>
 
@@ -557,6 +610,12 @@ const transferPayload = ref<{
   color_id: number
   quantity: number
   include_reserved: boolean
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  color_hex: string | null
+  transferable_count: number
+  reserved_count: number
 } | null>(null)
 
 const formData = ref({
