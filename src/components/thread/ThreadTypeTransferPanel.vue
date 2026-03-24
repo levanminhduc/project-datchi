@@ -42,20 +42,35 @@
     </q-select>
 
     <template v-if="selectedItem">
-      <q-card flat bordered class="q-mt-md">
+      <q-card
+        flat
+        bordered
+        class="q-mt-md"
+      >
         <q-card-section>
           <div class="row q-col-gutter-md">
             <div class="col-6">
-              <div class="text-caption text-grey-7">Khả dụng</div>
-              <div class="text-h6 text-positive">{{ selectedItem.transferable_count }}</div>
+              <div class="text-caption text-grey-7">
+                Khả dụng
+              </div>
+              <div class="text-h6 text-positive">
+                {{ selectedItem.transferable_count }}
+              </div>
             </div>
             <div class="col-6">
-              <div class="text-caption text-grey-7">Đã đặt tuần</div>
-              <div class="text-h6 text-warning">{{ selectedItem.reserved_count }}</div>
+              <div class="text-caption text-grey-7">
+                Đã đặt tuần
+              </div>
+              <div class="text-h6 text-warning">
+                {{ selectedItem.reserved_count }}
+              </div>
             </div>
           </div>
 
-          <div v-if="selectedItem.reserved_by_week.length > 0" class="q-mt-sm">
+          <div
+            v-if="selectedItem.reserved_by_week.length > 0"
+            class="q-mt-sm"
+          >
             <q-chip
               v-for="w in selectedItem.reserved_by_week"
               :key="w.week_id"
@@ -91,7 +106,9 @@
     <q-dialog v-model="showReservedDialog">
       <q-card style="width: 100%; max-width: 420px">
         <q-card-section>
-          <div class="text-h6">Lấy cuộn từ đơn hàng?</div>
+          <div class="text-h6">
+            Lấy cuộn từ đơn hàng?
+          </div>
         </q-card-section>
         <q-card-section class="q-pt-none">
           <p>
@@ -99,7 +116,9 @@
             Lấy thêm <strong>{{ reservedNeeded }}</strong> cuộn từ đơn hàng?
           </p>
           <div v-if="affectedWeeks.length > 0">
-            <p class="text-caption text-grey-7 q-mb-xs">Tuần bị ảnh hưởng:</p>
+            <p class="text-caption text-grey-7 q-mb-xs">
+              Tuần bị ảnh hưởng:
+            </p>
             <q-chip
               v-for="w in affectedWeeks"
               :key="w.week_id"
@@ -113,8 +132,17 @@
           </div>
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn flat label="Hủy" color="grey" @click="showReservedDialog = false" />
-          <q-btn label="Đồng ý" color="primary" @click="confirmWithReserved" />
+          <q-btn
+            flat
+            label="Hủy"
+            color="grey"
+            @click="showReservedDialog = false"
+          />
+          <q-btn
+            label="Đồng ý"
+            color="primary"
+            @click="confirmWithReserved"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>

@@ -134,6 +134,7 @@ declare module 'vue' {
     ThreadSummaryTable: typeof import('./components/thread/weekly-order/ThreadSummaryTable.vue')['default']
     ThreadTypeFormDialog: typeof import('./components/thread/ThreadTypeFormDialog.vue')['default']
     ThreadTypeSuppliersDialog: typeof import('./components/thread/ThreadTypeSuppliersDialog.vue')['default']
+    ThreadTypeTransferPanel: typeof import('./components/thread/ThreadTypeTransferPanel.vue')['default']
     Timeline: typeof import('./components/ui/scroll/Timeline.vue')['default']
     TimelineEntry: typeof import('./components/ui/scroll/TimelineEntry.vue')['default']
     TimePicker: typeof import('./components/ui/pickers/TimePicker.vue')['default']
