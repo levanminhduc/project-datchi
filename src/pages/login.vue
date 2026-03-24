@@ -24,14 +24,22 @@
         class="q-gutter-md"
         @submit="handleLogin"
       >
-        <AppInput v-model="form.employeeId" name="username" id="username" label="Mã Nhân Viên"
+        <AppInput
+          id="username"
+          v-model="form.employeeId"
+          name="username"
+          label="Mã Nhân Viên"
           prepend-icon="badge"
           :rules="[required]"
           autocomplete="username"
           hint="Ví dụ: NV001"
         />
 
-        <AppInput v-model="form.password" name="password" id="password" label="Mật khẩu"
+        <AppInput
+          id="password"
+          v-model="form.password"
+          name="password"
+          label="Mật khẩu"
           :type="showPassword ? 'text' : 'password'"
           prepend-icon="lock"
           :rules="[required]"
@@ -55,7 +63,15 @@
           <!-- Note: Forgot password requires admin reset for employee-based auth -->
         </div>
 
-        <div><AppButton type="submit" label="Đăng nhập" color="primary" :loading="isLoading" block /></div>
+        <div>
+          <AppButton
+            type="submit"
+            label="Đăng nhập"
+            color="primary"
+            :loading="isLoading"
+            block
+          />
+        </div>
       </q-form>
 
       <!-- Error Display -->

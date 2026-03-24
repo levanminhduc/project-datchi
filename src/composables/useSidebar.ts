@@ -15,7 +15,7 @@ const navItems: NavItem[] = [
   },
   {
     label: 'Kỹ Thuật',
-    icon: 'o_engineering',
+    icon: 'o_design_services',
     to: '/ky-thuat#top',
     children: [
       { label: 'Mã Hàng', icon: 'o_checkroom', to: '/thread/styles' }

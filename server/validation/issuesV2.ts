@@ -134,6 +134,42 @@ export const ReturnIssueV2Schema = z
 export type ReturnLineDTO = z.infer<typeof ReturnLineSchema>
 export type ReturnIssueV2DTO = z.infer<typeof ReturnIssueV2Schema>
 
+export const ReturnGroupedLineSchema = z.object({
+  thread_type_id: z.number().int().positive('thread_type_id phai la so nguyen duong'),
+  returned_full: z.number().int().min(0, 'So cuon nguyen tra phai >= 0').default(0),
+  returned_partial: z.number().int().min(0, 'So cuon le tra phai >= 0').default(0),
+})
+
+export const ReturnGroupedSchema = z
+  .object({
+    po_id: z.number().int().positive('po_id phai la so nguyen duong'),
+    style_id: z.number().int().positive('style_id phai la so nguyen duong'),
+    style_color_id: z.number().int().positive().nullable().optional(),
+    color_id: z.number().int().positive().nullable().optional(),
+    idempotency_key: z.string().uuid('idempotency_key phai la UUID'),
+    lines: z.array(ReturnGroupedLineSchema).min(1, 'Phai co it nhat 1 dong tra'),
+  })
+  .refine(
+    (data) => data.style_color_id || data.color_id,
+    { message: 'Phai co style_color_id hoac color_id', path: ['color_id'] }
+  )
+  .refine(
+    (data) => {
+      const ids = data.lines.map((l) => l.thread_type_id)
+      return new Set(ids).size === ids.length
+    },
+    { message: 'Khong duoc co thread_type_id trung lap', path: ['lines'] }
+  )
+
+export type ReturnGroupedDTO = z.infer<typeof ReturnGroupedSchema>
+
+export const ReturnGroupLogsQuerySchema = z.object({
+  po_id: z.coerce.number().int().positive(),
+  style_id: z.coerce.number().int().positive(),
+  style_color_id: z.coerce.number().int().positive().optional(),
+  color_id: z.coerce.number().int().positive().optional(),
+})
+
 // ============================================================================
 // Confirm Issue
 // ============================================================================

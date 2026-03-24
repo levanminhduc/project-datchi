@@ -175,6 +175,67 @@ export interface ReturnIssueV2DTO {
   lines: ReturnLineDTO[]
 }
 
+export interface ReturnGroupThread {
+  thread_type_id: number
+  thread_code: string
+  thread_name: string
+  total_issued_full: number
+  total_issued_partial: number
+  total_returned_full: number
+  total_returned_partial: number
+  outstanding_full: number
+  outstanding_partial: number
+}
+
+export interface ReturnGroup {
+  group_key: string
+  po_id: number
+  po_number: string
+  style_id: number
+  style_code: string
+  style_color_id: number | null
+  color_id: number | null
+  color_name: string
+  issue_count: number
+  threads: ReturnGroupThread[]
+}
+
+export interface ReturnGroupedDTO {
+  po_id: number
+  style_id: number
+  style_color_id: number | null
+  color_id: number | null
+  idempotency_key: string
+  lines: {
+    thread_type_id: number
+    returned_full: number
+    returned_partial: number
+  }[]
+}
+
+export interface ReturnGroupedResponse {
+  total_returned_full: number
+  total_returned_partial: number
+  distribution: {
+    issue_code: string
+    thread_type_id: number
+    returned_full: number
+    returned_partial: number
+  }[]
+}
+
+export interface GroupedReturnLog {
+  id: number
+  line_id: number
+  issue_code: string
+  thread_code: string
+  thread_name: string
+  returned_full: number
+  returned_partial: number
+  created_at: string
+  created_by: string | null
+}
+
 // ============================================================================
 // Form Data Types
 // ============================================================================
