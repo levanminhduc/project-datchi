@@ -128,9 +128,9 @@ onMounted(() => {
 <template>
   <q-page padding>
     <div class="row items-center justify-between q-mb-md">
-      <h5 class="q-ma-none">
+      <h1 class="text-h5 q-my-none text-weight-bold text-primary">
         Nhập Lại Chỉ
-      </h5>
+      </h1>
     </div>
 
     <q-card
