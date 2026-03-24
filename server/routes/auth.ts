@@ -187,22 +187,45 @@ auth.post('/reset-password/:id', requireAdmin, async (c) => {
   try {
     const { data: employee } = await supabaseAdmin
       .from('employees')
-      .select('auth_user_id')
+      .select('auth_user_id, employee_id')
       .eq('id', targetId)
       .single()
 
-    if (!employee?.auth_user_id) {
-      return c.json({ error: true, message: 'Nhân viên không tồn tại hoặc chưa có tài khoản' }, 404)
+    if (!employee) {
+      return c.json({ error: true, message: 'Nhân viên không tồn tại' }, 404)
     }
 
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-      employee.auth_user_id,
-      { password: newPassword }
-    )
+    let authUserId = employee.auth_user_id
 
-    if (updateError) {
-      console.error('Reset password error:', updateError)
-      return c.json({ error: true, message: 'Không thể đặt lại mật khẩu' }, 500)
+    if (!authUserId) {
+      const email = `${employee.employee_id.toLowerCase()}@internal.datchi.local`
+      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password: newPassword,
+        email_confirm: true,
+      })
+
+      if (authError) {
+        console.error('Auto-create auth user error:', authError)
+        return c.json({ error: true, message: 'Không thể tạo tài khoản đăng nhập' }, 500)
+      }
+
+      authUserId = authUser.user.id
+
+      await supabaseAdmin
+        .from('employees')
+        .update({ auth_user_id: authUserId })
+        .eq('id', targetId)
+    } else {
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+        authUserId,
+        { password: newPassword }
+      )
+
+      if (updateError) {
+        console.error('Reset password error:', updateError)
+        return c.json({ error: true, message: 'Không thể đặt lại mật khẩu' }, 500)
+      }
     }
 
     await supabaseAdmin
