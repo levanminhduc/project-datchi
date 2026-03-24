@@ -116,6 +116,10 @@ watch(selectedGroupKey, (key) => {
   handleReset()
 })
 
+watch(selectedGroup, (group) => {
+  if (!group) selectedGroupKey.value = null
+})
+
 onMounted(() => {
   loadReturnGroups()
 })

@@ -111,6 +111,8 @@ export function useReturnV2() {
       await weeklyOrderService.batchComplete(itemIds)
       snackbar.success('Đã đánh dấu hoàn tất xuất chỉ')
       clearCompletionInfo()
+      await loadReturnGroups()
+      selectedGroup.value = null
       return true
     } catch (err) {
       snackbar.error(getErrorMessage(err, 'Không thể đánh dấu hoàn tất'))
@@ -166,13 +168,15 @@ export function useReturnV2() {
       )
       const weeks = result.weeks
       if (weeks.length === 0) {
-        snackbar.warning('Không tìm thấy tuần CONFIRMED phù hợp')
+        snackbar.warning('Không tìm thấy tuần phù hợp để đánh dấu hoàn tất')
         return
       }
       const firstWeek = weeks[0]
       if (weeks.length === 1 && firstWeek) {
         await weeklyOrderService.batchComplete(firstWeek.item_ids)
         snackbar.success(`Đã đánh dấu hoàn tất xuất chỉ cho tuần ${firstWeek.week_name}`)
+        await loadReturnGroups()
+        selectedGroup.value = null
         return
       }
       completionInfo.value = { auto_completed: [], pending_selection: weeks }

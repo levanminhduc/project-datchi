@@ -212,20 +212,53 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
       }
     }
 
-    const groups = Array.from(groupMap.entries()).filter(([, g]) =>
+    const groupEntries = Array.from(groupMap.entries()).filter(([, g]) =>
       g.thread_types.some((t) => t.outstanding_full > 0 || t.outstanding_partial > 0)
-    ).map(([key, g]) => ({
-      group_key: key,
-      po_id: g.po_id,
-      po_number: g.po_number || '',
-      style_id: g.style_id,
-      style_code: g.style_code || '',
-      style_color_id: g.style_color_id,
-      color_id: g.color_id,
-      color_name: g.color_name || '',
-      issue_count: g.issue_ids.size,
-      threads: g.thread_types.filter((t) => t.outstanding_full > 0 || t.outstanding_partial > 0),
-    }))
+    )
+
+    const completedGroupKeys = new Set<string>()
+    if (groupEntries.length > 0) {
+      const allPoIds = [...new Set(groupEntries.map(([, g]) => g.po_id))]
+      const allStyleIds = [...new Set(groupEntries.map(([, g]) => g.style_id))]
+
+      const { data: completedItems } = await supabase
+        .from('thread_order_item_completions')
+        .select('item_id, thread_order_items!inner(po_id, style_id, style_color_id)')
+        .in('thread_order_items.po_id', allPoIds)
+        .in('thread_order_items.style_id', allStyleIds)
+        .limit(500)
+
+      if (completedItems && completedItems.length > 0) {
+        const completedPSC = new Set(
+          completedItems.map((c: any) => {
+            const toi = c.thread_order_items
+            return `${toi.po_id}_${toi.style_id}_${toi.style_color_id || 'null'}`
+          })
+        )
+
+        for (const [key, g] of groupEntries) {
+          const pscKey = `${g.po_id}_${g.style_id}_${g.style_color_id || 'null'}`
+          if (completedPSC.has(pscKey)) {
+            completedGroupKeys.add(key)
+          }
+        }
+      }
+    }
+
+    const groups = groupEntries
+      .filter(([key]) => !completedGroupKeys.has(key))
+      .map(([key, g]) => ({
+        group_key: key,
+        po_id: g.po_id,
+        po_number: g.po_number || '',
+        style_id: g.style_id,
+        style_code: g.style_code || '',
+        style_color_id: g.style_color_id,
+        color_id: g.color_id,
+        color_name: g.color_name || '',
+        issue_count: g.issue_ids.size,
+        threads: g.thread_types.filter((t) => t.outstanding_full > 0 || t.outstanding_partial > 0),
+      }))
 
     return c.json({ data: groups, error: null })
   } catch (err) {
