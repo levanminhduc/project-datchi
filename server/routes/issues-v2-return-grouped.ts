@@ -16,6 +16,41 @@ import {
 } from './issuesV2'
 import type { ThreadApiResponse } from '../types/thread'
 
+interface MatchingWeekItem {
+  item_id: number
+  week_id: number
+  week_name: string
+}
+
+async function findMatchingWeekItems(
+  poId: number,
+  styleId: number,
+  styleColorId: number | null,
+): Promise<MatchingWeekItem[]> {
+  let query = supabase
+    .from('thread_order_items')
+    .select('id, week_id, thread_order_weeks!inner(id, week_name, status)')
+    .eq('po_id', poId)
+    .eq('style_id', styleId)
+    .eq('thread_order_weeks.status', 'CONFIRMED')
+
+  if (styleColorId) {
+    query = query.eq('style_color_id', styleColorId)
+  } else {
+    query = query.is('style_color_id', null)
+  }
+
+  const { data, error } = await query.limit(100)
+
+  if (error || !data) return []
+
+  return data.map((row: any) => ({
+    item_id: row.id,
+    week_id: row.week_id,
+    week_name: (row.thread_order_weeks as any)?.week_name || '',
+  }))
+}
+
 const returnGroupedRoutes = new Hono()
 
 returnGroupedRoutes.get('/return-groups', async (c) => {
@@ -397,6 +432,47 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
       }
     }
 
+    let completionInfo: { auto_completed: Array<{ week_id: number; week_name: string; item_ids: number[] }>; pending_selection: Array<{ week_id: number; week_name: string; item_ids: number[] }> } = {
+      auto_completed: [],
+      pending_selection: [],
+    }
+
+    try {
+      const matchingItems = await findMatchingWeekItems(po_id, style_id, style_color_id || null)
+
+      if (matchingItems.length > 0) {
+        const weekMap = new Map<number, { week_name: string; item_ids: number[] }>()
+        for (const item of matchingItems) {
+          if (!weekMap.has(item.week_id)) {
+            weekMap.set(item.week_id, { week_name: item.week_name, item_ids: [] })
+          }
+          weekMap.get(item.week_id)!.item_ids.push(item.item_id)
+        }
+
+        const weeks = Array.from(weekMap.entries()).map(([weekId, info]) => ({
+          week_id: weekId,
+          week_name: info.week_name,
+          item_ids: info.item_ids,
+        }))
+
+        if (weeks.length === 1) {
+          const week = weeks[0]
+          const upsertRows = week.item_ids.map((itemId) => ({
+            item_id: itemId,
+            completed_by: performedBy || 'system',
+          }))
+          await supabase
+            .from('thread_order_item_completions')
+            .upsert(upsertRows, { onConflict: 'item_id' })
+          completionInfo.auto_completed = [week]
+        } else {
+          completionInfo.pending_selection = weeks
+        }
+      }
+    } catch (completionError) {
+      console.error('[return-grouped] Auto-completion failed (non-blocking):', completionError)
+    }
+
     const resultPayload = {
       succeeded_line_ids: succeededLineIds,
       distribution,
@@ -413,7 +489,7 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
       .eq('idempotency_key', idempotency_key)
       .eq('operation_type', 'RETURN_GROUPED')
 
-    return c.json({ data: resultPayload, error: null, message: 'Tra hang theo nhom thanh cong' })
+    return c.json({ data: { ...resultPayload, completion_info: completionInfo }, error: null, message: 'Tra hang theo nhom thanh cong' })
   } catch (err) {
     return c.json<ThreadApiResponse<null>>({ data: null, error: getErrorMessage(err) }, 500)
   }
