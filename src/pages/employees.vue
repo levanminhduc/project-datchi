@@ -427,9 +427,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch, defineAsyncComponent } from 'vue'
 import { type QTableColumn } from 'quasar'
-import draggable from 'vuedraggable'
+const draggable = defineAsyncComponent(() => import('vuedraggable'))
 import { useEmployees, useSnackbar } from '@/composables'
 import { useAuth } from '@/composables/useAuth'
 import { employeeService } from '@/services/employeeService'

@@ -12,8 +12,6 @@ export { default as StockLevelIndicator } from './StockLevelIndicator.vue'
 // ============================================================
 // SELECTORS
 // ============================================================
-export { default as ColorSelector } from './ColorSelector.vue'
-export { default as SupplierSelector } from './SupplierSelector.vue'
 export { default as LotSelector } from './LotSelector.vue'
 
 // ============================================================

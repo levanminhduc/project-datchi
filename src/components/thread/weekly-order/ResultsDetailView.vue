@@ -253,13 +253,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, defineAsyncComponent } from 'vue'
 import type { QTableColumn } from 'quasar'
 import type { CalculationResult, CalculationItem, ColorCalculationResult } from '@/types/thread'
 import type { StyleOrderEntry } from '@/types/thread/weeklyOrder'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import { useAuth } from '@/composables/useAuth'
-import draggable from 'vuedraggable'
+const draggable = defineAsyncComponent(() => import('vuedraggable'))
 
 const props = defineProps<{
   results: CalculationResult[]
