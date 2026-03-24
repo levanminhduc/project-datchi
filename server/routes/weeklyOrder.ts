@@ -1216,6 +1216,55 @@ weeklyOrder.get('/assignment-summary', requirePermission('thread.allocations.vie
 })
 
 /**
+ * POST /api/weekly-orders/completion-lookup - Lookup matching week items for completion
+ */
+weeklyOrder.post('/completion-lookup', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const { po_id, style_id, style_color_id } = await c.req.json()
+
+    if (!po_id || !style_id) {
+      return c.json({ data: null, error: 'po_id và style_id là bắt buộc' }, 400)
+    }
+
+    let query = supabase
+      .from('thread_order_items')
+      .select('id, week_id, thread_order_weeks!inner(id, week_name, status)')
+      .eq('po_id', po_id)
+      .eq('style_id', style_id)
+      .eq('thread_order_weeks.status', 'CONFIRMED')
+
+    if (style_color_id) {
+      query = query.eq('style_color_id', style_color_id)
+    } else {
+      query = query.is('style_color_id', null)
+    }
+
+    const { data, error } = await query.limit(100)
+    if (error) throw error
+
+    const weekMap = new Map<number, { week_name: string; item_ids: number[] }>()
+    for (const row of data || []) {
+      const weekName = (row.thread_order_weeks as any)?.week_name || ''
+      if (!weekMap.has(row.week_id)) {
+        weekMap.set(row.week_id, { week_name: weekName, item_ids: [] })
+      }
+      weekMap.get(row.week_id)!.item_ids.push(row.id)
+    }
+
+    const weeks = Array.from(weekMap.entries()).map(([weekId, info]) => ({
+      week_id: weekId,
+      week_name: info.week_name,
+      item_ids: info.item_ids,
+    }))
+
+    return c.json({ data: { weeks }, error: null })
+  } catch (err) {
+    console.error('Error looking up completion weeks:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * POST /api/weekly-orders/batch-complete - Batch mark items as complete
  */
 weeklyOrder.post('/batch-complete', requirePermission('thread.allocations.manage'), async (c) => {
