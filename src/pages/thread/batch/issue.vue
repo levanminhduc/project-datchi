@@ -10,7 +10,7 @@
         @click="handleBack"
       />
       <div class="q-ml-md">
-        <h1 class="text-h5 q-my-none text-weight-bold">
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Xuất Kho Hàng Loạt
         </h1>
         <div class="text-grey-6">

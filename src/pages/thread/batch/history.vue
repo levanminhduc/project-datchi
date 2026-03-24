@@ -10,7 +10,7 @@
         @click="$router.push('/kho')"
       />
       <div class="q-ml-md">
-        <h1 class="text-h5 q-my-none text-weight-bold">
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Lịch Sử Thao Tác
         </h1>
         <div class="text-grey-6">
