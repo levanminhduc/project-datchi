@@ -2,9 +2,9 @@
   <q-page padding>
     <div class="row items-center q-mb-md">
       <div class="col">
-        <h5 class="q-ma-none">
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Quản lý ngày giao hàng
-        </h5>
+        </h1>
         <p class="text-grey-7 q-mb-none">
           Theo dõi tình trạng giao hàng của NCC theo tuần đặt chỉ
         </p>
