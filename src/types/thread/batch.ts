@@ -74,14 +74,14 @@ export interface BatchReceiveRequest {
  * Batch transfer request
  */
 export interface BatchTransferRequest {
-  // Selection - either specific cones or entire lot
   cone_ids?: number[]
   lot_id?: number
-
-  // Warehouses
+  thread_type_id?: number
+  color_id?: number
+  quantity?: number
+  include_reserved?: boolean
   from_warehouse_id: number
   to_warehouse_id: number
-
   notes?: string
 }
 
@@ -120,6 +120,22 @@ export interface BatchOperationResponse {
   cone_count: number
   lot_id?: number
   message: string
+  transferable_moved?: number
+  reserved_moved?: number
+}
+
+export interface TransferableSummaryItem {
+  thread_type_id: number
+  thread_code: string
+  thread_name: string
+  supplier_name: string
+  tex_number: string
+  color_id: number
+  color_name: string
+  color_hex: string | null
+  transferable_count: number
+  reserved_count: number
+  reserved_by_week: { week_id: number; week_name: string; count: number }[]
 }
 
 /**
