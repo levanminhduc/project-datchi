@@ -12,15 +12,22 @@ const {
   selectedGroup,
   returnLogs,
   isLoading,
+  completionInfo,
   loadReturnGroups,
   selectGroup,
   submitGroupedReturn,
   validateReturnQuantities,
+  confirmBatchCompletion,
+  clearCompletionInfo,
 } = useReturnV2()
 
 const selectedGroupKey = ref<string | null>(null)
 const returnInputs = ref<Map<number, { full: number; partial: number }>>(new Map())
 const validationErrors = ref<string[]>([])
+const showWeekDialog = ref(false)
+const selectedWeekIds = ref<number[]>([])
+
+const pendingWeeks = computed(() => completionInfo.value?.pending_selection || [])
 
 const groupOptions = computed(() =>
   returnGroups.value.map((g) => ({
@@ -68,8 +75,29 @@ async function handleSubmit() {
   }
 
   validationErrors.value = []
-  await submitGroupedReturn(selectedGroup.value, lines)
+  const result = await submitGroupedReturn(selectedGroup.value, lines)
   handleReset()
+
+  if (result?.completion_info?.pending_selection?.length) {
+    selectedWeekIds.value = result.completion_info.pending_selection.map((w) => w.week_id)
+    showWeekDialog.value = true
+  }
+}
+
+async function handleConfirmWeeks() {
+  const itemIds: number[] = []
+  for (const week of pendingWeeks.value) {
+    if (selectedWeekIds.value.includes(week.week_id)) {
+      itemIds.push(...week.item_ids)
+    }
+  }
+  await confirmBatchCompletion(itemIds)
+  showWeekDialog.value = false
+}
+
+function handleDismissDialog() {
+  showWeekDialog.value = false
+  clearCompletionInfo()
 }
 
 watch(selectedGroupKey, (key) => {
@@ -296,5 +324,52 @@ onMounted(() => {
         </div>
       </q-card-section>
     </q-card>
+
+    <q-dialog
+      v-model="showWeekDialog"
+      persistent
+    >
+      <q-card style="min-width: 350px">
+        <q-card-section>
+          <div class="text-h6">
+            Đánh dấu hoàn tất xuất chỉ
+          </div>
+          <div class="text-body2 text-grey q-mt-sm">
+            PO-Style-Màu này có nhiều tuần. Chọn tuần muốn đánh dấu hoàn tất:
+          </div>
+        </q-card-section>
+
+        <q-card-section class="q-pt-none">
+          <div
+            v-for="week in pendingWeeks"
+            :key="week.week_id"
+            class="q-mb-sm"
+          >
+            <q-checkbox
+              :model-value="selectedWeekIds.includes(week.week_id)"
+              :label="week.week_name"
+              @update:model-value="(val: boolean | null) => {
+                if (val) selectedWeekIds.push(week.week_id)
+                else selectedWeekIds.splice(selectedWeekIds.indexOf(week.week_id), 1)
+              }"
+            />
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <AppButton
+            variant="flat"
+            label="Bỏ qua"
+            @click="handleDismissDialog"
+          />
+          <AppButton
+            label="Xác nhận"
+            color="primary"
+            :disable="selectedWeekIds.length === 0"
+            @click="handleConfirmWeeks"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
