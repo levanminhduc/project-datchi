@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { issueV2Service } from '@/services/issueV2Service'
+import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
@@ -8,6 +9,7 @@ import type {
   ReturnGroupThread,
   ReturnGroupedResponse,
   GroupedReturnLog,
+  CompletionInfo,
 } from '@/types/thread/issueV2'
 
 export function useReturnV2() {
@@ -15,6 +17,7 @@ export function useReturnV2() {
   const selectedGroup = ref<ReturnGroup | null>(null)
   const returnLogs = ref<GroupedReturnLog[]>([])
   const error = ref<string | null>(null)
+  const completionInfo = ref<CompletionInfo | null>(null)
 
   const snackbar = useSnackbar()
   const loading = useLoading()
@@ -24,6 +27,10 @@ export function useReturnV2() {
 
   const clearError = () => {
     error.value = null
+  }
+
+  const clearCompletionInfo = () => {
+    completionInfo.value = null
   }
 
   const loadReturnGroups = async (): Promise<void> => {
@@ -41,6 +48,7 @@ export function useReturnV2() {
   const selectGroup = (group: ReturnGroup | null) => {
     selectedGroup.value = group
     returnLogs.value = []
+    clearCompletionInfo()
     if (group) {
       loadGroupedReturnLogs(group)
     }
@@ -51,6 +59,7 @@ export function useReturnV2() {
     lines: { thread_type_id: number; returned_full: number; returned_partial: number }[]
   ): Promise<ReturnGroupedResponse | null> => {
     clearError()
+    clearCompletionInfo()
     const linesToSubmit = lines.filter((l) => l.returned_full > 0 || l.returned_partial > 0)
     if (linesToSubmit.length === 0) {
       snackbar.warning('Vui lòng nhập số lượng trả')
@@ -68,7 +77,19 @@ export function useReturnV2() {
           lines: linesToSubmit,
         })
       )
-      snackbar.success('Đã nhập lại thành công')
+
+      if (result.completion_info) {
+        completionInfo.value = result.completion_info
+      }
+
+      const autoCompleted = result.completion_info?.auto_completed ?? []
+      const firstWeek = autoCompleted[0]
+      if (firstWeek) {
+        snackbar.success(`Đã nhập lại và đánh dấu hoàn tất xuất chỉ cho tuần ${firstWeek.week_name}`)
+      } else {
+        snackbar.success('Đã nhập lại thành công')
+      }
+
       await loadReturnGroups()
       const updatedGroup = returnGroups.value.find((g) => g.group_key === group.group_key)
       selectedGroup.value = updatedGroup || null
@@ -81,6 +102,19 @@ export function useReturnV2() {
       error.value = msg
       snackbar.error(msg)
       return null
+    }
+  }
+
+  const confirmBatchCompletion = async (itemIds: number[]): Promise<boolean> => {
+    if (itemIds.length === 0) return false
+    try {
+      await weeklyOrderService.batchComplete(itemIds)
+      snackbar.success('Đã đánh dấu hoàn tất xuất chỉ')
+      clearCompletionInfo()
+      return true
+    } catch (err) {
+      snackbar.error(getErrorMessage(err, 'Không thể đánh dấu hoàn tất'))
+      return false
     }
   }
 
@@ -129,11 +163,14 @@ export function useReturnV2() {
     error,
     isLoading,
     hasGroups,
+    completionInfo,
     loadReturnGroups,
     selectGroup,
     submitGroupedReturn,
     loadGroupedReturnLogs,
     validateReturnQuantities,
+    confirmBatchCompletion,
+    clearCompletionInfo,
     clearError,
   }
 }
