@@ -32,7 +32,7 @@ async function findMatchingWeekItems(
     .select('id, week_id, thread_order_weeks!inner(id, week_name, status)')
     .eq('po_id', poId)
     .eq('style_id', styleId)
-    .eq('thread_order_weeks.status', 'CONFIRMED')
+    .in('thread_order_weeks.status', ['CONFIRMED', 'COMPLETED'])
 
   if (styleColorId) {
     query = query.eq('style_color_id', styleColorId)

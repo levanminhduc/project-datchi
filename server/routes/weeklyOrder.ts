@@ -1221,6 +1221,7 @@ weeklyOrder.get('/assignment-summary', requirePermission('thread.allocations.vie
 weeklyOrder.post('/completion-lookup', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const { po_id, style_id, style_color_id } = await c.req.json()
+    console.log('[completion-lookup] Input:', { po_id, style_id, style_color_id })
 
     if (!po_id || !style_id) {
       return c.json({ data: null, error: 'po_id và style_id là bắt buộc' }, 400)
@@ -1231,7 +1232,7 @@ weeklyOrder.post('/completion-lookup', requirePermission('thread.allocations.man
       .select('id, week_id, thread_order_weeks!inner(id, week_name, status)')
       .eq('po_id', po_id)
       .eq('style_id', style_id)
-      .eq('thread_order_weeks.status', 'CONFIRMED')
+      .in('thread_order_weeks.status', ['CONFIRMED', 'COMPLETED'])
 
     if (style_color_id) {
       query = query.eq('style_color_id', style_color_id)
@@ -1240,6 +1241,8 @@ weeklyOrder.post('/completion-lookup', requirePermission('thread.allocations.man
     }
 
     const { data, error } = await query.limit(100)
+    console.log('[completion-lookup] Query result:', { dataCount: data?.length, error, style_color_id_filter: style_color_id ? 'eq' : 'is_null' })
+
     if (error) throw error
 
     const weekMap = new Map<number, { week_name: string; item_ids: number[] }>()
@@ -1283,7 +1286,7 @@ weeklyOrder.post('/batch-complete', requirePermission('thread.allocations.manage
       .from('thread_order_items')
       .select('id, week_id, thread_order_weeks!inner(status)')
       .in('id', itemIds)
-      .eq('thread_order_weeks.status', 'CONFIRMED')
+      .in('thread_order_weeks.status', ['CONFIRMED', 'COMPLETED'])
 
     if (queryError) throw queryError
 
