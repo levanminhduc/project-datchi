@@ -87,9 +87,9 @@ onMounted(() => {
 <template>
   <q-page padding>
     <div class="row items-center justify-between q-mb-md">
-      <h5 class="q-ma-none">
+      <h1 class="text-h5 q-my-none text-weight-bold text-primary">
         Đối Chiếu Tiêu Hao
-      </h5>
+      </h1>
       <div class="row q-gutter-sm">
         <AppButton
           label="Làm mới"
