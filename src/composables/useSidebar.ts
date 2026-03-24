@@ -41,6 +41,7 @@ const navItems: NavItem[] = [
       { label: 'Tồn Kho', icon: 'o_inventory', to: '/thread/inventory' },
       { label: 'Trả Kho', icon: 'o_assignment_return', to: '/thread/issues/v2/return' },
       { label: 'Mượn Chỉ', icon: 'o_swap_horiz', to: '/thread/loans' },
+      { label: 'Chuyển Kho Theo Loại', icon: 'o_compare_arrows', to: '/thread/batch/transfer' },
     ]
   },
   { label: 'Kho', icon: 'o_inventory_2', to: '/kho#top' },

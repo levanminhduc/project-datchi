@@ -14,6 +14,7 @@ const rootOnlySettingsKeys = new Set([
   'import_supplier_tex_mapping',
   'import_supplier_color_mapping',
   'import_po_items_mapping',
+  'issue_department_options',
 ])
 
 /**

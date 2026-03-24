@@ -127,6 +127,101 @@
       </q-card-section>
     </q-card>
 
+    <!-- Department Settings for Issue (ROOT only) -->
+    <q-card
+      v-if="isRoot && hasLoaded"
+      flat
+      bordered
+      class="settings-card q-mt-lg"
+    >
+      <q-card-section>
+        <div class="text-subtitle1 text-weight-medium q-mb-md">
+          Cài đặt Bộ Phận — Phiếu Xuất
+        </div>
+
+        <div
+          v-if="isLoadingDepts"
+          class="q-py-md"
+        >
+          <q-spinner-dots
+            size="30px"
+            color="primary"
+          />
+        </div>
+
+        <template v-else>
+          <div class="text-body2 q-mb-sm text-grey-8">
+            Bộ phận từ nhân viên (tick = hiển thị):
+          </div>
+          <div class="q-gutter-sm q-mb-md">
+            <q-checkbox
+              v-for="item in deptCheckboxItems"
+              :key="item.name"
+              :model-value="item.checked"
+              :label="item.name"
+              dense
+              @update:model-value="toggleDept(item.name, $event as boolean)"
+            />
+          </div>
+
+          <q-separator class="q-my-md" />
+
+          <div class="text-body2 q-mb-sm text-grey-8">
+            Bộ phận bổ sung:
+          </div>
+          <div class="q-gutter-sm q-mb-md">
+            <q-chip
+              v-for="dept in deptConfig.custom"
+              :key="dept"
+              removable
+              color="primary"
+              text-color="white"
+              @remove="removeCustomDept(dept)"
+            >
+              {{ dept }}
+            </q-chip>
+            <span
+              v-if="!deptConfig.custom.length"
+              class="text-grey-5 text-caption"
+            >Chưa có</span>
+          </div>
+
+          <div class="row q-col-gutter-sm items-end">
+            <div class="col-12 col-md-4">
+              <AppInput
+                v-model="newCustomDept"
+                label="Thêm bộ phận"
+                dense
+                outlined
+                @keyup.enter="addCustomDept"
+              />
+            </div>
+            <div class="col-auto">
+              <AppButton
+                label="Thêm"
+                color="secondary"
+                icon="add"
+                :disable="!newCustomDept.trim()"
+                dense
+                @click="addCustomDept"
+              />
+            </div>
+          </div>
+        </template>
+
+        <div class="row q-mt-lg">
+          <AppButton
+            label="Lưu cấu hình bộ phận"
+            color="primary"
+            icon="save"
+            :loading="isSavingDeptConfig"
+            :disable="!hasDeptChanges"
+            @click="handleSaveDeptConfig"
+          />
+        </div>
+      </q-card-section>
+    </q-card>
+
     <!-- Import NCC-Tex Mapping (ROOT only) -->
     <q-card
       v-if="isRoot && hasLoaded"
@@ -518,12 +613,14 @@ import { usePermission } from '@/composables/usePermission'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { importService } from '@/services/importService'
 import { settingsService } from '@/services/settingsService'
+import { employeeService } from '@/services/employeeService'
 
 const PARTIAL_CONE_RATIO_KEY = 'partial_cone_ratio'
 const RESERVE_PRIORITY_KEY = 'reserve_priority'
 const TEX_MAPPING_KEY = 'import_supplier_tex_mapping'
 const COLOR_MAPPING_KEY = 'import_supplier_color_mapping'
 const PO_MAPPING_KEY = 'import_po_items_mapping'
+const ISSUE_DEPT_KEY = 'issue_department_options'
 
 const { isLoading, getSetting, updateSetting } = useSettings()
 const { isRoot } = usePermission()
@@ -543,6 +640,26 @@ const reservePriorityOptions = [
   { label: 'Ưu tiên cuộn lẻ', value: 'partial_first' },
   { label: 'Ưu tiên cuộn nguyên', value: 'full_first' },
 ]
+
+interface DeptConfig { hidden: string[]; custom: string[] }
+const employeeDepts = ref<string[]>([])
+const deptConfig = reactive<DeptConfig>({ hidden: [], custom: [] })
+const originalDeptConfig = ref<DeptConfig>({ hidden: [], custom: [] })
+const newCustomDept = ref('')
+const isSavingDeptConfig = ref(false)
+const isLoadingDepts = ref(false)
+
+const deptCheckboxItems = computed(() =>
+  employeeDepts.value.map(d => ({
+    name: d,
+    checked: !deptConfig.hidden.includes(d),
+  }))
+)
+
+const hasDeptChanges = computed(() =>
+  JSON.stringify({ hidden: deptConfig.hidden, custom: deptConfig.custom })
+  !== JSON.stringify(originalDeptConfig.value)
+)
 
 const hasReservePriorityChanges = computed(() => {
   return reservePriority.value !== originalReservePriority.value
@@ -644,6 +761,7 @@ async function loadSettings() {
 
   if (isRoot.value) {
     await loadImportMappings()
+    await loadDeptConfig()
   }
 
   hasLoaded.value = true
@@ -774,6 +892,64 @@ async function handleDownloadPOTemplate() {
     await importService.downloadPOTemplate()
   } catch (e) {
     snackbar.error('Không thể tải file mẫu PO')
+  }
+}
+
+async function loadDeptConfig() {
+  isLoadingDepts.value = true
+  try {
+    const [depts, setting] = await Promise.all([
+      employeeService.getDepartments(),
+      getSettingSilent(ISSUE_DEPT_KEY),
+    ])
+    employeeDepts.value = depts
+    const val = setting?.value as DeptConfig | null
+    if (val) {
+      deptConfig.hidden = [...(val.hidden || [])]
+      deptConfig.custom = [...(val.custom || [])]
+    }
+    originalDeptConfig.value = { hidden: [...deptConfig.hidden], custom: [...deptConfig.custom] }
+  } finally {
+    isLoadingDepts.value = false
+  }
+}
+
+function toggleDept(name: string, checked: boolean) {
+  if (checked) {
+    deptConfig.hidden = deptConfig.hidden.filter(d => d !== name)
+  } else {
+    if (!deptConfig.hidden.includes(name)) deptConfig.hidden.push(name)
+  }
+}
+
+function addCustomDept() {
+  const name = newCustomDept.value.trim()
+  if (!name) return
+  if (deptConfig.custom.includes(name) || employeeDepts.value.includes(name)) {
+    snackbar.error('Bộ phận đã tồn tại')
+    return
+  }
+  deptConfig.custom.push(name)
+  newCustomDept.value = ''
+}
+
+function removeCustomDept(name: string) {
+  deptConfig.custom = deptConfig.custom.filter(d => d !== name)
+}
+
+async function handleSaveDeptConfig() {
+  isSavingDeptConfig.value = true
+  try {
+    const result = await updateSetting(ISSUE_DEPT_KEY, {
+      hidden: [...deptConfig.hidden],
+      custom: [...deptConfig.custom],
+    })
+    if (result) {
+      originalDeptConfig.value = { hidden: [...deptConfig.hidden], custom: [...deptConfig.custom] }
+      snackbar.success('Đã lưu cấu hình bộ phận')
+    }
+  } finally {
+    isSavingDeptConfig.value = false
   }
 }
 
