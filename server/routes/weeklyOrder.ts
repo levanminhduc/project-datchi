@@ -1216,6 +1216,56 @@ weeklyOrder.get('/assignment-summary', requirePermission('thread.allocations.vie
 })
 
 /**
+ * POST /api/weekly-orders/batch-complete - Batch mark items as complete
+ */
+weeklyOrder.post('/batch-complete', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const body = await c.req.json()
+    const itemIds: number[] = body.item_ids
+
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      return c.json({ data: null, error: 'item_ids phải là mảng không rỗng' }, 400)
+    }
+    if (itemIds.length > 50) {
+      return c.json({ data: null, error: 'Tối đa 50 items mỗi lần' }, 400)
+    }
+
+    const { data: validItems, error: queryError } = await supabase
+      .from('thread_order_items')
+      .select('id, week_id, thread_order_weeks!inner(status)')
+      .in('id', itemIds)
+      .eq('thread_order_weeks.status', 'CONFIRMED')
+
+    if (queryError) throw queryError
+
+    const validIds = (validItems || []).map((i: any) => i.id)
+    const claims = c.get('jwtPayload' as never) as any
+    const performedBy = claims?.employee_code || claims?.email || 'system'
+
+    if (validIds.length > 0) {
+      const upsertRows = validIds.map((itemId: number) => ({
+        item_id: itemId,
+        completed_by: performedBy,
+      }))
+
+      const { error: upsertError } = await supabase
+        .from('thread_order_item_completions')
+        .upsert(upsertRows, { onConflict: 'item_id' })
+
+      if (upsertError) throw upsertError
+    }
+
+    return c.json({
+      data: { completed_count: validIds.length, skipped_count: itemIds.length - validIds.length },
+      error: null,
+    })
+  } catch (err) {
+    console.error('Error batch completing items:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * POST /api/weekly-orders/:id/items/:itemId/complete - Mark item as issuance complete
  */
 weeklyOrder.post('/:id/items/:itemId/complete', requirePermission('thread.allocations.manage'), async (c) => {
