@@ -25,12 +25,10 @@
     <WeekInfoCard
       ref="weekInfoCardRef"
       v-model="weekName"
-      :start-date="startDate"
-      :end-date="endDate"
+      :delivery-date="deliveryDate"
       :notes="notes"
       class="q-mb-md"
-      @update:start-date="startDate = $event"
-      @update:end-date="endDate = $event"
+      @update:delivery-date="deliveryDate = $event"
       @update:notes="notes = $event"
       @blur:week-name="handleWeekNameBlur"
     />
@@ -371,11 +369,17 @@ const {
   fetchAllPurchaseOrders,
 } = usePurchaseOrders()
 
+// Default delivery date = today + 7 days
+function getDefaultDeliveryDate(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 7)
+  return d.toISOString().slice(0, 10)
+}
+
 // Local state
 const weekInfoCardRef = ref<{ focusWeekName: () => void } | null>(null)
 const weekName = ref('')
-const startDate = ref('')
-const endDate = ref('')
+const deliveryDate = ref(getDefaultDeliveryDate())
 const notes = ref('')
 const selectedPOId = ref<number | null>(null)
 const loadingPOId = ref<number | null>(null)
@@ -523,8 +527,7 @@ const handleSave = async () => {
   if (selectedWeek.value) {
     await updateWeek(selectedWeek.value.id, {
       week_name: weekName.value,
-      start_date: startDate.value || undefined,
-      end_date: endDate.value || undefined,
+      start_date: deliveryDate.value || undefined,
       notes: notes.value || undefined,
       items,
     })
@@ -536,8 +539,7 @@ const handleSave = async () => {
   } else {
     const created = await createWeek({
       week_name: weekName.value,
-      start_date: startDate.value || undefined,
-      end_date: endDate.value || undefined,
+      start_date: deliveryDate.value || undefined,
       notes: notes.value || undefined,
       items,
     })
@@ -558,8 +560,7 @@ const handleLoadWeek = async (weekId: number) => {
 
   showHistory.value = false
   weekName.value = week.week_name
-  startDate.value = week.start_date || ''
-  endDate.value = week.end_date || ''
+  deliveryDate.value = week.start_date || getDefaultDeliveryDate()
   notes.value = week.notes || ''
 
   if (week.items && week.items.length > 0) {

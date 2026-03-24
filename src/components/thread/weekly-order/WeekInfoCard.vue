@@ -8,7 +8,7 @@
         Thông tin đặt hàng
       </div>
       <div class="row q-col-gutter-md">
-        <div class="col-12 col-sm-4">
+        <div class="col-12 col-sm-5">
           <AppInput
             ref="weekNameInputRef"
             :model-value="modelValue"
@@ -22,13 +22,13 @@
         </div>
         <div class="col-12 col-sm-3">
           <AppInput
-            :model-value="displayStartDate"
-            label="Từ ngày"
+            :model-value="displayDeliveryDate"
+            label="Ngày giao hàng"
             placeholder="DD/MM/YYYY"
             dense
             hide-bottom-space
             clearable
-            @clear="$emit('update:startDate', '')"
+            @clear="$emit('update:deliveryDate', '')"
           >
             <template #append>
               <q-icon
@@ -41,44 +41,15 @@
                   transition-hide="scale"
                 >
                   <DatePicker
-                    :model-value="displayStartDate"
-                    @update:model-value="onStartDateChange"
+                    :model-value="displayDeliveryDate"
+                    @update:model-value="onDeliveryDateChange"
                   />
                 </q-popup-proxy>
               </q-icon>
             </template>
           </AppInput>
         </div>
-        <div class="col-12 col-sm-3">
-          <AppInput
-            :model-value="displayEndDate"
-            label="Đến ngày"
-            placeholder="DD/MM/YYYY"
-            dense
-            hide-bottom-space
-            clearable
-            @clear="$emit('update:endDate', '')"
-          >
-            <template #append>
-              <q-icon
-                name="event"
-                class="cursor-pointer"
-              >
-                <q-popup-proxy
-                  cover
-                  transition-show="scale"
-                  transition-hide="scale"
-                >
-                  <DatePicker
-                    :model-value="displayEndDate"
-                    @update:model-value="onEndDateChange"
-                  />
-                </q-popup-proxy>
-              </q-icon>
-            </template>
-          </AppInput>
-        </div>
-        <div class="col-12 col-sm-2">
+        <div class="col-12 col-sm-4">
           <slot name="actions" />
         </div>
       </div>
@@ -104,15 +75,13 @@ import type { QInput } from 'quasar'
 
 const props = defineProps<{
   modelValue: string;
-  startDate: string;
-  endDate: string;
+  deliveryDate: string;
   notes: string;
 }>();
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
-  "update:startDate": [value: string];
-  "update:endDate": [value: string];
+  "update:deliveryDate": [value: string];
   "update:notes": [value: string];
   "blur:weekName": [];
 }>();
@@ -125,7 +94,6 @@ function focusWeekName() {
 
 defineExpose({ focusWeekName })
 
-// Convert YYYY-MM-DD (DB) ↔ DD/MM/YYYY (DatePicker)
 function toDisplay(isoDate: string): string {
   if (!isoDate) return "";
   const [y, m, d] = isoDate.split("-");
@@ -138,14 +106,9 @@ function toIso(displayDate: string): string {
   return `${y}-${m}-${d}`;
 }
 
-const displayStartDate = computed(() => toDisplay(props.startDate));
-const displayEndDate = computed(() => toDisplay(props.endDate));
+const displayDeliveryDate = computed(() => toDisplay(props.deliveryDate));
 
-function onStartDateChange(val: string | null) {
-  emit("update:startDate", val ? toIso(val) : "");
-}
-
-function onEndDateChange(val: string | null) {
-  emit("update:endDate", val ? toIso(val) : "");
+function onDeliveryDateChange(val: string | null) {
+  emit("update:deliveryDate", val ? toIso(val) : "");
 }
 </script>
