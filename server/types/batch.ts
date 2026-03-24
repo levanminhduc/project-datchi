@@ -132,11 +132,6 @@ export interface TransferableSummaryItem {
   reserved_by_week: { week_id: number; week_name: string; count: number }[]
 }
 
-export interface TransferResult extends BatchOperationResult {
-  transferable_moved: number
-  reserved_moved: number
-}
-
 /**
  * Batch issue request
  */
