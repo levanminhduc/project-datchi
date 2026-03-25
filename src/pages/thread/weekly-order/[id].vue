@@ -5,7 +5,26 @@
       :subtitle="week ? week.week_name : ''"
       show-back
       :back-to="hasHistory ? undefined : '/thread/loans'"
-    />
+    >
+      <template
+        v-if="isConfirmed"
+        #actions
+      >
+        <div class="column items-end">
+          <div class="text-caption text-grey-6 q-mb-xs">
+            {{ completionProgressText }}
+          </div>
+          <AppButton
+            color="primary"
+            icon="assignment_return"
+            label="Trả dư"
+            :disable="!allItemsCompleted"
+            :loading="surplusLoading"
+            @click="openSurplusDialog"
+          />
+        </div>
+      </template>
+    </PageHeader>
 
     <template v-if="isLoading">
       <div class="row justify-center q-py-xl">
@@ -51,7 +70,7 @@
           <div class="row q-col-gutter-md items-center">
             <div class="col-12 col-sm-3">
               <div class="text-caption text-grey-6">
-                Tuần
+                Thông Tin Đơn Hàng
               </div>
               <div class="text-subtitle1 text-weight-medium">
                 {{ week.week_name }}
@@ -77,20 +96,15 @@
               </div>
             </div>
             <div
-              v-if="isConfirmed"
-              class="col-12 col-sm-3 text-right"
+              v-if="week.created_by"
+              class="col-12 col-sm-3"
             >
-              <div class="text-caption text-grey-6 q-mb-xs">
-                {{ completionProgressText }}
+              <div class="text-caption text-grey-6">
+                Người tạo
               </div>
-              <AppButton
-                color="primary"
-                icon="assignment_return"
-                label="Trả dư"
-                :disable="!allItemsCompleted"
-                :loading="surplusLoading"
-                @click="openSurplusDialog"
-              />
+              <div class="text-body2">
+                {{ week.created_by }}
+              </div>
             </div>
           </div>
         </q-card-section>
@@ -106,6 +120,11 @@
         align="left"
         narrow-indicator
       >
+        <q-tab
+          name="calculation"
+          label="Tính toán"
+          icon="calculate"
+        />
         <q-tab
           name="overview"
           label="Tổng quan"
@@ -374,6 +393,54 @@
             />
           </div>
         </q-tab-panel>
+
+        <!-- Tab: Calculation -->
+        <q-tab-panel name="calculation">
+          <div class="row items-center q-mb-md">
+            <div class="text-subtitle2 text-weight-medium col">
+              Kết quả tính toán
+            </div>
+            <ButtonToggle
+              v-model="calculationView"
+              :options="[
+                { label: 'Chi tiết', value: 'detail' },
+                { label: 'Tổng hợp', value: 'summary' }
+              ]"
+              color="grey-4"
+              toggle-color="primary"
+              dense
+            />
+          </div>
+
+          <template v-if="calculationLoading">
+            <div class="row justify-center q-py-xl">
+              <q-spinner-dots
+                size="40px"
+                color="primary"
+              />
+            </div>
+          </template>
+
+          <template v-else-if="calculationResults">
+            <ResultsDetailView
+              v-if="calculationView === 'detail'"
+              :results="deduplicatedCalculationData"
+              :order-entries="orderEntriesFromItems"
+              readonly
+            />
+            <ResultsSummaryTable
+              v-else
+              :rows="calculationResults.summary_data"
+              readonly
+            />
+          </template>
+
+          <template v-else>
+            <div class="text-center text-grey q-pa-lg">
+              Chưa có kết quả tính toán
+            </div>
+          </template>
+        </q-tab-panel>
       </q-tab-panels>
     </template>
 
@@ -539,6 +606,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useWeeklyOrderReservations } from '@/composables/thread/useWeeklyOrderReservations'
 import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone, ReservationSummary, ThreadOrderItemCompletion, SurplusPreview } from '@/types/thread'
+import type { WeeklyOrderResults, StyleOrderEntry } from '@/types/thread/weeklyOrder'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatThreadTypeDisplay } from '@/utils/thread-format'
 import type { QTableColumn } from 'quasar'
@@ -551,6 +619,9 @@ import ReserveFromStockDialog from '@/components/thread/weekly-order/ReserveFrom
 import LoanDetailDialog from '@/components/thread/weekly-order/LoanDetailDialog.vue'
 import ManualReturnDialog from '@/components/thread/weekly-order/ManualReturnDialog.vue'
 import AppCheckbox from '@/components/ui/inputs/AppCheckbox.vue'
+import ResultsDetailView from '@/components/thread/weekly-order/ResultsDetailView.vue'
+import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
+import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
 
 definePage({
   meta: {
@@ -594,6 +665,49 @@ const showSurplusDialog = ref(false)
 const surplusPreview = ref<SurplusPreview | null>(null)
 const surplusLoading = ref(false)
 const releaseLoading = ref(false)
+
+const calculationView = ref<'detail' | 'summary'>('detail')
+const calculationResults = ref<WeeklyOrderResults | null>(null)
+const calculationLoading = ref(false)
+
+const orderEntriesFromItems = computed<StyleOrderEntry[]>(() => {
+  if (!week.value?.items) return []
+  const map = new Map<string, StyleOrderEntry>()
+  for (const item of week.value.items) {
+    const key = `${item.po_id ?? 'null'}_${item.style_id}`
+    if (!map.has(key)) {
+      map.set(key, {
+        po_id: item.po_id,
+        po_number: item.po?.po_number ?? '',
+        style_id: item.style_id,
+        style_code: item.style?.style_code ?? '',
+        style_name: item.style?.style_name ?? '',
+        colors: [],
+      })
+    }
+    const entry = map.get(key)!
+    if (!entry.colors.find(c => c.color_id === item.color_id)) {
+      entry.colors.push({
+        color_id: item.color_id,
+        color_name: item.style_color?.color_name ?? item.color?.name ?? '',
+        hex_code: item.style_color?.hex_code ?? item.color?.hex_code ?? '',
+        quantity: item.quantity,
+        style_color_id: item.style_color_id ?? 0,
+      })
+    }
+  }
+  return Array.from(map.values())
+})
+
+const deduplicatedCalculationData = computed(() => {
+  if (!calculationResults.value) return []
+  const seen = new Set<number>()
+  return calculationResults.value.calculation_data.filter(r => {
+    if (seen.has(r.style_id)) return false
+    seen.add(r.style_id)
+    return true
+  })
+})
 
 const isCompleted = computed(() => week.value?.status === 'COMPLETED')
 const isConfirmed = computed(() => week.value?.status === 'CONFIRMED')
@@ -748,6 +862,18 @@ const confirmReleaseSurplus = async () => {
   }
 }
 
+const loadCalculationResults = async () => {
+  if (!weekId.value || calculationResults.value) return
+  calculationLoading.value = true
+  try {
+    calculationResults.value = await weeklyOrderService.getResults(weekId.value)
+  } catch {
+    calculationResults.value = null
+  } finally {
+    calculationLoading.value = false
+  }
+}
+
 watch(activeTab, (tab) => {
   if (tab === 'reservations' && reservedCones.value.length === 0) {
     loadReservations()
@@ -755,12 +881,19 @@ watch(activeTab, (tab) => {
   if (tab === 'loans' && loans.value.length === 0) {
     loadLoans()
   }
+  if (tab === 'calculation' && !calculationResults.value) {
+    loadCalculationResults()
+  }
 })
 
 onMounted(async () => {
   await loadWeek()
   if (week.value && (week.value.status === 'CONFIRMED' || week.value.status === 'COMPLETED')) {
     loadCompletions()
+  }
+  const tabParam = route.query.tab as string
+  if (tabParam && ['overview', 'reservations', 'loans', 'deliveries', 'calculation'].includes(tabParam)) {
+    activeTab.value = tabParam
   }
 })
 

@@ -2260,7 +2260,7 @@ weeklyOrder.patch('/:id/status', requirePermission('thread.allocations.manage'),
           employeeIds: warehouseIds,
           type: 'WEEKLY_ORDER',
           title: `Đơn đặt hàng tuần #${id} đã được ${statusLabels[newStatus] || newStatus}`,
-          actionUrl: '/thread/weekly-order',
+          actionUrl: `/thread/weekly-order/${id}`,
           metadata: { weekly_order_id: id, new_status: newStatus },
         })
 
@@ -2326,7 +2326,7 @@ weeklyOrder.patch('/:id/status', requirePermission('thread.allocations.manage'),
       employeeIds: warehouseIds,
       type: 'WEEKLY_ORDER',
       title: `Đơn đặt hàng tuần #${id} đã được ${statusLabels[newStatus] || newStatus}`,
-      actionUrl: '/thread/weekly-order',
+      actionUrl: `/thread/weekly-order/${id}`,
       metadata: { weekly_order_id: id, new_status: newStatus },
     })
 

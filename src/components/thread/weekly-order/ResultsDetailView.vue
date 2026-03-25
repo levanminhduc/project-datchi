@@ -12,7 +12,7 @@
       item-key="style_id"
       handle=".drag-handle"
       ghost-class="dragging-ghost"
-      :disabled="props.isReordering"
+      :disabled="props.isReordering || props.readonly"
       @change="onDragChange"
     >
       <template #item="{ element: result }">
@@ -25,6 +25,7 @@
             <!-- Header: Drag Handle + PO - Mã Hàng - Màu Hàng -->
             <div class="row items-center q-mb-sm">
               <q-icon
+                v-if="!props.readonly"
                 name="drag_indicator"
                 class="drag-handle cursor-move q-mr-sm text-grey-6"
                 size="sm"
@@ -165,7 +166,7 @@
                         Thiếu {{ props.row.shortage_cones }}
                       </span>
                       <!-- Editable: before save OR admin/root after save -->
-                      <template v-if="getEffectiveDate(props.row) && canEditDeliveryDate">
+                      <template v-if="getEffectiveDate(props.row) && canEditDeliveryDate && !readonly">
                         <span class="cursor-pointer text-primary text-caption">
                           {{ formatDateDisplay(getEffectiveDate(props.row)!) }}
                           <q-icon
@@ -203,7 +204,7 @@
                     >—</span>
 
                     <!-- Editable: before save OR admin/root after save -->
-                    <template v-else-if="canEditDeliveryDate">
+                    <template v-else-if="canEditDeliveryDate && !readonly">
                       <span class="cursor-pointer text-primary">
                         {{ formatDateDisplay(getEffectiveDate(props.row)!) }}
                         <q-icon
@@ -266,6 +267,7 @@ const props = defineProps<{
   orderEntries?: StyleOrderEntry[]
   isSaved?: boolean
   isReordering?: boolean
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{

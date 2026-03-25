@@ -55,31 +55,36 @@
         </template>
         <template #body-cell-additional_order="props">
           <q-td :props="props">
-            <span class="cursor-pointer text-primary">
-              {{ (props.row.additional_order && props.row.additional_order > 0) ? props.row.additional_order.toLocaleString('vi-VN') : '—' }}
-              <q-icon
-                name="edit"
-                size="xs"
-                class="q-ml-xs"
-              />
-            </span>
-            <q-popup-edit
-              v-slot="scope"
-              :model-value="props.row.additional_order || 0"
-              buttons
-              label-set="Lưu"
-              label-cancel="Hủy"
-              @save="(val: number) => emit('update:additional-order', props.row.thread_type_id, val)"
-            >
-              <q-input
-                v-model.number="scope.value"
-                type="number"
-                :min="0"
-                dense
-                autofocus
-                label="Số lượng đặt thêm"
-              />
-            </q-popup-edit>
+            <template v-if="!readonly">
+              <span class="cursor-pointer text-primary">
+                {{ (props.row.additional_order && props.row.additional_order > 0) ? props.row.additional_order.toLocaleString('vi-VN') : '—' }}
+                <q-icon
+                  name="edit"
+                  size="xs"
+                  class="q-ml-xs"
+                />
+              </span>
+              <q-popup-edit
+                v-slot="scope"
+                :model-value="props.row.additional_order || 0"
+                buttons
+                label-set="Lưu"
+                label-cancel="Hủy"
+                @save="(val: number) => emit('update:additional-order', props.row.thread_type_id, val)"
+              >
+                <q-input
+                  v-model.number="scope.value"
+                  type="number"
+                  :min="0"
+                  dense
+                  autofocus
+                  label="Số lượng đặt thêm"
+                />
+              </q-popup-edit>
+            </template>
+            <template v-else>
+              <span>{{ (props.row.additional_order && props.row.additional_order > 0) ? props.row.additional_order.toLocaleString('vi-VN') : '—' }}</span>
+            </template>
           </q-td>
         </template>
         <template #no-data>
@@ -98,6 +103,7 @@ import type { AggregatedRow } from '@/types/thread'
 
 defineProps<{
   rows: AggregatedRow[]
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
