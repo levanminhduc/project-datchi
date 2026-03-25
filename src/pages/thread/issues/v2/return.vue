@@ -76,13 +76,8 @@ async function handleSubmit() {
   }
 
   validationErrors.value = []
-  const result = await submitGroupedReturn(selectedGroup.value, lines)
+  await submitGroupedReturn(selectedGroup.value, lines)
   handleReset()
-
-  if (result?.completion_info?.pending_selection?.length) {
-    selectedWeekIds.value = result.completion_info.pending_selection.map((w) => w.week_id)
-    showWeekDialog.value = true
-  }
 }
 
 async function handleConfirmWeeks() {
@@ -231,7 +226,7 @@ onMounted(() => {
                 type="number"
                 dense
                 :min="0"
-                :max="props.row.outstanding_partial"
+                :max="props.row.outstanding_full + props.row.outstanding_partial - getReturnInput(props.row.thread_type_id).full"
                 style="max-width: 80px"
               />
             </q-td>

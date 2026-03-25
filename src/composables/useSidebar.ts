@@ -1,7 +1,8 @@
 import { ref, computed } from 'vue'
 import type { NavItem } from '@/types/navigation'
 
-const isOpen = ref(true)
+const MOBILE_BREAKPOINT = 1024
+const isOpen = ref(window.innerWidth >= MOBILE_BREAKPOINT)
 
 const navItems: NavItem[] = [
   { label: 'Trang Chủ', icon: 'o_home', to: '/#top' },

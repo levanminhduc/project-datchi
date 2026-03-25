@@ -72,7 +72,7 @@
           <div class="col-12 col-sm-4 col-md-2">
             <AppSelect
               v-model="filters.warehouse_id"
-              :options="warehouseOptions"
+              :options="activeTab === 'summary' ? summaryWarehouseOptions : warehouseOptions"
               label="Kho"
               dense
               outlined
@@ -120,7 +120,8 @@
                 class="full-width-xs"
                 @click="showManualEntryDialog = true"
               />
-              <q-btn
+              <!-- TODO: Tạm ẩn - bật lại khi cần -->
+              <!-- <q-btn
                 color="secondary"
                 icon="qr_code_scanner"
                 label="Quét tra cứu"
@@ -135,7 +136,7 @@
                 unelevated
                 class="full-width-xs"
                 @click="openReceiptDialog"
-              />
+              /> -->
             </div>
           </div>
         </div>
@@ -780,7 +781,25 @@ const {
   loading: threadTypesLoading,
 } = useThreadTypes()
 
-const { warehouseOptions, storageOptions, fetchWarehouses, loading: warehousesLoading } = useWarehouses()
+const { warehouseOptions, storageOptions, warehouses, warehousesByLocation, fetchWarehouses, loading: warehousesLoading } = useWarehouses()
+
+const summaryWarehouseOptions = computed(() => {
+  const singleChildLocationIds = new Set<number>()
+  for (const [locationId, storages] of warehousesByLocation.value) {
+    if (storages.length === 1) singleChildLocationIds.add(locationId)
+  }
+
+  return warehouses.value
+    .filter(w => {
+      if (w.type === 'STORAGE' && w.parent_id && singleChildLocationIds.has(w.parent_id)) return false
+      return true
+    })
+    .map(w => ({
+      label: `${w.name} (${w.code})`,
+      value: w.id,
+      type: w.type,
+    }))
+})
 
 const { suppliers, fetchSuppliers, loading: suppliersLoading } = useSuppliers()
 
@@ -1186,7 +1205,7 @@ const resetManualEntryForm = () => {
 
 const manualSupplierOptions = computed(() =>
   suppliers.value.filter(s => s.is_active).map(s => ({
-    label: `${s.code} - ${s.name}`,
+    label: s.name,
     value: s.id,
   }))
 )
@@ -1278,8 +1297,9 @@ const handleManualEntrySubmit = async () => {
       received_date: new Date().toISOString().slice(0, 10),
     })
     snackbar.success('Đã nhập kho thành công')
-    showManualEntryDialog.value = false
-    resetManualEntryForm()
+    manualEntryForm.color_id = null
+    manualEntryForm.qty_full_cones = 0
+    manualEntryForm.qty_partial_cones = 0
   } catch (err: any) {
     if (err instanceof ApiError && err.status === 403) {
       snackbar.error('Bạn không có quyền thực hiện thao tác này')

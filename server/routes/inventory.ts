@@ -273,6 +273,27 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       }, 400)
     }
 
+    let warehouseIds: number[] | null = null
+    if (parsedWarehouseId) {
+      const { data: wh } = await supabase
+        .from('warehouses')
+        .select('id, type')
+        .eq('id', parsedWarehouseId)
+        .single()
+
+      if (wh?.type === 'LOCATION') {
+        const { data: children } = await supabase
+          .from('warehouses')
+          .select('id')
+          .eq('parent_id', parsedWarehouseId)
+          .eq('is_active', true)
+          .is('deleted_at', null)
+        warehouseIds = children?.map(c => c.id) ?? []
+      } else {
+        warehouseIds = [parsedWarehouseId]
+      }
+    }
+
     // Physical totals: all usable cones including allocated/reserved.
     const totalStatuses: ConeStatus[] = [
       'RECEIVED',
@@ -289,7 +310,7 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
     const [totalResult, kdResult] = await Promise.all([
       supabase.rpc('fn_cone_summary_filtered', {
         p_statuses: totalStatuses,
-        p_warehouse_id: parsedWarehouseId,
+        p_warehouse_ids: warehouseIds,
         p_supplier_id: parsedSupplierId,
         p_material: material || null,
         p_search: sanitizedSearch,
@@ -297,7 +318,7 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       }),
       supabase.rpc('fn_cone_summary_filtered', {
         p_statuses: kdStatuses,
-        p_warehouse_id: parsedWarehouseId,
+        p_warehouse_ids: warehouseIds,
         p_supplier_id: parsedSupplierId,
         p_material: material || null,
         p_search: sanitizedSearch,

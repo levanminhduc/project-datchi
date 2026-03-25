@@ -81,10 +81,43 @@ function getRelation<T>(relation: T | T[] | null | undefined): T | null {
 
 dashboard.get('/summary', async (c) => {
   try {
-    // Query 1: Get inventory summary statistics
+    const totalStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED', 'RESERVED_FOR_ORDER']
+
+    const { data: coneSummary, error: coneSummaryError } = await supabase.rpc('fn_cone_summary_filtered', {
+      p_statuses: totalStatuses,
+      p_warehouse_ids: null,
+      p_supplier_id: null,
+      p_material: null,
+      p_search: null,
+      p_only_unreserved: false,
+    })
+
+    if (coneSummaryError) {
+      console.error('Dashboard summary - cone summary RPC error:', coneSummaryError)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi tải thống kê tổng quan'
+      }, 500)
+    }
+
+    const rows = (coneSummary || []) as Array<{
+      total_full_cones: number
+      total_partial_cones: number
+      full_cones: number
+      partial_cones: number
+      partial_meters: number
+      meters_per_cone: number
+    }>
+    const totalCones = rows.reduce((sum, r) => sum + Number(r.total_full_cones || 0), 0)
+    const totalMeters = rows.reduce((sum, r) =>
+      sum + Number(r.total_full_cones || 0) * Number(r.meters_per_cone || 0) + Number(r.partial_meters || 0), 0)
+    const partialCones = rows.reduce((sum, r) => sum + Number(r.total_partial_cones || 0), 0)
+
     const { data: inventoryData, error: inventoryError } = await supabase
       .from('thread_inventory')
       .select('status, quantity_meters, is_partial')
+      .in('status', totalStatuses)
+      .limit(30000)
 
     if (inventoryError) {
       console.error('Dashboard summary - inventory query error:', inventoryError)
@@ -94,28 +127,25 @@ dashboard.get('/summary', async (c) => {
       }, 500)
     }
 
-    // Calculate inventory metrics
     const inventory = inventoryData || []
-    const totalCones = inventory.length
-    const totalMeters = inventory.reduce((sum, row) => sum + (row.quantity_meters || 0), 0)
-    const availableCones = inventory.filter(row => row.status === 'AVAILABLE').length
+    const availableCones = inventory.filter(row => row.status === 'AVAILABLE' && !row.is_partial).length
     const availableMeters = inventory
       .filter(row => row.status === 'AVAILABLE')
       .reduce((sum, row) => sum + (row.quantity_meters || 0), 0)
-    const allocatedCones = inventory.filter(row => 
-      row.status === 'SOFT_ALLOCATED' || row.status === 'HARD_ALLOCATED'
+    const allocatedCones = inventory.filter(row =>
+      (row.status === 'SOFT_ALLOCATED' || row.status === 'HARD_ALLOCATED') && !row.is_partial
     ).length
     const allocatedMeters = inventory
       .filter(row => row.status === 'SOFT_ALLOCATED' || row.status === 'HARD_ALLOCATED')
       .reduce((sum, row) => sum + (row.quantity_meters || 0), 0)
-    const inProductionCones = inventory.filter(row => row.status === 'IN_PRODUCTION').length
-    const partialCones = inventory.filter(row => row.is_partial === true).length
+    const inProductionCones = inventory.filter(row => row.status === 'IN_PRODUCTION' && !row.is_partial).length
 
     // Query 2: Get thread types with reorder levels
     const { data: threadTypes, error: threadTypesError } = await supabase
       .from('thread_types')
       .select('id, reorder_level_meters')
       .eq('is_active', true)
+      .limit(5000)
 
     if (threadTypesError) {
       console.error('Dashboard summary - thread types query error:', threadTypesError)
@@ -130,6 +160,7 @@ dashboard.get('/summary', async (c) => {
       .from('thread_inventory')
       .select('thread_type_id, quantity_meters')
       .eq('status', 'AVAILABLE')
+      .limit(30000)
 
     if (availableStockError) {
       console.error('Dashboard summary - available stock query error:', availableStockError)
@@ -203,6 +234,7 @@ dashboard.get('/alerts', async (c) => {
       .from('thread_types')
       .select('id, code, name, reorder_level_meters')
       .eq('is_active', true)
+      .limit(5000)
 
     if (threadTypesError) {
       console.error('Dashboard alerts - thread types query error:', threadTypesError)
@@ -217,6 +249,7 @@ dashboard.get('/alerts', async (c) => {
       .from('thread_inventory')
       .select('thread_type_id, quantity_meters')
       .eq('status', 'AVAILABLE')
+      .limit(30000)
 
     if (availableStockError) {
       console.error('Dashboard alerts - available stock query error:', availableStockError)
@@ -303,6 +336,7 @@ dashboard.get('/conflicts', async (c) => {
         )
       `)
       .order('created_at', { ascending: false })
+      .limit(1000)
 
     if (conflictsError) {
       console.error('Dashboard conflicts - query error:', conflictsError)

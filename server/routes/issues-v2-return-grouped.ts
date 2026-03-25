@@ -157,8 +157,12 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
       const effectiveColorId: number | null = l.style_color_id || l.color_id
       const groupKey = `po:${l.po_id}_style:${l.style_id}_${l.style_color_id ? 'sc' : 'c'}:${effectiveColorId}`
 
-      const outstandingFull = Math.max(0, (l.issued_full || 0) - (l.returned_full || 0))
-      const outstandingPartial = Math.max(0, (l.issued_partial || 0) - (l.returned_partial || 0))
+      const totalIssued = (l.issued_full || 0) + (l.issued_partial || 0)
+      const totalReturned = (l.returned_full || 0) + (l.returned_partial || 0)
+      const totalOutstanding = Math.max(0, totalIssued - totalReturned)
+      const rawOutstandingFull = (l.issued_full || 0) - (l.returned_full || 0)
+      const outstandingFull = Math.max(0, Math.min(rawOutstandingFull, totalOutstanding))
+      const outstandingPartial = totalOutstanding - outstandingFull
 
       if (!groupMap.has(groupKey)) {
         const scInfo = l.style_color_id ? scMap.get(l.style_color_id) : null
@@ -378,7 +382,8 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
         const availPartial = Math.max(0, candidate.issued_partial - candidate.returned_partial)
 
         const allocFull = Math.min(remainingFull, availFull)
-        const allocPartial = Math.min(remainingPartial, availPartial)
+        const remainFullAfterAlloc = availFull - allocFull
+        const allocPartial = Math.min(remainingPartial, availPartial + remainFullAfterAlloc)
 
         if (allocFull <= 0 && allocPartial <= 0) continue
 
@@ -465,47 +470,6 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
       }
     }
 
-    const completionInfo: { auto_completed: Array<{ week_id: number; week_name: string; item_ids: number[] }>; pending_selection: Array<{ week_id: number; week_name: string; item_ids: number[] }> } = {
-      auto_completed: [],
-      pending_selection: [],
-    }
-
-    try {
-      const matchingItems = await findMatchingWeekItems(po_id, style_id, style_color_id || null)
-
-      if (matchingItems.length > 0) {
-        const weekMap = new Map<number, { week_name: string; item_ids: number[] }>()
-        for (const item of matchingItems) {
-          if (!weekMap.has(item.week_id)) {
-            weekMap.set(item.week_id, { week_name: item.week_name, item_ids: [] })
-          }
-          weekMap.get(item.week_id)!.item_ids.push(item.item_id)
-        }
-
-        const weeks = Array.from(weekMap.entries()).map(([weekId, info]) => ({
-          week_id: weekId,
-          week_name: info.week_name,
-          item_ids: info.item_ids,
-        }))
-
-        if (weeks.length === 1) {
-          const week = weeks[0]
-          const upsertRows = week.item_ids.map((itemId) => ({
-            item_id: itemId,
-            completed_by: performedBy || 'system',
-          }))
-          await supabase
-            .from('thread_order_item_completions')
-            .upsert(upsertRows, { onConflict: 'item_id' })
-          completionInfo.auto_completed = [week]
-        } else {
-          completionInfo.pending_selection = weeks
-        }
-      }
-    } catch (completionError) {
-      console.error('[return-grouped] Auto-completion failed (non-blocking):', completionError)
-    }
-
     const resultPayload = {
       succeeded_line_ids: succeededLineIds,
       distribution,
@@ -522,7 +486,7 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
       .eq('idempotency_key', idempotency_key)
       .eq('operation_type', 'RETURN_GROUPED')
 
-    return c.json({ data: { ...resultPayload, completion_info: completionInfo }, error: null, message: 'Tra hang theo nhom thanh cong' })
+    return c.json({ data: resultPayload, error: null, message: 'Tra hang theo nhom thanh cong' })
   } catch (err) {
     return c.json<ThreadApiResponse<null>>({ data: null, error: getErrorMessage(err) }, 500)
   }

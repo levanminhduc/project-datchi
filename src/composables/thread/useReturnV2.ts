@@ -78,17 +78,7 @@ export function useReturnV2() {
         })
       )
 
-      if (result.completion_info) {
-        completionInfo.value = result.completion_info
-      }
-
-      const autoCompleted = result.completion_info?.auto_completed ?? []
-      const firstWeek = autoCompleted[0]
-      if (firstWeek) {
-        snackbar.success(`Đã nhập lại và đánh dấu hoàn tất xuất chỉ cho tuần ${firstWeek.week_name}`)
-      } else {
-        snackbar.success('Đã nhập lại thành công')
-      }
+      snackbar.success('Đã nhập lại thành công')
 
       await loadReturnGroups()
       const updatedGroup = returnGroups.value.find((g) => g.group_key === group.group_key)
@@ -149,9 +139,11 @@ export function useReturnV2() {
           `${thread.thread_name}: Nguyên trả (${line.returned_full}) vượt outstanding (${thread.outstanding_full})`
         )
       }
-      if (line.returned_partial > thread.outstanding_partial) {
+      const totalOutstanding = thread.outstanding_full + thread.outstanding_partial
+      const totalReturned = line.returned_full + line.returned_partial
+      if (totalReturned > totalOutstanding) {
         errors.push(
-          `${thread.thread_name}: Lẻ trả (${line.returned_partial}) vượt outstanding (${thread.outstanding_partial})`
+          `${thread.thread_name}: Tổng trả (${totalReturned}) vượt tổng outstanding (${totalOutstanding})`
         )
       }
     }
