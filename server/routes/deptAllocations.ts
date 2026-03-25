@@ -63,7 +63,7 @@ router.get('/summary', async (c) => {
 
     const allocationIds = (allocations ?? []).map((a) => a.id)
 
-    let logsCountMap: Record<number, number> = {}
+    const logsCountMap: Record<number, number> = {}
     if (allocationIds.length > 0) {
       const { data: logs, error: logsError } = await supabase
         .from('dept_product_allocation_logs')
