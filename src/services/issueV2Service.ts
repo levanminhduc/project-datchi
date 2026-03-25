@@ -148,12 +148,13 @@ export const issueV2Service = {
    * @param colorId - Color ID
    * @returns Thread types with quota and stock info
    */
-  async getFormData(poId: number, styleId: number, colorId: number): Promise<IssueFormData> {
+  async getFormData(poId: number, styleId: number, colorId: number, department?: string): Promise<IssueFormData> {
     const params = new URLSearchParams({
       po_id: String(poId),
       style_id: String(styleId),
       style_color_id: String(colorId),
     })
+    if (department) params.append('department', department)
     const response = await fetchApi<ApiResponse<IssueFormData>>(`${BASE}/form-data?${params}`)
 
     if (response.error || !response.data) {

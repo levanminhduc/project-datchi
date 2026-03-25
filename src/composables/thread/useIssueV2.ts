@@ -160,13 +160,13 @@ export function useIssueV2() {
    * @param styleId - Style ID
    * @param colorId - Color ID
    */
-  const loadFormData = async (poId: number, styleId: number, colorId: number) => {
+  const loadFormData = async (poId: number, styleId: number, colorId: number, department?: string) => {
     clearError()
     formData.value = null
 
     try {
       formData.value = await loading.withLoading(async () => {
-        return await issueV2Service.getFormData(poId, styleId, colorId)
+        return await issueV2Service.getFormData(poId, styleId, colorId, department)
       })
 
       return formData.value

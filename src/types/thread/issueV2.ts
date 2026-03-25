@@ -154,6 +154,7 @@ export interface ValidateIssueLineV2DTO {
   color_id?: number | null
   style_color_id?: number | null
   sub_art_id?: number | null
+  department?: string
 }
 
 /**

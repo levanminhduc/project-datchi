@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDebounceFn } from '@vueuse/core'
 import { useIssueV2 } from '@/composables/thread/useIssueV2'
+import { useDeptAllocation } from '@/composables/thread/useDeptAllocation'
 import { issueV2Service } from '@/services/issueV2Service'
 import { subArtService } from '@/services/subArtService'
 import type { SubArt } from '@/types/thread/subArt'
@@ -56,11 +57,30 @@ const {
   fetchIssues,
 } = useIssueV2()
 
+const {
+  summary: allocationSummary,
+  isLoading: isLoadingAlloc,
+  isAllocating,
+  hasAllocations,
+  getDeptInfo,
+  loadSummary: loadAllocationSummary,
+  allocate: submitAllocation,
+  reset: resetAllocation,
+} = useDeptAllocation()
+
+const showAllocationModal = ref(false)
+const allocationAddQty = ref<number | null>(null)
+
 const activeTab = ref(route.query.tab === 'history' ? 'history' : 'create')
 const step2Visible = ref(false)
 
 const department = ref('')
 const createdBy = ref(employee.value?.fullName ?? '')
+
+const currentDeptInfo = computed(() => {
+  if (!department.value) return null
+  return getDeptInfo(department.value)
+})
 
 const selectedPoId = ref<number | null>(null)
 const selectedStyleId = ref<number | null>(null)
@@ -235,6 +255,9 @@ watch(selectedStyleId, async (newStyleId) => {
 watch([selectedPoId, selectedStyleId, selectedSubArtId, selectedColorId], async ([poId, styleId, _subArtId, colorId]) => {
   if (poId && styleId && colorId && canLoadThreadTypes.value) {
     await handleLoadFormData()
+    loadAllocationSummary(poId, styleId, colorId)
+  } else {
+    resetAllocation()
   }
 })
 
@@ -282,7 +305,7 @@ async function handleLoadFormData() {
 
   loadingFormData.value = true
   try {
-    const data = await loadFormData(selectedPoId.value!, selectedStyleId.value!, selectedColorId.value!)
+    const data = await loadFormData(selectedPoId.value!, selectedStyleId.value!, selectedColorId.value!, department.value || undefined)
 
     lineInputs.value = {}
     if (data?.thread_types) {
@@ -298,6 +321,32 @@ async function handleLoadFormData() {
   } finally {
     loadingFormData.value = false
   }
+}
+
+async function handleAllocate() {
+  if (!allocationAddQty.value || allocationAddQty.value <= 0) return
+  if (!selectedPoId.value || !selectedStyleId.value || !selectedColorId.value || !department.value) return
+
+  try {
+    await submitAllocation({
+      po_id: selectedPoId.value,
+      style_id: selectedStyleId.value,
+      style_color_id: selectedColorId.value,
+      department: department.value,
+      add_quantity: allocationAddQty.value,
+      created_by: createdBy.value,
+    })
+    showAllocationModal.value = false
+    allocationAddQty.value = null
+    await handleLoadFormData()
+  } catch {
+    // error shown by composable snackbar
+  }
+}
+
+function fillRemainingAllocation() {
+  const remaining = allocationSummary.value?.remaining ?? 0
+  allocationAddQty.value = remaining > 0 ? remaining : null
 }
 
 const debouncedValidate = useDebounceFn(async (threadTypeId: number) => {
@@ -317,6 +366,7 @@ const debouncedValidate = useDebounceFn(async (threadTypeId: number) => {
     color_id: selectedColorId.value,
     style_color_id: selectedColorId.value,
     sub_art_id: selectedSubArtId.value,
+    department: department.value || undefined,
   })
 
   if (result) {
@@ -841,6 +891,32 @@ onMounted(async () => {
                   />
                 </div>
               </div>
+              <div
+                v-if="selectedPoId && selectedStyleId && selectedColorId"
+                class="q-mt-sm row items-center"
+              >
+                <q-btn
+                  flat
+                  dense
+                  color="primary"
+                  label="Phân bổ SP theo Bộ Phận"
+                  icon="groups"
+                  @click="showAllocationModal = true"
+                />
+                <span
+                  v-if="hasAllocations && currentDeptInfo"
+                  class="text-caption text-grey-8 q-ml-md"
+                >
+                  {{ department }} — {{ currentDeptInfo.product_quantity.toLocaleString() }} SP
+                  (đã phân bổ {{ allocationSummary?.total_allocated.toLocaleString() }}/{{ allocationSummary?.total_product_quantity.toLocaleString() }})
+                </span>
+                <span
+                  v-else-if="hasAllocations"
+                  class="text-caption text-orange-8 q-ml-md"
+                >
+                  {{ department }} chưa phân bổ (còn {{ allocationSummary?.remaining.toLocaleString() }} SP)
+                </span>
+              </div>
             </q-card-section>
           </q-card>
 
@@ -1290,6 +1366,106 @@ onMounted(async () => {
       </q-tab-panels>
     </q-card>
   </q-page>
+
+  <q-dialog
+    v-model="showAllocationModal"
+    persistent
+  >
+    <q-card style="min-width: 500px">
+      <q-card-section>
+        <div class="text-h6">
+          Phân Bổ Sản Phẩm
+        </div>
+        <div class="text-caption text-grey">
+          PO: {{ poOptions.find(p => p.value === selectedPoId)?.label }}
+          · Style: {{ styleOptions.find(s => s.value === selectedStyleId)?.label }}
+          · Màu: {{ colorOptions.find(c => c.value === selectedColorId)?.label }}
+        </div>
+      </q-card-section>
+
+      <q-card-section v-if="allocationSummary">
+        <div class="text-subtitle2 q-mb-sm">
+          Tổng SP: {{ allocationSummary.total_product_quantity.toLocaleString() }}
+          · Đã phân bổ: {{ allocationSummary.total_allocated.toLocaleString() }}
+          · Còn lại: {{ allocationSummary.remaining.toLocaleString() }}
+        </div>
+
+        <q-table
+          v-if="allocationSummary.allocated.length > 0"
+          :rows="allocationSummary.allocated"
+          :columns="[
+            { name: 'department', label: 'Bộ Phận', field: 'department', align: 'left' as const },
+            { name: 'product_quantity', label: 'Số SP', field: 'product_quantity', align: 'right' as const, format: (v: number) => v.toLocaleString() },
+          ]"
+          row-key="department"
+          flat
+          bordered
+          dense
+          :pagination="{ rowsPerPage: 0 }"
+          hide-bottom
+          class="q-mb-md"
+        />
+
+        <div class="row items-end q-gutter-sm q-mt-md">
+          <div class="col">
+            <AppInput
+              v-model.number="allocationAddQty"
+              label="Nhập thêm SP"
+              type="number"
+              :rules="[
+                (v: number | null) => (v !== null && v > 0) || 'Số lượng phải lớn hơn 0',
+                (v: number | null) => (v !== null && v <= (allocationSummary?.remaining ?? 0)) || `Vượt quá SP còn lại (${allocationSummary?.remaining.toLocaleString()})`,
+              ]"
+              dense
+            />
+          </div>
+          <div class="col-auto">
+            <q-btn
+              flat
+              dense
+              color="secondary"
+              :label="`Nhận hết ${allocationSummary.remaining.toLocaleString()} SP`"
+              :disable="allocationSummary.remaining <= 0"
+              @click="fillRemainingAllocation"
+            />
+          </div>
+        </div>
+      </q-card-section>
+
+      <q-card-section
+        v-else
+        class="text-center"
+      >
+        <q-spinner
+          v-if="isLoadingAlloc"
+          color="primary"
+          size="2em"
+        />
+        <div
+          v-else
+          class="text-grey"
+        >
+          Không có dữ liệu phân bổ
+        </div>
+      </q-card-section>
+
+      <q-card-actions align="right">
+        <q-btn
+          flat
+          label="Hủy"
+          color="grey"
+          @click="showAllocationModal = false; allocationAddQty = null"
+        />
+        <AppButton
+          label="Xác nhận"
+          color="primary"
+          :loading="isAllocating"
+          :disable="!allocationAddQty || allocationAddQty <= 0 || allocationAddQty > (allocationSummary?.remaining ?? 0)"
+          @click="handleAllocate"
+        />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 </template>
 
 <style scoped>
