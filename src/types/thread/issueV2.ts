@@ -21,6 +21,13 @@ export enum IssueV2Status {
   RETURNED = 'RETURNED',
 }
 
+export const OVER_QUOTA_REASONS = [
+  'Vượt định mức Kỹ Thuật',
+  'Cấp rãi đầu máy',
+] as const
+
+export type OverQuotaReason = (typeof OVER_QUOTA_REASONS)[number]
+
 // ============================================================================
 // Entities
 // ============================================================================

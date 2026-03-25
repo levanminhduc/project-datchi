@@ -82,63 +82,50 @@ function getRelation<T>(relation: T | T[] | null | undefined): T | null {
 dashboard.get('/summary', async (c) => {
   try {
     const totalStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED', 'RESERVED_FOR_ORDER']
+    const kdStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE']
 
-    const { data: coneSummary, error: coneSummaryError } = await supabase.rpc('fn_cone_summary_filtered', {
-      p_statuses: totalStatuses,
-      p_warehouse_ids: null,
-      p_supplier_id: null,
-      p_material: null,
-      p_search: null,
-      p_only_unreserved: false,
-    })
+    const [totalResult, kdResult] = await Promise.all([
+      supabase.rpc('fn_cone_summary_filtered', {
+        p_statuses: totalStatuses,
+        p_warehouse_ids: null,
+        p_supplier_id: null,
+        p_material: null,
+        p_search: null,
+        p_only_unreserved: false,
+      }),
+      supabase.rpc('fn_cone_summary_filtered', {
+        p_statuses: kdStatuses,
+        p_warehouse_ids: null,
+        p_supplier_id: null,
+        p_material: null,
+        p_search: null,
+        p_only_unreserved: true,
+      }),
+    ])
 
-    if (coneSummaryError) {
-      console.error('Dashboard summary - cone summary RPC error:', coneSummaryError)
+    if (totalResult.error || kdResult.error) {
+      console.error('Dashboard summary - RPC error:', totalResult.error || kdResult.error)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải thống kê tổng quan'
       }, 500)
     }
 
-    const rows = (coneSummary || []) as Array<{
-      total_full_cones: number
-      total_partial_cones: number
-      full_cones: number
-      partial_cones: number
-      partial_meters: number
-      meters_per_cone: number
-    }>
-    const totalCones = rows.reduce((sum, r) => sum + Number(r.total_full_cones || 0), 0)
-    const totalMeters = rows.reduce((sum, r) =>
+    type SummaryRow = { total_full_cones: number; total_partial_cones: number; full_cones: number; partial_cones: number; partial_meters: number; meters_per_cone: number }
+    const totalRows = (totalResult.data || []) as SummaryRow[]
+    const kdRows = (kdResult.data || []) as SummaryRow[]
+
+    const totalCones = totalRows.reduce((sum, r) => sum + Number(r.total_full_cones || 0), 0)
+    const totalMeters = totalRows.reduce((sum, r) =>
       sum + Number(r.total_full_cones || 0) * Number(r.meters_per_cone || 0) + Number(r.partial_meters || 0), 0)
-    const partialCones = rows.reduce((sum, r) => sum + Number(r.total_partial_cones || 0), 0)
+    const partialCones = totalRows.reduce((sum, r) => sum + Number(r.total_partial_cones || 0), 0)
 
-    const { data: inventoryData, error: inventoryError } = await supabase
-      .from('thread_inventory')
-      .select('status, quantity_meters, is_partial')
-      .in('status', totalStatuses)
-      .limit(30000)
-
-    if (inventoryError) {
-      console.error('Dashboard summary - inventory query error:', inventoryError)
-      return c.json<ThreadApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi tải thống kê tổng quan'
-      }, 500)
-    }
-
-    const inventory = inventoryData || []
-    const availableCones = inventory.filter(row => row.status === 'AVAILABLE' && !row.is_partial).length
-    const availableMeters = inventory
-      .filter(row => row.status === 'AVAILABLE')
-      .reduce((sum, row) => sum + (row.quantity_meters || 0), 0)
-    const allocatedCones = inventory.filter(row =>
-      (row.status === 'SOFT_ALLOCATED' || row.status === 'HARD_ALLOCATED') && !row.is_partial
-    ).length
-    const allocatedMeters = inventory
-      .filter(row => row.status === 'SOFT_ALLOCATED' || row.status === 'HARD_ALLOCATED')
-      .reduce((sum, row) => sum + (row.quantity_meters || 0), 0)
-    const inProductionCones = inventory.filter(row => row.status === 'IN_PRODUCTION' && !row.is_partial).length
+    const availableCones = kdRows.reduce((sum, r) => sum + Number(r.full_cones || 0), 0)
+    const availableMeters = kdRows.reduce((sum, r) =>
+      sum + Number(r.full_cones || 0) * Number(r.meters_per_cone || 0) + Number(r.partial_meters || 0), 0)
+    const allocatedCones = totalCones - availableCones
+    const allocatedMeters = Math.round((totalMeters - availableMeters) * 100) / 100
+    const inProductionCones = 0
 
     // Query 2: Get thread types with reorder levels
     const { data: threadTypes, error: threadTypesError } = await supabase

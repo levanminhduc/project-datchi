@@ -25,7 +25,7 @@
     <!-- 2. Summary Cards Row -->
     <div class="row q-col-gutter-md q-mb-md">
       <!-- Card 1: Tổng tồn kho -->
-      <div class="col-12 col-sm-6 col-md-3">
+      <div class="col-12 col-sm-6">
         <q-card class="stat-card border-left-primary">
           <q-card-section>
             <div class="text-overline text-grey-7">
@@ -45,7 +45,7 @@
       </div>
 
       <!-- Card 2: Khả dụng -->
-      <div class="col-12 col-sm-6 col-md-3">
+      <div class="col-12 col-sm-6">
         <q-card class="stat-card border-left-positive">
           <q-card-section>
             <div class="text-overline text-grey-7">
@@ -64,8 +64,8 @@
         </q-card>
       </div>
 
-      <!-- Card 3: Đã phân bổ -->
-      <div class="col-12 col-sm-6 col-md-3">
+      <!-- Card 3: Đã phân bổ (hidden) -->
+      <div v-if="false" class="col-12 col-sm-6 col-md-3">
         <q-card class="stat-card border-left-info">
           <q-card-section>
             <div class="text-overline text-grey-7">
@@ -84,8 +84,8 @@
         </q-card>
       </div>
 
-      <!-- Card 4: Đang sản xuất -->
-      <div class="col-12 col-sm-6 col-md-3">
+      <!-- Card 4: Đang sản xuất (hidden) -->
+      <div v-if="false" class="col-12 col-sm-6 col-md-3">
         <q-card class="stat-card border-left-secondary">
           <q-card-section>
             <div class="text-overline text-grey-7">
@@ -105,8 +105,11 @@
       </div>
     </div>
 
-    <!-- 3. Alerts Section -->
-    <q-card class="q-mb-md shadow-2">
+    <!-- 3. Alerts Section (tạm ẩn) -->
+    <q-card
+      v-if="false"
+      class="q-mb-md shadow-2"
+    >
       <q-card-section>
         <div class="row items-center justify-between">
           <div class="text-h6 row items-center">
@@ -202,8 +205,8 @@
 
     <!-- 4. Two-Column Layout Below -->
     <div class="row q-col-gutter-md">
-      <!-- Left Column: Pending Actions -->
-      <div class="col-12 col-md-6">
+      <!-- Left Column: Pending Actions (hidden) -->
+      <div v-if="false" class="col-12 col-md-6">
         <q-card class="full-height shadow-2">
           <q-card-section>
             <div class="text-h6 row items-center">
@@ -338,8 +341,8 @@
         </q-card>
       </div>
 
-      <!-- Right Column: Active Conflicts -->
-      <div class="col-12 col-md-6">
+      <!-- Right Column: Active Conflicts (hidden) -->
+      <div v-if="false" class="col-12 col-md-6">
         <q-card class="full-height shadow-2">
           <q-card-section>
             <div class="row items-center justify-between">

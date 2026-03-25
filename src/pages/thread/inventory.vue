@@ -885,7 +885,7 @@ const threadTypeOptions = computed(() =>
 
 const supplierOptions = computed(() =>
   suppliers.value.filter(s => s.is_active).map(s => ({
-    label: `${s.code} - ${s.name}`,
+    label: s.name,
     value: s.id
   }))
 )

@@ -11,7 +11,7 @@ import { settingsService } from '@/services/settingsService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useAuth } from '@/composables/useAuth'
 import { useConfirm } from '@/composables/useConfirm'
-import { IssueV2Status } from '@/types/thread/issueV2'
+import { IssueV2Status, OVER_QUOTA_REASONS } from '@/types/thread/issueV2'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
@@ -369,6 +369,8 @@ function isAddButtonDisabled(threadTypeId: number): boolean {
   if (input.full === 0 && input.partial === 0) return true
 
   if (input.validation && !input.validation.stock_sufficient) return true
+
+  if (input.validation?.is_over_quota && !input.notes) return true
 
   return false
 }
@@ -943,13 +945,19 @@ onMounted(async () => {
                       >
                         Vượt định mức!
                       </q-badge>
-                      <AppInput
-                        :model-value="lineInputs[props.row.thread_type_id]?.notes ?? ''"
-                        dense
-                        placeholder="Ghi chú lý do..."
-                        class="q-mt-xs"
-                        @update:model-value="(v) => { const input = lineInputs[props.row.thread_type_id]; if (input) { input.notes = String(v) } }"
-                      />
+                      <div class="q-mt-xs q-gutter-xs">
+                        <q-chip
+                          v-for="reason in OVER_QUOTA_REASONS"
+                          :key="reason"
+                          :outline="lineInputs[props.row.thread_type_id]?.notes !== reason"
+                          :color="lineInputs[props.row.thread_type_id]?.notes === reason ? 'warning' : undefined"
+                          clickable
+                          dense
+                          @click="() => { const input = lineInputs[props.row.thread_type_id]; if (input) { input.notes = input.notes === reason ? '' : reason } }"
+                        >
+                          {{ reason }}
+                        </q-chip>
+                      </div>
                     </div>
                   </q-td>
                 </template>
