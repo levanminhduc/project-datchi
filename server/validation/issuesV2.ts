@@ -76,6 +76,7 @@ export const ValidateIssueLineV2Schema = z.object({
   style_color_id: z.number().int().positive().optional().nullable(),
   color_id: z.number().int().positive().optional().nullable(),
   sub_art_id: z.number().int().positive().optional().nullable(),
+  department: z.string().optional(),
 })
 
 export type ValidateIssueLineV2DTO = z.infer<typeof ValidateIssueLineV2Schema>
@@ -104,6 +105,7 @@ export const FormDataQuerySchema = z.object({
   style_id: z.coerce.number().int().positive().optional(),
   style_color_id: z.coerce.number().int().positive().optional(),
   color_id: z.coerce.number().int().positive().optional(),
+  department: z.string().trim().optional(),
 })
 
 export type FormDataQueryDTO = z.infer<typeof FormDataQuerySchema>
