@@ -37,6 +37,7 @@ import notificationsRouter from './routes/notifications'
 import importRouter from './routes/import'
 import subArtsRouter from './routes/subArts'
 import styleColorsRouter from './routes/styleColors'
+import deptAllocationsRouter from './routes/deptAllocations'
 import { authMiddleware } from './middleware/auth'
 import { supabaseAdmin } from './db/supabase'
 
@@ -150,6 +151,7 @@ app.route('/api/notifications', notificationsRouter)
 app.route('/api/import', importRouter)
 app.route('/api/sub-arts', subArtsRouter)
 app.route('/api/style-colors', styleColorsRouter)
+app.route('/api/dept-allocations', deptAllocationsRouter)
 
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
