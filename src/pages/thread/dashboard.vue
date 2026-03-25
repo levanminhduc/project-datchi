@@ -25,8 +25,8 @@
     <!-- 2. Summary Cards Row -->
     <div class="row q-col-gutter-md q-mb-md">
       <!-- Card 1: Tổng tồn kho -->
-      <div class="col-12 col-sm-6">
-        <q-card class="stat-card border-left-primary">
+      <div class="col-12 col-sm-6 col-md-4">
+        <q-card class="shadow-2">
           <q-card-section>
             <div class="text-overline text-grey-7">
               Tổng Tồn Kho
@@ -45,8 +45,8 @@
       </div>
 
       <!-- Card 2: Khả dụng -->
-      <div class="col-12 col-sm-6">
-        <q-card class="stat-card border-left-positive">
+      <div class="col-12 col-sm-6 col-md-4">
+        <q-card class="shadow-2">
           <q-card-section>
             <div class="text-overline text-grey-7">
               Khả Dụng
@@ -60,6 +60,26 @@
           </q-card-section>
           <q-inner-loading :showing="isLoading && !summary">
             <q-spinner-dots color="positive" />
+          </q-inner-loading>
+        </q-card>
+      </div>
+
+      <!-- Card 3: Giá trị tồn kho -->
+      <div class="col-12 col-sm-6 col-md-4">
+        <q-card class="shadow-2">
+          <q-card-section>
+            <div class="text-overline text-grey-7">
+              Giá Trị Tồn Kho (Cuộn Nguyên)
+            </div>
+            <div class="text-h4 text-weight-bold text-accent">
+              {{ formatCurrency(summary?.total_inventory_value) }} <span class="text-subtitle1">VND</span>
+            </div>
+            <div class="text-caption text-grey-8">
+              Tính theo cuộn nguyên × đơn giá
+            </div>
+          </q-card-section>
+          <q-inner-loading :showing="isLoading && !summary">
+            <q-spinner-dots color="accent" />
           </q-inner-loading>
         </q-card>
       </div>
@@ -514,6 +534,11 @@ const formatNumber = (val: number | undefined | null) => {
   return val.toLocaleString('vi-VN')
 }
 
+const formatCurrency = (val: number | undefined | null) => {
+  if (val === undefined || val === null || val === 0) return '0'
+  return new Intl.NumberFormat('vi-VN').format(Math.round(val))
+}
+
 const formatDate = (val: string) => {
   return date.formatDate(val, 'HH:mm DD/MM/YYYY')
 }
@@ -570,20 +595,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.stat-card {
-  transition: transform 0.2s;
-  border-radius: 8px;
-}
-
-.stat-card:hover {
-  transform: translateY(-4px);
-}
-
-.border-left-primary { border-left: 4px solid var(--q-primary); }
-.border-left-positive { border-left: 4px solid var(--q-positive); }
-.border-left-info { border-left: 4px solid var(--q-info); }
-.border-left-secondary { border-left: 4px solid var(--q-secondary); }
-
 .opacity-50 {
   opacity: 0.5;
 }

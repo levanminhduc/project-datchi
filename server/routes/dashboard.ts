@@ -22,6 +22,7 @@ interface DashboardSummary {
   partial_cones: number
   low_stock_types: number
   critical_stock_types: number
+  total_inventory_value: number
 }
 
 interface StockAlert {
@@ -111,7 +112,7 @@ dashboard.get('/summary', async (c) => {
       }, 500)
     }
 
-    type SummaryRow = { total_full_cones: number; total_partial_cones: number; full_cones: number; partial_cones: number; partial_meters: number; meters_per_cone: number }
+    type SummaryRow = { thread_type_id: number; supplier_id: number | null; total_full_cones: number; total_partial_cones: number; full_cones: number; partial_cones: number; partial_meters: number; meters_per_cone: number }
     const totalRows = (totalResult.data || []) as SummaryRow[]
     const kdRows = (kdResult.data || []) as SummaryRow[]
 
@@ -126,6 +127,38 @@ dashboard.get('/summary', async (c) => {
     const allocatedCones = totalCones - availableCones
     const allocatedMeters = Math.round((totalMeters - availableMeters) * 100) / 100
     const inProductionCones = 0
+
+    // Calculate inventory value (same as ConeSummaryTable: total_full_cones × unit_price)
+    let totalInventoryValue = 0
+    const threadTypeIds = [...new Set(totalRows.map(r => r.thread_type_id))]
+    if (threadTypeIds.length > 0) {
+      const { data: prices } = await supabase
+        .from('thread_type_supplier')
+        .select('thread_type_id, supplier_id, unit_price')
+        .in('thread_type_id', threadTypeIds)
+        .eq('is_active', true)
+
+      if (prices) {
+        const supplierMap = new Map<number, number | null>()
+        for (const row of totalRows) {
+          if (row.supplier_id && !supplierMap.has(row.thread_type_id)) {
+            supplierMap.set(row.thread_type_id, row.supplier_id)
+          }
+        }
+        const priceMap = new Map<number, number>()
+        for (const p of prices) {
+          const defaultSupplierId = supplierMap.get(p.thread_type_id)
+          if (defaultSupplierId && p.supplier_id === defaultSupplierId && p.unit_price != null) {
+            priceMap.set(p.thread_type_id, Number(p.unit_price))
+          }
+        }
+        totalInventoryValue = totalRows.reduce((sum, r) => {
+          const cones = Number(r.total_full_cones || 0)
+          const price = priceMap.get(r.thread_type_id)
+          return price && cones > 0 ? sum + cones * price : sum
+        }, 0)
+      }
+    }
 
     // Query 2: Get thread types with reorder levels
     const { data: threadTypes, error: threadTypesError } = await supabase
@@ -194,7 +227,8 @@ dashboard.get('/summary', async (c) => {
       in_production_cones: inProductionCones,
       partial_cones: partialCones,
       low_stock_types: lowStockTypes,
-      critical_stock_types: criticalStockTypes
+      critical_stock_types: criticalStockTypes,
+      total_inventory_value: Math.round(totalInventoryValue)
     }
 
     return c.json<ThreadApiResponse<DashboardSummary>>({
