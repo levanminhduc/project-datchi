@@ -350,7 +350,6 @@ import { ref, computed, watch, onMounted } from "vue";
 import { useQuasar } from "quasar";
 import { usePurchaseOrders, useStyles, useSnackbar } from "@/composables";
 import { weeklyOrderService } from "@/services/weeklyOrderService";
-import { deliveryService } from "@/services/deliveryService";
 import DatePicker from "@/components/ui/pickers/DatePicker.vue";
 import ThreadSummaryTable from "@/components/thread/weekly-order/ThreadSummaryTable.vue";
 import { dateRules } from '@/utils'
@@ -464,42 +463,11 @@ async function loadThreadSummary(weekId: number) {
   threadSummary.value = [];
 
   try {
-    const [resultsData, deliveries] = await Promise.all([
-      weeklyOrderService.getResults(weekId),
-      deliveryService.getByWeek(weekId),
-    ]);
+    const rows = await weeklyOrderService.getThreadSummaryLive(weekId)
 
-    if (!resultsData?.summary_data?.length) {
-      threadSummary.value = [];
-      return;
-    }
+    if (expandedWeekId.value !== weekId) return
 
-    if (expandedWeekId.value !== weekId) return;
-
-    const pendingByType = new Map<number, number>();
-    deliveries
-      .filter(d => d.status === 'PENDING')
-      .forEach(d => {
-        const current = pendingByType.get(d.thread_type_id) || 0;
-        pendingByType.set(d.thread_type_id, current + (d.quantity_cones || 0));
-      });
-
-    threadSummary.value = resultsData.summary_data.map((row) => {
-      const pending = pendingByType.get(row.thread_type_id) || 0;
-      const available = row.equivalent_cones || 0;
-      const totalCones = row.total_cones || 0;
-      return {
-        thread_type_id: row.thread_type_id,
-        thread_type_name: row.thread_type_name,
-        supplier_name: row.supplier_name,
-        tex_number: row.tex_number,
-        thread_color: row.thread_color || null,
-        total_cones: totalCones,
-        equivalent_cones: available,
-        pending_cones: pending,
-        shortage: Math.max(0, totalCones - available - pending),
-      };
-    });
+    threadSummary.value = rows
   } catch {
     snackbar.error('Không thể tải chi tiết loại chỉ');
   } finally {
