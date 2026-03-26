@@ -56,6 +56,6 @@ const columns: QTableColumn[] = [
   { name: 'total_cones', label: 'Cần đặt', field: 'total_cones', align: 'right', format: (v: number) => v.toLocaleString('vi-VN') },
   { name: 'reserved_cones', label: 'Đã có', field: 'reserved_cones', align: 'right', format: (v: number) => v.toLocaleString('vi-VN') },
   { name: 'pending_cones', label: 'Chờ về', field: 'pending_cones', align: 'right', format: (v: number) => v.toLocaleString('vi-VN') },
-  { name: 'remaining', label: 'Chưa về kho', field: 'remaining', align: 'right', sortable: true },
+  { name: 'remaining', label: 'Chưa nhập kho', field: 'remaining', align: 'right', sortable: true },
 ]
 </script>
