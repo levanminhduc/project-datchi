@@ -22,12 +22,12 @@
           </div>
         </q-td>
       </template>
-      <template #body-cell-shortage="props">
+      <template #body-cell-remaining="props">
         <q-td :props="props">
           <span
-            :class="props.row.shortage > 0 ? 'text-negative text-weight-bold' : 'text-positive'"
+            :class="props.row.remaining > 0 ? 'text-negative text-weight-bold' : 'text-positive'"
           >
-            {{ props.row.shortage.toLocaleString('vi-VN') }}
+            {{ props.row.remaining.toLocaleString('vi-VN') }}
           </span>
         </q-td>
       </template>
@@ -54,8 +54,8 @@ defineProps<{
 const columns: QTableColumn[] = [
   { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
   { name: 'total_cones', label: 'Cần đặt', field: 'total_cones', align: 'right', format: (v: number) => v.toLocaleString('vi-VN') },
-  { name: 'equivalent_cones', label: 'Sẵn kho', field: 'equivalent_cones', align: 'right', format: (v: number) => v.toLocaleString('vi-VN') },
+  { name: 'reserved_cones', label: 'Đã có', field: 'reserved_cones', align: 'right', format: (v: number) => v.toLocaleString('vi-VN') },
   { name: 'pending_cones', label: 'Chờ về', field: 'pending_cones', align: 'right', format: (v: number) => v.toLocaleString('vi-VN') },
-  { name: 'shortage', label: 'Thiếu', field: 'shortage', align: 'right', sortable: true },
+  { name: 'remaining', label: 'Chưa về kho', field: 'remaining', align: 'right', sortable: true },
 ]
 </script>
