@@ -1,0 +1,9 @@
+{
+  "vue": {
+    "command": "npx",
+    "args": ["vue-language-server", "--stdio"],
+    "extensionToLanguage": {
+      ".vue": "vue"
+    }
+  }
+}
