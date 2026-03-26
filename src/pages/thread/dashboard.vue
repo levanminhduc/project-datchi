@@ -85,7 +85,10 @@
       </div>
 
       <!-- Card 3: Đã phân bổ (hidden) -->
-      <div v-if="false" class="col-12 col-sm-6 col-md-3">
+      <div
+        v-if="false"
+        class="col-12 col-sm-6 col-md-3"
+      >
         <q-card class="stat-card border-left-info">
           <q-card-section>
             <div class="text-overline text-grey-7">
@@ -105,7 +108,10 @@
       </div>
 
       <!-- Card 4: Đang sản xuất (hidden) -->
-      <div v-if="false" class="col-12 col-sm-6 col-md-3">
+      <div
+        v-if="false"
+        class="col-12 col-sm-6 col-md-3"
+      >
         <q-card class="stat-card border-left-secondary">
           <q-card-section>
             <div class="text-overline text-grey-7">
@@ -226,7 +232,10 @@
     <!-- 4. Two-Column Layout Below -->
     <div class="row q-col-gutter-md">
       <!-- Left Column: Pending Actions (hidden) -->
-      <div v-if="false" class="col-12 col-md-6">
+      <div
+        v-if="false"
+        class="col-12 col-md-6"
+      >
         <q-card class="full-height shadow-2">
           <q-card-section>
             <div class="text-h6 row items-center">
@@ -362,7 +371,10 @@
       </div>
 
       <!-- Right Column: Active Conflicts (hidden) -->
-      <div v-if="false" class="col-12 col-md-6">
+      <div
+        v-if="false"
+        class="col-12 col-md-6"
+      >
         <q-card class="full-height shadow-2">
           <q-card-section>
             <div class="row items-center justify-between">
