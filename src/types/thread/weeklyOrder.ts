@@ -355,9 +355,9 @@ export interface ThreadSummaryRow {
   tex_number: string
   thread_color?: string | null
   total_cones: number
-  equivalent_cones: number
+  reserved_cones: number
   pending_cones: number
-  shortage: number
+  remaining: number
 }
 
 export interface AssignmentSummaryRow {
