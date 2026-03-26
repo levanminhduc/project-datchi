@@ -19,6 +19,7 @@ import AppButton from '@/components/ui/buttons/AppButton.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import { dateRules } from '@/utils'
+import { formatStyleDisplay } from '@/utils/thread-format'
 import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
 import type { QTableColumn, QTableProps } from 'quasar'
 import type {
@@ -207,7 +208,7 @@ watch(selectedPoId, async (newPoId) => {
     const styles = await issueV2Service.getOrderOptions(newPoId)
     styleOptions.value = (styles as OrderOptionStyle[]).map((s) => ({
       value: s.id,
-      label: `${s.style_code} - ${s.style_name || ''}`.trim(),
+      label: formatStyleDisplay(s.style_code, s.style_name),
       has_sub_arts: s.has_sub_arts,
     }))
   } catch (err) {
@@ -512,7 +513,8 @@ async function handleConfirm() {
 
 function handleBack() {
   clearIssue()
-  router.push('/thread/issues')
+  activeTab.value = 'history'
+  router.replace({ query: { tab: 'history' } })
 }
 
 function handleNewIssue() {
@@ -1406,17 +1408,20 @@ onMounted(async () => {
           class="q-mb-md"
         />
 
-        <div class="row items-end q-gutter-sm q-mt-md">
+        <div class="row items-center q-gutter-sm q-mt-md">
           <div class="col">
             <AppInput
               v-model.number="allocationAddQty"
               label="Nhập thêm SP"
               type="number"
+              min="1"
               :rules="[
                 (v: number | null) => (v !== null && v > 0) || 'Số lượng phải lớn hơn 0',
-                (v: number | null) => (v !== null && v <= (allocationSummary?.remaining ?? 0)) || `Vượt quá SP còn lại (${allocationSummary?.remaining.toLocaleString()})`,
+                (v: number | null) => (v !== null && v - (allocationSummary?.remaining ?? 0) < 1) || `Vượt quá SP còn lại (${allocationSummary?.remaining.toLocaleString()})`,
               ]"
+              reactive-rules
               dense
+              hide-bottom-space
             />
           </div>
           <div class="col-auto">
@@ -1460,7 +1465,7 @@ onMounted(async () => {
           label="Xác nhận"
           color="primary"
           :loading="isAllocating"
-          :disable="!allocationAddQty || allocationAddQty <= 0 || allocationAddQty > (allocationSummary?.remaining ?? 0)"
+          :disable="!allocationAddQty || allocationAddQty <= 0 || allocationAddQty - (allocationSummary?.remaining ?? 0) >= 1"
           @click="handleAllocate"
         />
       </q-card-actions>

@@ -7,6 +7,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { styleService } from '@/services/styleService'
 import type { Style } from '@/types/thread'
+import { formatStyleDisplay } from '@/utils/thread-format'
 
 interface Props {
   modelValue: boolean
@@ -136,7 +137,7 @@ function onCancel() {
           v-model="form.style_id"
           :options="styles"
           option-value="id"
-          :option-label="(opt: Style) => `${opt.style_code} - ${opt.style_name}`"
+          :option-label="(opt: Style) => formatStyleDisplay(opt.style_code, opt.style_name)"
           label="Mã hàng"
           outlined
           use-input

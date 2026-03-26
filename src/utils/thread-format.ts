@@ -1,3 +1,14 @@
+export function formatStyleDisplay(
+  styleCode: string | null | undefined,
+  styleName: string | null | undefined,
+): string {
+  const code = styleCode?.trim() || ''
+  const name = styleName?.trim() || ''
+  if (!code) return name || '-'
+  if (!name || name === code) return code
+  return `${code} - ${name}`
+}
+
 export function formatThreadTypeDisplay(
   supplierName: string | null | undefined,
   texNumber: number | string | null | undefined,

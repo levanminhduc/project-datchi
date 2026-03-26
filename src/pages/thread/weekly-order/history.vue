@@ -354,6 +354,7 @@ import { deliveryService } from "@/services/deliveryService";
 import DatePicker from "@/components/ui/pickers/DatePicker.vue";
 import ThreadSummaryTable from "@/components/thread/weekly-order/ThreadSummaryTable.vue";
 import { dateRules } from '@/utils'
+import { formatStyleDisplay } from '@/utils/thread-format'
 import type { WeekHistoryGroup, HistoryByWeekFilter, ThreadSummaryRow } from "@/types/thread";
 
 definePage({
@@ -409,7 +410,7 @@ const poOptions = computed(() =>
 
 const styleOptions = computed(() =>
   styleList.value.map((s) => ({
-    label: `${s.style_code} - ${s.style_name}`,
+    label: formatStyleDisplay(s.style_code, s.style_name),
     value: s.id,
   })),
 );

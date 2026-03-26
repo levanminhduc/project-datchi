@@ -139,6 +139,7 @@ import { ref, computed, watch } from 'vue'
 import StyleOrderCard from './StyleOrderCard.vue'
 import type { StyleOrderEntry, PurchaseOrderWithItems, OrderedQuantityInfo } from '@/types/thread'
 import { styleService } from '@/services/styleService'
+import { formatStyleDisplay } from '@/utils/thread-format'
 
 const props = withDefaults(defineProps<{
   po: PurchaseOrderWithItems
@@ -241,7 +242,7 @@ const availableStyleOptions = computed(() => {
       const info = props.orderedQuantities.get(key)
       const remaining = info ? info.remaining_quantity : item.quantity
       return {
-        label: `${item.style!.style_code} - ${item.style!.style_name} (SL: ${item.quantity} | Còn lại: ${remaining})`,
+        label: `${formatStyleDisplay(item.style!.style_code, item.style!.style_name)} (SL: ${item.quantity} | Còn lại: ${remaining})`,
         value: item.style_id,
       }
     })

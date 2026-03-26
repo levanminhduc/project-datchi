@@ -17,7 +17,7 @@
           v-if="selectedStyle"
           class="text-grey-6"
         >
-          {{ selectedStyle.style_code }} - {{ selectedStyle.style_name }}
+          {{ formatStyleDisplay(selectedStyle.style_code, selectedStyle.style_name) }}
         </div>
       </div>
       <q-space />
@@ -426,6 +426,7 @@ import StyleColorSpecsTab from '@/components/thread/StyleColorSpecsTab.vue'
 import { fetchApi } from '@/services/api'
 import type { QTableColumn } from 'quasar'
 import type { StyleThreadSpec } from '@/types/thread'
+import { formatStyleDisplay } from '@/utils/thread-format'
 
 definePage({
   meta: { requiresAuth: true }

@@ -120,7 +120,7 @@
         <div class="row items-center q-mb-md">
           <div class="col">
             <div class="text-h6">
-              {{ calculationResult.style_code }} - {{ calculationResult.style_name }}
+              {{ formatStyleDisplay(calculationResult.style_code, calculationResult.style_name) }}
             </div>
             <div class="text-caption text-grey-7">
               Số lượng: {{ calculationResult.total_quantity }} SP
@@ -191,7 +191,7 @@
           <div class="row items-center q-mb-md">
             <div class="col">
               <div class="text-h6">
-                {{ poResult.style_code }} - {{ poResult.style_name }}
+                {{ formatStyleDisplay(poResult.style_code, poResult.style_name) }}
               </div>
               <div class="text-caption text-grey-7">
                 Số lượng: {{ poResult.quantity }} SP
@@ -312,6 +312,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { formatStyleDisplay } from '@/utils/thread-format'
 import { useStyles, usePurchaseOrders, useThreadCalculation } from '@/composables'
 import type { QTableColumn } from 'quasar'
 import { useRouter } from 'vue-router'
@@ -371,7 +372,7 @@ function isLightColor(hex: string): boolean {
 
 // Computed options
 const styleOptions = computed(() =>
-  styles.value.map(s => ({ label: `${s.style_code} - ${s.style_name}`, value: s.id }))
+  styles.value.map(s => ({ label: formatStyleDisplay(s.style_code, s.style_name), value: s.id }))
 )
 const poOptions = computed(() =>
   purchaseOrders.value.map(po => ({ label: po.po_number, value: po.id }))
