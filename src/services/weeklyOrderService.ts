@@ -33,6 +33,7 @@ import type {
   ThreadOrderItemCompletion,
   SurplusPreview,
   ReleaseSurplusResult,
+  ThreadSummaryRow,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -237,6 +238,16 @@ export const weeklyOrderService = {
     }
 
     return response.data
+  },
+
+  async getThreadSummaryLive(weekId: number): Promise<ThreadSummaryRow[]> {
+    const response = await fetchApi<ApiResponse<ThreadSummaryRow[]>>(`${BASE}/${weekId}/thread-summary-live`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || []
   },
 
   async enrichInventory(rows: AggregatedRow[], currentWeekId?: number): Promise<AggregatedRow[]> {
