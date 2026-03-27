@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 import { getPartialConeRatio } from '../utils/settings-helper'
 import { broadcastNotification, getWarehouseEmployeeIds } from '../utils/notificationService'
+import { dispatchExternalNotification } from '../utils/external-notification-dispatcher'
 import {
   CreateWeeklyOrderSchema,
   UpdateWeeklyOrderSchema,
@@ -2264,6 +2265,20 @@ weeklyOrder.patch('/:id/status', requirePermission('thread.allocations.manage'),
           metadata: { weekly_order_id: id, new_status: newStatus },
         })
 
+        if (newStatus === 'CONFIRMED') {
+          const itemCount = (result?.reservation_summary || []).length
+          const totalQuantity = (result?.reservation_summary || []).reduce(
+            (sum: number, s: any) => sum + (s.reserved || 0), 0
+          )
+          dispatchExternalNotification('ORDER_CONFIRMED', {
+            weekId: id,
+            weekLabel: week?.week_name || `#${id}`,
+            createdBy: week?.created_by || '',
+            itemCount,
+            totalQuantity,
+          })
+        }
+
         return c.json({
           data: {
             week,
@@ -2329,6 +2344,16 @@ weeklyOrder.patch('/:id/status', requirePermission('thread.allocations.manage'),
       actionUrl: `/thread/weekly-order/${id}`,
       metadata: { weekly_order_id: id, new_status: newStatus },
     })
+
+    if (newStatus === 'CONFIRMED') {
+      dispatchExternalNotification('ORDER_CONFIRMED', {
+        weekId: id,
+        weekLabel: data?.week_name || `#${id}`,
+        createdBy: data?.created_by || '',
+        itemCount: 0,
+        totalQuantity: 0,
+      })
+    }
 
     return c.json({ data, error: null, message: 'Cập nhật trạng thái thành công' })
   } catch (err) {

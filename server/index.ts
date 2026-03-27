@@ -34,6 +34,7 @@ import settingsRouter from './routes/settings'
 import stockRouter from './routes/stock'
 import issuesV2Router from './routes/issuesV2'
 import notificationsRouter from './routes/notifications'
+import notificationChannelsRouter from './routes/notification-channels'
 import importRouter from './routes/import'
 import subArtsRouter from './routes/subArts'
 import styleColorsRouter from './routes/styleColors'
@@ -148,6 +149,7 @@ app.route('/api/issues/v2', issuesV2Router)
 app.route('/api/settings', settingsRouter)
 app.route('/api/stock', stockRouter)
 app.route('/api/notifications', notificationsRouter)
+app.route('/api/notification-channels', notificationChannelsRouter)
 app.route('/api/import', importRouter)
 app.route('/api/sub-arts', subArtsRouter)
 app.route('/api/style-colors', styleColorsRouter)
