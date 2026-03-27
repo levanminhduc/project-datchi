@@ -5,10 +5,13 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+ENV HUSKY=0
+
 COPY package.json package-lock.json ./
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --legacy-peer-deps
+    npm ci --legacy-peer-deps --ignore-scripts && \
+    npm rebuild esbuild
 
 COPY tsconfig.json tsconfig.node.json tsconfig.server.json ./
 COPY server/ ./server/
@@ -29,10 +32,12 @@ FROM node:22-alpine AS deps
 
 WORKDIR /app
 
+ENV HUSKY=0
+
 COPY package.json package-lock.json ./
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev --legacy-peer-deps
+    npm ci --omit=dev --legacy-peer-deps --ignore-scripts
 
 # ============================================
 # Stage 3: Runtime minimal

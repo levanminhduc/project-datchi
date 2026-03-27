@@ -18,6 +18,7 @@ import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
 import { dateRules } from '@/utils'
 import { formatStyleDisplay } from '@/utils/thread-format'
 import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
@@ -339,7 +340,7 @@ async function handleAllocate() {
     })
     showAllocationModal.value = false
     allocationAddQty.value = null
-    await handleLoadFormData()
+    await loadFormData(selectedPoId.value!, selectedStyleId.value!, selectedColorId.value!, department.value || undefined)
   } catch {
     // error shown by composable snackbar
   }
@@ -1369,108 +1370,89 @@ onMounted(async () => {
     </q-card>
   </q-page>
 
-  <q-dialog
+  <FormDialog
     v-model="showAllocationModal"
-    persistent
+    title="Phân Bổ Sản Phẩm"
+    submit-text="Xác nhận"
+    :loading="isAllocating"
+    @submit="handleAllocate"
+    @cancel="allocationAddQty = null"
   >
-    <q-card style="min-width: 500px">
-      <q-card-section>
-        <div class="text-h6">
-          Phân Bổ Sản Phẩm
-        </div>
-        <div class="text-caption text-grey">
-          PO: {{ poOptions.find(p => p.value === selectedPoId)?.label }}
-          · Style: {{ styleOptions.find(s => s.value === selectedStyleId)?.label }}
-          · Màu: {{ colorOptions.find(c => c.value === selectedColorId)?.label }}
-        </div>
-      </q-card-section>
+    <div class="text-caption text-grey q-mb-md">
+      PO: {{ poOptions.find(p => p.value === selectedPoId)?.label }}
+      · Style: {{ styleOptions.find(s => s.value === selectedStyleId)?.label }}
+      · Màu: {{ colorOptions.find(c => c.value === selectedColorId)?.label }}
+    </div>
 
-      <q-card-section v-if="allocationSummary">
-        <div class="text-subtitle2 q-mb-sm">
-          Tổng SP: {{ allocationSummary.total_product_quantity.toLocaleString() }}
-          · Đã phân bổ: {{ allocationSummary.total_allocated.toLocaleString() }}
-          · Còn lại: {{ allocationSummary.remaining.toLocaleString() }}
+    <template v-if="allocationSummary">
+      <div class="text-subtitle2 q-mb-sm">
+        Tổng SP: {{ allocationSummary.total_product_quantity.toLocaleString() }}
+        · Đã phân bổ: {{ allocationSummary.total_allocated.toLocaleString() }}
+        · Còn lại: {{ allocationSummary.remaining.toLocaleString() }}
+      </div>
+
+      <q-table
+        v-if="allocationSummary.allocated.length > 0"
+        :rows="allocationSummary.allocated"
+        :columns="[
+          { name: 'department', label: 'Bộ Phận', field: 'department', align: 'left' as const },
+          { name: 'product_quantity', label: 'Số SP', field: 'product_quantity', align: 'right' as const, format: (v: number) => v.toLocaleString() },
+        ]"
+        row-key="department"
+        flat
+        bordered
+        dense
+        :pagination="{ rowsPerPage: 0 }"
+        hide-bottom
+        class="q-mb-md"
+      />
+
+      <div class="row items-center q-col-gutter-sm q-mt-md">
+        <div class="col-12 col-sm">
+          <AppInput
+            v-model.number="allocationAddQty"
+            label="Nhập thêm SP"
+            type="number"
+            min="1"
+            :rules="[
+              (v: number | null) => (v !== null && v > 0) || 'Số lượng phải lớn hơn 0',
+              (v: number | null) => (v !== null && v - (allocationSummary?.remaining ?? 0) < 1) || `Vượt quá SP còn lại (${allocationSummary?.remaining.toLocaleString()})`,
+            ]"
+            reactive-rules
+            dense
+            hide-bottom-space
+          />
         </div>
-
-        <q-table
-          v-if="allocationSummary.allocated.length > 0"
-          :rows="allocationSummary.allocated"
-          :columns="[
-            { name: 'department', label: 'Bộ Phận', field: 'department', align: 'left' as const },
-            { name: 'product_quantity', label: 'Số SP', field: 'product_quantity', align: 'right' as const, format: (v: number) => v.toLocaleString() },
-          ]"
-          row-key="department"
-          flat
-          bordered
-          dense
-          :pagination="{ rowsPerPage: 0 }"
-          hide-bottom
-          class="q-mb-md"
-        />
-
-        <div class="row items-center q-gutter-sm q-mt-md">
-          <div class="col">
-            <AppInput
-              v-model.number="allocationAddQty"
-              label="Nhập thêm SP"
-              type="number"
-              min="1"
-              :rules="[
-                (v: number | null) => (v !== null && v > 0) || 'Số lượng phải lớn hơn 0',
-                (v: number | null) => (v !== null && v - (allocationSummary?.remaining ?? 0) < 1) || `Vượt quá SP còn lại (${allocationSummary?.remaining.toLocaleString()})`,
-              ]"
-              reactive-rules
-              dense
-              hide-bottom-space
-            />
-          </div>
-          <div class="col-auto">
-            <q-btn
-              flat
-              dense
-              color="secondary"
-              :label="`Nhận hết ${allocationSummary.remaining.toLocaleString()} SP`"
-              :disable="allocationSummary.remaining <= 0"
-              @click="fillRemainingAllocation"
-            />
-          </div>
+        <div class="col-12 col-sm-auto">
+          <q-btn
+            flat
+            dense
+            color="secondary"
+            :label="`Nhận hết ${allocationSummary.remaining.toLocaleString()} SP`"
+            :disable="allocationSummary.remaining <= 0"
+            @click="fillRemainingAllocation"
+          />
         </div>
-      </q-card-section>
+      </div>
+    </template>
 
-      <q-card-section
+    <div
+      v-else
+      class="text-center"
+    >
+      <q-spinner
+        v-if="isLoadingAlloc"
+        color="primary"
+        size="2em"
+      />
+      <div
         v-else
-        class="text-center"
+        class="text-grey"
       >
-        <q-spinner
-          v-if="isLoadingAlloc"
-          color="primary"
-          size="2em"
-        />
-        <div
-          v-else
-          class="text-grey"
-        >
-          Không có dữ liệu phân bổ
-        </div>
-      </q-card-section>
-
-      <q-card-actions align="right">
-        <q-btn
-          flat
-          label="Hủy"
-          color="grey"
-          @click="showAllocationModal = false; allocationAddQty = null"
-        />
-        <AppButton
-          label="Xác nhận"
-          color="primary"
-          :loading="isAllocating"
-          :disable="!allocationAddQty || allocationAddQty <= 0 || allocationAddQty - (allocationSummary?.remaining ?? 0) >= 1"
-          @click="handleAllocate"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+        Không có dữ liệu phân bổ
+      </div>
+    </div>
+  </FormDialog>
 </template>
 
 <style scoped>

@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+
+echo ""
+echo "========================================"
+echo "  Pre-push checks"
+echo "========================================"
+echo ""
+
+echo ">> Step 1/4: Lint"
+npm run lint || { echo ""; echo "FAILED: Lint errors found. Fix and try again."; exit 1; }
+echo ">> Lint passed"
+echo ""
+
+echo ">> Step 2/4: Type-check"
+npm run type-check || { echo ""; echo "FAILED: TypeScript errors found. Fix and try again."; exit 1; }
+echo ">> Type-check passed"
+echo ""
+
+echo ">> Step 3/4: Build"
+npm run build || { echo ""; echo "FAILED: Build failed. Fix and try again."; exit 1; }
+echo ">> Build passed"
+echo ""
+
+echo ">> Step 4/4: E2E Tests"
+CI=true npm run e2e || { echo ""; echo "FAILED: E2E tests failed. Fix and try again."; exit 1; }
+echo ">> E2E passed"
+echo ""
+
+echo "========================================"
+echo "  All checks passed!"
+echo "========================================"
+echo ""
