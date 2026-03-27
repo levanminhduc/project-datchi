@@ -119,6 +119,13 @@ declare module 'vue-router/auto-routes' {
       '/settings',
       Record<never, never>,
       Record<never, never>,
+      | '/settings/notification-channels'
+    >,
+    '/settings/notification-channels': RouteRecordInfo<
+      '/settings/notification-channels',
+      '/settings/notification-channels',
+      Record<never, never>,
+      Record<never, never>,
       | never
     >,
     '/thread/': RouteRecordInfo<
@@ -469,6 +476,13 @@ declare module 'vue-router/auto-routes' {
     'src/pages/settings.vue': {
       routes:
         | '/settings'
+        | '/settings/notification-channels'
+      views:
+        | 'default'
+    }
+    'src/pages/settings/notification-channels.vue': {
+      routes:
+        | '/settings/notification-channels'
       views:
         | never
     }
