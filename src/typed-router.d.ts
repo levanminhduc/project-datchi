@@ -93,6 +93,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/notification-channels': RouteRecordInfo<
+      '/notification-channels',
+      '/notification-channels',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/phan-quyen': RouteRecordInfo<
       '/phan-quyen',
       '/phan-quyen',
@@ -117,13 +124,6 @@ declare module 'vue-router/auto-routes' {
     '/settings': RouteRecordInfo<
       '/settings',
       '/settings',
-      Record<never, never>,
-      Record<never, never>,
-      | '/settings/notification-channels'
-    >,
-    '/settings/notification-channels': RouteRecordInfo<
-      '/settings/notification-channels',
-      '/settings/notification-channels',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -455,6 +455,12 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
+    'src/pages/notification-channels.vue': {
+      routes:
+        | '/notification-channels'
+      views:
+        | never
+    }
     'src/pages/phan-quyen.vue': {
       routes:
         | '/phan-quyen'
@@ -476,13 +482,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/settings.vue': {
       routes:
         | '/settings'
-        | '/settings/notification-channels'
-      views:
-        | 'default'
-    }
-    'src/pages/settings/notification-channels.vue': {
-      routes:
-        | '/settings/notification-channels'
       views:
         | never
     }
