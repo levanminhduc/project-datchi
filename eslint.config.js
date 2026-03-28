@@ -15,7 +15,7 @@ export default [
     },
   },
   {
-    ignores: ['node_modules', 'dist', '*.d.ts'],
+    ignores: ['node_modules', 'dist', '*.d.ts', '.claude', 'backend-esbuild-example'],
   },
   {
     languageOptions: {
@@ -56,6 +56,8 @@ export default [
         AbortController: 'readonly',
         AbortSignal: 'readonly',
         Element: 'readonly',
+        KeyboardEvent: 'readonly',
+        ClipboardEvent: 'readonly',
         // Vue Router auto-import macros
         definePage: 'readonly',
         // Node.js globals (for server files)

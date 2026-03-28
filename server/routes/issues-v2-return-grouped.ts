@@ -22,7 +22,7 @@ interface MatchingWeekItem {
   week_name: string
 }
 
-async function findMatchingWeekItems(
+async function _findMatchingWeekItems(
   poId: number,
   styleId: number,
   styleColorId: number | null,

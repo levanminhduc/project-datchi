@@ -2525,7 +2525,7 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
       }
 
       const desiredDeliveryRows = Array.from(desiredDeliveryMap.values())
-      const desiredThreadTypeIds = new Set(desiredDeliveryRows.map((row) => row.thread_type_id))
+      const _desiredThreadTypeIds = new Set(desiredDeliveryRows.map((row) => row.thread_type_id))
       const existingThreadTypeIds = new Set(
         (existingDeliveries || []).map((d: { thread_type_id: number }) => d.thread_type_id)
       )

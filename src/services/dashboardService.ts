@@ -27,6 +27,7 @@ export interface DashboardSummary {
   partial_cones: number
   low_stock_types: number
   critical_stock_types: number
+  total_inventory_value: number
 }
 
 /**

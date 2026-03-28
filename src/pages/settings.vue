@@ -857,7 +857,7 @@ async function handleSaveColorMapping() {
 async function handleDownloadTexTemplate() {
   try {
     await importService.downloadTexTemplate()
-  } catch (e) {
+  } catch (_e) {
     snackbar.error('Không thể tải file mẫu NCC-Tex')
   }
 }
@@ -865,7 +865,7 @@ async function handleDownloadTexTemplate() {
 async function handleDownloadColorTemplate() {
   try {
     await importService.downloadColorTemplate()
-  } catch (e) {
+  } catch (_e) {
     snackbar.error('Không thể tải file mẫu Màu NCC')
   }
 }
@@ -890,7 +890,7 @@ async function handleSavePOMapping() {
 async function handleDownloadPOTemplate() {
   try {
     await importService.downloadPOTemplate()
-  } catch (e) {
+  } catch (_e) {
     snackbar.error('Không thể tải file mẫu PO')
   }
 }

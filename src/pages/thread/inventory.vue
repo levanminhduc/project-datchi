@@ -1078,7 +1078,7 @@ watch(() => receiptData.thread_type_id, async (newThreadTypeId) => {
 })
 
 // Methods
-const openReceiptDialog = () => {
+const _openReceiptDialog = () => {
   resetReceiptData()
   receiptDialog.isOpen = true
 }

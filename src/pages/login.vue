@@ -108,7 +108,7 @@ definePage({
 
 const router = useRouter()
 const route = useRoute()
-const { signIn, isLoading, error: authError, employee } = useAuth()
+const { signIn, isLoading, error: authError } = useAuth()
 
 const form = reactive({
   employeeId: '',

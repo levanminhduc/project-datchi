@@ -33,7 +33,7 @@ interface PaginatedResponse<T> {
 
 const BASE = '/api/purchase-orders'
 
-function buildQueryString(filters?: PurchaseOrderFilter): string {
+function _buildQueryString(filters?: PurchaseOrderFilter): string {
   if (!filters) return ''
 
   const params = new URLSearchParams()

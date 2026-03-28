@@ -13,7 +13,7 @@ const router = useRouter();
 const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
 const { startPolling, stopPolling } = useNotifications();
-const { employee, isAuthenticated, tempPassword } = useAuth();
+const { isAuthenticated, tempPassword } = useAuth();
 
 // TODO: bật lại khi cần force đổi mật khẩu lần đầu
 const showChangePasswordModal = computed(() => false);

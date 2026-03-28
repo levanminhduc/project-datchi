@@ -400,7 +400,7 @@ const poOptions = computed(() =>
     }))
 )
 
-const canSave = computed(() => {
+const _canSave = computed(() => {
   return orderEntries.value.length > 0
 })
 

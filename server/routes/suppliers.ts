@@ -4,7 +4,7 @@ import { requirePermission } from '../middleware/auth'
 import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
   SupplierRow,
-  SupplierWithColors,
+
   CreateSupplierDTO,
   UpdateSupplierDTO,
   SupplierApiResponse
