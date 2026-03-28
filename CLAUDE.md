@@ -47,9 +47,9 @@ supabase migration up                                  # Apply new migrations (S
 
 **Stack:** Vue 3 + Quasar 2 + TypeScript 5.9 + Vite 8 | Hono 4 (Node.js via tsx) | Supabase (PostgreSQL) + Zod 4
 
-**Domains:** Thread master data, Inventory (kg + meters dual UoM), Allocations (FEFO), Recovery, Batch ops, Weekly ordering, Issue V2, Reports, HR/Auth (RBAC), Purchase Orders, Reconciliation, Thread Calculation, Sub-Arts, Style Colors, Styles
+**Domains:** Thread master data, Inventory (kg + meters dual UoM), Allocations (FEFO), Recovery, Batch ops, Weekly ordering, Issue V2, Reports, HR/Auth (RBAC), Purchase Orders, Reconciliation, Thread Calculation, Sub-Arts, Style Colors, Styles, Notifications (In-app + External: Telegram/Email)
 
-**Environment:** Copy `.env.example` → `.env`. Required: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `VITE_API_URL`. Vite proxies `/api` → `http://localhost:3000`.
+**Environment:** Copy `.env.example` → `.env`. Required: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `VITE_API_URL`. Optional: `TELEGRAM_BOT_TOKEN` (external notifications). Vite proxies `/api` → `http://localhost:3000`.
 
 ## Business Rules (Domain-Critical)
 
@@ -88,6 +88,26 @@ src/components/ui/ → App* wrappers over Quasar
 - Two clients: `src/lib/supabase.ts` (anon key) | `server/db/supabase.ts` (service_role)
 
 **Auth flow:** Supabase Auth → `fetchApi()` attaches Bearer → `authMiddleware` verifies JWT → claims: `employee_id`, `employee_code`, `is_root`, `roles` → `requirePermission()` (ROOT bypasses) → 401 auto-refresh (single-flight)
+
+### Notification System
+
+Two layers: **In-app** (DB-persisted, polling) + **External** (Telegram now, Email future).
+
+```
+Event occurs (e.g. ORDER_CONFIRMED)
+  ├─ In-app: broadcastNotification() → notifications table → polling (30s)
+  └─ External: dispatchExternalNotification() → fire-and-forget
+       ├─ sendToGroups() — notification_channel_groups table
+       └─ sendToSubscribers() — notification_channels table (per-employee)
+```
+
+**Key design decisions:**
+- Backend dispatches each channel (Telegram, Email, …) independently → non-blocking (`Promise.allSettled`)
+- `notification_channels` = per-employee subscriptions | `notification_channel_groups` = shared group channels
+- `channel_config` (JSONB) stores channel-specific config (e.g. `{ chat_id }` for Telegram)
+- `event_types` (TEXT[]) = configurable per channel — controls who receives what
+- Email channel type reserved (`'EMAIL'`) but not yet implemented
+- External dispatch is fire-and-forget — failures logged but don't block business logic
 
 ## Conventions
 
@@ -136,6 +156,9 @@ src/components/ui/ → App* wrappers over Quasar
 | Zod validation | `server/validation/` | Request body schemas |
 | Cone Summary | `src/composables/useConeSummary.ts` | Pre-aggregated view + RPC |
 | Realtime | `src/composables/useRealtime.ts` | Smart filter + debounce |
+| Notification Channels | `server/utils/external-notification-dispatcher.ts` | Event → channel dispatch pattern |
+| Telegram Service | `server/utils/telegram-service.ts` | Bot API + group/subscriber delivery |
+| Notification Settings UI | `src/pages/notification-channels.vue` | Channel CRUD + test message |
 
 ## Large Dataset Architecture
 
@@ -168,6 +191,9 @@ DataTable @request → composable.handleTableRequest()
 | Domain Components | `src/components/thread/` |
 | Pages | `src/pages/` (file-based routing) |
 | Migrations | `supabase/migrations/` |
+| Notification services | `server/utils/telegram-service.ts` · `server/utils/external-notification-dispatcher.ts` · `server/utils/notificationService.ts` |
+| Notification channels API | `server/routes/notification-channels.ts` |
+| Notification types | `server/types/notification-channel.ts` · `src/types/notification-channel.ts` |
 
 ## Workflows & Rules
 
