@@ -307,6 +307,7 @@ export function useAuth() {
           return
         }
 
+        await clearAuthSessionLocal()
         resetState()
         initialized = false
         const isOnLoginPage = router.currentRoute.value.path === '/login'

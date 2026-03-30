@@ -22,7 +22,7 @@ echo ">> Build passed"
 echo ""
 
 echo ">> Step 4/4: E2E Tests"
-CI=true npm run e2e || { echo ""; echo "FAILED: E2E tests failed. Fix and try again."; exit 1; }
+npm run e2e || { echo ""; echo "FAILED: E2E tests failed. Fix and try again."; exit 1; }
 echo ">> E2E passed"
 echo ""
 
