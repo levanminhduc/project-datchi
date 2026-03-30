@@ -12,3 +12,9 @@ export interface CreateStyleColorDTO {
   color_name: string
   hex_code?: string
 }
+
+export interface CloneStyleColorDTO {
+  source_color_id: number
+  color_name: string
+  hex_code?: string
+}

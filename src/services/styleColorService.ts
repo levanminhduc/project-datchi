@@ -1,5 +1,5 @@
 import { fetchApi } from './api'
-import type { StyleColor, CreateStyleColorDTO } from '@/types/thread'
+import type { StyleColor, CreateStyleColorDTO, CloneStyleColorDTO } from '@/types/thread'
 
 interface ApiResponse<T> {
   data: T | null
@@ -45,5 +45,15 @@ export const styleColorService = {
       method: 'DELETE',
     })
     if (response.error) throw new Error(response.error)
+  },
+
+  async clone(styleId: number, data: CloneStyleColorDTO): Promise<StyleColor> {
+    const response = await fetchApi<ApiResponse<StyleColor>>(`${BASE}/${styleId}/clone`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không thể copy màu hàng')
+    return response.data
   },
 }
