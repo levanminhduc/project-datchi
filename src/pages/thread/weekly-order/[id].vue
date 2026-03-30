@@ -626,7 +626,7 @@ import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
 definePage({
   meta: {
     requiresAuth: true,
-    permissions: ['thread.view'],
+    permissions: ['thread.weekly-order.view'],
   },
 })
 

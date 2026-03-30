@@ -282,7 +282,8 @@ import type { Style, CreateStyleDTO, UpdateStyleDTO } from '@/types/thread'
 definePage({
   meta: {
     requiresAuth: true,
-  }
+    permissions: ['thread.styles.view'],
+  },
 })
 
 // Router

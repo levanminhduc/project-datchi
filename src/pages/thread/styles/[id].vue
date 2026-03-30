@@ -166,6 +166,12 @@
               :loading="specsLoading"
               :pagination="{ rowsPerPage: 10 }"
             >
+              <template #body-cell-stt="props">
+                <q-td :props="props">
+                  {{ props.rowIndex + 1 }}
+                </q-td>
+              </template>
+
               <!-- Inline Edit: Process Name Column -->
               <template #body-cell-process_name="props">
                 <q-td
@@ -471,7 +477,14 @@ const handleInlineEdit = async (
     const idx = styleThreadSpecs.value.findIndex(s => s.id === specId)
     const existing = idx !== -1 ? styleThreadSpecs.value[idx] : undefined
     if (existing) {
-      Object.assign(existing, result)
+      const hasJoins = result.suppliers || result.thread_types
+      if (hasJoins) {
+        Object.assign(existing, result)
+      } else {
+        Object.assign(existing, result)
+        const full = await styleThreadSpecService.getById(specId)
+        Object.assign(existing, full)
+      }
     }
 
     if (field === 'supplier_id' && typeof newValue === 'number') {
@@ -638,6 +651,13 @@ const fabricTypeOptions = [
 
 // Table columns for specs
 const specColumns: QTableColumn[] = [
+  {
+    name: 'stt',
+    label: 'STT',
+    field: '',
+    align: 'center',
+    style: 'width: 50px',
+  },
   {
     name: 'process_name',
     label: 'Công đoạn',

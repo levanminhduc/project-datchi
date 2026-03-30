@@ -359,7 +359,7 @@ import type { WeekHistoryGroup, HistoryByWeekFilter, ThreadSummaryRow } from "@/
 definePage({
   meta: {
     requiresAuth: true,
-    permissions: ["thread.view"],
+    permissions: ['thread.weekly-order.view'],
   },
 });
 

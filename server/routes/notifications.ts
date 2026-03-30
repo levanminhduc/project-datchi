@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../db/supabase'
-import { type AuthContext } from '../middleware/auth'
+import { requirePermission, type AuthContext } from '../middleware/auth'
 import { notificationQuerySchema, type NotificationRow } from '../types/notification'
 
 const notifications = new Hono()
+notifications.use('*', requirePermission('dashboard.view'))
 
 notifications.get('/', async (c) => {
   const auth = c.get('auth') as AuthContext

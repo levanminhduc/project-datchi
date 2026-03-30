@@ -324,7 +324,8 @@ import type { CreateAllocationDTO, CalculationItem } from '@/types/thread'
 definePage({
   meta: {
     requiresAuth: true,
-  }
+    permissions: ['thread.calculation.view'],
+  },
 })
 
 // Composables

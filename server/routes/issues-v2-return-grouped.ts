@@ -15,6 +15,7 @@ import {
   type IssueLine,
 } from './issuesV2'
 import type { ThreadApiResponse } from '../types/thread'
+import { requirePermission } from '../middleware/auth'
 
 interface MatchingWeekItem {
   item_id: number
@@ -52,6 +53,7 @@ async function _findMatchingWeekItems(
 }
 
 const returnGroupedRoutes = new Hono()
+returnGroupedRoutes.use('*', requirePermission('thread.issues.return'))
 
 returnGroupedRoutes.get('/return-groups', async (c) => {
   try {

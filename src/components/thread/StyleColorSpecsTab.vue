@@ -208,7 +208,10 @@
     </div>
 
     <!-- Create New Color Dialog -->
-    <q-dialog v-model="showCreateColorDialog">
+    <q-dialog
+      v-model="showCreateColorDialog"
+      persistent
+    >
       <q-card style="min-width: 350px; max-width: 90vw">
         <q-card-section class="row items-center">
           <div class="text-h6">

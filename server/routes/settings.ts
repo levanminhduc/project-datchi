@@ -6,9 +6,10 @@ import {
   type SystemSettingRow,
   type SettingsApiResponse,
 } from '../validation/settings'
-import { requireRoot } from '../middleware/auth'
+import { requireRoot, requirePermission } from '../middleware/auth'
 
 const settings = new Hono()
+settings.use('*', requirePermission('settings.view'))
 const rootOnlySettingsKeys = new Set([
   'employee_detail_fields',
   'import_supplier_tex_mapping',

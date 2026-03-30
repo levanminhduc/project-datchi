@@ -134,6 +134,7 @@ import FilePicker from '@/components/ui/pickers/FilePicker.vue'
 definePage({
   meta: {
     requiresAuth: true,
+    permissions: ['thread.types.view'],
   },
 })
 

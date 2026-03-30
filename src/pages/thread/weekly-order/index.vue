@@ -310,7 +310,7 @@ import AssignmentControlDialog from '@/components/thread/weekly-order/Assignment
 definePage({
   meta: {
     requiresAuth: true,
-    permissions: ['thread.view'],
+    permissions: ['thread.weekly-order.view'],
   },
 })
 
