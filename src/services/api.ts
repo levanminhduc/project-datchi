@@ -136,15 +136,13 @@ export async function getRefreshedSession(): Promise<Session> {
 
       if (error) {
         if (isAuthError(error)) {
-          await clearAuthSessionLocal()
-          throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại')
+          throw new SessionExpiredError()
         }
         throw new Error('Lỗi kết nối, vui lòng thử lại')
       }
 
       if (!data.session) {
-        await clearAuthSessionLocal()
-        throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại')
+        throw new SessionExpiredError()
       }
 
       return data.session
