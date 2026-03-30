@@ -146,7 +146,7 @@ guides.get('/', async (c) => {
 
     let query = supabase
       .from('guides')
-      .select('id, title, slug, cover_image_url, status, sort_order, created_at, updated_at, created_by')
+      .select('id, title, slug, cover_image_url, status, sort_order, created_at, updated_at, author_id')
       .is('deleted_at', null)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false })
@@ -316,7 +316,7 @@ guides.post('/', requirePermission('guides.create'), async (c) => {
         cover_image_url: validated.cover_image_url || null,
         status: validated.status,
         sort_order: nextOrder,
-        created_by: auth.employeeId,
+        author_id: auth.employeeId,
       })
       .select()
       .single()
