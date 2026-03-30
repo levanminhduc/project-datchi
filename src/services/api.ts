@@ -19,6 +19,13 @@ export class ApiError extends Error {
   }
 }
 
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Phiên đăng nhập đã hết hạn')
+    this.name = 'SessionExpiredError'
+  }
+}
+
 let refreshPromise: Promise<Session> | null = null
 let isLoggingOut = false
 
