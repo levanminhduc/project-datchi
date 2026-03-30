@@ -237,7 +237,11 @@ styleThreadSpecs.put('/:id', async (c) => {
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
-      .select()
+      .select(`
+        *,
+        suppliers:supplier_id (id, name),
+        thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_data:colors!color_id(name, hex_code))
+      `)
       .single()
 
     if (error) {
