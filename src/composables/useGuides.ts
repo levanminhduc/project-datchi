@@ -34,8 +34,9 @@ export function useGuides() {
     try {
       const updated = await guideService.togglePublish(id)
       const idx = guides.value.findIndex(g => g.id === id)
-      if (idx !== -1) {
-        guides.value[idx] = { ...guides.value[idx], status: updated.status, published_at: updated.published_at }
+      if (idx !== -1 && guides.value[idx]) {
+        guides.value[idx].status = updated.status
+        guides.value[idx].published_at = updated.published_at
       }
       snackbar.success(updated.status === 'PUBLISHED' ? 'Đã xuất bản' : 'Đã chuyển về nháp')
     } catch {

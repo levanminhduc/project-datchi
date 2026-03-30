@@ -23,7 +23,7 @@ const isAdmin = hasPermission('guides.edit')
 
 onMounted(async () => {
   try {
-    const slug = route.params.slug as string
+    const slug = (route.params as { slug?: string }).slug || ''
     guide.value = await guideService.getBySlug(slug)
     if (!guide.value) {
       snackbar.error('Không tìm thấy bài hướng dẫn')
@@ -40,14 +40,27 @@ onMounted(async () => {
 
 <template>
   <q-page padding>
-    <div v-if="loading" class="text-center q-pa-xl">
-      <q-spinner size="40px" color="primary" />
+    <div
+      v-if="loading"
+      class="text-center q-pa-xl"
+    >
+      <q-spinner
+        size="40px"
+        color="primary"
+      />
     </div>
 
     <template v-else-if="guide">
       <div class="row items-center q-mb-md q-gutter-x-sm">
-        <q-btn flat dense icon="arrow_back" @click="router.push('/guides')" />
-        <div class="text-h5 col">{{ guide.title }}</div>
+        <q-btn
+          flat
+          dense
+          icon="arrow_back"
+          @click="router.push('/guides')"
+        />
+        <div class="text-h5 col">
+          {{ guide.title }}
+        </div>
         <q-badge
           v-if="isAdmin && guide.status === 'DRAFT'"
           color="orange"
@@ -56,7 +69,10 @@ onMounted(async () => {
         />
         <q-btn
           v-if="isAdmin"
-          flat dense icon="edit" label="Sửa"
+          flat
+          dense
+          icon="edit"
+          label="Sửa"
           @click="router.push({ path: '/guides/editor', query: { id: guide.id } })"
         />
       </div>

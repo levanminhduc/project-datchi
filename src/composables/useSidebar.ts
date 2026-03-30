@@ -59,6 +59,7 @@ const navItems: NavItem[] = [
     ]
   },
   { label: 'Phân Quyền', icon: 'o_admin_panel_settings', to: '/phan-quyen#top' },
+  { label: 'Hướng Dẫn', icon: 'o_menu_book', to: '/guides' },
   { label: 'Cài Đặt', icon: 'o_settings', to: '/settings' }
 ]
 
