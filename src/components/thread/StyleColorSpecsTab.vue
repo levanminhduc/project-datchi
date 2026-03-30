@@ -605,8 +605,6 @@ const handleColorSpecEdit = async (
       })
     }
 
-    // Re-fetch to get updated joined data
-    await fetchAllColorSpecsByStyle(props.styleId)
   } catch {
     // Error notification handled by composable
     // Revert the optimistic v-model update
