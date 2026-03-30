@@ -193,7 +193,7 @@ export function useStyleThreadSpecs() {
       })
 
       snackbar.success('Thêm định mức chỉ theo màu thành công')
-      await fetchColorSpecs(specId)
+      colorSpecs.value.push(result)
       return result
     } catch (err) {
       const errorMessage = getErrorMessage(err)
