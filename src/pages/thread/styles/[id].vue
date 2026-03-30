@@ -430,7 +430,10 @@ import type { StyleThreadSpec } from '@/types/thread'
 import { formatStyleDisplay } from '@/utils/thread-format'
 
 definePage({
-  meta: { requiresAuth: true }
+  meta: {
+    requiresAuth: true,
+    permissions: ['thread.styles.view'],
+  },
 })
 
 const route = useRoute('/thread/styles/[id]')
