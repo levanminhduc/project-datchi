@@ -103,6 +103,17 @@
               flat
               round
               dense
+              icon="content_copy"
+              color="primary"
+              size="sm"
+              @click="openCloneDialog(group.color.id)"
+            >
+              <q-tooltip>Copy màu hàng này</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              round
+              dense
               icon="delete"
               color="negative"
               size="sm"
@@ -124,6 +135,12 @@
             :pagination="{ rowsPerPage: 0 }"
             hide-pagination
           >
+            <template #body-cell-stt="props">
+              <q-td :props="props">
+                {{ props.rowIndex + 1 }}
+              </q-td>
+            </template>
+
             <!-- Màu chỉ column - editable via popup -->
             <template #body-cell-thread_color="props">
               <q-td
@@ -211,6 +228,13 @@
 
         <q-card-section class="q-gutter-sm">
           <AppSelect
+            v-model="sourceColorId"
+            :options="sourceColorOptions"
+            label="Copy từ màu hàng (tùy chọn)"
+            dense
+            clearable
+          />
+          <AppSelect
             v-if="hasSubArts"
             v-model="selectedSubArt"
             :options="subArts.map(s => ({ label: s.sub_art_code, value: s.sub_art_code }))"
@@ -275,7 +299,7 @@
           />
           <q-btn
             unelevated
-            label="Tạo"
+            :label="sourceColorId ? 'Copy' : 'Tạo'"
             color="primary"
             :disable="!newColorName.trim() || !newColorHex || (hasSubArts && !selectedSubArt)"
             :loading="creatingColor"
@@ -351,10 +375,22 @@ const showCreateColorDialog = ref(false)
 const newColorName = ref('')
 const newColorHex = ref('#cccccc')
 const creatingColor = ref(false)
+const sourceColorId = ref<number | null>(null)
 
 const subArts = ref<{ id: number; sub_art_code: string }[]>([])
 const selectedSubArt = ref<string | null>(null)
 const hasSubArts = computed(() => subArts.value.length > 0)
+
+const sourceColorOptions = computed(() =>
+  props.styleColors
+    .filter(c => c.is_active)
+    .map(c => ({ label: c.color_name, value: c.id }))
+)
+
+const openCloneDialog = (colorId: number) => {
+  sourceColorId.value = colorId
+  showCreateColorDialog.value = true
+}
 
 const supplierColorsCache = ref<Record<number, { id: number; name: string; hex_code: string }[]>>({})
 
@@ -450,6 +486,13 @@ const colorGroups = computed<ColorGroup[]>(() => {
 // Table columns
 const colorTableColumns: QTableColumn[] = [
   {
+    name: 'stt',
+    label: 'STT',
+    field: '',
+    align: 'center',
+    style: 'width: 50px',
+  },
+  {
     name: 'process_name',
     label: 'Công đoạn',
     field: (row: ColorSpecRow) => row.spec.process_name,
@@ -513,6 +556,7 @@ watch(showCreateColorDialog, (val) => {
     selectedSubArt.value = null
     newColorName.value = ''
     newColorHex.value = '#cccccc'
+    sourceColorId.value = null
   }
 })
 
@@ -527,19 +571,33 @@ const handleCreateColor = async () => {
     ? `${selectedSubArt.value} - ${colorPart}`
     : colorPart
 
+  const isClone = !!sourceColorId.value
   creatingColor.value = true
   try {
-    const newColor = await styleColorService.create(props.styleId, {
-      color_name: finalColorName,
-      hex_code: newColorHex.value,
-    })
+    let newColor: StyleColor | null = null
+
+    if (isClone) {
+      newColor = await styleColorService.clone(props.styleId, {
+        source_color_id: sourceColorId.value!,
+        color_name: finalColorName,
+        hex_code: newColorHex.value,
+      })
+    } else {
+      newColor = await styleColorService.create(props.styleId, {
+        color_name: finalColorName,
+        hex_code: newColorHex.value,
+      })
+    }
+
     if (newColor) {
       showCreateColorDialog.value = false
       newColorName.value = ''
       newColorHex.value = '#cccccc'
       selectedSubArt.value = null
+      sourceColorId.value = null
       emit('color-created')
-      snackbar.success('Tạo màu mới thành công')
+      await loadColorSpecs()
+      snackbar.success(isClone ? 'Copy màu hàng thành công' : 'Tạo màu mới thành công')
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Không thể tạo màu mới'
