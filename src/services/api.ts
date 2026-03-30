@@ -252,23 +252,30 @@ export async function fetchApiRaw(
       await forceBackToLogin()
       throw new ApiError(401, 'Vui lòng đăng nhập')
     }
-    const newSession = await getRefreshedSession()
-    const retriedResponse = await makeRequest(newSession.access_token)
 
-    if (retriedResponse.status === 401) {
-      await new Promise(r => setTimeout(r, 2000))
-      const finalResponse = await makeRequest(newSession.access_token)
+    try {
+      const newSession = await getRefreshedSession()
+      const retriedResponse = await makeRequest(newSession.access_token)
 
-      if (finalResponse.status === 401) {
+      if (retriedResponse.status === 401) {
+        throw new ApiError(
+          401,
+          getErrorMessageFromPayload(await retriedResponse.json().catch(() => null)) || 'Không có quyền truy cập'
+        )
+      }
+
+      return retriedResponse
+    } catch (refreshError) {
+      if (refreshError instanceof ApiError) {
+        throw refreshError
+      }
+      if (refreshError instanceof SessionExpiredError) {
         await clearAuthSessionLocal()
         await forceBackToLogin()
         throw new ApiError(401, 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại')
       }
-
-      return finalResponse
+      throw new ApiError(503, 'Lỗi kết nối, vui lòng thử lại')
     }
-
-    return retriedResponse
   }
 
   return response
