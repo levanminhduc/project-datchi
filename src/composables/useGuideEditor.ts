@@ -7,8 +7,6 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import Placeholder from '@tiptap/extension-placeholder'
-import Link from '@tiptap/extension-link'
-import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
 import { guideService } from '@/services/guideService'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -20,9 +18,9 @@ export function useGuideEditor() {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      Underline,
-      Link.configure({ openOnClick: false }),
+      StarterKit.configure({
+        link: { openOnClick: false },
+      }),
       Image.configure({ allowBase64: false }),
       Table.configure({ resizable: true }),
       TableRow,

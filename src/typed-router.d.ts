@@ -51,6 +51,27 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/guides/': RouteRecordInfo<
+      '/guides/',
+      '/guides',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/guides/[slug]': RouteRecordInfo<
+      '/guides/[slug]',
+      '/guides/:slug',
+      { slug: ParamValue<true> },
+      { slug: ParamValue<false> },
+      | never
+    >,
+    '/guides/editor': RouteRecordInfo<
+      '/guides/editor',
+      '/guides/editor',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/ke-hoach': RouteRecordInfo<
       '/ke-hoach',
       '/ke-hoach',
@@ -415,6 +436,24 @@ declare module 'vue-router/auto-routes' {
     'src/pages/forbidden.vue': {
       routes:
         | '/forbidden'
+      views:
+        | never
+    }
+    'src/pages/guides/index.vue': {
+      routes:
+        | '/guides/'
+      views:
+        | never
+    }
+    'src/pages/guides/[slug].vue': {
+      routes:
+        | '/guides/[slug]'
+      views:
+        | never
+    }
+    'src/pages/guides/editor.vue': {
+      routes:
+        | '/guides/editor'
       views:
         | never
     }

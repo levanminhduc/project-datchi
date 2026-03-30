@@ -42,7 +42,7 @@ const headerClass = computed(() => ({
     :class="headerClass"
   >
     <!-- Back button + Icon + Title -->
-    <div class="col-12 col-sm row items-center no-wrap">
+    <div class="col row items-center no-wrap">
       <q-btn
         v-if="showBack"
         flat
@@ -72,7 +72,7 @@ const headerClass = computed(() => ({
     </div>
 
     <!-- Breadcrumbs + Actions -->
-    <div class="col-12 col-sm-auto row items-center q-gutter-sm">
+    <div class="col-auto row items-center justify-end q-gutter-sm">
       <slot name="breadcrumbs" />
       <slot name="actions" />
     </div>

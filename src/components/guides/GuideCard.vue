@@ -54,18 +54,23 @@ function formatDate(dateStr: string | null): string {
         class="q-px-sm"
         @click.stop
       >
-        <q-btn
-          flat round dense icon="edit" size="sm"
+        <IconButton
+          icon="edit"
+          size="sm"
+          tooltip="Chỉnh sửa"
           @click="$emit('edit')"
         />
-        <q-btn
-          flat round dense
+        <IconButton
           :icon="guide.status === 'PUBLISHED' ? 'visibility_off' : 'visibility'"
           size="sm"
+          :tooltip="guide.status === 'PUBLISHED' ? 'Ẩn bài' : 'Xuất bản'"
           @click="$emit('togglePublish')"
         />
-        <q-btn
-          flat round dense icon="delete" size="sm" color="negative"
+        <IconButton
+          icon="delete"
+          size="sm"
+          color="negative"
+          tooltip="Xóa"
           @click="$emit('delete')"
         />
       </q-card-actions>
@@ -94,6 +99,11 @@ function formatDate(dateStr: string | null): string {
     width: 100%;
     height: 160px;
     border-radius: 4px 4px 0 0;
+  }
+  .guide-card :deep(.q-card__actions) {
+    flex-direction: row;
+    justify-content: flex-end;
+    padding: 0 8px 4px;
   }
 }
 </style>

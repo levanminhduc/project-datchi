@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGuides } from '@/composables/useGuides'
 import { useAuth } from '@/composables/useAuth'
@@ -14,6 +14,8 @@ const { hasPermission } = useAuth()
 const { guides, loading, search, fetchGuides, removeGuide, togglePublish } = useGuides()
 
 const isAdmin = hasPermission('guides.create')
+const showDeleteDialog = ref(false)
+const deleteTargetId = ref<string | null>(null)
 
 let searchTimeout: ReturnType<typeof setTimeout>
 watch(search, () => {
@@ -32,50 +34,58 @@ function goToEditor(id?: string) {
   router.push({ path: '/guides/editor', query })
 }
 
-async function confirmDelete(id: string) {
-  if (window.confirm('Bạn có chắc muốn xóa bài hướng dẫn này?')) {
-    await removeGuide(id)
+function confirmDelete(id: string) {
+  deleteTargetId.value = id
+  showDeleteDialog.value = true
+}
+
+async function handleDelete() {
+  if (deleteTargetId.value) {
+    await removeGuide(deleteTargetId.value)
   }
+  showDeleteDialog.value = false
+  deleteTargetId.value = null
 }
 </script>
 
 <template>
   <q-page padding>
-    <div class="row items-center justify-between q-mb-md">
-      <div class="text-h5">Hướng dẫn sử dụng</div>
-      <q-btn
-        v-if="isAdmin"
-        color="primary"
-        icon="add"
-        label="Tạo mới"
-        @click="goToEditor()"
-      />
-    </div>
+    <PageHeader title="Hướng dẫn sử dụng">
+      <template #actions>
+        <AppButton
+          v-if="isAdmin"
+          color="primary"
+          icon="add"
+          label="Tạo mới"
+          @click="goToEditor()"
+        />
+      </template>
+    </PageHeader>
 
-    <q-input
+    <SearchInput
       v-model="search"
-      dense
-      outlined
       placeholder="Tìm kiếm bài viết..."
       class="q-mb-md"
-      clearable
+    />
+
+    <div
+      v-if="loading"
+      class="text-center q-pa-xl"
     >
-      <template #prepend>
-        <q-icon name="search" />
-      </template>
-    </q-input>
-
-    <div v-if="loading" class="text-center q-pa-xl">
-      <q-spinner size="40px" color="primary" />
+      <AppSpinner size="40px" />
     </div>
 
-    <div v-else-if="guides.length === 0" class="text-center q-pa-xl text-grey">
-      <q-icon name="menu_book" size="64px" class="q-mb-md" />
-      <div class="text-h6">Chưa có bài hướng dẫn nào</div>
-      <div v-if="isAdmin" class="text-body2 q-mt-sm">Bấm "Tạo mới" để viết bài hướng dẫn đầu tiên</div>
-    </div>
+    <EmptyState
+      v-else-if="guides.length === 0"
+      icon="menu_book"
+      title="Chưa có bài hướng dẫn nào"
+      :description="isAdmin ? 'Bấm Tạo mới để viết bài hướng dẫn đầu tiên' : undefined"
+    />
 
-    <div v-else class="q-gutter-md">
+    <div
+      v-else
+      class="q-gutter-md"
+    >
       <GuideCard
         v-for="guide in guides"
         :key="guide.id"
@@ -87,5 +97,14 @@ async function confirmDelete(id: string) {
         @toggle-publish="togglePublish(guide.id)"
       />
     </div>
+
+    <ConfirmDialog
+      v-model="showDeleteDialog"
+      title="Xóa bài hướng dẫn"
+      message="Bạn có chắc muốn xóa bài hướng dẫn này?"
+      confirm-text="Xóa"
+      cancel-text="Hủy"
+      @confirm="handleDelete"
+    />
   </q-page>
 </template>

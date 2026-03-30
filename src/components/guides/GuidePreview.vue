@@ -9,7 +9,10 @@ defineProps<Props>()
 <template>
   <div class="guide-preview">
     <div class="text-subtitle2 text-grey q-mb-sm row items-center q-gutter-x-xs">
-      <q-icon name="visibility" size="18px" />
+      <q-icon
+        name="visibility"
+        size="18px"
+      />
       <span>Xem trước</span>
     </div>
     <q-separator class="q-mb-md" />

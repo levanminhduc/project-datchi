@@ -89,36 +89,34 @@ async function saveGuide(status: 'DRAFT' | 'PUBLISHED') {
       v-if="loadingPage"
       class="text-center q-pa-xl"
     >
-      <q-spinner
-        size="40px"
-        color="primary"
-      />
+      <AppSpinner size="40px" />
     </div>
 
     <template v-else>
       <div class="row items-center q-mb-md q-gutter-x-sm">
-        <q-btn
-          flat
-          dense
+        <IconButton
           icon="arrow_back"
+          tooltip="Quay lại"
           @click="router.push('/guides')"
         />
         <div class="text-h6 col">
           {{ isEdit ? 'Chỉnh sửa hướng dẫn' : 'Tạo hướng dẫn mới' }}
         </div>
-        <q-btn
+        <AppButton
           outline
           color="grey"
-          label="Lưu nháp"
           icon="save"
+          :label="$q.screen.gt.xs ? 'Lưu nháp' : undefined"
           :loading="saving"
+          :dense="$q.screen.xs"
           @click="saveGuide('DRAFT')"
         />
-        <q-btn
+        <AppButton
           color="primary"
-          label="Xuất bản"
           icon="publish"
+          :label="$q.screen.gt.xs ? 'Xuất bản' : undefined"
           :loading="saving"
+          :dense="$q.screen.xs"
           @click="saveGuide('PUBLISHED')"
         />
       </div>

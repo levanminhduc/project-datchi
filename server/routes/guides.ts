@@ -44,13 +44,15 @@ function generateSlug(title: string): string {
     .map((char) => vietnameseMap[char] || char)
     .join('')
 
-  return normalized
+  const result = normalized
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 100)
+
+  return result || `guide-${Date.now()}`
 }
 
 async function ensureUniqueSlug(baseSlug: string, excludeId?: string): Promise<string> {
@@ -146,7 +148,7 @@ guides.get('/', async (c) => {
 
     let query = supabase
       .from('guides')
-      .select('id, title, slug, cover_image_url, status, sort_order, created_at, updated_at, author_id')
+      .select('id, title, slug, cover_image_url, status, sort_order, published_at, created_at, updated_at, author_id')
       .is('deleted_at', null)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false })
@@ -191,9 +193,18 @@ guides.patch('/:id/publish', requirePermission('guides.edit'), async (c) => {
 
     const newStatus = guide.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED'
 
+    const now = new Date().toISOString()
+    const updateData: Record<string, unknown> = {
+      status: newStatus,
+      updated_at: now,
+    }
+    if (newStatus === 'PUBLISHED') {
+      updateData.published_at = now
+    }
+
     const { data, error } = await supabase
       .from('guides')
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single()
@@ -317,6 +328,7 @@ guides.post('/', requirePermission('guides.create'), async (c) => {
         status: validated.status,
         sort_order: nextOrder,
         author_id: auth.employeeId,
+        published_at: validated.status === 'PUBLISHED' ? new Date().toISOString() : null,
       })
       .select()
       .single()
@@ -364,6 +376,10 @@ guides.put('/:id', requirePermission('guides.edit'), async (c) => {
     if (validated.title && validated.title !== existing.title) {
       const baseSlug = generateSlug(validated.title)
       updateData.slug = await ensureUniqueSlug(baseSlug, id)
+    }
+
+    if (validated.status === 'PUBLISHED') {
+      updateData.published_at = new Date().toISOString()
     }
 
     const { data, error } = await supabase

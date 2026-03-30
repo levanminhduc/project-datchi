@@ -44,35 +44,30 @@ onMounted(async () => {
       v-if="loading"
       class="text-center q-pa-xl"
     >
-      <q-spinner
-        size="40px"
-        color="primary"
-      />
+      <AppSpinner size="40px" />
     </div>
 
     <template v-else-if="guide">
       <div class="row items-center q-mb-md q-gutter-x-sm">
-        <q-btn
-          flat
-          dense
+        <IconButton
           icon="arrow_back"
+          tooltip="Quay lại"
           @click="router.push('/guides')"
         />
-        <div class="text-h5 col">
+        <div class="col text-h5 guide-title">
           {{ guide.title }}
         </div>
         <q-badge
           v-if="isAdmin && guide.status === 'DRAFT'"
           color="orange"
           label="Nháp"
-          class="q-mr-sm"
+          class="q-mr-xs"
         />
-        <q-btn
+        <IconButton
           v-if="isAdmin"
-          flat
-          dense
           icon="edit"
-          label="Sửa"
+          color="primary"
+          tooltip="Sửa bài viết"
           @click="router.push({ path: '/guides/editor', query: { id: guide.id } })"
         />
       </div>
@@ -88,3 +83,17 @@ onMounted(async () => {
     </template>
   </q-page>
 </template>
+
+<style scoped>
+.guide-title {
+  font-size: 1.5rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+@media (max-width: 599px) {
+  .guide-title {
+    font-size: 1.15rem;
+  }
+}
+</style>
