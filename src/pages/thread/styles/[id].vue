@@ -424,6 +424,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useStyleColors, useSnackbar } from '@/composables'
 import StyleColorSpecsTab from '@/components/thread/StyleColorSpecsTab.vue'
 import { fetchApi } from '@/services/api'
+import { styleThreadSpecService } from '@/services'
 import type { QTableColumn } from 'quasar'
 import type { StyleThreadSpec } from '@/types/thread'
 import { formatStyleDisplay } from '@/utils/thread-format'
@@ -450,47 +451,37 @@ const addToTop = ref(false)
 
 const getCellKey = (id: number, field: string): string => `${id}-${field}`
 
-/**
- * Handle inline field edits via q-popup-edit
- * @param specId - Spec ID
- * @param field - Field name being edited
- * @param newValue - New value from popup edit
- * @param originalValue - Original value for rollback on error
- */
 const handleInlineEdit = async (
   specId: number,
   field: 'process_name' | 'supplier_id' | 'thread_type_id' | 'meters_per_unit',
   newValue: string | number | null,
   originalValue: string | number | null
 ): Promise<void> => {
-  // Skip if no change
   if (newValue === originalValue) return
 
   const cellKey = getCellKey(specId, field)
   inlineEditLoading.value[cellKey] = true
 
   try {
-    // Optimistic update already applied by v-model
-    const result = await updateSpec(specId, { [field]: newValue })
+    const result = await styleThreadSpecService.update(specId, { [field]: newValue })
 
-    if (result) {
-      if (field === 'supplier_id' && typeof newValue === 'number') {
-        await fetchTexOptions(newValue)
-      }
-    } else {
-      // Revert on error - find spec and restore original value
-      const spec = styleThreadSpecs.value.find(s => s.id === specId)
-      if (spec) {
-        ;(spec as Record<string, unknown>)[field] = originalValue
-      }
+    const idx = styleThreadSpecs.value.findIndex(s => s.id === specId)
+    const existing = idx !== -1 ? styleThreadSpecs.value[idx] : undefined
+    if (existing) {
+      Object.assign(existing, result)
     }
-    // Success notification is handled by composable
+
+    if (field === 'supplier_id' && typeof newValue === 'number') {
+      await fetchTexOptions(newValue)
+    }
+
+    snackbar.success('Cập nhật định mức chỉ thành công')
   } catch {
-    // Revert on error - composable already handles error notification
     const spec = styleThreadSpecs.value.find(s => s.id === specId)
     if (spec) {
       ;(spec as Record<string, unknown>)[field] = originalValue
     }
+    snackbar.error('Cập nhật thất bại')
   } finally {
     inlineEditLoading.value[cellKey] = false
   }
@@ -620,7 +611,6 @@ const {
   fetchStyleThreadSpecs,
   deleteSpec,
   createSpec,
-  updateSpec,
 } = useStyleThreadSpecs()
 
 const { styleColors, fetchStyleColors } = useStyleColors()
