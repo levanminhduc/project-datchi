@@ -85,14 +85,27 @@ async function saveGuide(status: 'DRAFT' | 'PUBLISHED') {
 
 <template>
   <q-page padding>
-    <div v-if="loadingPage" class="text-center q-pa-xl">
-      <q-spinner size="40px" color="primary" />
+    <div
+      v-if="loadingPage"
+      class="text-center q-pa-xl"
+    >
+      <q-spinner
+        size="40px"
+        color="primary"
+      />
     </div>
 
     <template v-else>
       <div class="row items-center q-mb-md q-gutter-x-sm">
-        <q-btn flat dense icon="arrow_back" @click="router.push('/guides')" />
-        <div class="text-h6 col">{{ isEdit ? 'Chỉnh sửa hướng dẫn' : 'Tạo hướng dẫn mới' }}</div>
+        <q-btn
+          flat
+          dense
+          icon="arrow_back"
+          @click="router.push('/guides')"
+        />
+        <div class="text-h6 col">
+          {{ isEdit ? 'Chỉnh sửa hướng dẫn' : 'Tạo hướng dẫn mới' }}
+        </div>
         <q-btn
           outline
           color="grey"
@@ -110,9 +123,8 @@ async function saveGuide(status: 'DRAFT' | 'PUBLISHED') {
         />
       </div>
 
-      <q-input
+      <AppInput
         v-model="title"
-        outlined
         placeholder="Tiêu đề bài hướng dẫn"
         class="q-mb-md text-h6"
       />
