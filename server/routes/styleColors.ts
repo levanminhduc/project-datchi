@@ -29,6 +29,82 @@ async function validateSubArtColorName(styleId: number, colorName: string): Prom
   return null
 }
 
+styleColors.post('/:styleId/clone', async (c) => {
+  try {
+    const styleId = parseInt(c.req.param('styleId'))
+    if (isNaN(styleId)) {
+      return c.json({ data: null, error: 'Style ID không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json()
+    const { source_color_id, color_name, hex_code } = body
+
+    if (!source_color_id || !color_name?.trim()) {
+      return c.json({ data: null, error: 'source_color_id và color_name là bắt buộc' }, 400)
+    }
+
+    const { data: sourceColor, error: sourceErr } = await supabase
+      .from('style_colors')
+      .select('id')
+      .eq('id', source_color_id)
+      .eq('style_id', styleId)
+      .single()
+
+    if (sourceErr || !sourceColor) {
+      return c.json({ data: null, error: 'Màu hàng nguồn không tồn tại' }, 400)
+    }
+
+    const validationError = await validateSubArtColorName(styleId, color_name.trim())
+    if (validationError) {
+      return c.json({ data: null, error: validationError }, 400)
+    }
+
+    const { data: newColor, error: insertErr } = await supabase
+      .from('style_colors')
+      .insert([{
+        style_id: styleId,
+        color_name: color_name.trim(),
+        hex_code: hex_code || '#808080',
+      }])
+      .select()
+      .single()
+
+    if (insertErr) {
+      if (insertErr.code === '23505') {
+        return c.json({ data: null, error: 'Màu này đã tồn tại cho mã hàng' }, 400)
+      }
+      throw insertErr
+    }
+
+    const { data: sourceSpecs } = await supabase
+      .from('style_color_thread_specs')
+      .select('style_thread_spec_id, thread_type_id, thread_color_id, notes')
+      .eq('style_color_id', source_color_id)
+      .limit(500)
+
+    if (sourceSpecs && sourceSpecs.length > 0) {
+      const clonedRows = sourceSpecs.map(s => ({
+        style_thread_spec_id: s.style_thread_spec_id,
+        style_color_id: newColor.id,
+        thread_type_id: s.thread_type_id,
+        thread_color_id: s.thread_color_id,
+        notes: s.notes,
+      }))
+
+      const { error: cloneErr } = await supabase
+        .from('style_color_thread_specs')
+        .insert(clonedRows)
+
+      if (cloneErr) throw cloneErr
+    }
+
+    return c.json({ data: newColor, error: null, message: 'Copy màu hàng thành công' })
+  } catch (err) {
+    console.error('Error cloning style color:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 styleColors.get('/:styleId', async (c) => {
   try {
     const styleId = parseInt(c.req.param('styleId'))
