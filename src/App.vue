@@ -7,6 +7,7 @@ import { useDarkMode } from "./composables/useDarkMode";
 import { useSidebar } from "./composables/useSidebar";
 import { useNotifications } from "./composables/useNotifications";
 import { useAuth } from "./composables/useAuth";
+import { useVersionCheck } from "./composables/useVersionCheck";
 
 const route = useRoute();
 const router = useRouter();
@@ -14,6 +15,7 @@ const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
 const { startPolling, stopPolling } = useNotifications();
 const { isAuthenticated, tempPassword } = useAuth();
+const { startVersionCheck, stopVersionCheck } = useVersionCheck();
 
 // TODO: bật lại khi cần force đổi mật khẩu lần đầu
 const showChangePasswordModal = computed(() => false);
@@ -29,8 +31,10 @@ const showSidebar = computed(() => route.path !== "/login" && isAuthenticated.va
 watch(showSidebar, (show) => {
   if (show) {
     startPolling()
+    startVersionCheck()
   } else {
     stopPolling()
+    stopVersionCheck()
   }
 }, { immediate: true })
 
