@@ -22,58 +22,61 @@ function formatDate(dateStr: string | null): string {
 
 <template>
   <q-card
-    class="guide-card cursor-pointer"
+    class="guide-card cursor-pointer full-height"
     flat
     bordered
     @click="$emit('click')"
   >
-    <q-card-section horizontal>
-      <q-img
-        v-if="guide.cover_image_url"
-        :src="guide.cover_image_url"
-        class="guide-card__cover"
-        fit="cover"
-        loading="lazy"
-      />
-      <q-card-section class="q-pt-sm col">
-        <div class="row items-center q-gutter-x-sm q-mb-xs">
-          <span class="text-subtitle1 text-weight-medium">{{ guide.title }}</span>
-          <q-badge
-            v-if="isAdmin && guide.status === 'DRAFT'"
-            color="orange"
-            label="Nháp"
+    <q-card-section class="col q-pt-sm">
+      <div class="row no-wrap items-start">
+        <div class="col">
+          <div class="row items-center q-gutter-x-xs q-mb-xs">
+            <span class="text-subtitle2 text-weight-medium guide-card__title">
+              {{ guide.title }}
+            </span>
+            <q-badge
+              v-if="isAdmin && guide.status === 'DRAFT'"
+              color="orange"
+              label="Nháp"
+              class="q-ml-xs"
+            />
+          </div>
+          <div
+            v-if="guide.author_name"
+            class="text-caption text-grey-7 q-mb-xs"
+          >
+            {{ guide.author_name }}
+          </div>
+          <div class="text-caption text-grey">
+            {{ formatDate(guide.published_at || guide.created_at) }}
+          </div>
+        </div>
+        <div
+          v-if="isAdmin"
+          class="guide-card__actions q-ml-sm"
+          @click.stop
+        >
+          <IconButton
+            icon="edit"
+            size="xs"
+            tooltip="Chỉnh sửa"
+            @click="$emit('edit')"
+          />
+          <IconButton
+            :icon="guide.status === 'PUBLISHED' ? 'visibility_off' : 'visibility'"
+            size="xs"
+            :tooltip="guide.status === 'PUBLISHED' ? 'Ẩn bài' : 'Xuất bản'"
+            @click="$emit('togglePublish')"
+          />
+          <IconButton
+            icon="delete"
+            size="xs"
+            color="negative"
+            tooltip="Xóa"
+            @click="$emit('delete')"
           />
         </div>
-        <div class="text-caption text-grey">
-          {{ formatDate(guide.published_at || guide.created_at) }}
-        </div>
-      </q-card-section>
-      <q-card-actions
-        v-if="isAdmin"
-        vertical
-        class="q-px-sm"
-        @click.stop
-      >
-        <IconButton
-          icon="edit"
-          size="sm"
-          tooltip="Chỉnh sửa"
-          @click="$emit('edit')"
-        />
-        <IconButton
-          :icon="guide.status === 'PUBLISHED' ? 'visibility_off' : 'visibility'"
-          size="sm"
-          :tooltip="guide.status === 'PUBLISHED' ? 'Ẩn bài' : 'Xuất bản'"
-          @click="$emit('togglePublish')"
-        />
-        <IconButton
-          icon="delete"
-          size="sm"
-          color="negative"
-          tooltip="Xóa"
-          @click="$emit('delete')"
-        />
-      </q-card-actions>
+      </div>
     </q-card-section>
   </q-card>
 </template>
@@ -84,26 +87,17 @@ function formatDate(dateStr: string | null): string {
   &:hover {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   }
-  &__cover {
-    width: 120px;
-    min-height: 80px;
-    border-radius: 4px 0 0 4px;
+  &__title {
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
-}
-
-@media (max-width: 599px) {
-  .guide-card .q-card__section--horiz {
+  &__actions {
+    display: flex;
     flex-direction: column;
-  }
-  .guide-card__cover {
-    width: 100%;
-    height: 160px;
-    border-radius: 4px 4px 0 0;
-  }
-  .guide-card :deep(.q-card__actions) {
-    flex-direction: row;
-    justify-content: flex-end;
-    padding: 0 8px 4px;
+    gap: 2px;
   }
 }
 </style>
