@@ -16,7 +16,9 @@ export interface Guide {
 export type GuideListItem = Pick<
   Guide,
   'id' | 'title' | 'slug' | 'cover_image_url' | 'status' | 'sort_order' | 'published_at' | 'created_at' | 'updated_at' | 'author_id'
->
+> & {
+  author_name?: string | null
+}
 
 export interface CreateGuideData {
   title: string
