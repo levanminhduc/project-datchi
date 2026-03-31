@@ -105,6 +105,31 @@ styleColors.post('/:styleId/clone', async (c) => {
   }
 })
 
+styleColors.get('/hex-palette', async (c) => {
+  try {
+    const { data, error } = await supabase
+      .from('style_colors')
+      .select('color_name, hex_code')
+      .eq('is_active', true)
+      .order('color_name', { ascending: true })
+      .limit(500)
+
+    if (error) throw error
+
+    const seen = new Set<string>()
+    const unique = (data || []).filter(row => {
+      const key = `${row.color_name}|${row.hex_code}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+    return c.json({ data: unique, error: null })
+  } catch (err) {
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 styleColors.get('/:styleId', async (c) => {
   try {
     const styleId = parseInt(c.req.param('styleId'))

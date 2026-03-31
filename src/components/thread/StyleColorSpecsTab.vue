@@ -258,6 +258,25 @@
           >
             Tên đầy đủ: <strong>{{ selectedSubArt }} - {{ newColorName.trim() }}</strong>
           </div>
+          <AppSelect
+            v-model="selectedHexPaletteIdx"
+            :options="masterColorOptions"
+            label="Chọn màu có sẵn (tùy chọn)"
+            dense
+            clearable
+          >
+            <template #option="{ opt, itemProps }">
+              <q-item v-bind="itemProps">
+                <q-item-section side>
+                  <div
+                    style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.12)"
+                    :style="{ backgroundColor: opt.hex_code }"
+                  />
+                </q-item-section>
+                <q-item-section>{{ opt.label }}</q-item-section>
+              </q-item>
+            </template>
+          </AppSelect>
           <q-input
             v-model="newColorHex"
             label="Mã màu (HEX)"
@@ -388,6 +407,17 @@ const sourceColorOptions = computed(() =>
   props.styleColors
     .filter(c => c.is_active)
     .map(c => ({ label: c.color_name, value: c.id }))
+)
+
+const selectedHexPaletteIdx = ref<number | null>(null)
+const hexPalette = ref<Array<{ color_name: string; hex_code: string }>>([])
+
+const masterColorOptions = computed(() =>
+  hexPalette.value.map((c, idx) => ({
+    label: `${c.color_name} (${c.hex_code})`,
+    value: idx,
+    hex_code: c.hex_code,
+  }))
 )
 
 const openCloneDialog = (colorId: number) => {
@@ -549,6 +579,7 @@ onMounted(async () => {
   await Promise.all([
     ...supplierIds.map(id => fetchSupplierColors(id)),
     subArtService.getByStyleId(props.styleId).then(data => { subArts.value = data }).catch(() => { subArts.value = [] }),
+    styleColorService.getHexPalette().then(data => { hexPalette.value = data }).catch(() => {}),
   ])
 })
 
@@ -560,6 +591,13 @@ watch(showCreateColorDialog, (val) => {
     newColorName.value = ''
     newColorHex.value = '#cccccc'
     sourceColorId.value = null
+    selectedHexPaletteIdx.value = null
+  }
+})
+
+watch(selectedHexPaletteIdx, (newIdx) => {
+  if (newIdx !== null && hexPalette.value[newIdx]) {
+    newColorHex.value = hexPalette.value[newIdx].hex_code
   }
 })
 

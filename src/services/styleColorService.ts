@@ -47,6 +47,12 @@ export const styleColorService = {
     if (response.error) throw new Error(response.error)
   },
 
+  async getHexPalette(): Promise<Array<{ color_name: string; hex_code: string }>> {
+    const response = await fetchApi<ApiResponse<Array<{ color_name: string; hex_code: string }>>>(`${BASE}/hex-palette`)
+    if (response.error) throw new Error(response.error)
+    return response.data || []
+  },
+
   async clone(styleId: number, data: CloneStyleColorDTO): Promise<StyleColor> {
     const response = await fetchApi<ApiResponse<StyleColor>>(`${BASE}/${styleId}/clone`, {
       method: 'POST',
