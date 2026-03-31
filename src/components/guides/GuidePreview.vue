@@ -34,7 +34,7 @@ defineProps<Props>()
   border: 1px dashed rgba(0, 0, 0, 0.12);
   border-radius: 8px;
   padding: 1rem;
-  margin-top: 1rem;
+  height: 100%;
 }
 
 .body--dark .guide-preview {

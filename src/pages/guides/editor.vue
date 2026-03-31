@@ -132,14 +132,19 @@ async function saveGuide(status: 'DRAFT' | 'PUBLISHED') {
         @upload-image="handleImageUpload"
       />
 
-      <div class="editor-area q-mb-md">
-        <EditorContent
-          :editor="editor"
-          class="guide-editor-content"
-        />
+      <div class="row q-col-gutter-md">
+        <div class="col-12 col-md-6">
+          <div class="editor-area">
+            <EditorContent
+              :editor="editor"
+              class="guide-editor-content"
+            />
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <GuidePreview :html="previewHtml" />
+        </div>
       </div>
-
-      <GuidePreview :html="previewHtml" />
     </template>
   </q-page>
 </template>
