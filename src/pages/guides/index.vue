@@ -84,18 +84,22 @@ async function handleDelete() {
 
     <div
       v-else
-      class="q-gutter-md"
+      class="row q-col-gutter-md"
     >
-      <GuideCard
+      <div
         v-for="guide in guides"
         :key="guide.id"
-        :guide="guide"
-        :is-admin="isAdmin"
-        @click="goToGuide(guide.slug)"
-        @edit="goToEditor(guide.id)"
-        @delete="confirmDelete(guide.id)"
-        @toggle-publish="togglePublish(guide.id)"
-      />
+        class="col-12 col-sm-6 col-md-4"
+      >
+        <GuideCard
+          :guide="guide"
+          :is-admin="isAdmin"
+          @click="goToGuide(guide.slug)"
+          @edit="goToEditor(guide.id)"
+          @delete="confirmDelete(guide.id)"
+          @toggle-publish="togglePublish(guide.id)"
+        />
+      </div>
     </div>
 
     <ConfirmDialog
