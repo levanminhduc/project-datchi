@@ -317,28 +317,40 @@ suppliers.get('/:id/colors', requirePermission('thread.suppliers.view'), async (
   try {
     const id = parseInt(c.req.param('id'))
 
-    const { data, error } = await supabase
-      .from('color_supplier')
-      .select(`
-        id,
-        is_active,
-        color:colors(id, name, hex_code, pantone_code, is_active)
-      `)
-      .eq('supplier_id', id)
-      .order('created_at', { ascending: false })
+    const BATCH_SIZE = 1000
+    let allData: unknown[] = []
+    let offset = 0
+    let hasMore = true
 
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<SupplierApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi tải danh sách màu'
-      }, 500)
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('color_supplier')
+        .select(`
+          id,
+          is_active,
+          color:colors(id, name, hex_code, pantone_code, is_active)
+        `)
+        .eq('supplier_id', id)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + BATCH_SIZE - 1)
+
+      if (error) {
+        console.error('Supabase error:', error)
+        return c.json<SupplierApiResponse<null>>({
+          data: null,
+          error: 'Lỗi khi tải danh sách màu'
+        }, 500)
+      }
+
+      allData = allData.concat(data)
+      hasMore = data.length === BATCH_SIZE
+      offset += BATCH_SIZE
     }
 
     return c.json<SupplierApiResponse<unknown[]>>({
-      data: data,
+      data: allData,
       error: null,
-      message: `Đã tải ${data.length} màu`
+      message: `Đã tải ${allData.length} màu`
     })
   } catch (err) {
     console.error('Server error:', err)

@@ -27,7 +27,7 @@ npm run e2e:ui       # Playwright with UI mode
 npm run e2e:headed   # Playwright headed browser
 
 # Database
-psql -h 127.0.0.1 -p 55321 -U postgres -d postgres  # Direct DB access
+psql -h 127.0.0.1 -p 55422 -U postgres -d postgres  # Direct DB access
 supabase migration up                                  # Apply new migrations (SAFE)
 ```
 
