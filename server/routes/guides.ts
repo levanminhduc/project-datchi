@@ -148,7 +148,7 @@ guides.get('/', async (c) => {
 
     let query = supabase
       .from('guides')
-      .select('id, title, slug, cover_image_url, status, sort_order, published_at, created_at, updated_at, author_id')
+      .select('id, title, slug, cover_image_url, status, sort_order, published_at, created_at, updated_at, author_id, employees!author_id(full_name)')
       .is('deleted_at', null)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false })
@@ -169,7 +169,16 @@ guides.get('/', async (c) => {
       return c.json({ data: null, error: 'Lỗi khi tải danh sách hướng dẫn' }, 500)
     }
 
-    return c.json({ data, error: null })
+    const mapped = (data || []).map((g: Record<string, unknown>) => {
+      const emp = g.employees as { full_name: string } | null
+      return {
+        ...g,
+        author_name: emp?.full_name || null,
+        employees: undefined,
+      }
+    })
+
+    return c.json({ data: mapped, error: null })
   } catch (err) {
     console.error('List guides error:', err)
     return c.json({ data: null, error: 'Lỗi hệ thống' }, 500)
