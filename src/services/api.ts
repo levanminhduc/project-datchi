@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
-import { isAuthError } from './auth-error-utils'
+import { isAuthErrorPermanent } from './auth-error-utils'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 const REQUEST_TIMEOUT_MS = 10000
@@ -132,13 +132,23 @@ export async function getRefreshedSession(): Promise<Session> {
     try {
       channel?.postMessage({ type: 'REFRESH_START' } satisfies RefreshMessage)
 
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      if (currentSession && !isTokenExpiringSoon(currentSession.access_token)) {
+        return currentSession
+      }
+
       const { data, error } = await supabase.auth.refreshSession()
 
       if (error) {
-        if (isAuthError(error)) {
+        if (isAuthErrorPermanent(error)) {
           throw new SessionExpiredError()
         }
-        throw new Error('Lỗi kết nối, vui lòng thử lại')
+        await new Promise(r => setTimeout(r, 200))
+        const { data: { session: retrySession } } = await supabase.auth.getSession()
+        if (retrySession && !isTokenExpiringSoon(retrySession.access_token)) {
+          return retrySession
+        }
+        throw new SessionExpiredError()
       }
 
       if (!data.session) {

@@ -8,7 +8,7 @@ import {
   resetLogoutFlag,
   isLogoutInProgress,
 } from '@/services/api'
-import { isAuthError } from '@/services/auth-error-utils'
+import { isAuthErrorPermanent } from '@/services/auth-error-utils'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type {
   AuthState,
@@ -81,7 +81,7 @@ async function retryGetUser(): Promise<{
     }
 
     if (error) {
-      if (isAuthError(error)) {
+      if (isAuthErrorPermanent(error)) {
         return { user: null, errorType: 'auth' }
       }
     }
@@ -298,12 +298,20 @@ export function useAuth() {
       handlingSignedOut = true
 
       try {
-        await new Promise(r => setTimeout(r, 150))
+        await new Promise(r => setTimeout(r, 300))
 
         if (signingOut || isLogoutInProgress()) return
 
-        const session = await getSessionSafe(3000)
+        const session = await getSessionSafe(8000)
         if (session) {
+          return
+        }
+
+        const userCheck = await withTimeout(
+          supabase.auth.getUser(),
+          5000
+        ).catch(() => null)
+        if (userCheck?.data?.user) {
           return
         }
 
@@ -408,7 +416,7 @@ export function useAuth() {
         return
       }
 
-      const session = await getSessionSafe(3000)
+      const session = await getSessionSafe(8000)
       if (!session) {
         lastResumeReinitAt = now
         initialized = false
