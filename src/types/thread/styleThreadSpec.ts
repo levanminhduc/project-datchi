@@ -11,6 +11,8 @@ export interface StyleThreadSpec {
   display_order: number
   created_at: string
   updated_at: string
+  created_by: string | null
+  updated_by: string | null
   // Joined fields
   suppliers?: {
     id: number
@@ -93,4 +95,25 @@ export interface UpdateStyleColorThreadSpecDTO {
   thread_type_id?: number
   thread_color_id?: number | null
   notes?: string
+}
+
+export interface StyleWithSpecs {
+  id: number
+  style_code: string
+  style_name: string
+  description: string | null
+  fabric_type: string | null
+  spec_count: number
+  first_spec_created_at: string | null
+  last_spec_updated_at: string | null
+  first_created_by: string | null
+  last_updated_by: string | null
+}
+
+export interface StylesWithSpecsResponse {
+  data: StyleWithSpecs[]
+  total: number
+  page: number
+  pageSize: number
+  error: string | null
 }

@@ -11,6 +11,7 @@ import type {
   UpdateStyleDTO,
   StyleFilter,
   StyleThreadSpec,
+  StyleWithSpecs,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -192,5 +193,33 @@ export const styleService = {
     }
 
     return response.data || []
+  },
+
+  async getWithSpecs(params: {
+    page?: number
+    pageSize?: number
+    search?: string
+    sortBy?: string
+    descending?: boolean
+  } = {}): Promise<{ data: StyleWithSpecs[]; total: number }> {
+    const queryParts: string[] = []
+
+    if (params.page) queryParts.push(`page=${params.page}`)
+    if (params.pageSize) queryParts.push(`pageSize=${params.pageSize}`)
+    if (params.search?.trim()) queryParts.push(`search=${encodeURIComponent(params.search.trim())}`)
+    if (params.sortBy) queryParts.push(`sortBy=${params.sortBy}`)
+    if (params.descending !== undefined) queryParts.push(`descending=${params.descending}`)
+
+    const queryString = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
+    const response = await fetchApi<{ data: StyleWithSpecs[]; total: number; error: string | null }>(`${BASE}/with-specs${queryString}`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return {
+      data: response.data || [],
+      total: response.total || 0,
+    }
   },
 }

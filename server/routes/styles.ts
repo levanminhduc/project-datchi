@@ -87,6 +87,49 @@ styles.get('/', async (c) => {
   }
 })
 
+styles.get('/with-specs', async (c) => {
+  try {
+    const query = c.req.query()
+
+    const page = Math.max(1, parseInt(query.page || '1') || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize || '25') || 25))
+    const search = (query.search || '').trim()
+    const descending = query.descending === 'true'
+
+    const allowedSortColumns = ['style_code', 'style_name', 'spec_count', 'first_spec_created_at', 'last_spec_updated_at']
+    const sortBy = allowedSortColumns.includes(query.sortBy || '') ? query.sortBy! : 'style_code'
+
+    const offset = (page - 1) * pageSize
+
+    let dbQuery = supabase
+      .from('v_styles_with_specs')
+      .select('*', { count: 'exact' })
+
+    if (search) {
+      dbQuery = dbQuery.or(`style_code.ilike.%${search}%,style_name.ilike.%${search}%`)
+    }
+
+    dbQuery = dbQuery
+      .order(sortBy, { ascending: !descending })
+      .range(offset, offset + pageSize - 1)
+
+    const { data, error, count } = await dbQuery
+
+    if (error) throw error
+
+    return c.json({
+      data: data || [],
+      total: count || 0,
+      page,
+      pageSize,
+      error: null,
+    })
+  } catch (err) {
+    console.error('Error fetching styles with specs:', err)
+    return c.json({ data: [], total: 0, error: getErrorMessage(err) }, 500)
+  }
+})
+
 /**
  * GET /api/styles/:id - Get a single style by ID
  */

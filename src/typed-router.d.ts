@@ -345,6 +345,13 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/thread/styles/with-specs': RouteRecordInfo<
+      '/thread/styles/with-specs',
+      '/thread/styles/with-specs',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/thread/sub-arts/': RouteRecordInfo<
       '/thread/sub-arts/',
       '/thread/sub-arts',
@@ -689,6 +696,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/styles/[id].vue': {
       routes:
         | '/thread/styles/[id]'
+      views:
+        | never
+    }
+    'src/pages/thread/styles/with-specs.vue': {
+      routes:
+        | '/thread/styles/with-specs'
       views:
         | never
     }

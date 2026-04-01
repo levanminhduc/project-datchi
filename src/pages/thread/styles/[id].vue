@@ -7,7 +7,7 @@
         round
         icon="arrow_back"
         color="primary"
-        @click="$router.push('/thread/styles')"
+        @click="$router.back()"
       />
       <div class="q-ml-md">
         <h1 class="text-h5 q-my-none text-weight-bold text-primary">
@@ -418,7 +418,7 @@
         color="primary"
         label="Quay lại danh sách"
         unelevated
-        @click="$router.push('/thread/styles')"
+        @click="$router.back()"
       />
     </div>
   </q-page>

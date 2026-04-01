@@ -144,6 +144,17 @@ styleThreadSpecs.post('/', async (c) => {
       return c.json({ data: null, error: 'Nhà cung cấp (supplier_id) là bắt buộc' }, 400)
     }
 
+    const auth = c.get('auth') as { employeeId?: number } | undefined
+    let createdBy: string | null = null
+    if (auth?.employeeId) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', auth.employeeId)
+        .single()
+      createdBy = emp?.full_name || null
+    }
+
     const addToTop = body.add_to_top === true
     let displayOrder = 0
 
@@ -197,6 +208,8 @@ styleThreadSpecs.post('/', async (c) => {
         meters_per_unit: body.meters_per_unit || 0,
         notes: body.notes,
         display_order: displayOrder,
+        created_by: createdBy,
+        updated_by: createdBy,
       }])
       .select()
       .single()
@@ -225,6 +238,17 @@ styleThreadSpecs.put('/:id', async (c) => {
 
     const body = await c.req.json()
 
+    const auth = c.get('auth') as { employeeId?: number } | undefined
+    let updatedBy: string | null = null
+    if (auth?.employeeId) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', auth.employeeId)
+        .single()
+      updatedBy = emp?.full_name || null
+    }
+
     const { data, error } = await supabase
       .from('style_thread_specs')
       .update({
@@ -234,6 +258,7 @@ styleThreadSpecs.put('/:id', async (c) => {
         thread_type_id: body.thread_type_id,
         meters_per_unit: body.meters_per_unit,
         notes: body.notes,
+        updated_by: updatedBy,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
