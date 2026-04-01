@@ -62,19 +62,9 @@ onMounted(() => {
           @click="toggle"
         />
         <q-toolbar-title> Hòa Thọ Điện Bàn </q-toolbar-title>
-        <template v-if="!isPublicPage">
-          <NotificationBell v-if="showSidebar" />
-          <DarkModeToggle />
-          <UserMenu />
-        </template>
-        <q-btn
-          v-else
-          flat
-          no-caps
-          label="Trang chủ"
-          icon="home"
-          to="/"
-        />
+        <NotificationBell v-if="showSidebar" />
+        <DarkModeToggle v-if="!isPublicPage || isAuthenticated" />
+        <UserMenu v-if="!isPublicPage || isAuthenticated" />
       </q-toolbar>
     </q-header>
 

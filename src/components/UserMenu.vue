@@ -43,6 +43,42 @@
 
         <q-separator />
 
+        <template v-if="isPublicPage">
+          <q-item
+            v-close-popup
+            clickable
+            to="/"
+          >
+            <q-item-section avatar>
+              <q-icon
+                name="dashboard"
+                color="primary"
+              />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label>Bảng điều khiển</q-item-label>
+            </q-item-section>
+          </q-item>
+
+          <q-item
+            v-close-popup
+            clickable
+            to="/guides"
+          >
+            <q-item-section avatar>
+              <q-icon
+                name="menu_book"
+                color="primary"
+              />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label>Bài Viết</q-item-label>
+            </q-item-section>
+          </q-item>
+
+          <q-separator />
+        </template>
+
         <q-item
           v-close-popup
           clickable
@@ -67,9 +103,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 
+const route = useRoute()
 const { employee, isAuthenticated, signOut } = useAuth()
+
+const isPublicPage = computed(() => route.path.startsWith('/g/'))
 
 const avatarInitials = computed(() => {
   const name = employee.value?.fullName || ''

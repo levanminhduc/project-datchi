@@ -112,9 +112,7 @@ async function copyLink() {
         v-html="guide.content_html"
       />
 
-      <q-separator class="q-my-xl" />
-
-      <div class="guide-share-section q-pa-md rounded-borders bg-grey-2">
+      <div class="guide-share-section q-pa-md q-mt-xl rounded-borders bg-grey-2">
         <div class="text-subtitle2 q-mb-sm">
           Chia Sẻ Bài Viết Này
         </div>
