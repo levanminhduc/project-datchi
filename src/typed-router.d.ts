@@ -51,6 +51,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/g/[slug]': RouteRecordInfo<
+      '/g/[slug]',
+      '/g/:slug',
+      { slug: ParamValue<true> },
+      { slug: ParamValue<false> },
+      | never
+    >,
     '/guides/': RouteRecordInfo<
       '/guides/',
       '/guides',
@@ -443,6 +450,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/forbidden.vue': {
       routes:
         | '/forbidden'
+      views:
+        | never
+    }
+    'src/pages/g/[slug].vue': {
+      routes:
+        | '/g/[slug]'
       views:
         | never
     }
