@@ -2,7 +2,8 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
 import { serve } from '@hono/node-server'
-import { existsSync } from 'fs'
+import { serveStatic } from '@hono/node-server/serve-static'
+import { existsSync, readFileSync } from 'fs'
 import dotenv from 'dotenv'
 
 if (existsSync('.env')) {
@@ -166,6 +167,11 @@ app.route('/api/style-colors', styleColorsRouter)
 app.route('/api/dept-allocations', deptAllocationsRouter)
 app.route('/api/guides', guidesRouter)
 
+const HAS_DIST = existsSync('dist/index.html')
+if (HAS_DIST) {
+  app.use('*', serveStatic({ root: './dist' }))
+}
+
 app.onError((err, c) => {
   console.error('Unhandled error:', err)
   return c.json(
@@ -177,18 +183,23 @@ app.onError((err, c) => {
   )
 })
 
+if (HAS_DIST) {
+  app.all('*', (c) => {
+    if (c.req.path.startsWith('/api')) {
+      return c.json({ data: null, error: 'Không tìm thấy endpoint' }, 404)
+    }
+    const html = readFileSync('dist/index.html', 'utf-8')
+    return c.html(html)
+  })
+}
+
 app.notFound((c) => {
-  return c.json(
-    {
-      data: null,
-      error: 'Không tìm thấy endpoint',
-    },
-    404
-  )
+  return c.json({ data: null, error: 'Không tìm thấy endpoint' }, 404)
 })
 
 console.log(`Starting server on port ${PORT}...`)
 console.log(`CORS enabled for: ${FRONTEND_URL}`)
+if (HAS_DIST) console.log('Serving static files from dist/')
 
 serve({
   fetch: app.fetch,
