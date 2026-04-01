@@ -520,6 +520,8 @@
             type="number"
             min="0"
             required
+            @focus="() => clearZeroOnFocus('qty_full_cones')"
+            @blur="() => restoreZeroOnBlur('qty_full_cones')"
           />
         </div>
 
@@ -529,6 +531,8 @@
             label="Cuộn lẻ"
             type="number"
             min="0"
+            @focus="() => clearZeroOnFocus('qty_partial_cones')"
+            @blur="() => restoreZeroOnBlur('qty_partial_cones')"
           />
         </div>
       </div>
@@ -1189,6 +1193,14 @@ const manualEntryForm = reactive({
   qty_full_cones: 0,
   qty_partial_cones: 0,
 })
+
+const clearZeroOnFocus = (field: 'qty_full_cones' | 'qty_partial_cones') => {
+  if (manualEntryForm[field] === 0) (manualEntryForm[field] as any) = null
+}
+
+const restoreZeroOnBlur = (field: 'qty_full_cones' | 'qty_partial_cones') => {
+  if (!manualEntryForm[field]) manualEntryForm[field] = 0
+}
 
 const resetManualEntryForm = () => {
   manualEntryForm.supplier_id = null
