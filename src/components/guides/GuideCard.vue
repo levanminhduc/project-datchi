@@ -7,11 +7,12 @@ interface Props {
 }
 
 defineProps<Props>()
-defineEmits<{
+const emit = defineEmits<{
   click: []
   edit: []
   delete: []
   togglePublish: []
+  share: []
 }>()
 
 function formatDate(dateStr: string | null): string {
@@ -25,7 +26,7 @@ function formatDate(dateStr: string | null): string {
     class="guide-card cursor-pointer full-height"
     flat
     bordered
-    @click="$emit('click')"
+    @click="emit('click')"
   >
     <q-card-section class="col q-pt-sm">
       <div class="row no-wrap items-start">
@@ -52,29 +53,37 @@ function formatDate(dateStr: string | null): string {
           </div>
         </div>
         <div
-          v-if="isAdmin"
           class="guide-card__actions q-ml-sm"
           @click.stop
         >
           <IconButton
-            icon="edit"
+            v-if="guide.status === 'PUBLISHED'"
+            icon="share"
             size="xs"
-            tooltip="Chỉnh sửa"
-            @click="$emit('edit')"
+            tooltip="Chia sẻ"
+            @click="emit('share')"
           />
-          <IconButton
-            :icon="guide.status === 'PUBLISHED' ? 'visibility_off' : 'visibility'"
-            size="xs"
-            :tooltip="guide.status === 'PUBLISHED' ? 'Ẩn bài' : 'Xuất bản'"
-            @click="$emit('togglePublish')"
-          />
-          <IconButton
-            icon="delete"
-            size="xs"
-            color="negative"
-            tooltip="Xóa"
-            @click="$emit('delete')"
-          />
+          <template v-if="isAdmin">
+            <IconButton
+              icon="edit"
+              size="xs"
+              tooltip="Chỉnh sửa"
+              @click="emit('edit')"
+            />
+            <IconButton
+              :icon="guide.status === 'PUBLISHED' ? 'visibility_off' : 'visibility'"
+              size="xs"
+              :tooltip="guide.status === 'PUBLISHED' ? 'Ẩn bài' : 'Xuất bản'"
+              @click="emit('togglePublish')"
+            />
+            <IconButton
+              icon="delete"
+              size="xs"
+              color="negative"
+              tooltip="Xóa"
+              @click="emit('delete')"
+            />
+          </template>
         </div>
       </div>
     </q-card-section>
