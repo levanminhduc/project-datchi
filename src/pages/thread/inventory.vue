@@ -457,7 +457,7 @@
 
         <div class="col-12">
           <AppSelect
-            v-model="manualEntryForm.tex_number"
+            v-model="manualEntryForm.thread_type_id"
             label="Tex"
             :options="manualTexOptions"
             :disable="!manualEntryForm.supplier_id || manualTexOptions.length === 0"
@@ -1183,7 +1183,6 @@ let manualSupplierRequestId = 0
 
 const manualEntryForm = reactive({
   supplier_id: null as number | null,
-  tex_number: null as string | null,
   thread_type_id: null as number | null,
   color_id: null as number | null,
   warehouse_id: null as number | null,
@@ -1193,7 +1192,6 @@ const manualEntryForm = reactive({
 
 const resetManualEntryForm = () => {
   manualEntryForm.supplier_id = null
-  manualEntryForm.tex_number = null
   manualEntryForm.thread_type_id = null
   manualEntryForm.color_id = null
   manualEntryForm.warehouse_id = null
@@ -1211,17 +1209,15 @@ const manualSupplierOptions = computed(() =>
 )
 
 const manualTexOptions = computed(() => {
-  const texSet = new Map<string, string>()
-  for (const tt of manualEntryThreadTypes.value) {
-    if (tt.tex_number != null) {
+  return manualEntryThreadTypes.value
+    .filter(tt => tt.tex_number != null)
+    .map(tt => {
       const texLabel = tt.tex_label?.trim()
-      texSet.set(
-        tt.tex_number,
-        texLabel ? `${tt.tex_number} - ${texLabel}` : `Tex ${tt.tex_number}`
-      )
-    }
-  }
-  return Array.from(texSet.entries()).map(([value, label]) => ({ label, value }))
+      return {
+        label: texLabel ? `${tt.tex_number} - ${texLabel}` : `Tex ${tt.tex_number}`,
+        value: tt.id,
+      }
+    })
 })
 
 const manualColorOptions = computed(() => {
@@ -1235,7 +1231,6 @@ const manualColorOptions = computed(() => {
 const manualWarehouseOptions = computed(() => storageOptions.value)
 
 const onManualSupplierChange = async (supplierId: number | null) => {
-  manualEntryForm.tex_number = null
   manualEntryForm.thread_type_id = null
   manualEntryForm.color_id = null
   manualEntryThreadTypes.value = []
@@ -1269,10 +1264,9 @@ const onManualSupplierChange = async (supplierId: number | null) => {
   }
 }
 
-const onManualTexChange = () => {
+const onManualTexChange = (threadTypeId: number | null) => {
   manualEntryForm.color_id = null
-  const match = manualEntryThreadTypes.value.find(tt => tt.tex_number === manualEntryForm.tex_number)
-  manualEntryForm.thread_type_id = match?.id ?? null
+  manualEntryForm.thread_type_id = threadTypeId
 }
 
 const handleManualEntrySubmit = async () => {

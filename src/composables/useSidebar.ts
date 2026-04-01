@@ -20,7 +20,7 @@ const navItems: NavItem[] = [
     to: '/ky-thuat#top',
     children: [
       { label: 'Mã Hàng', icon: 'o_checkroom', to: '/thread/styles' },
-      { label: 'Định Mức Chỉ', icon: 'o_fact_check', to: '/thread/styles/with-specs' }
+      { label: 'D/S Style đã có Định Mức', icon: 'o_fact_check', to: '/thread/styles/with-specs' }
     ]
   },
   {

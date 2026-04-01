@@ -140,6 +140,7 @@ const normalizeTexNumber = (raw: string): string => {
   val = val.replace(/^tex\s*/i, '')
   val = val.replace(/\s*\(.*\)\s*$/, '')
   val = val.trim()
+  if (val.includes('/')) return val
   const num = parseFloat(val)
   return Number.isNaN(num) ? val : String(num)
 }
