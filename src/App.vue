@@ -26,7 +26,8 @@ function onPasswordChanged() {
   }
 }
 
-const showSidebar = computed(() => route.path !== "/login" && isAuthenticated.value);
+const isPublicPage = computed(() => route.path.startsWith('/g/'))
+const showSidebar = computed(() => route.path !== "/login" && !isPublicPage.value && isAuthenticated.value);
 
 watch(showSidebar, (show) => {
   if (show) {
@@ -61,9 +62,19 @@ onMounted(() => {
           @click="toggle"
         />
         <q-toolbar-title> Hòa Thọ Điện Bàn </q-toolbar-title>
-        <NotificationBell v-if="showSidebar" />
-        <DarkModeToggle />
-        <UserMenu />
+        <template v-if="!isPublicPage">
+          <NotificationBell v-if="showSidebar" />
+          <DarkModeToggle />
+          <UserMenu />
+        </template>
+        <q-btn
+          v-else
+          flat
+          no-caps
+          label="Trang chủ"
+          icon="home"
+          to="/"
+        />
       </q-toolbar>
     </q-header>
 
