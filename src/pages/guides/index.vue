@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGuides } from '@/composables/useGuides'
 import { useAuth } from '@/composables/useAuth'
+import { useSnackbar } from '@/composables/useSnackbar'
 import GuideCard from '@/components/guides/GuideCard.vue'
 
 definePage({
@@ -14,6 +15,7 @@ const { hasPermission } = useAuth()
 const { guides, loading, search, fetchGuides, removeGuide, togglePublish } = useGuides()
 
 const isAdmin = hasPermission('guides.create')
+const snackbar = useSnackbar()
 const showDeleteDialog = ref(false)
 const deleteTargetId = ref<string | null>(null)
 
@@ -45,6 +47,16 @@ async function handleDelete() {
   }
   showDeleteDialog.value = false
   deleteTargetId.value = null
+}
+
+async function shareGuide(slug: string) {
+  const url = `${window.location.origin}/g/${slug}`
+  try {
+    await navigator.clipboard.writeText(url)
+    snackbar.success('Đã sao chép link chia sẻ')
+  } catch {
+    snackbar.error('Không thể sao chép link')
+  }
 }
 </script>
 
@@ -98,6 +110,7 @@ async function handleDelete() {
           @edit="goToEditor(guide.id)"
           @delete="confirmDelete(guide.id)"
           @toggle-publish="togglePublish(guide.id)"
+          @share="shareGuide(guide.slug)"
         />
       </div>
     </div>

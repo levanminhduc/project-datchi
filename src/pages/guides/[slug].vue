@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { guideService } from '@/services/guideService'
 import { useAuth } from '@/composables/useAuth'
@@ -21,6 +21,13 @@ const loading = ref(true)
 
 const isAdmin = hasPermission('guides.edit')
 
+const copied = ref(false)
+
+const publicUrl = computed(() => {
+  if (!guide.value) return ''
+  return `${window.location.origin}/g/${guide.value.slug}`
+})
+
 onMounted(async () => {
   try {
     const slug = (route.params as { slug?: string }).slug || ''
@@ -36,6 +43,17 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function copyPublicLink() {
+  try {
+    await navigator.clipboard.writeText(publicUrl.value)
+    copied.value = true
+    snackbar.success('Đã sao chép link')
+    setTimeout(() => { copied.value = false }, 2000)
+  } catch {
+    snackbar.error('Không thể sao chép link')
+  }
+}
 </script>
 
 <template>
@@ -80,6 +98,34 @@ onMounted(async () => {
         class="guide-prose"
         v-html="guide.content_html"
       />
+
+      <template v-if="guide.status === 'PUBLISHED'">
+        <q-separator class="q-my-xl" />
+        <div class="guide-share-section q-pa-md rounded-borders bg-grey-2">
+          <div class="text-subtitle2 q-mb-sm">
+            Chia Sẻ Bài Viết Này
+          </div>
+          <div class="row no-wrap items-center q-gutter-x-sm">
+            <q-input
+              :model-value="publicUrl"
+              readonly
+              dense
+              outlined
+              class="col"
+              @focus="($event.target as HTMLInputElement)?.select()"
+            />
+            <q-btn
+              flat
+              round
+              :icon="copied ? 'check' : 'content_copy'"
+              :color="copied ? 'positive' : 'grey-7'"
+              @click="copyPublicLink"
+            >
+              <q-tooltip>Sao chép link</q-tooltip>
+            </q-btn>
+          </div>
+        </div>
+      </template>
     </template>
   </q-page>
 </template>
@@ -95,5 +141,10 @@ onMounted(async () => {
   .guide-title {
     font-size: 1.15rem;
   }
+}
+
+.guide-share-section {
+  max-width: 800px;
+  margin: 0 auto;
 }
 </style>
