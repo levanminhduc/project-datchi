@@ -395,6 +395,8 @@
               :style-colors="styleColors"
               @go-to-specs="activeTab = 'specs'"
               @color-created="() => fetchStyleColors(id)"
+              @color-deleted="() => fetchStyleColors(id)"
+              @color-updated="() => fetchStyleColors(id)"
             />
           </q-tab-panel>
         </q-tab-panels>

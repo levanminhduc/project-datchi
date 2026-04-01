@@ -95,8 +95,29 @@
             >
               {{ parseColorName(group.color.color_name).subArt }}
             </div>
-            <div class="text-subtitle2 text-weight-medium">
+            <div class="text-subtitle2 text-weight-medium cursor-pointer editable-cell">
               {{ parseColorName(group.color.color_name).color }}
+              <q-icon
+                name="edit"
+                size="xs"
+                class="edit-hint q-ml-xs text-grey-5"
+              />
+              <q-popup-edit
+                v-slot="scope"
+                :model-value="parseColorName(group.color.color_name).color"
+                buttons
+                label-set="Lưu"
+                label-cancel="Hủy"
+                @save="(val: string) => handleRenameColor(group.color, val)"
+              >
+                <q-input
+                  v-model="scope.value"
+                  dense
+                  autofocus
+                  label="Tên màu"
+                  :rules="[(v: string) => !!v?.trim() || 'Tên màu không được rỗng']"
+                />
+              </q-popup-edit>
             </div>
             <q-space />
             <q-btn
@@ -340,6 +361,7 @@ import type { QTableColumn } from 'quasar'
 import type { StyleThreadSpec } from '@/types/thread'
 import type { StyleColor } from '@/types/thread'
 import { styleColorService } from '@/services/styleColorService'
+import { styleThreadSpecService } from '@/services'
 import { supplierService } from '@/services/supplierService'
 import { subArtService } from '@/services/subArtService'
 import { AppSelect } from '@/components/ui/inputs'
@@ -377,6 +399,8 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   'go-to-specs': []
   'color-created': []
+  'color-deleted': []
+  'color-updated': []
 }>()
 
 const confirm = useConfirm()
@@ -387,7 +411,6 @@ const {
   fetchAllColorSpecsByStyle,
   addColorSpec,
   updateColorSpec,
-  deleteColorSpec,
 } = useStyleThreadSpecs()
 
 // Local state
@@ -650,19 +673,40 @@ const handleCreateColor = async () => {
 
 const handleDeleteColorGroup = async (color: ColorGroupColor) => {
   const confirmed = await confirm.confirmDelete({
-    itemName: `tất cả định mức màu cho "${color.color_name}"`,
+    itemName: `màu hàng "${color.color_name}" và tất cả định mức liên quan`,
   })
 
   if (!confirmed) return
 
-  const toDelete = colorSpecs.value.filter(cs => cs.style_color_id === color.id)
+  try {
+    await styleThreadSpecService.deleteColorSpecsByStyleColor(color.id)
 
-  for (const cs of toDelete) {
-    await deleteColorSpec(cs.id)
+    await styleColorService.remove(props.styleId, color.id)
+
+    emit('color-deleted')
+    await loadColorSpecs()
+    snackbar.success(`Đã xóa màu hàng "${color.color_name}"`)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Không thể xóa màu hàng'
+    snackbar.error(message)
   }
+}
 
-  // Re-fetch to sync
-  await loadColorSpecs()
+const handleRenameColor = async (color: ColorGroupColor, newColorPart: string) => {
+  const trimmed = newColorPart.trim()
+  if (!trimmed) return
+
+  const parsed = parseColorName(color.color_name)
+  const fullName = parsed.subArt ? `${parsed.subArt} - ${trimmed}` : trimmed
+  if (fullName === color.color_name) return
+
+  try {
+    await styleColorService.update(props.styleId, color.id, { color_name: fullName })
+    emit('color-updated')
+    snackbar.success('Đã cập nhật tên màu hàng')
+  } catch (err) {
+    snackbar.error(err instanceof Error ? err.message : 'Không thể cập nhật tên màu')
+  }
 }
 
 /**

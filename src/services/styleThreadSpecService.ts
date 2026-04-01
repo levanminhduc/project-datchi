@@ -221,4 +221,16 @@ export const styleThreadSpecService = {
       throw new Error(response.error)
     }
   },
+
+  async deleteColorSpecsByStyleColor(styleColorId: number): Promise<number> {
+    const response = await fetchApi<ApiResponse<{ deleted: number }>>(`${BASE}/color-specs/by-style-color/${styleColorId}`, {
+      method: 'DELETE',
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data?.deleted ?? 0
+  },
 }

@@ -491,6 +491,32 @@ styleThreadSpecs.put('/color-specs/:id', async (c) => {
 })
 
 /**
+ * DELETE /api/style-thread-specs/color-specs/by-style-color/:styleColorId
+ * Batch delete ALL color specs for a given style_color_id (1 query thay vì N)
+ */
+styleThreadSpecs.delete('/color-specs/by-style-color/:styleColorId', async (c) => {
+  try {
+    const styleColorId = parseInt(c.req.param('styleColorId'))
+
+    if (isNaN(styleColorId)) {
+      return c.json({ data: null, error: 'Style Color ID không hợp lệ' }, 400)
+    }
+
+    const { error, count } = await supabase
+      .from('style_color_thread_specs')
+      .delete({ count: 'exact' })
+      .eq('style_color_id', styleColorId)
+
+    if (error) throw error
+
+    return c.json({ data: { deleted: count }, error: null, message: `Đã xóa ${count ?? 0} định mức màu` })
+  } catch (err) {
+    console.error('Error batch deleting color specs by style_color:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
  * DELETE /api/style-thread-specs/color-specs/:id - Delete a color spec
  */
 styleThreadSpecs.delete('/color-specs/:id', async (c) => {
