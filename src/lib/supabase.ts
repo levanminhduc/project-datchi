@@ -7,6 +7,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { protectedStorage } from './supabase-protected-storage'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ||
   import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -37,6 +38,7 @@ export const supabase = createClient(resolvedSupabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    storage: protectedStorage,
   },
   realtime: {
     params: {

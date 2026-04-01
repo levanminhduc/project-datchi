@@ -9,6 +9,7 @@ import {
   isLogoutInProgress,
 } from '@/services/api'
 import { isAuthErrorPermanent } from '@/services/auth-error-utils'
+import { authorizeLogout, revokeLogout, getBackup, clearAll } from '@/lib/supabase-protected-storage'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type {
   AuthState,
@@ -298,20 +299,19 @@ export function useAuth() {
       handlingSignedOut = true
 
       try {
-        await new Promise(r => setTimeout(r, 300))
-
-        if (signingOut || isLogoutInProgress()) return
-
-        const session = await getSessionSafe(8000)
+        const session = await getSessionSafe(2000)
         if (session) {
+          console.warn('[useAuth] SIGNED_OUT ignored — tokens preserved')
           return
         }
 
-        const userCheck = await withTimeout(
-          supabase.auth.getUser(),
-          5000
-        ).catch(() => null)
-        if (userCheck?.data?.user) {
+        const backup = getBackup()
+        if (backup) {
+          console.warn('[useAuth] SIGNED_OUT — restoring from backup')
+          await supabase.auth.setSession({
+            access_token: backup.access_token,
+            refresh_token: backup.refresh_token,
+          })
           return
         }
 
@@ -416,7 +416,20 @@ export function useAuth() {
         return
       }
 
-      const session = await getSessionSafe(8000)
+      let session = await getSessionSafe(8000)
+
+      if (!session) {
+        const backup = getBackup()
+        if (backup) {
+          console.warn('[useAuth] Tab resume — restoring from backup')
+          const { data } = await supabase.auth.setSession({
+            access_token: backup.access_token,
+            refresh_token: backup.refresh_token,
+          })
+          session = data.session
+        }
+      }
+
       if (!session) {
         lastResumeReinitAt = now
         initialized = false
@@ -509,6 +522,7 @@ export function useAuth() {
     signingOut = true
     loggedOut = true
     verifiedPermissionsSnapshot = null
+    authorizeLogout()
     try {
       try {
         await authService.signOut()
@@ -516,6 +530,7 @@ export function useAuth() {
       }
 
       await clearAuthSessionLocal()
+      clearAll()
       snackbar.success('Đã đăng xuất')
       resetState()
       initialized = false
@@ -524,6 +539,7 @@ export function useAuth() {
         window.location.replace('/login')
       })
     } finally {
+      revokeLogout()
       signingOut = false
     }
   }

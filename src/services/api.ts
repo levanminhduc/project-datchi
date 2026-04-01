@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { authorizeLogout, revokeLogout, clearAll } from '@/lib/supabase-protected-storage'
 import type { Session } from '@supabase/supabase-js'
 import { isAuthErrorPermanent } from './auth-error-utils'
 
@@ -148,7 +149,7 @@ export async function getRefreshedSession(): Promise<Session> {
         if (retrySession && !isTokenExpiringSoon(retrySession.access_token)) {
           return retrySession
         }
-        throw new SessionExpiredError()
+        throw new Error('Lỗi kết nối khi làm mới phiên')
       }
 
       if (!data.session) {
@@ -176,11 +177,14 @@ export function isLogoutInProgress(): boolean {
 
 export async function clearAuthSessionLocal(): Promise<void> {
   isLoggingOut = true
+  authorizeLogout()
   try {
     await supabase.auth.signOut({ scope: 'local' })
   } catch {
   } finally {
     clearSupabaseTokens()
+    clearAll()
+    revokeLogout()
   }
 }
 
