@@ -277,7 +277,7 @@
                     color="primary"
                   />
                   <template v-else>
-                    <span class="cell-value">{{ props.row.thread_types?.tex_label || props.row.thread_types?.tex_number || '-' }}</span>
+                    <span class="cell-value">{{ formatTexDisplay(props.row.thread_types?.tex_number, props.row.thread_types?.tex_label) }}</span>
                     <q-icon
                       name="edit"
                       size="xs"
@@ -430,7 +430,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useStyleColors, useSnackbar } from '@/composables'
 import StyleColorSpecsTab from '@/components/thread/StyleColorSpecsTab.vue'
 import { fetchApi } from '@/services/api'
-import { styleThreadSpecService } from '@/services'
+import { styleThreadSpecService, threadService } from '@/services'
 import type { QTableColumn } from 'quasar'
 import type { StyleThreadSpec } from '@/types/thread'
 import { formatStyleDisplay } from '@/utils/thread-format'
@@ -541,23 +541,40 @@ const supplierOptions = computed(() =>
   suppliers.value.map(s => ({ label: s.name, value: s.id }))
 )
 
-interface TexOption { id: number; tex_number: string; tex_label: string | null }
 const texOptionsCache = ref<Record<number, { label: string; value: number }[]>>({})
 const texOptionsLoading = ref<Record<number, boolean>>({})
+
+const formatTexDisplay = (texNumber?: string | null, texLabel?: string | null): string => {
+  const trimmedTexNumber = texNumber?.trim()
+  const trimmedTexLabel = texLabel?.trim()
+
+  if (trimmedTexNumber && trimmedTexLabel) {
+    return `${trimmedTexNumber} - ${trimmedTexLabel}`
+  }
+
+  if (trimmedTexNumber) {
+    return `Tex ${trimmedTexNumber}`
+  }
+
+  if (trimmedTexLabel) {
+    return trimmedTexLabel
+  }
+
+  return '-'
+}
 
 const fetchTexOptions = async (supplierId: number): Promise<void> => {
   if (texOptionsCache.value[supplierId] || texOptionsLoading.value[supplierId]) return
 
   texOptionsLoading.value[supplierId] = true
   try {
-    const response = await fetchApi<{ data: TexOption[] | null; error: string | null }>(
-      `/api/threads/tex-options?supplier_id=${supplierId}`
-    )
-    const items = response.data || []
-    texOptionsCache.value[supplierId] = items.map(t => ({
-      label: t.tex_label || String(t.tex_number),
-      value: t.id,
-    }))
+    const threadTypes = await threadService.getAll({ supplier_id: supplierId })
+    texOptionsCache.value[supplierId] = threadTypes
+      .filter(threadType => threadType.tex_number != null)
+      .map(threadType => ({
+        label: formatTexDisplay(threadType.tex_number, threadType.tex_label),
+        value: threadType.id,
+      }))
   } catch {
     texOptionsCache.value[supplierId] = []
   } finally {
@@ -675,7 +692,7 @@ const specColumns: QTableColumn[] = [
   {
     name: 'tex',
     label: 'Tex',
-    field: (row) => row.thread_types?.tex_number,
+    field: (row) => formatTexDisplay(row.thread_types?.tex_number, row.thread_types?.tex_label),
     align: 'left',
     sortable: true,
   },

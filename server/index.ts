@@ -39,7 +39,7 @@ import importRouter from './routes/import'
 import subArtsRouter from './routes/subArts'
 import styleColorsRouter from './routes/styleColors'
 import deptAllocationsRouter from './routes/deptAllocations'
-import guidesRouter from './routes/guides'
+import guidesRouter, { guideImages } from './routes/guides'
 import { authMiddleware } from './middleware/auth'
 import { supabaseAdmin } from './db/supabase'
 
@@ -59,6 +59,8 @@ app.use(
     credentials: true,
   })
 )
+
+app.route('/api/guides/images', guideImages)
 
 app.post('/api/auth/ensure-auth-user', async (c) => {
   try {
@@ -114,7 +116,12 @@ app.post('/api/auth/ensure-auth-user', async (c) => {
 
 app.use(
   '/api/*',
-  authMiddleware
+  async (c, next) => {
+    if (c.req.path.startsWith('/api/guides/images/')) {
+      return next()
+    }
+    return authMiddleware(c, next)
+  }
 )
 
 app.get('/health', (c) => {

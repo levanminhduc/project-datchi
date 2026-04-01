@@ -9,6 +9,7 @@ import {
 import type { AppEnv } from '../types/hono-env'
 
 const guides = new Hono<AppEnv>()
+const guideImages = new Hono()
 
 function generateSlug(title: string): string {
   const vietnameseMap: Record<string, string> = {
@@ -88,6 +89,14 @@ async function ensureUniqueSlug(baseSlug: string, excludeId?: string): Promise<s
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+const STORAGE_URL_PATTERN = /https?:\/\/[^/]+\/storage\/v1\/object\/public\/guide-images\//g
+const RELATIVE_IMAGE_PREFIX = '/api/guides/images/'
+
+function rewriteImageUrls(text: string | null): string | null {
+  if (!text) return text
+  return text.replace(STORAGE_URL_PATTERN, RELATIVE_IMAGE_PREFIX)
+}
+
 guides.post('/upload-image', requirePermission('guides.create'), async (c) => {
   try {
     const body = await c.req.parseBody()
@@ -130,14 +139,46 @@ guides.post('/upload-image', requirePermission('guides.create'), async (c) => {
       return c.json({ data: null, error: 'Lỗi khi tải ảnh lên' }, 500)
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from('guide-images')
-      .getPublicUrl(filePath)
+    const relativeUrl = `/api/guides/images/${filePath}`
 
-    return c.json({ data: { url: publicUrlData.publicUrl }, error: null })
+    return c.json({ data: { url: relativeUrl }, error: null })
   } catch (err) {
     console.error('Upload image error:', err)
     return c.json({ data: null, error: 'Lỗi hệ thống khi xử lý ảnh' }, 500)
+  }
+})
+
+guideImages.get('/*', async (c) => {
+  try {
+    const filePath = c.req.path.replace('/api/guides/images/', '')
+    if (!filePath || filePath.includes('..')) {
+      return c.json({ data: null, error: 'Đường dẫn không hợp lệ' }, 400)
+    }
+
+    const { data, error } = await supabase.storage
+      .from('guide-images')
+      .download(filePath)
+
+    if (error || !data) {
+      return c.json({ data: null, error: 'Không tìm thấy ảnh' }, 404)
+    }
+
+    const buffer = Buffer.from(await data.arrayBuffer())
+    const ext = filePath.split('.').pop()?.toLowerCase()
+    const contentType = ext === 'webp' ? 'image/webp'
+      : ext === 'png' ? 'image/png'
+      : ext === 'gif' ? 'image/gif'
+      : 'image/jpeg'
+
+    return new Response(buffer, {
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      },
+    })
+  } catch (err) {
+    console.error('Proxy guide image error:', err)
+    return c.json({ data: null, error: 'Lỗi hệ thống' }, 500)
   }
 })
 
@@ -296,7 +337,15 @@ guides.get('/:slugOrId', async (c) => {
       return c.json({ data: null, error: 'Không tìm thấy hướng dẫn' }, 404)
     }
 
-    return c.json({ data: guide, error: null })
+    const rewritten = {
+      ...guide,
+      content_html: rewriteImageUrls(guide.content_html),
+      content: guide.content ? JSON.parse(
+        rewriteImageUrls(JSON.stringify(guide.content))!
+      ) : guide.content,
+    }
+
+    return c.json({ data: rewritten, error: null })
   } catch (err) {
     console.error('Get guide error:', err)
     return c.json({ data: null, error: 'Lỗi hệ thống' }, 500)
@@ -438,4 +487,5 @@ guides.delete('/:id', requirePermission('guides.edit'), async (c) => {
   }
 })
 
+export { guideImages }
 export default guides

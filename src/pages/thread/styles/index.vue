@@ -165,6 +165,7 @@
           >
             <q-tooltip>Chỉnh sửa</q-tooltip>
           </q-btn>
+          <!-- Tạm ẩn chức năng xóa mã hàng ở frontend
           <q-btn
             flat
             round
@@ -175,6 +176,7 @@
           >
             <q-tooltip>Xóa</q-tooltip>
           </q-btn>
+          -->
         </q-td>
       </template>
     </q-table>
@@ -275,7 +277,6 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStyles } from '@/composables/thread/useStyles'
-import { useConfirm } from '@/composables/useConfirm'
 import { subArtService } from '@/services/subArtService'
 import type { Style, CreateStyleDTO, UpdateStyleDTO } from '@/types/thread'
 
@@ -290,8 +291,9 @@ definePage({
 const router = useRouter()
 
 // Composables
-const { styles, isLoading, fetchStyles, createStyle, updateStyle, deleteStyle } = useStyles()
-const { confirm } = useConfirm()
+const { styles, isLoading, fetchStyles, createStyle, updateStyle } = useStyles()
+// Tạm ẩn chức năng xóa mã hàng ở frontend.
+// const { confirm } = useConfirm()
 
 // State
 const searchQuery = ref('')
@@ -460,18 +462,19 @@ async function handleSubmit() {
   }
 }
 
-async function confirmDelete(style: Style) {
-  const confirmed = await confirm({
-    title: `Xóa mã hàng "${style.style_code}"?`,
-    message: 'Mã hàng và tất cả định mức chỉ liên quan sẽ bị xóa. Thao tác này không thể hoàn tác.',
-    ok: 'Xóa',
-    type: 'warning',
-  })
-
-  if (confirmed) {
-    await deleteStyle(style.id)
-  }
-}
+// Tạm ẩn chức năng xóa mã hàng ở frontend.
+// async function confirmDelete(style: Style) {
+//   const confirmed = await confirm({
+//     title: `Xóa mã hàng "${style.style_code}"?`,
+//     message: 'Mã hàng và tất cả định mức chỉ liên quan sẽ bị xóa. Thao tác này không thể hoàn tác.',
+//     ok: 'Xóa',
+//     type: 'warning',
+//   })
+//
+//   if (confirmed) {
+//     await deleteStyle(style.id)
+//   }
+// }
 
 // Lifecycle
 onMounted(async () => {
