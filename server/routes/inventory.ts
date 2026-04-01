@@ -583,7 +583,7 @@ inventory.get('/unassigned-by-thread-type', requirePermission('thread.inventory.
 
     for (const cone of cones || []) {
       const ttRaw = cone.thread_types
-      const tt = (Array.isArray(ttRaw) ? ttRaw[0] : ttRaw) as {
+      const tt = (Array.isArray(ttRaw) ? ttRaw[0] : ttRaw) as unknown as {
         id: number
         code: string
         name: string

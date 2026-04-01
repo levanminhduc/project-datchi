@@ -52,7 +52,9 @@ async function _findMatchingWeekItems(
   }))
 }
 
-const returnGroupedRoutes = new Hono()
+import type { AppEnv } from '../types/hono-env'
+
+const returnGroupedRoutes = new Hono<AppEnv>()
 returnGroupedRoutes.use('*', requirePermission('thread.issues.return'))
 
 returnGroupedRoutes.get('/return-groups', async (c) => {

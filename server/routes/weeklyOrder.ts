@@ -23,8 +23,9 @@ import {
   ManualReturnSchema,
 } from '../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../types/weeklyOrder'
+import type { AppEnv } from '../types/hono-env'
 
-const weeklyOrder = new Hono()
+const weeklyOrder = new Hono<AppEnv>()
 
 function formatZodError(err: ZodError): string {
   return err.issues.map((e) => e.message).join('; ')
@@ -969,7 +970,7 @@ weeklyOrder.get('/history-by-week', requirePermission('thread.allocations.view')
         if (!poMap.has(poKey)) {
           poMap.set(poKey, {
             po_id: item.po_id,
-            po_number: item.po?.po_number || 'Không có PO',
+            po_number: (item.po as any)?.po_number || 'Không có PO',
             items: [],
           })
         }
@@ -2669,8 +2670,8 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
                   requested_meters: shortageForThisType * metersPerCone,
                   priority: 'NORMAL',
                   status: 'PENDING',
-                  week_id: id, // Task 5.2: Store week_id on allocation for WO context
-                })
+                  week_id: id,
+                } as any)
               }
             }
           }
@@ -3300,7 +3301,7 @@ weeklyOrder.get('/:id/reservation-summary', requirePermission('thread.allocation
     for (const d of deliveries || []) {
       deliveryMap.set(d.thread_type_id, d.quantity_cones || 0)
       if (d.thread_type && typeof d.thread_type === 'object' && 'name' in d.thread_type) {
-        threadTypeNameMap.set(d.thread_type_id, (d.thread_type as { id: number; name: string }).name)
+        threadTypeNameMap.set(d.thread_type_id, (d.thread_type as unknown as { id: number; name: string }).name)
       }
     }
 

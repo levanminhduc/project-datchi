@@ -21,10 +21,10 @@ import type {
   POImportResult,
   POImportMappingConfig,
 } from '../types/purchaseOrder'
-import type { AuthContext } from '../types/auth'
 import { POImportParseRequestSchema, POImportExecuteRequestSchema } from '../validation/purchaseOrder'
+import type { AppEnv } from '../types/hono-env'
 
-const importRouter = new Hono()
+const importRouter = new Hono<AppEnv>()
 
 const CHUNK_SIZE = 500
 
@@ -348,7 +348,7 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
         }
 
         supplierId = newSupplier.id
-        supplierCache.set(normalizeText(previewRow.supplier_name), supplierId)
+        supplierCache.set(normalizeText(previewRow.supplier_name), supplierId!)
         suppliers_created++
       }
 
@@ -409,7 +409,7 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
           thread_types_created++
         }
 
-        threadTypeCache.set(texCacheKey, threadTypeId)
+        threadTypeCache.set(texCacheKey, threadTypeId!)
       }
 
       const supplierItemCode = previewRow.supplier_item_code || `${previewRow.supplier_name}-TEX${texNorm}`
@@ -779,7 +779,7 @@ importRouter.post('/supplier-colors', requirePermission('thread.suppliers.manage
         }
 
         colorId = newColor.id
-        colorCache.set(row.color_name.toLowerCase(), colorId)
+        colorCache.set(row.color_name.toLowerCase(), colorId!)
         colors_created++
       }
 
@@ -1184,7 +1184,7 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
     }
 
     const { rows } = parseResult.data
-    const auth = c.get('auth') as AuthContext & { permissions: string[] }
+    const auth = c.get('auth')
 
     let createdPOs = 0
     let createdItems = 0
@@ -1466,6 +1466,11 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
           createdItems++
           continue
         }
+      }
+
+      if (!existingItem) {
+        failedItems++
+        continue
       }
 
       const shouldUpdateItem =

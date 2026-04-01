@@ -50,7 +50,7 @@ notificationChannels.post('/', requirePermission('settings.manage'), async (c) =
     const body = await c.req.json()
     const parsed = CreateChannelSchema.safeParse(body)
     if (!parsed.success) {
-      return c.json({ data: null, error: parsed.error.errors.map(e => e.message).join(', ') }, 400)
+      return c.json({ data: null, error: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') }, 400)
     }
 
     const { data, error } = await supabaseAdmin
@@ -77,7 +77,7 @@ notificationChannels.post('/groups', requirePermission('settings.manage'), async
     const body = await c.req.json()
     const parsed = CreateGroupChannelSchema.safeParse(body)
     if (!parsed.success) {
-      return c.json({ data: null, error: parsed.error.errors.map(e => e.message).join(', ') }, 400)
+      return c.json({ data: null, error: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') }, 400)
     }
 
     const { data, error } = await supabaseAdmin
@@ -140,7 +140,7 @@ notificationChannels.patch('/:id', requirePermission('settings.manage'), async (
     const body = await c.req.json()
     const parsed = UpdateChannelSchema.safeParse(body)
     if (!parsed.success) {
-      return c.json({ data: null, error: parsed.error.errors.map(e => e.message).join(', ') }, 400)
+      return c.json({ data: null, error: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') }, 400)
     }
 
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() }
@@ -197,7 +197,7 @@ notificationChannels.post('/test', requirePermission('settings.manage'), async (
     const body = await c.req.json()
     const parsed = TestMessageSchema.safeParse(body)
     if (!parsed.success) {
-      return c.json({ data: null, error: parsed.error.errors.map(e => e.message).join(', ') }, 400)
+      return c.json({ data: null, error: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') }, 400)
     }
 
     const testText = `✅ <b>Test thành công!</b>\nHệ thống Đạt Chí đã kết nối Telegram.\n🕐 ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`

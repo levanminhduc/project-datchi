@@ -108,10 +108,9 @@ export async function authMiddleware(c: Context, next: Next) {
 
     if (employeeStatusError) {
       console.error('Auth middleware: failed to fetch employee status:', employeeStatusError)
-      const isDbDown = isTransientDbError(employeeStatusError)
       return c.json(
-        { error: true, message: isDbDown ? 'Hệ thống đang khởi động lại, vui lòng thử lại sau' : 'Xác thực thất bại' },
-        isDbDown ? 503 : 401
+        { error: true, message: 'Hệ thống đang khởi động lại, vui lòng thử lại sau' },
+        503
       )
     }
 

@@ -119,7 +119,7 @@ threads.get('/tex-options', requirePermission('thread.types.view'), async (c) =>
     return c.json({ data: data || [], error: null })
   } catch (err) {
     console.error('Error fetching tex options:', err)
-    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+    return c.json({ data: null, error: err instanceof Error ? err.message : 'Lỗi hệ thống' }, 500)
   }
 })
 

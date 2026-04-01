@@ -53,8 +53,8 @@ export const EnrichInventorySchema = z.object({
     .array(
       z
         .object({
-          thread_type_id: z.number({ required_error: 'thread_type_id là bắt buộc' }),
-          total_cones: z.number({ required_error: 'total_cones là bắt buộc' }),
+          thread_type_id: z.number({ error:'thread_type_id là bắt buộc' }),
+          total_cones: z.number({ error:'total_cones là bắt buộc' }),
         })
         .passthrough(),
     )
@@ -63,15 +63,15 @@ export const EnrichInventorySchema = z.object({
 })
 
 export const ReceiveDeliverySchema = z.object({
-  warehouse_id: z.number({ required_error: 'Vui lòng chọn kho nhập' }).int().positive('warehouse_id phải là số nguyên dương'),
-  quantity: z.number({ required_error: 'Số lượng là bắt buộc' }).int().positive('Số lượng phải lớn hơn 0'),
-  received_by: z.string({ required_error: 'Người nhập là bắt buộc' }).min(1, 'Người nhập không được để trống'),
+  warehouse_id: z.number({ error:'Vui lòng chọn kho nhập' }).int().positive('warehouse_id phải là số nguyên dương'),
+  quantity: z.number({ error:'Số lượng là bắt buộc' }).int().positive('Số lượng phải lớn hơn 0'),
+  received_by: z.string({ error:'Người nhập là bắt buộc' }).min(1, 'Người nhập không được để trống'),
   expiry_date: z.string().optional(),
 })
 
 export const UpdateQuotaConesSchema = z.object({
-  thread_type_id: z.number({ required_error: 'thread_type_id là bắt buộc' }).int().positive('thread_type_id phải là số nguyên dương'),
-  quota_cones: z.number({ required_error: 'quota_cones là bắt buộc' }).int().nonnegative('quota_cones phải >= 0'),
+  thread_type_id: z.number({ error:'thread_type_id là bắt buộc' }).int().positive('thread_type_id phải là số nguyên dương'),
+  quota_cones: z.number({ error:'quota_cones là bắt buộc' }).int().nonnegative('quota_cones phải >= 0'),
 })
 
 export const OrderedQuantitiesQuerySchema = z.object({
@@ -94,15 +94,15 @@ export const HistoryByWeekQuerySchema = z.object({
 
 export const CreateLoanSchema = z.object({
   from_week_id: z
-    .number({ required_error: 'from_week_id là bắt buộc' })
+    .number({ error:'from_week_id là bắt buộc' })
     .int()
     .positive('from_week_id phải là số nguyên dương'),
   thread_type_id: z
-    .number({ required_error: 'thread_type_id là bắt buộc' })
+    .number({ error:'thread_type_id là bắt buộc' })
     .int()
     .positive('thread_type_id phải là số nguyên dương'),
   quantity_cones: z
-    .number({ required_error: 'Số lượng cuộn là bắt buộc' })
+    .number({ error:'Số lượng cuộn là bắt buộc' })
     .int()
     .positive('Số lượng cuộn phải lớn hơn 0'),
   reason: z.string().max(500, 'Lý do tối đa 500 ký tự').optional(),
@@ -110,18 +110,18 @@ export const CreateLoanSchema = z.object({
 
 export const BatchLoanItemSchema = z.object({
   thread_type_id: z
-    .number({ required_error: 'thread_type_id là bắt buộc' })
+    .number({ error:'thread_type_id là bắt buộc' })
     .int()
     .positive('thread_type_id phải là số nguyên dương'),
   quantity_cones: z
-    .number({ required_error: 'Số lượng cuộn là bắt buộc' })
+    .number({ error:'Số lượng cuộn là bắt buộc' })
     .int()
     .positive('Số lượng cuộn phải lớn hơn 0'),
 })
 
 export const CreateBatchLoanSchema = z.object({
   from_week_id: z
-    .number({ required_error: 'from_week_id là bắt buộc' })
+    .number({ error:'from_week_id là bắt buộc' })
     .int()
     .positive('from_week_id phải là số nguyên dương'),
   items: z
@@ -134,11 +134,11 @@ export const CreateBatchLoanSchema = z.object({
 
 export const ReserveFromStockSchema = z.object({
   thread_type_id: z
-    .number({ required_error: 'thread_type_id là bắt buộc' })
+    .number({ error:'thread_type_id là bắt buộc' })
     .int()
     .positive('thread_type_id phải là số nguyên dương'),
   quantity: z
-    .number({ required_error: 'Số lượng là bắt buộc' })
+    .number({ error:'Số lượng là bắt buộc' })
     .int()
     .positive('Số lượng phải lớn hơn 0'),
   reason: z.string().max(500, 'Lý do tối đa 500 ký tự').optional(),
@@ -148,7 +148,7 @@ export const ReserveFromStockSchema = z.object({
 
 export const ManualReturnSchema = z.object({
   quantity: z
-    .number({ required_error: 'Số cuộn là bắt buộc' })
+    .number({ error:'Số cuộn là bắt buộc' })
     .int()
     .positive('Số cuộn phải lớn hơn 0'),
   notes: z.string().max(500, 'Ghi chú tối đa 500 ký tự').optional(),

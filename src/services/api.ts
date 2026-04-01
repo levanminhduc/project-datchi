@@ -248,11 +248,11 @@ export async function fetchApiRaw(
 
   const response = await makeRequest(token)
 
-  if (response.status === 503) {
+  if (response.status === 502 || response.status === 503) {
     await new Promise(r => setTimeout(r, 1500))
     const retryResponse = await makeRequest(token)
-    if (retryResponse.status === 503) {
-      throw new ApiError(503, 'Hệ thống đang tải, vui lòng thử lại sau')
+    if (retryResponse.status === 502 || retryResponse.status === 503) {
+      throw new ApiError(response.status, 'Hệ thống đang tải, vui lòng thử lại sau')
     }
     return retryResponse
   }

@@ -1,13 +1,14 @@
 import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
-import { requirePermission, type AuthContext } from '../middleware/auth'
+import { requirePermission } from '../middleware/auth'
 import {
   CreateGuideSchema,
   UpdateGuideSchema,
   ReorderGuideSchema,
 } from '../validation/guide'
+import type { AppEnv } from '../types/hono-env'
 
-const guides = new Hono()
+const guides = new Hono<AppEnv>()
 
 function generateSlug(title: string): string {
   const vietnameseMap: Record<string, string> = {
@@ -142,7 +143,7 @@ guides.post('/upload-image', requirePermission('guides.create'), async (c) => {
 
 guides.get('/', async (c) => {
   try {
-    const auth = c.get('auth') as AuthContext & { permissions: string[] }
+    const auth = c.get('auth')
     const isAdmin = auth.isRoot || auth.isAdmin
     const search = c.req.query('search')
 
@@ -238,7 +239,7 @@ guides.patch('/:id/reorder', requirePermission('guides.edit'), async (c) => {
 
     const parseResult = ReorderGuideSchema.safeParse(body)
     if (!parseResult.success) {
-      return c.json({ data: null, error: parseResult.error.errors[0]?.message || 'Dữ liệu không hợp lệ' }, 400)
+      return c.json({ data: null, error: parseResult.error.issues[0]?.message || 'Dữ liệu không hợp lệ' }, 400)
     }
 
     const { sort_order } = parseResult.data
@@ -268,7 +269,7 @@ guides.patch('/:id/reorder', requirePermission('guides.edit'), async (c) => {
 
 guides.get('/:slugOrId', async (c) => {
   try {
-    const auth = c.get('auth') as AuthContext & { permissions: string[] }
+    const auth = c.get('auth')
     const isAdmin = auth.isRoot || auth.isAdmin
     const slugOrId = c.req.param('slugOrId')
 
@@ -304,12 +305,12 @@ guides.get('/:slugOrId', async (c) => {
 
 guides.post('/', requirePermission('guides.create'), async (c) => {
   try {
-    const auth = c.get('auth') as AuthContext & { permissions: string[] }
+    const auth = c.get('auth')
     const body = await c.req.json()
 
     const parseResult = CreateGuideSchema.safeParse(body)
     if (!parseResult.success) {
-      return c.json({ data: null, error: parseResult.error.errors[0]?.message || 'Dữ liệu không hợp lệ' }, 400)
+      return c.json({ data: null, error: parseResult.error.issues[0]?.message || 'Dữ liệu không hợp lệ' }, 400)
     }
 
     const validated = parseResult.data
@@ -361,7 +362,7 @@ guides.put('/:id', requirePermission('guides.edit'), async (c) => {
 
     const parseResult = UpdateGuideSchema.safeParse(body)
     if (!parseResult.success) {
-      return c.json({ data: null, error: parseResult.error.errors[0]?.message || 'Dữ liệu không hợp lệ' }, 400)
+      return c.json({ data: null, error: parseResult.error.issues[0]?.message || 'Dữ liệu không hợp lệ' }, 400)
     }
 
     const validated = parseResult.data

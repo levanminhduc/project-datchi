@@ -4,10 +4,10 @@ import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 import { sanitizeFilterValue } from '../utils/sanitize'
 import { CreatePOItemSchema, UpdatePOItemSchema } from '../validation/purchaseOrder'
-import type { AuthContext } from '../types/auth'
 import type { POItemApiResponse, POItem, POItemHistory } from '../types/purchaseOrder'
+import type { AppEnv } from '../types/hono-env'
 
-const purchaseOrders = new Hono()
+const purchaseOrders = new Hono<AppEnv>()
 
 const ALLOWED_SORT_COLUMNS = ['po_number', 'customer_name', 'status', 'priority', 'order_date', 'delivery_date', 'created_at', 'week']
 
@@ -133,7 +133,7 @@ purchaseOrders.get('/:id/items/:itemId/history', requirePermission('thread.purch
     if (historyError) throw historyError
 
     return c.json<POItemApiResponse<POItemHistory[]>>({
-      data: history as POItemHistory[],
+      data: history as unknown as POItemHistory[],
       error: null
     })
   } catch (err) {
@@ -166,7 +166,8 @@ purchaseOrders.get('/:id', requirePermission('thread.purchase-orders.view'), asy
       .select(selectQuery)
       .eq('id', id)
 
-    const { data, error } = await dbQuery.single()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await dbQuery.single() as { data: any; error: any }
 
     if (error) {
       if (error.code === 'PGRST116') {
@@ -271,7 +272,7 @@ purchaseOrders.post('/:id/items', requirePermission('thread.purchase-orders.crea
     }
 
     const { style_id, quantity, finished_product_code, notes } = parseResult.data
-    const auth = c.get('auth') as AuthContext & { permissions: string[] }
+    const auth = c.get('auth')
 
     const { data: po, error: poError } = await supabase
       .from('purchase_orders')
@@ -424,7 +425,7 @@ purchaseOrders.put('/:id/items/:itemId', requirePermission('thread.purchase-orde
     }
 
     const { quantity, finished_product_code, notes } = parseResult.data
-    const auth = c.get('auth') as AuthContext & { permissions: string[] }
+    const auth = c.get('auth')
 
     const { data: item, error: itemError } = await supabase
       .from('po_items')
@@ -539,7 +540,7 @@ purchaseOrders.delete('/:id/items/:itemId', requirePermission('thread.purchase-o
       return c.json<POItemApiResponse<null>>({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const auth = c.get('auth') as AuthContext & { permissions: string[] }
+    const auth = c.get('auth')
 
     const { data: item, error: itemError } = await supabase
       .from('po_items')

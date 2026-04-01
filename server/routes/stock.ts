@@ -42,7 +42,7 @@ stock.get('/', requirePermission('thread.inventory.view'), async (c) => {
     if (!parseResult.success) {
       return c.json<StockApiResponse<null>>({
         success: false,
-        error: parseResult.error.errors[0]?.message || 'Tham số không hợp lệ',
+        error: parseResult.error.issues[0]?.message || 'Tham số không hợp lệ',
       }, 400)
     }
 
@@ -173,7 +173,7 @@ stock.get('/summary', requirePermission('thread.inventory.view'), async (c) => {
     if (!parseResult.success) {
       return c.json<StockApiResponse<null>>({
         success: false,
-        error: parseResult.error.errors[0]?.message || 'Tham số không hợp lệ',
+        error: parseResult.error.issues[0]?.message || 'Tham số không hợp lệ',
       }, 400)
     }
 
@@ -272,7 +272,7 @@ stock.post('/', requirePermission('thread.batch.receive'), async (c) => {
     if (!parseResult.success) {
       return c.json({
         data: null,
-        error: parseResult.error.errors[0]?.message || 'Dữ liệu không hợp lệ',
+        error: parseResult.error.issues[0]?.message || 'Dữ liệu không hợp lệ',
       }, 400)
     }
 
@@ -439,7 +439,7 @@ stock.post('/deduct', requirePermission('thread.batch.issue'), async (c) => {
     if (!parseResult.success) {
       return c.json<StockApiResponse<null>>({
         success: false,
-        error: parseResult.error.errors[0]?.message || 'Dữ liệu không hợp lệ',
+        error: parseResult.error.issues[0]?.message || 'Dữ liệu không hợp lệ',
       }, 400)
     }
 
@@ -577,7 +577,7 @@ stock.post('/return', requirePermission('thread.batch.issue'), async (c) => {
     if (!parseResult.success) {
       return c.json<StockApiResponse<null>>({
         success: false,
-        error: parseResult.error.errors[0]?.message || 'Dữ liệu không hợp lệ',
+        error: parseResult.error.issues[0]?.message || 'Dữ liệu không hợp lệ',
       }, 400)
     }
 

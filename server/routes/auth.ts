@@ -3,7 +3,6 @@ import { supabaseAdmin } from '../db/supabase'
 import {
   requireAdmin,
   canManageEmployee,
-  type AuthContext,
 } from '../middleware/auth'
 import {
   createPermissionSchema,
@@ -11,11 +10,12 @@ import {
   changePasswordSchema,
 } from '../validation/auth'
 import { sanitizeFilterValue } from '../utils/sanitize'
+import type { AppEnv } from '../types/hono-env'
 
-const auth = new Hono()
+const auth = new Hono<AppEnv>()
 
 auth.get('/health', async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
 
   return c.json({
     data: {
@@ -29,7 +29,7 @@ auth.get('/health', async (c) => {
 })
 
 auth.get('/me', async (c) => {
-  const { employeeId } = c.get('auth') as AuthContext
+  const { employeeId } = c.get('auth')
 
   try {
     const { data: employee, error } = await supabaseAdmin
@@ -85,7 +85,7 @@ auth.get('/me', async (c) => {
 })
 
 auth.get('/permissions', async (c) => {
-  const authContext = c.get('auth') as AuthContext & { permissions: string[] }
+  const authContext = c.get('auth')
 
   if (authContext.isRoot) {
     return c.json({
@@ -101,14 +101,14 @@ auth.get('/permissions', async (c) => {
 })
 
 auth.post('/change-password', async (c) => {
-  const { employeeId } = c.get('auth') as AuthContext
+  const { employeeId } = c.get('auth')
 
   const body = await c.req.json().catch(() => ({}))
   const parsed = changePasswordSchema.safeParse(body)
 
   if (!parsed.success) {
     return c.json(
-      { error: true, message: parsed.error.errors.map((e) => e.message).join(', ') },
+      { error: true, message: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') },
       400
     )
   }
@@ -166,7 +166,7 @@ auth.post('/change-password', async (c) => {
 })
 
 auth.post('/reset-password/:id', requireAdmin, async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
   const targetId = parseInt(c.req.param('id'))
   const { newPassword } = await c.req.json().catch(() => ({}))
 
@@ -248,7 +248,7 @@ auth.post('/reset-password/:id', requireAdmin, async (c) => {
 })
 
 auth.put('/employees/:id/roles', requireAdmin, async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
   const targetId = parseInt(c.req.param('id'))
   const { roleIds } = await c.req.json()
 
@@ -298,7 +298,7 @@ auth.put('/employees/:id/roles', requireAdmin, async (c) => {
 })
 
 auth.put('/employees/:id/permissions', requireAdmin, async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
   const targetId = parseInt(c.req.param('id'))
   const { permissions } = await c.req.json()
 
@@ -336,7 +336,7 @@ auth.put('/employees/:id/permissions', requireAdmin, async (c) => {
 })
 
 auth.post('/employees/:id/unlock', requireAdmin, async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
   const targetId = parseInt(c.req.param('id'))
 
   if (!(await canManageEmployee(authContext, targetId))) {
@@ -411,7 +411,7 @@ auth.get('/permissions/all', requireAdmin, async (c) => {
 })
 
 auth.post('/permissions', requireAdmin, async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
 
   if (!authContext.isRoot) {
     return c.json({ success: false, error: 'FORBIDDEN', message: 'Chỉ ROOT mới có thể tạo quyền' }, 403)
@@ -424,7 +424,7 @@ auth.post('/permissions', requireAdmin, async (c) => {
     return c.json({
       success: false,
       error: 'VALIDATION_ERROR',
-      message: parsed.error.errors.map((e) => e.message).join(', '),
+      message: parsed.error.issues.map((e: { message: string }) => e.message).join(', '),
     }, 400)
   }
 
@@ -470,7 +470,7 @@ auth.post('/permissions', requireAdmin, async (c) => {
 })
 
 auth.put('/permissions/:id', requireAdmin, async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
 
   if (!authContext.isRoot) {
     return c.json({ success: false, error: 'FORBIDDEN', message: 'Chỉ ROOT mới có thể sửa quyền' }, 403)
@@ -487,7 +487,7 @@ auth.put('/permissions/:id', requireAdmin, async (c) => {
     return c.json({
       success: false,
       error: 'VALIDATION_ERROR',
-      message: parsed.error.errors.map((e) => e.message).join(', '),
+      message: parsed.error.issues.map((e: { message: string }) => e.message).join(', '),
     }, 400)
   }
 
@@ -534,7 +534,7 @@ auth.put('/permissions/:id', requireAdmin, async (c) => {
 })
 
 auth.delete('/permissions/:id', requireAdmin, async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
 
   if (!authContext.isRoot) {
     return c.json({ success: false, error: 'FORBIDDEN', message: 'Chỉ ROOT mới có thể xóa quyền' }, 403)
@@ -592,7 +592,7 @@ auth.delete('/permissions/:id', requireAdmin, async (c) => {
 })
 
 auth.post('/roles', requireAdmin, async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
   const { code, name, description, level, permissionIds } = await c.req.json()
 
   if (!authContext.isRoot) {
@@ -662,7 +662,7 @@ auth.post('/roles', requireAdmin, async (c) => {
 })
 
 auth.put('/roles/:id', requireAdmin, async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
   const roleId = parseInt(c.req.param('id'))
   const { name, description, level, isActive, permissionIds } = await c.req.json()
 
@@ -735,7 +735,7 @@ auth.put('/roles/:id', requireAdmin, async (c) => {
 })
 
 auth.delete('/roles/:id', requireAdmin, async (c) => {
-  const authContext = c.get('auth') as AuthContext
+  const authContext = c.get('auth')
   const roleId = parseInt(c.req.param('id'))
 
   if (!authContext.isRoot) {

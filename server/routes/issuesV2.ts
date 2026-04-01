@@ -9,7 +9,8 @@
  * - Backend handles ALL calculations
  */
 
-import { Hono, Context } from 'hono'
+import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { ZodError } from 'zod'
 import { createHash } from 'crypto'
 import { supabaseAdmin as supabase } from '../db/supabase'
@@ -28,9 +29,10 @@ import {
   OrderOptionsQuerySchema,
 } from '../validation/issuesV2'
 import type { ThreadApiResponse } from '../types/thread'
+import type { AppEnv } from '../types/hono-env'
 import returnGroupedRoutes from './issues-v2-return-grouped'
 
-const issuesV2 = new Hono()
+const issuesV2 = new Hono<AppEnv>()
 
 issuesV2.use('*', requirePermission('thread.allocations.view'))
 
@@ -42,8 +44,8 @@ function formatZodError(err: ZodError): string {
   return err.issues.map((e) => e.message).join('; ')
 }
 
-function getPerformedBy(c: Context, confirmedByFromBody?: string): string {
-  const auth = c.get('auth') as { employeeCode?: string; employeeId?: number } | undefined
+function getPerformedBy(c: Context<AppEnv>, confirmedByFromBody?: string): string {
+  const auth = c.get('auth')
   return auth?.employeeCode || (auth?.employeeId ? String(auth.employeeId) : '') || confirmedByFromBody || ''
 }
 
@@ -1131,7 +1133,7 @@ issuesV2.get('/order-options', async (c) => {
       const uniqueColors = new Map()
       for (const item of colorItems || []) {
         if (item.style_colors && !uniqueColors.has(item.style_color_id)) {
-          const sc = item.style_colors as { id: number; color_name: string; hex_code: string | null }
+          const sc = item.style_colors as unknown as { id: number; color_name: string; hex_code: string | null }
           uniqueColors.set(item.style_color_id, {
             id: sc.id,
             name: sc.color_name,
@@ -1713,10 +1715,10 @@ issuesV2.get('/form-data', async (c) => {
         const threadType = spec?.thread_types as any
         const detectedWarehouseId = await detectWarehouseForThread(threadTypeId, weekIds)
         const [stock, quotaCones, baseQuota, confirmedGross] = await Promise.all([
-          getStockAvailability(threadTypeId, detectedWarehouseId, weekIds),
-          getQuotaCones(po_id, style_id, effectiveColorId, threadTypeId, ratio, department),
-          getBaseQuotaCones(po_id, style_id, effectiveColorId, threadTypeId),
-          getConfirmedIssuedGross(po_id, style_id, effectiveColorId, threadTypeId, ratio),
+          getStockAvailability(threadTypeId!, detectedWarehouseId, weekIds),
+          getQuotaCones(po_id, style_id, effectiveColorId, threadTypeId!, ratio, department),
+          getBaseQuotaCones(po_id!, style_id!, effectiveColorId!, threadTypeId!),
+          getConfirmedIssuedGross(po_id!, style_id!, effectiveColorId!, threadTypeId!, ratio),
         ])
 
         const supplierName = (threadType?.supplier_data as any)?.name || ''

@@ -16,7 +16,7 @@ const router = new Hono()
 router.use('*', requirePermission('thread.issues.manage'))
 
 function formatZodError(err: ZodError): string {
-  return err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')
+  return err.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')
 }
 
 const roundToTwoDecimals = (n: number) => Math.round(n * 100) / 100

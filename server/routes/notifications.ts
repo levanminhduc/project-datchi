@@ -1,13 +1,14 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../db/supabase'
-import { requirePermission, type AuthContext } from '../middleware/auth'
+import { requirePermission } from '../middleware/auth'
 import { notificationQuerySchema, type NotificationRow } from '../types/notification'
+import type { AppEnv } from '../types/hono-env'
 
-const notifications = new Hono()
+const notifications = new Hono<AppEnv>()
 notifications.use('*', requirePermission('dashboard.view'))
 
 notifications.get('/', async (c) => {
-  const auth = c.get('auth') as AuthContext
+  const auth = c.get('auth')
 
   const parsed = notificationQuerySchema.safeParse({
     limit: c.req.query('limit'),
@@ -19,7 +20,7 @@ notifications.get('/', async (c) => {
   if (!parsed.success) {
     return c.json({
       data: null,
-      error: parsed.error.errors.map(e => e.message).join(', '),
+      error: parsed.error.issues.map((e: { message: string }) => e.message).join(', '),
     }, 400)
   }
 
@@ -56,7 +57,7 @@ notifications.get('/', async (c) => {
 })
 
 notifications.get('/unread-count', async (c) => {
-  const auth = c.get('auth') as AuthContext
+  const auth = c.get('auth')
 
   try {
     const { count, error } = await supabaseAdmin
@@ -79,7 +80,7 @@ notifications.get('/unread-count', async (c) => {
 })
 
 notifications.patch('/read-all', async (c) => {
-  const auth = c.get('auth') as AuthContext
+  const auth = c.get('auth')
 
   try {
     const { error } = await supabaseAdmin
@@ -102,7 +103,7 @@ notifications.patch('/read-all', async (c) => {
 })
 
 notifications.patch('/:id/read', async (c) => {
-  const auth = c.get('auth') as AuthContext
+  const auth = c.get('auth')
   const id = parseInt(c.req.param('id'))
 
   if (isNaN(id)) {
@@ -135,7 +136,7 @@ notifications.patch('/:id/read', async (c) => {
 })
 
 notifications.delete('/:id', async (c) => {
-  const auth = c.get('auth') as AuthContext
+  const auth = c.get('auth')
   const id = parseInt(c.req.param('id'))
 
   if (isNaN(id)) {

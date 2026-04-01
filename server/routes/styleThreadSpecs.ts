@@ -2,8 +2,9 @@ import { Hono } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
+import type { AppEnv } from '../types/hono-env'
 
-const styleThreadSpecs = new Hono()
+const styleThreadSpecs = new Hono<AppEnv>()
 
 styleThreadSpecs.use('*', requirePermission('thread.types.view'))
 
@@ -144,7 +145,7 @@ styleThreadSpecs.post('/', async (c) => {
       return c.json({ data: null, error: 'Nhà cung cấp (supplier_id) là bắt buộc' }, 400)
     }
 
-    const auth = c.get('auth') as { employeeId?: number } | undefined
+    const auth = c.get('auth')
     let createdBy: string | null = null
     if (auth?.employeeId) {
       const { data: emp } = await supabase
@@ -238,7 +239,7 @@ styleThreadSpecs.put('/:id', async (c) => {
 
     const body = await c.req.json()
 
-    const auth = c.get('auth') as { employeeId?: number } | undefined
+    const auth = c.get('auth')
     let updatedBy: string | null = null
     if (auth?.employeeId) {
       const { data: emp } = await supabase
