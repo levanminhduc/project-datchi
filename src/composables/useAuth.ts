@@ -175,9 +175,11 @@ export function useAuth() {
       const { user, errorType: getUserErrorType } = await retryGetUser()
 
       if (getUserErrorType === 'auth') {
-        // Don't call clearAuthSessionLocal() here - it triggers SIGNED_OUT event
-        // which causes router navigation → deadlock with initPromise
-        // Guard will redirect to /login since isAuthenticated=false
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          if (preserveExistingAuthStateOnNetworkError()) {
+            return
+          }
+        }
         resetState()
         return
       }
@@ -214,6 +216,11 @@ export function useAuth() {
         await authService.fetchCurrentEmployee()
 
       if (empErrorType === 'auth') {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          if (preserveExistingAuthStateOnNetworkError()) {
+            return
+          }
+        }
         resetState()
         return
       }
@@ -259,6 +266,11 @@ export function useAuth() {
         await authService.fetchPermissions()
 
       if (permsErrorType === 'auth') {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          if (preserveExistingAuthStateOnNetworkError()) {
+            return
+          }
+        }
         await clearAuthSessionLocal()
         resetState()
         initialized = false
@@ -300,6 +312,11 @@ export function useAuth() {
       handlingSignedOut = true
 
       try {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          console.warn('[useAuth] SIGNED_OUT ignored — offline')
+          return
+        }
+
         const session = await getSessionSafe(2000)
         if (session) {
           console.warn('[useAuth] SIGNED_OUT ignored — tokens preserved')
@@ -343,6 +360,10 @@ export function useAuth() {
 
         const { data: emp, errorType: empErrorType } = await authService.fetchCurrentEmployee()
         if (empErrorType === 'auth') {
+          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            console.warn('[useAuth] Token refreshed but offline — keeping session')
+            return
+          }
           await clearAuthSessionLocal()
           resetState()
           initialized = false
@@ -360,6 +381,10 @@ export function useAuth() {
 
         const { data: perms, errorType: permsErrorType } = await authService.fetchPermissions()
         if (permsErrorType === 'auth') {
+          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            console.warn('[useAuth] Token refreshed but offline — keeping session')
+            return
+          }
           await clearAuthSessionLocal()
           resetState()
           initialized = false
@@ -432,6 +457,9 @@ export function useAuth() {
       }
 
       if (!session) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          return
+        }
         lastResumeReinitAt = now
         initialized = false
         void init()
