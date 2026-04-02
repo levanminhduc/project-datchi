@@ -10,6 +10,7 @@ import {
 } from '@/services/api'
 import { isAuthErrorPermanent } from '@/services/auth-error-utils'
 import { authorizeLogout, revokeLogout, getBackup, clearAll } from '@/lib/supabase-protected-storage'
+import { clearAllCache } from '@/lib/api-cache'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type {
   AuthState,
@@ -531,6 +532,7 @@ export function useAuth() {
 
       await clearAuthSessionLocal()
       clearAll()
+      clearAllCache()
       snackbar.success('Đã đăng xuất')
       resetState()
       initialized = false
