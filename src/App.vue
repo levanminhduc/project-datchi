@@ -102,10 +102,20 @@ onMounted(() => {
 
     <q-page-container>
       <router-view v-slot="{ Component }">
-        <keep-alive :max="10" v-if="shouldKeepAlive">
-          <component :is="Component" :key="route.path" />
+        <keep-alive
+          v-if="shouldKeepAlive"
+          :max="10"
+        >
+          <component
+            :is="Component"
+            :key="route.path"
+          />
         </keep-alive>
-        <component :is="Component" :key="route.path" v-else />
+        <component
+          :is="Component"
+          v-else
+          :key="route.path"
+        />
       </router-view>
     </q-page-container>
 
