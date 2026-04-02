@@ -27,6 +27,13 @@ export class SessionExpiredError extends Error {
   }
 }
 
+export class NetworkError extends Error {
+  constructor() {
+    super('Network unavailable')
+    this.name = 'NetworkError'
+  }
+}
+
 let refreshPromise: Promise<Session> | null = null
 let isLoggingOut = false
 
@@ -142,12 +149,18 @@ export async function getRefreshedSession(): Promise<Session> {
 
       if (error) {
         if (isAuthErrorPermanent(error)) {
+          if (!navigator.onLine) {
+            throw new NetworkError()
+          }
           throw new SessionExpiredError()
         }
         await new Promise(r => setTimeout(r, 200))
         const { data: { session: retrySession } } = await supabase.auth.getSession()
         if (retrySession && !isTokenExpiringSoon(retrySession.access_token)) {
           return retrySession
+        }
+        if (!navigator.onLine) {
+          throw new NetworkError()
         }
         throw new Error('Lỗi kết nối khi làm mới phiên')
       }
@@ -284,9 +297,15 @@ export async function fetchApiRaw(
         throw refreshError
       }
       if (refreshError instanceof SessionExpiredError) {
+        if (!navigator.onLine) {
+          throw new ApiError(503, 'Mất kết nối mạng, vui lòng thử lại khi có mạng')
+        }
         await clearAuthSessionLocal()
         await forceBackToLogin()
         throw new ApiError(401, 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại')
+      }
+      if (refreshError instanceof NetworkError) {
+        throw new ApiError(503, 'Mất kết nối mạng, vui lòng thử lại khi có mạng')
       }
       throw new ApiError(503, 'Lỗi kết nối, vui lòng thử lại')
     }
