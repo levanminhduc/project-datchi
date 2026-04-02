@@ -2,11 +2,6 @@ import { computed } from 'vue'
 import { positionService, type PositionOption } from '@/services/positionService'
 import { useCachedQuery } from './useCachedQuery'
 
-const MESSAGES = {
-  FETCH_ERROR: 'Không thể tải danh sách chức vụ',
-  SERVER_ERROR: 'Lỗi hệ thống. Vui lòng thử lại sau',
-}
-
 export type { PositionOption }
 
 export function usePositions() {
