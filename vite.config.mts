@@ -40,6 +40,26 @@ export default defineConfig({
   define: { 'process.env': {} },
   build: {
     chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router')) {
+              return 'vendor-vue'
+            }
+            if (id.includes('quasar') || id.includes('@quasar')) {
+              return 'vendor-quasar'
+            }
+            if (id.includes('date-fns') || id.includes('@vueuse') || id.includes('zod')) {
+              return 'vendor-utils'
+            }
+            if (id.includes('exceljs') || id.includes('vuedraggable') || id.includes('qrcode') || id.includes('tiptap')) {
+              return 'vendor-heavy'
+            }
+          }
+        },
+      },
+    },
   },
   resolve: {
     alias: {
