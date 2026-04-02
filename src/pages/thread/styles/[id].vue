@@ -349,6 +349,7 @@
                         label="Mét/SP"
                         step="0.01"
                         @keyup.enter="scope.set"
+                        @focus="() => { if (scope.value === 0) scope.value = null }"
                       />
                     </q-popup-edit>
                   </template>

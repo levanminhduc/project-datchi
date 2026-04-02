@@ -258,13 +258,20 @@
             dense
             clearable
           />
-          <AppSelect
+          <q-select
             v-if="hasSubArts"
             v-model="selectedSubArt"
-            :options="subArts.map(s => ({ label: s.sub_art_code, value: s.sub_art_code }))"
-            label="Chọn Sub-Art *"
+            :options="filteredSubArtOptions"
+            option-value="value"
+            option-label="label"
+            emit-value
+            map-options
             dense
-            required
+            use-input
+            fill-input
+            hide-selected
+            label="Chọn Sub-Art *"
+            @filter="filterSubArtOptions"
           />
           <q-input
             v-model="newColorName"
@@ -425,6 +432,21 @@ const sourceColorId = ref<number | null>(null)
 const subArts = ref<{ id: number; sub_art_code: string }[]>([])
 const selectedSubArt = ref<string | null>(null)
 const hasSubArts = computed(() => subArts.value.length > 0)
+
+const subArtOptions = computed(() =>
+  subArts.value.map(s => ({ label: s.sub_art_code, value: s.sub_art_code }))
+)
+const filteredSubArtOptions = ref<{ label: string; value: string }[]>([])
+const filterSubArtOptions = (val: string, update: (fn: () => void) => void) => {
+  update(() => {
+    if (!val) {
+      filteredSubArtOptions.value = subArtOptions.value
+      return
+    }
+    const needle = val.toLowerCase()
+    filteredSubArtOptions.value = subArtOptions.value.filter(o => o.label.toLowerCase().includes(needle))
+  })
+}
 
 const sourceColorOptions = computed(() =>
   props.styleColors
