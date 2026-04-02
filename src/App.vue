@@ -17,6 +17,19 @@ const { startPolling, stopPolling } = useNotifications();
 const { isAuthenticated, tempPassword } = useAuth();
 const { startVersionCheck, stopVersionCheck } = useVersionCheck();
 
+const KEEP_ALIVE_PATHS = new Set([
+  '/thread',
+  '/thread/inventory',
+  '/thread/allocations',
+  '/thread/colors',
+  '/thread/suppliers',
+  '/thread/dashboard',
+  '/thread/styles',
+  '/employees',
+])
+
+const shouldKeepAlive = computed(() => KEEP_ALIVE_PATHS.has(route.path))
+
 // TODO: bật lại khi cần force đổi mật khẩu lần đầu
 const showChangePasswordModal = computed(() => false);
 
@@ -88,7 +101,12 @@ onMounted(() => {
     </q-drawer>
 
     <q-page-container>
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <keep-alive :max="10" v-if="shouldKeepAlive">
+          <component :is="Component" :key="route.path" />
+        </keep-alive>
+        <component :is="Component" :key="route.path" v-else />
+      </router-view>
     </q-page-container>
 
     <ChangePasswordModal
