@@ -42,6 +42,7 @@ import styleColorsRouter from './routes/styleColors'
 import deptAllocationsRouter from './routes/deptAllocations'
 import guidesRouter, { guideImages } from './routes/guides'
 import publicGuidesRouter from './routes/public-guides'
+import announcementsRouter from './routes/announcements'
 import { authMiddleware } from './middleware/auth'
 import { supabaseAdmin } from './db/supabase'
 
@@ -166,6 +167,7 @@ app.route('/api/sub-arts', subArtsRouter)
 app.route('/api/style-colors', styleColorsRouter)
 app.route('/api/dept-allocations', deptAllocationsRouter)
 app.route('/api/guides', guidesRouter)
+app.route('/api/announcements', announcementsRouter)
 
 const HAS_DIST = existsSync('dist/index.html')
 if (HAS_DIST) {
