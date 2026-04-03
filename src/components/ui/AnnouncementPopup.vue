@@ -44,7 +44,10 @@ const counterText = computed(() =>
             class="q-mr-sm"
           />
           <div class="col">
-            <div class="text-caption text-uppercase" style="opacity: 0.8; letter-spacing: 1px;">
+            <div
+              class="text-caption text-uppercase"
+              style="opacity: 0.8; letter-spacing: 1px;"
+            >
               Thông báo
             </div>
             <div class="text-subtitle1 text-weight-bold">
@@ -61,12 +64,14 @@ const counterText = computed(() =>
         </div>
       </q-card-section>
 
-      <q-card-section
-        class="announcement-popup__body"
-        v-html="announcement.content"
-      />
+      <q-card-section class="announcement-popup__body">
+        <div v-html="announcement.content" />
+      </q-card-section>
 
-      <q-card-actions align="right" class="q-px-md q-pb-md">
+      <q-card-actions
+        align="right"
+        class="q-px-md q-pb-md"
+      >
         <q-btn
           unelevated
           color="primary"

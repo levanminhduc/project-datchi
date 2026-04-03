@@ -114,7 +114,7 @@ async function handleDelete(item: AnnouncementWithMeta) {
     title: 'Xoá thông báo',
     message: `Bạn có chắc muốn xoá "${item.title}"?`,
     confirmText: 'Xoá',
-    confirmColor: 'negative',
+    color: 'negative',
   })
   if (!ok) return
 
@@ -153,7 +153,10 @@ onMounted(loadData)
       </template>
     </PageHeader>
 
-    <q-card flat bordered>
+    <q-card
+      flat
+      bordered
+    >
       <q-markup-table
         flat
         bordered
@@ -162,24 +165,47 @@ onMounted(loadData)
       >
         <thead>
           <tr>
-            <th class="text-left">Tiêu đề</th>
-            <th class="text-center">Trạng thái</th>
-            <th class="text-center">Ưu tiên</th>
-            <th class="text-center">Đã đọc</th>
-            <th class="text-center">Ngày tạo</th>
-            <th class="text-center">Người tạo</th>
-            <th class="text-center">Thao tác</th>
+            <th class="text-left">
+              Tiêu đề
+            </th>
+            <th class="text-center">
+              Trạng thái
+            </th>
+            <th class="text-center">
+              Ưu tiên
+            </th>
+            <th class="text-center">
+              Đã đọc
+            </th>
+            <th class="text-center">
+              Ngày tạo
+            </th>
+            <th class="text-center">
+              Người tạo
+            </th>
+            <th class="text-center">
+              Thao tác
+            </th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="7" class="text-center q-pa-lg">
-              <q-spinner size="24px" class="q-mr-sm" />
+            <td
+              colspan="7"
+              class="text-center q-pa-lg"
+            >
+              <q-spinner
+                size="24px"
+                class="q-mr-sm"
+              />
               Đang tải...
             </td>
           </tr>
           <tr v-else-if="items.length === 0">
-            <td colspan="7" class="text-center q-pa-lg text-grey">
+            <td
+              colspan="7"
+              class="text-center q-pa-lg text-grey"
+            >
               Chưa có thông báo nào
             </td>
           </tr>
@@ -188,8 +214,13 @@ onMounted(loadData)
             v-else
             :key="item.id"
           >
-            <td class="text-left" style="max-width: 300px;">
-              <div class="ellipsis">{{ item.title }}</div>
+            <td
+              class="text-left"
+              style="max-width: 300px;"
+            >
+              <div class="ellipsis">
+                {{ item.title }}
+              </div>
             </td>
             <td class="text-center">
               <q-badge
@@ -197,12 +228,18 @@ onMounted(loadData)
                 :label="item.is_active ? 'Đang hiển thị' : 'Đã tắt'"
               />
             </td>
-            <td class="text-center">{{ item.priority }}</td>
+            <td class="text-center">
+              {{ item.priority }}
+            </td>
             <td class="text-center">
               {{ item.dismissal_count }}/{{ item.total_employees }}
             </td>
-            <td class="text-center">{{ formatDate(item.created_at) }}</td>
-            <td class="text-center">{{ item.creator_name || '—' }}</td>
+            <td class="text-center">
+              {{ formatDate(item.created_at) }}
+            </td>
+            <td class="text-center">
+              {{ item.creator_name || '—' }}
+            </td>
             <td class="text-center">
               <q-btn
                 flat
@@ -273,7 +310,9 @@ onMounted(loadData)
         />
 
         <div>
-          <div class="text-body2 q-mb-xs">Nội dung</div>
+          <div class="text-body2 q-mb-xs">
+            Nội dung
+          </div>
           <q-editor
             v-model="form.content"
             :toolbar="[
