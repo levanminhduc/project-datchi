@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import type { QTableColumn } from 'quasar'
 import { PageHeader } from '@/components/ui/layout'
+import DataTable from '@/components/ui/tables/DataTable.vue'
 import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
@@ -10,13 +12,12 @@ import { announcementService } from '@/services/announcement-service'
 import type {
   AnnouncementWithMeta,
   CreateAnnouncementData,
-  AnnouncementPagination,
 } from '@/types/announcement'
 
 definePage({
   meta: {
     requiresRoot: true,
-    title: 'Thông Báo Hệ Thống',
+    title: 'Thong Bao He Thong',
   },
 })
 
@@ -24,9 +25,16 @@ const snackbar = useSnackbar()
 const { confirm } = useConfirm()
 
 const items = ref<AnnouncementWithMeta[]>([])
-const pagination = ref<AnnouncementPagination>({ page: 1, pageSize: 25, total: 0 })
 const loading = ref(false)
 const formLoading = ref(false)
+
+const pagination = ref({
+  page: 1,
+  rowsPerPage: 25,
+  sortBy: 'created_at',
+  descending: true,
+  rowsNumber: 0,
+})
 
 const showForm = ref(false)
 const editingId = ref<number | null>(null)
@@ -39,19 +47,83 @@ const form = reactive<CreateAnnouncementData>({
 
 const isEdit = ref(false)
 
+const columns: QTableColumn[] = [
+  {
+    name: 'title',
+    label: 'Tiêu đề',
+    field: 'title',
+    align: 'left',
+    style: 'max-width: 300px',
+    classes: 'ellipsis',
+  },
+  {
+    name: 'is_active',
+    label: 'Trạng thái',
+    field: 'is_active',
+    align: 'center',
+  },
+  {
+    name: 'priority',
+    label: 'Ưu tiên',
+    field: 'priority',
+    align: 'center',
+  },
+  {
+    name: 'read_count',
+    label: 'Đã đọc',
+    field: 'dismissal_count',
+    align: 'center',
+  },
+  {
+    name: 'created_at',
+    label: 'Ngày tạo',
+    field: 'created_at',
+    align: 'center',
+    format: (val: string) => {
+      const d = new Date(val)
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+    },
+  },
+  {
+    name: 'creator_name',
+    label: 'Người tạo',
+    field: (row: AnnouncementWithMeta) => row.creator_name || '—',
+    align: 'center',
+  },
+  {
+    name: 'actions',
+    label: 'Thao tác',
+    field: 'actions',
+    align: 'center',
+  },
+]
+
 async function loadData() {
   loading.value = true
   try {
-    const res = await announcementService.list(pagination.value.page, pagination.value.pageSize)
+    const res = await announcementService.list(
+      pagination.value.page,
+      pagination.value.rowsPerPage,
+    )
     items.value = res.data || []
     if (res.pagination) {
-      pagination.value = res.pagination
+      pagination.value.rowsNumber = res.pagination.total
     }
   } catch {
     snackbar.error('Lỗi tải danh sách thông báo')
   } finally {
     loading.value = false
   }
+}
+
+function onTableRequest(props: {
+  pagination: { page: number; rowsPerPage: number; sortBy: string; descending: boolean }
+}) {
+  pagination.value.page = props.pagination.page
+  pagination.value.rowsPerPage = props.pagination.rowsPerPage
+  pagination.value.sortBy = props.pagination.sortBy
+  pagination.value.descending = props.pagination.descending
+  loadData()
 }
 
 function openCreate() {
@@ -127,16 +199,6 @@ async function handleDelete(item: AnnouncementWithMeta) {
   }
 }
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
-}
-
-function onPageChange(newPage: number) {
-  pagination.value.page = newPage
-  loadData()
-}
-
 onMounted(loadData)
 </script>
 
@@ -153,147 +215,71 @@ onMounted(loadData)
       </template>
     </PageHeader>
 
-    <q-card
-      flat
-      bordered
+    <DataTable
+      v-model:pagination="pagination"
+      :rows="items"
+      :columns="columns"
+      :loading="loading"
+      row-key="id"
+      empty-title="Chưa có thông báo nào"
+      empty-subtitle="Tạo thông báo mới để hiển thị cho nhân viên"
+      empty-icon="o_campaign"
+      @request="onTableRequest"
     >
-      <q-markup-table
-        flat
-        bordered
-        separator="horizontal"
-        :loading="loading"
-      >
-        <thead>
-          <tr>
-            <th class="text-left">
-              Tiêu đề
-            </th>
-            <th class="text-center">
-              Trạng thái
-            </th>
-            <th class="text-center">
-              Ưu tiên
-            </th>
-            <th class="text-center">
-              Đã đọc
-            </th>
-            <th class="text-center">
-              Ngày tạo
-            </th>
-            <th class="text-center">
-              Người tạo
-            </th>
-            <th class="text-center">
-              Thao tác
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading">
-            <td
-              colspan="7"
-              class="text-center q-pa-lg"
-            >
-              <q-spinner
-                size="24px"
-                class="q-mr-sm"
-              />
-              Đang tải...
-            </td>
-          </tr>
-          <tr v-else-if="items.length === 0">
-            <td
-              colspan="7"
-              class="text-center q-pa-lg text-grey"
-            >
-              Chưa có thông báo nào
-            </td>
-          </tr>
-          <tr
-            v-for="item in items"
-            v-else
-            :key="item.id"
+      <template #body-cell-is_active="props">
+        <q-td :props="props">
+          <q-badge
+            :color="props.row.is_active ? 'positive' : 'grey'"
+            :label="props.row.is_active ? 'Đang hiển thị' : 'Đã tắt'"
+          />
+        </q-td>
+      </template>
+
+      <template #body-cell-read_count="props">
+        <q-td :props="props">
+          {{ props.row.dismissal_count }}/{{ props.row.total_employees }}
+        </q-td>
+      </template>
+
+      <template #body-cell-actions="props">
+        <q-td :props="props">
+          <q-btn
+            flat
+            round
+            dense
+            :icon="props.row.is_active ? 'visibility_off' : 'visibility'"
+            :color="props.row.is_active ? 'warning' : 'positive'"
+            size="sm"
+            @click="handleToggle(props.row)"
           >
-            <td
-              class="text-left"
-              style="max-width: 300px;"
-            >
-              <div class="ellipsis">
-                {{ item.title }}
-              </div>
-            </td>
-            <td class="text-center">
-              <q-badge
-                :color="item.is_active ? 'positive' : 'grey'"
-                :label="item.is_active ? 'Đang hiển thị' : 'Đã tắt'"
-              />
-            </td>
-            <td class="text-center">
-              {{ item.priority }}
-            </td>
-            <td class="text-center">
-              {{ item.dismissal_count }}/{{ item.total_employees }}
-            </td>
-            <td class="text-center">
-              {{ formatDate(item.created_at) }}
-            </td>
-            <td class="text-center">
-              {{ item.creator_name || '—' }}
-            </td>
-            <td class="text-center">
-              <q-btn
-                flat
-                round
-                dense
-                :icon="item.is_active ? 'visibility_off' : 'visibility'"
-                :color="item.is_active ? 'warning' : 'positive'"
-                size="sm"
-                @click="handleToggle(item)"
-              >
-                <q-tooltip>{{ item.is_active ? 'Tắt' : 'Bật' }}</q-tooltip>
-              </q-btn>
-              <q-btn
-                flat
-                round
-                dense
-                icon="edit"
-                color="primary"
-                size="sm"
-                @click="openEdit(item)"
-              >
-                <q-tooltip>Sửa</q-tooltip>
-              </q-btn>
-              <q-btn
-                flat
-                round
-                dense
-                icon="delete"
-                color="negative"
-                size="sm"
-                @click="handleDelete(item)"
-              >
-                <q-tooltip>Xoá</q-tooltip>
-              </q-btn>
-            </td>
-          </tr>
-        </tbody>
-      </q-markup-table>
+            <q-tooltip>{{ props.row.is_active ? 'Tắt' : 'Bật' }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            round
+            dense
+            icon="edit"
+            color="primary"
+            size="sm"
+            @click="openEdit(props.row)"
+          >
+            <q-tooltip>Sửa</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            round
+            dense
+            icon="delete"
+            color="negative"
+            size="sm"
+            @click="handleDelete(props.row)"
+          >
+            <q-tooltip>Xoá</q-tooltip>
+          </q-btn>
+        </q-td>
+      </template>
+    </DataTable>
 
-      <div
-        v-if="pagination.total > pagination.pageSize"
-        class="row justify-center q-pa-md"
-      >
-        <q-pagination
-          :model-value="pagination.page"
-          :max="Math.ceil(pagination.total / pagination.pageSize)"
-          direction-links
-          boundary-links
-          @update:model-value="onPageChange"
-        />
-      </div>
-    </q-card>
-
-    <!-- Create/Edit Dialog -->
     <FormDialog
       v-model="showForm"
       :title="isEdit ? 'Sửa thông báo' : 'Tạo thông báo mới'"

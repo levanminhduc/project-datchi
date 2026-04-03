@@ -59,10 +59,17 @@ const navItems: NavItem[] = [
       { label: 'Import Sub-Art', icon: 'o_upload_file', to: '/thread/sub-arts' }
     ]
   },
-  { label: 'Phân Quyền', icon: 'o_admin_panel_settings', to: '/phan-quyen#top' },
-  { label: 'Thông Báo Hệ Thống', icon: 'o_campaign', to: '/announcements#top' },
-  { label: 'Hướng Dẫn', icon: 'o_menu_book', to: '/guides' },
-  { label: 'Cài Đặt', icon: 'o_settings', to: '/settings' }
+  {
+    label: 'Quản Lý Hệ Thống',
+    icon: 'o_admin_panel_settings',
+    to: '/he-thong#top',
+    children: [
+      { label: 'Hướng Dẫn', icon: 'o_menu_book', to: '/guides' },
+      { label: 'Thông Báo Hệ Thống', icon: 'o_campaign', to: '/announcements#top' },
+      { label: 'Phân Quyền', icon: 'o_security', to: '/phan-quyen#top' },
+      { label: 'Cài Đặt', icon: 'o_settings', to: '/settings' },
+    ]
+  }
 ]
 
 export function useSidebar() {

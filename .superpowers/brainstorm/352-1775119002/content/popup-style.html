@@ -1,0 +1,105 @@
+<h2>Popup thông báo admin — chọn kiểu hiển thị</h2>
+<p class="subtitle">Popup hiện khi user truy cập trang, có nút đóng. Chọn kiểu bạn thích nhất.</p>
+
+<div class="cards">
+  <!-- Option A: Center Dialog -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 20px; background: #1a1a2e; min-height: 280px; position: relative;">
+      <!-- Backdrop -->
+      <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.4); border-radius: 8px 8px 0 0;"></div>
+      <!-- Dialog -->
+      <div style="position: relative; max-width: 380px; margin: 30px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="background: #1976d2; padding: 14px 18px; color: white; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 11px; opacity: 0.8; text-transform: uppercase; letter-spacing: 1px;">📢 Thông báo</div>
+            <div style="font-size: 15px; font-weight: 600; margin-top: 4px;">Lịch nghỉ lễ 30/4</div>
+          </div>
+          <div style="width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer;">✕</div>
+        </div>
+        <div style="padding: 16px 18px; color: #333; font-size: 13px; line-height: 1.6;">
+          Công ty sẽ <b>nghỉ lễ từ 28/4 đến 01/5</b>. Các đơn hàng cần hoàn tất trước ngày 27/4.
+          <br><br>
+          Vui lòng sắp xếp công việc phù hợp.
+        </div>
+        <div style="padding: 10px 18px 16px; text-align: right;">
+          <div style="display: inline-block; background: #1976d2; color: white; padding: 8px 24px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;">Đã hiểu</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Center Dialog</h3>
+      <p>Popup giữa màn hình với backdrop mờ. Truyền thống, dễ nhận biết, bắt buộc user phải đọc trước khi tiếp tục.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Top Banner -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 0; background: #f5f5f5; min-height: 280px;">
+      <!-- Mock toolbar -->
+      <div style="background: #1976d2; padding: 10px 16px; color: white; display: flex; align-items: center; font-size: 14px;">
+        <span style="margin-right: 12px;">☰</span>
+        <span style="font-weight: 600;">Hòa Thọ Điện Bàn</span>
+        <span style="margin-left: auto; font-size: 12px;">🔔 🌙 👤</span>
+      </div>
+      <!-- Banner announcement -->
+      <div style="background: linear-gradient(135deg, #ff9800, #f57c00); padding: 14px 18px; color: white; display: flex; align-items: flex-start; gap: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+        <div style="font-size: 20px; flex-shrink: 0; margin-top: 2px;">📢</div>
+        <div style="flex: 1;">
+          <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Lịch nghỉ lễ 30/4</div>
+          <div style="font-size: 12px; line-height: 1.5; opacity: 0.95;">Công ty sẽ <b>nghỉ lễ từ 28/4 đến 01/5</b>. Các đơn hàng cần hoàn tất trước ngày 27/4.</div>
+        </div>
+        <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,0.25); display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; flex-shrink: 0;">✕</div>
+      </div>
+      <!-- Mock page content -->
+      <div style="padding: 16px;">
+        <div style="background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+          <div style="height: 12px; background: #e0e0e0; border-radius: 4px; width: 60%; margin-bottom: 10px;"></div>
+          <div style="height: 10px; background: #eee; border-radius: 4px; width: 100%; margin-bottom: 6px;"></div>
+          <div style="height: 10px; background: #eee; border-radius: 4px; width: 80%;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Top Banner</h3>
+      <p>Banner nằm ngay dưới toolbar, không chặn nội dung trang. Nhẹ nhàng hơn, user vẫn thấy trang phía dưới. Dismiss bằng nút X.</p>
+    </div>
+  </div>
+
+  <!-- Option C: Bottom-right Toast-like -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 0; background: #f5f5f5; min-height: 280px; position: relative;">
+      <!-- Mock toolbar -->
+      <div style="background: #1976d2; padding: 10px 16px; color: white; display: flex; align-items: center; font-size: 14px;">
+        <span style="margin-right: 12px;">☰</span>
+        <span style="font-weight: 600;">Hòa Thọ Điện Bàn</span>
+        <span style="margin-left: auto; font-size: 12px;">🔔 🌙 👤</span>
+      </div>
+      <!-- Mock page -->
+      <div style="padding: 16px;">
+        <div style="background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 12px;">
+          <div style="height: 12px; background: #e0e0e0; border-radius: 4px; width: 50%; margin-bottom: 10px;"></div>
+          <div style="height: 10px; background: #eee; border-radius: 4px; width: 100%; margin-bottom: 6px;"></div>
+          <div style="height: 10px; background: #eee; border-radius: 4px; width: 75%;"></div>
+        </div>
+      </div>
+      <!-- Toast popup bottom-right -->
+      <div style="position: absolute; bottom: 16px; right: 16px; width: 320px; background: white; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); overflow: hidden; border-left: 4px solid #1976d2;">
+        <div style="padding: 14px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-size: 13px; font-weight: 600; color: #1976d2;">📢 Thông báo từ Admin</div>
+            <div style="font-size: 11px; cursor: pointer; color: #999;">✕</div>
+          </div>
+          <div style="font-weight: 600; font-size: 14px; color: #333; margin-bottom: 6px;">Lịch nghỉ lễ 30/4</div>
+          <div style="font-size: 12px; color: #555; line-height: 1.5;">Công ty sẽ <b>nghỉ lễ từ 28/4 đến 01/5</b>. Vui lòng hoàn tất đơn hàng trước 27/4.</div>
+          <div style="margin-top: 10px; text-align: right;">
+            <span style="font-size: 12px; color: #1976d2; font-weight: 500; cursor: pointer;">Đã hiểu ✓</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Bottom-right Card</h3>
+      <p>Popup nhỏ góc phải dưới, giống notification toast nhưng to hơn. Không chặn trang, mềm mại nhất. Dismiss bằng "Đã hiểu" hoặc X.</p>
+    </div>
+  </div>
+</div>

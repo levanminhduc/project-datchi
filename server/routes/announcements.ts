@@ -115,7 +115,7 @@ announcements.get('/', async (c) => {
       .eq('is_active', true)
 
     const announcementIds = (data || []).map((a) => a.id)
-    let dismissalCounts: Record<number, number> = {}
+    const dismissalCounts: Record<number, number> = {}
 
     if (announcementIds.length > 0) {
       const { data: dismissals } = await supabaseAdmin

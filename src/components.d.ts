@@ -16,6 +16,7 @@ declare module 'vue' {
     AlertsWidget: typeof import('./components/thread/AlertsWidget.vue')['default']
     AllocationFormDialog: typeof import('./components/thread/AllocationFormDialog.vue')['default']
     AllocationStatusBadge: typeof import('./components/thread/AllocationStatusBadge.vue')['default']
+    AnnouncementPopup: typeof import('./components/ui/AnnouncementPopup.vue')['default']
     AppBadge: typeof import('./components/ui/cards/AppBadge.vue')['default']
     AppBanner: typeof import('./components/ui/feedback/AppBanner.vue')['default']
     AppBreadcrumbs: typeof import('./components/ui/navigation/AppBreadcrumbs.vue')['default']

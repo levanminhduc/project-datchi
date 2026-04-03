@@ -37,7 +37,8 @@ ENV HUSKY=0
 COPY package.json package-lock.json ./
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev --legacy-peer-deps --ignore-scripts
+    npm ci --omit=dev --legacy-peer-deps --ignore-scripts && \
+    npm rebuild sharp
 
 # ============================================
 # Stage 3: Runtime minimal
