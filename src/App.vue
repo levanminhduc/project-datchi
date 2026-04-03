@@ -8,6 +8,8 @@ import { useSidebar } from "./composables/useSidebar";
 import { useNotifications } from "./composables/useNotifications";
 import { useAuth } from "./composables/useAuth";
 import { useVersionCheck } from "./composables/useVersionCheck";
+import AnnouncementPopup from './components/ui/AnnouncementPopup.vue'
+import { useAnnouncements } from './composables/use-announcements'
 
 const route = useRoute();
 const router = useRouter();
@@ -16,6 +18,13 @@ const { isOpen, navItems, toggle } = useSidebar();
 const { startPolling, stopPolling } = useNotifications();
 const { isAuthenticated, tempPassword } = useAuth();
 const { startVersionCheck, stopVersionCheck } = useVersionCheck();
+const {
+  currentAnnouncement,
+  totalPending,
+  currentPosition,
+  fetchPending: fetchAnnouncements,
+  dismissCurrent: dismissAnnouncement,
+} = useAnnouncements()
 
 const KEEP_ALIVE_PATHS = new Set([
   '/thread',
@@ -46,6 +55,7 @@ watch(showSidebar, (show) => {
   if (show) {
     startPolling()
     startVersionCheck()
+    fetchAnnouncements()
   } else {
     stopPolling()
     stopVersionCheck()
@@ -123,6 +133,14 @@ onMounted(() => {
       :model-value="showChangePasswordModal"
       :current-password="tempPassword"
       @changed="onPasswordChanged"
+    />
+
+    <AnnouncementPopup
+      v-if="currentAnnouncement"
+      :announcement="currentAnnouncement"
+      :current="currentPosition"
+      :total="totalPending"
+      @dismiss="dismissAnnouncement"
     />
   </q-layout>
 </template>
