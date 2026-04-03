@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { guideService } from '@/services/guideService'
 import { useAuth } from '@/composables/useAuth'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type { Guide } from '@/types/guides'
 import '@/styles/guide-prose.scss'
+import VueEasyLightbox from 'vue-easy-lightbox'
+import { useGuideImageZoom } from '@/composables/use-guide-image-zoom'
 
 definePage({
   meta: { requiresAuth: true },
@@ -18,6 +20,16 @@ const snackbar = useSnackbar()
 
 const guide = ref<Guide | null>(null)
 const loading = ref(true)
+
+const proseRef = ref<HTMLElement | null>(null)
+const { visible, imgs, index, rescan, closeZoom } = useGuideImageZoom(proseRef)
+
+watch(guide, async (val) => {
+  if (val) {
+    await nextTick()
+    rescan()
+  }
+})
 
 const isAdmin = hasPermission('guides.edit')
 
@@ -95,6 +107,7 @@ async function copyPublicLink() {
       </div>
 
       <div
+        ref="proseRef"
         class="guide-prose"
         v-html="guide.content_html"
       />
@@ -126,6 +139,13 @@ async function copyPublicLink() {
         </div>
       </template>
     </template>
+
+    <VueEasyLightbox
+      :visible="visible"
+      :imgs="imgs"
+      :index="index"
+      @hide="closeZoom"
+    />
   </q-page>
 </template>
 
