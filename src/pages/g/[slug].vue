@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSnackbar } from '@/composables/useSnackbar'
 import '@/styles/guide-prose.scss'
+import VueEasyLightbox from 'vue-easy-lightbox'
+import { useGuideImageZoom } from '@/composables/use-guide-image-zoom'
 
 definePage({
   meta: { public: true },
@@ -23,6 +25,16 @@ const snackbar = useSnackbar()
 const guide = ref<PublicGuide | null>(null)
 const loading = ref(true)
 const error = ref(false)
+
+const proseRef = ref<HTMLElement | null>(null)
+const { visible, imgs, index, rescan, closeZoom } = useGuideImageZoom(proseRef)
+
+watch(guide, async (val) => {
+  if (val) {
+    await nextTick()
+    rescan()
+  }
+})
 const copied = ref(false)
 
 const publicUrl = computed(() => {
@@ -108,6 +120,7 @@ async function copyLink() {
       </div>
 
       <div
+        ref="proseRef"
         class="guide-prose"
         v-html="guide.content_html"
       />
@@ -137,6 +150,13 @@ async function copyLink() {
         </div>
       </div>
     </template>
+
+    <VueEasyLightbox
+      :visible="visible"
+      :imgs="imgs"
+      :index="index"
+      @hide="closeZoom"
+    />
   </q-page>
 </template>
 
