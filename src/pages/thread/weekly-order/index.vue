@@ -449,8 +449,8 @@ const handleAddStyleFromPO = (
   })
 }
 
-const handleUpdateAdditionalOrder = (threadTypeId: number, value: number) => {
-  updateAdditionalOrder(threadTypeId, value)
+const handleUpdateAdditionalOrder = (threadTypeId: number, value: number, threadColor?: string | null) => {
+  updateAdditionalOrder(threadTypeId, value, threadColor)
 }
 
 // Debounce timer for quota_cones updates

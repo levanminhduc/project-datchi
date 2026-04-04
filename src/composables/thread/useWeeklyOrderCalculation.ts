@@ -245,11 +245,11 @@ export function useWeeklyOrderCalculation() {
     lastModifiedAt.value = Date.now()
   }
 
-  /**
-   * Aggregate per-style calculation results into a combined summary keyed by thread_type_id
-   */
+  const aggregationKey = (threadTypeId: number, threadColor: string | null | undefined): string =>
+    `${threadTypeId}_${threadColor ?? ''}`
+
   const aggregateResults = (results: CalculationResult[]) => {
-    const map = new Map<number, AggregatedRow>()
+    const map = new Map<string, AggregatedRow>()
     const specsWithColorBreakdown = new Set<number>()
 
     for (const result of results) {
@@ -258,12 +258,14 @@ export function useWeeklyOrderCalculation() {
           specsWithColorBreakdown.add(calc.spec_id)
           for (const cb of calc.color_breakdown) {
             if (!cb.thread_type_id) continue
-            const existing = map.get(cb.thread_type_id)
+            const color = cb.thread_color ?? calc.thread_color ?? null
+            const key = aggregationKey(cb.thread_type_id, color)
+            const existing = map.get(key)
 
             if (existing) {
               existing.total_meters += cb.total_meters
             } else {
-              map.set(cb.thread_type_id, {
+              map.set(key, {
                 thread_type_id: cb.thread_type_id,
                 thread_type_name: cb.thread_type_name,
                 supplier_name: cb.supplier_name || calc.supplier_name,
@@ -271,7 +273,7 @@ export function useWeeklyOrderCalculation() {
                 total_meters: cb.total_meters,
                 total_cones: 0,
                 meters_per_cone: cb.meters_per_cone ?? calc.meters_per_cone ?? null,
-                thread_color: cb.thread_color ?? calc.thread_color ?? null,
+                thread_color: color,
                 thread_color_code: cb.thread_color_code ?? calc.thread_color_code ?? null,
                 supplier_id: cb.supplier_id ?? calc.supplier_id ?? null,
                 delivery_date: calc.delivery_date ?? null,
@@ -288,14 +290,14 @@ export function useWeeklyOrderCalculation() {
         if (calc.color_breakdown && calc.color_breakdown.length > 0) continue
         if (specsWithColorBreakdown.has(calc.spec_id)) continue
 
-        const key = calc.thread_type_id
+        const key = aggregationKey(calc.thread_type_id, calc.thread_color)
         const existing = map.get(key)
 
         if (existing) {
           existing.total_meters += calc.total_meters
         } else {
           map.set(key, {
-            thread_type_id: key,
+            thread_type_id: calc.thread_type_id,
             thread_type_name: calc.thread_type_name,
             supplier_name: calc.supplier_name,
             tex_number: calc.tex_number,
@@ -537,18 +539,19 @@ export function useWeeklyOrderCalculation() {
     lastCalculatedAt.value = null
   }
 
-  const updateAdditionalOrder = (threadTypeId: number, value: number) => {
-    const row = aggregatedResults.value.find((r) => r.thread_type_id === threadTypeId)
+  const updateAdditionalOrder = (threadTypeId: number, value: number, threadColor?: string | null) => {
+    const row = aggregatedResults.value.find((r) =>
+      r.thread_type_id === threadTypeId && (r.thread_color ?? '') === (threadColor ?? '')
+    )
     if (!row) return
     row.additional_order = value
     row.total_final = (row.sl_can_dat || 0) + value
   }
 
-  /**
-   * Update quota_cones for a specific thread type in aggregatedResults
-   */
-  const updateQuotaCones = (threadTypeId: number, value: number) => {
-    const row = aggregatedResults.value.find((r) => r.thread_type_id === threadTypeId)
+  const updateQuotaCones = (threadTypeId: number, value: number, threadColor?: string | null) => {
+    const row = aggregatedResults.value.find((r) =>
+      r.thread_type_id === threadTypeId && (r.thread_color ?? '') === (threadColor ?? '')
+    )
     if (!row) return
     row.quota_cones = value
   }

@@ -11,7 +11,7 @@
       <q-table
         :rows="rows"
         :columns="columns"
-        row-key="thread_type_id"
+        :row-key="(row: AggregatedRow) => `${row.thread_type_id}_${row.thread_color ?? ''}`"
         flat
         bordered
         dense
@@ -70,7 +70,7 @@
                 buttons
                 label-set="Lưu"
                 label-cancel="Hủy"
-                @save="(val: number) => emit('update:additional-order', props.row.thread_type_id, val)"
+                @save="(val: number) => emit('update:additional-order', props.row.thread_type_id, val, props.row.thread_color)"
               >
                 <q-input
                   v-model.number="scope.value"
@@ -107,7 +107,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'update:additional-order': [threadTypeId: number, value: number]
+  'update:additional-order': [threadTypeId: number, value: number, threadColor: string | null]
 }>()
 
 const columns: QTableColumn[] = [
