@@ -35,7 +35,32 @@ subArts.get('/', async (c) => {
       return c.json({ data: null, error: parsed.error.issues.map(i => i.message).join(', ') }, 400)
     }
 
-    const { style_id } = parsed.data
+    const { style_id, po_id } = parsed.data
+
+    if (po_id) {
+      const { data: orderSubArtIds, error: orderError } = await supabase
+        .from('thread_order_items')
+        .select('sub_art_id')
+        .eq('po_id', po_id)
+        .eq('style_id', style_id)
+        .not('sub_art_id', 'is', null)
+
+      if (orderError) throw orderError
+
+      const uniqueIds = [...new Set((orderSubArtIds || []).map(r => r.sub_art_id))]
+      if (uniqueIds.length === 0) {
+        return c.json({ data: [], error: null })
+      }
+
+      const { data, error } = await supabase
+        .from('sub_arts')
+        .select('id, sub_art_code')
+        .in('id', uniqueIds)
+        .order('sub_art_code', { ascending: true })
+
+      if (error) throw error
+      return c.json({ data, error: null })
+    }
 
     const { data, error } = await supabase
       .from('sub_arts')

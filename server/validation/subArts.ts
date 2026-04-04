@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 export const SubArtQuerySchema = z.object({
   style_id: z.coerce.number().int().positive('style_id phải là số nguyên dương'),
+  po_id: z.coerce.number().int().positive().optional(),
 })
 
 export const ImportSubArtRowSchema = z.object({

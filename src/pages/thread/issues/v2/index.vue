@@ -229,7 +229,7 @@ watch(selectedStyleId, async (newStyleId) => {
   if (selectedStyleHasSubArts.value) {
     loadingSubArts.value = true
     try {
-      const subArts = await subArtService.getByStyleId(newStyleId)
+      const subArts = await subArtService.getByStyleId(newStyleId, selectedPoId.value!)
       subArtOptions.value = subArts.map((sa: SubArt) => ({
         value: sa.id,
         label: sa.sub_art_code,

@@ -13,8 +13,10 @@ export const subArtService = {
     return response.data
   },
 
-  async getByStyleId(styleId: number): Promise<SubArt[]> {
-    const response = await fetchApi<ApiResponse<SubArt[]>>(`${BASE}?style_id=${styleId}`)
+  async getByStyleId(styleId: number, poId?: number): Promise<SubArt[]> {
+    let url = `${BASE}?style_id=${styleId}`
+    if (poId) url += `&po_id=${poId}`
+    const response = await fetchApi<ApiResponse<SubArt[]>>(url)
     if (response.error || !response.data) {
       throw new Error(response.error || 'Không thể tải danh sách Sub-Art')
     }
