@@ -241,8 +241,10 @@
       <ResultsSummaryTable
         v-if="resultView === 'summary'"
         :rows="aggregatedResults"
+        :readonly="resultsSaved"
         @update:additional-order="handleUpdateAdditionalOrder"
         @update:quota-cones="handleUpdateQuotaCones"
+        @update:delivery-date="handleUpdateSummaryDeliveryDate"
       />
 
       <!-- Result Actions -->
@@ -292,7 +294,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import {
   useWeeklyOrder,
@@ -389,6 +391,27 @@ const showHistory = ref(false)
 const showAssignmentControl = ref(false)
 const confirmingWeek = ref(false)
 const resultsSaved = ref(false)
+const manualDeliveryDateEdits = ref(new Set<string>())
+
+watch(aggregatedResults, (rows) => {
+  if (!deliveryDate.value || !rows.length) return
+  for (const row of rows) {
+    const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+    if (row.sl_can_dat && row.sl_can_dat > 0 && !row.delivery_date && !manualDeliveryDateEdits.value.has(key)) {
+      row.delivery_date = deliveryDate.value
+    }
+  }
+})
+
+watch(deliveryDate, (newDate) => {
+  if (!newDate || !aggregatedResults.value.length) return
+  for (const row of aggregatedResults.value) {
+    const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+    if (row.sl_can_dat && row.sl_can_dat > 0 && !manualDeliveryDateEdits.value.has(key)) {
+      row.delivery_date = newDate
+    }
+  }
+})
 
 // Computed
 const poOptions = computed(() =>
@@ -483,18 +506,29 @@ const handleUpdateQuotaCones = async (threadTypeId: number, value: number) => {
 
 const handleCalculate = async () => {
   resultsSaved.value = false
+  manualDeliveryDateEdits.value.clear()
   await calculateAll(selectedWeek.value?.id)
 }
 
 const handleUpdateDeliveryDate = (specId: number, date: string) => {
   updateDeliveryDate(specId, date)
-  // Update the row's delivery_date directly for immediate UI reflection
   for (const result of perStyleResults.value) {
     const calc = result.calculations.find((c) => c.spec_id === specId)
     if (calc) {
       calc.delivery_date = date
       break
     }
+  }
+}
+
+const handleUpdateSummaryDeliveryDate = (threadTypeId: number, date: string, threadColor: string | null) => {
+  const key = `${threadTypeId}_${threadColor ?? ''}`
+  manualDeliveryDateEdits.value.add(key)
+  const row = aggregatedResults.value.find(
+    (r) => r.thread_type_id === threadTypeId && (r.thread_color ?? null) === threadColor
+  )
+  if (row) {
+    row.delivery_date = date
   }
 }
 
