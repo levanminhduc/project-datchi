@@ -393,23 +393,18 @@ const confirmingWeek = ref(false)
 const resultsSaved = ref(false)
 const manualDeliveryDateEdits = ref(new Set<string>())
 
-watch(aggregatedResults, (rows) => {
-  if (!deliveryDate.value || !rows.length) return
-  for (const row of rows) {
-    const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
-    if (row.sl_can_dat && row.sl_can_dat > 0 && !row.delivery_date && !manualDeliveryDateEdits.value.has(key)) {
-      row.delivery_date = deliveryDate.value
-    }
-  }
-})
-
 watch(deliveryDate, (newDate) => {
   if (!newDate || !aggregatedResults.value.length) return
+  let changed = false
   for (const row of aggregatedResults.value) {
     const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
     if (row.sl_can_dat && row.sl_can_dat > 0 && !manualDeliveryDateEdits.value.has(key)) {
       row.delivery_date = newDate
+      changed = true
     }
+  }
+  if (changed) {
+    aggregatedResults.value = [...aggregatedResults.value]
   }
 })
 
@@ -508,6 +503,21 @@ const handleCalculate = async () => {
   resultsSaved.value = false
   manualDeliveryDateEdits.value.clear()
   await calculateAll(selectedWeek.value?.id)
+  applyDeliveryDateToResults()
+}
+
+function applyDeliveryDateToResults() {
+  if (!deliveryDate.value || !aggregatedResults.value.length) return
+  let changed = false
+  for (const row of aggregatedResults.value) {
+    if (row.sl_can_dat && row.sl_can_dat > 0) {
+      row.delivery_date = deliveryDate.value
+      changed = true
+    }
+  }
+  if (changed) {
+    aggregatedResults.value = [...aggregatedResults.value]
+  }
 }
 
 const handleUpdateDeliveryDate = (specId: number, date: string) => {
