@@ -87,6 +87,45 @@
             </template>
           </q-td>
         </template>
+        <template #body-cell-delivery_date="props">
+          <q-td :props="props">
+            <template v-if="props.row.sl_can_dat && props.row.sl_can_dat > 0 && !readonly">
+              <span class="cursor-pointer text-primary">
+                <template v-if="props.row.delivery_date">
+                  {{ formatDateDisplay(props.row.delivery_date) }}
+                </template>
+                <template v-else>
+                  Chọn ngày
+                </template>
+                <q-icon
+                  name="edit_calendar"
+                  size="xs"
+                  class="q-ml-xs"
+                />
+                <q-popup-proxy
+                  cover
+                  transition-show="scale"
+                  transition-hide="scale"
+                >
+                  <DatePicker
+                    :model-value="props.row.delivery_date ? formatDateDisplay(props.row.delivery_date) : undefined"
+                    @update:model-value="(val: string | null) => {
+                      if (!val) return
+                      const isoDate = toIso(val)
+                      emit('update:delivery-date', props.row.thread_type_id, isoDate, props.row.thread_color ?? null)
+                    }"
+                  />
+                </q-popup-proxy>
+              </span>
+            </template>
+            <template v-else-if="props.row.sl_can_dat && props.row.sl_can_dat > 0 && readonly">
+              {{ props.row.delivery_date ? formatDateDisplay(props.row.delivery_date) : '—' }}
+            </template>
+            <template v-else>
+              —
+            </template>
+          </q-td>
+        </template>
         <template #no-data>
           <div class="text-center text-grey q-pa-md">
             Chưa có dữ liệu tổng hợp
@@ -100,6 +139,7 @@
 <script setup lang="ts">
 import type { QTableColumn } from 'quasar'
 import type { AggregatedRow } from '@/types/thread'
+import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 
 defineProps<{
   rows: AggregatedRow[]
@@ -108,7 +148,20 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:additional-order': [threadTypeId: number, value: number, threadColor: string | null]
+  'update:delivery-date': [threadTypeId: number, date: string, threadColor: string | null]
 }>()
+
+function formatDateDisplay(isoDate: string): string {
+  if (!isoDate) return ''
+  const [y, m, d] = isoDate.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function toIso(displayDate: string): string {
+  if (!displayDate) return ''
+  const [d, m, y] = displayDate.split('/')
+  return `${y}-${m}-${d}`
+}
 
 const columns: QTableColumn[] = [
   { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
@@ -190,6 +243,12 @@ const columns: QTableColumn[] = [
     align: 'right',
     sortable: true,
     format: (val: number | undefined) => (val && val > 0) ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
+    name: 'delivery_date',
+    label: 'Ngày giao',
+    field: 'delivery_date',
+    align: 'center',
   },
 ]
 </script>

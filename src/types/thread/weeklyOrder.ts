@@ -181,7 +181,9 @@ export interface DeliveryRecord {
   warehouse_id: number | null
   received_by: string | null
   received_at: string | null
-  quantity_cones: number // Task 5.1: Add quantity_cones
+  quantity_cones: number
+  thread_color?: string | null
+  thread_color_code?: string | null
   days_remaining?: number
   is_overdue?: boolean
   supplier_name?: string

@@ -436,14 +436,15 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
       .select('week_id, summary_data')
       .in('week_id', weekIds)
 
-    // Build a map: week_id -> thread_type_id -> { total_final, thread_color, thread_color_code }
-    const summaryMap = new Map<number, Map<number, { total_final: number; thread_color?: string; thread_color_code?: string }>>()
+    // Build a map: week_id -> compositeKey -> { total_final, thread_color, thread_color_code }
+    const summaryMap = new Map<number, Map<string, { total_final: number; thread_color?: string; thread_color_code?: string }>>()
     for (const result of resultsData || []) {
       if (result.summary_data && Array.isArray(result.summary_data)) {
-        const threadMap = new Map<number, { total_final: number; thread_color?: string; thread_color_code?: string }>()
+        const threadMap = new Map<string, { total_final: number; thread_color?: string; thread_color_code?: string }>()
         for (const row of result.summary_data as Array<{ thread_type_id: number; total_final?: number; thread_color?: string; thread_color_code?: string }>) {
           if (row.thread_type_id && row.total_final !== undefined) {
-            threadMap.set(row.thread_type_id, {
+            const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+            threadMap.set(key, {
               total_final: row.total_final,
               thread_color: row.thread_color || undefined,
               thread_color_code: row.thread_color_code || undefined,
@@ -464,7 +465,16 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
 
         // Get total_final from summary_data
         const threadMap = summaryMap.get(row.week_id)
-        const summaryInfo = threadMap?.get(row.thread_type_id)
+        const compositeKey = `${row.thread_type_id}_${row.thread_color ?? ''}`
+        let summaryInfo = threadMap?.get(compositeKey)
+        // Fallback for legacy rows without thread_color: sum all entries for this thread_type_id
+        if (!summaryInfo && !row.thread_color && threadMap) {
+          let fallbackTotal = 0
+          for (const [key, val] of threadMap) {
+            if (key.startsWith(`${row.thread_type_id}_`)) fallbackTotal += val.total_final
+          }
+          if (fallbackTotal > 0) summaryInfo = { total_final: fallbackTotal }
+        }
         const total_cones = summaryInfo?.total_final ?? null
 
         return {
@@ -472,8 +482,8 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
           supplier_name: row.supplier?.name || '',
           thread_type_name: row.thread_type?.name || '',
           tex_number: row.thread_type?.tex_number || '',
-          color_name: row.thread_type?.color_data?.name || summaryInfo?.thread_color || '',
-          color_hex: row.thread_type?.color_data?.hex_code || summaryInfo?.thread_color_code || '',
+          color_name: row.thread_color || row.thread_type?.color_data?.name || summaryInfo?.thread_color || '',
+          color_hex: row.thread_color_code || row.thread_type?.color_data?.hex_code || summaryInfo?.thread_color_code || '',
           week_name: row.week?.week_name || '',
           days_remaining,
           is_overdue: days_remaining < 0 && row.status === 'PENDING',
@@ -488,7 +498,7 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
         return row.total_cones >= 1
       })
 
-    // Defensive dedupe for legacy duplicated rows by (week_id, thread_type_id).
+    // Defensive dedupe for legacy duplicated rows by (week_id, thread_type_id, thread_color).
     const dedupeMap = new Map<string, any>()
     const toTimestamp = (value: unknown) => {
       const ts = new Date(String(value || '')).getTime()
@@ -496,7 +506,7 @@ weeklyOrder.get('/deliveries/overview', requirePermission('thread.allocations.vi
     }
 
     for (const row of enrichedRows) {
-      const key = `${row.week_id}_${row.thread_type_id}`
+      const key = `${row.week_id}_${row.thread_type_id}_${row.thread_color ?? ''}`
       const existing = dedupeMap.get(key)
       if (!existing) {
         dedupeMap.set(key, row)
@@ -2475,34 +2485,38 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
         lead_time_days?: number | null
         total_final?: number | null
         total_cones?: number | null
+        thread_color?: string | null
+        thread_color_code?: string | null
         [key: string]: unknown
       }>
 
       // Get existing delivery records for this week (Task 3.5: include quantity_cones)
       const { data: existingDeliveries } = await supabase
         .from('thread_order_deliveries')
-        .select('id, thread_type_id, supplier_id, delivery_date, status, received_quantity, quantity_cones')
+        .select('id, thread_type_id, supplier_id, delivery_date, status, received_quantity, quantity_cones, thread_color')
         .eq('week_id', id)
 
       // Build desired delivery rows from current summary data.
       // Deduplicate by thread_type_id to prevent repeated rows in tracking tab.
       // Task 3.1-3.3: Include quantity_cones from total_final
-      const desiredDeliveryMap = new Map<number, {
+      const desiredDeliveryMap = new Map<string, {
         week_id: number
         thread_type_id: number
         supplier_id: number
         delivery_date: string
         status: 'PENDING'
         quantity_cones: number
+        thread_color: string | null
+        thread_color_code: string | null
       }>()
 
       for (const row of summaryRows) {
-        // Task 3.1: Read total_final from each summary_data row
         const plannedCones = row.total_final ?? row.total_cones ?? 0
-        // Task 3.2: Filter - only process rows with valid supplier_id (skip aggregated rows)
         if (!row.supplier_id || plannedCones < 1) continue
 
-        if (!desiredDeliveryMap.has(row.thread_type_id)) {
+        const compositeKey = `${row.thread_type_id}_${row.thread_color ?? ''}`
+
+        if (!desiredDeliveryMap.has(compositeKey)) {
           const leadTime = (row.lead_time_days && row.lead_time_days > 0) ? row.lead_time_days : 7
           const deliveryDate = row.delivery_date || (() => {
             const d = new Date()
@@ -2510,35 +2524,34 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
             return d.toISOString().split('T')[0]
           })()
 
-          desiredDeliveryMap.set(row.thread_type_id, {
+          desiredDeliveryMap.set(compositeKey, {
             week_id: id,
             thread_type_id: row.thread_type_id,
             supplier_id: row.supplier_id!,
             delivery_date: deliveryDate,
             status: 'PENDING',
-            quantity_cones: plannedCones, // Task 3.3: Include quantity_cones
+            quantity_cones: plannedCones,
+            thread_color: row.thread_color ?? null,
+            thread_color_code: row.thread_color_code ?? null,
           })
         } else {
-          // Accumulate quantity_cones for same thread_type_id
-          const existing = desiredDeliveryMap.get(row.thread_type_id)!
+          const existing = desiredDeliveryMap.get(compositeKey)!
           existing.quantity_cones += plannedCones
         }
       }
 
       const desiredDeliveryRows = Array.from(desiredDeliveryMap.values())
-      const _desiredThreadTypeIds = new Set(desiredDeliveryRows.map((row) => row.thread_type_id))
-      const existingThreadTypeIds = new Set(
-        (existingDeliveries || []).map((d: { thread_type_id: number }) => d.thread_type_id)
+      const existingCompositeKeys = new Set(
+        (existingDeliveries || []).map((d: { thread_type_id: number; thread_color?: string | null }) =>
+          `${d.thread_type_id}_${d.thread_color ?? ''}`)
       )
 
-      // Insert NEW rows only.
       const newDeliveryRows = desiredDeliveryRows
-        .filter((row) => !existingThreadTypeIds.has(row.thread_type_id))
+        .filter((row) => !existingCompositeKeys.has(`${row.thread_type_id}_${row.thread_color ?? ''}`))
 
       if (newDeliveryRows.length > 0) {
-        // Task 3.5: Log delivery creation for audit trail
         for (const row of newDeliveryRows) {
-          console.info(`[saveResults] Creating delivery for week=${id} thread_type=${row.thread_type_id}: quantity_cones=${row.quantity_cones}`)
+          console.info(`[saveResults] Creating delivery for week=${id} thread_type=${row.thread_type_id} color=${row.thread_color}: quantity_cones=${row.quantity_cones}`)
         }
 
         const { error: deliveryError } = await supabase
@@ -2554,7 +2567,7 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
       // Sync existing pending rows with the latest summary data.
       // Keep delivered/received rows unchanged to preserve execution history.
       // Task 3.4: Also update quantity_cones when syncing
-      const existingByThreadType = new Map(
+      const existingByCompositeKey = new Map(
         (existingDeliveries || []).map((row: {
           id: number
           thread_type_id: number
@@ -2563,36 +2576,38 @@ weeklyOrder.post('/:id/results', requirePermission('thread.allocations.manage'),
           status: string
           received_quantity: number | null
           quantity_cones: number | null
-        }) => [row.thread_type_id, row])
+          thread_color?: string | null
+        }) => [`${row.thread_type_id}_${row.thread_color ?? ''}`, row])
       )
 
       const rowsToSync = desiredDeliveryRows.filter((row) => {
-        const existing = existingByThreadType.get(row.thread_type_id)
+        const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+        const existing = existingByCompositeKey.get(key)
         if (!existing) return false
         if (existing.status !== 'PENDING') return false
         if ((existing.received_quantity || 0) > 0) return false
 
         const sameSupplier = (existing.supplier_id ?? null) === (row.supplier_id ?? null)
         const sameQuantity = (existing.quantity_cones ?? 0) === row.quantity_cones
-        // Task 3.4: Only sync supplier_id and quantity_cones, preserve manual delivery_date edits
         return !(sameSupplier && sameQuantity)
       })
 
       if (rowsToSync.length > 0) {
         const nowIso = new Date().toISOString()
         for (const row of rowsToSync) {
-          const existing = existingByThreadType.get(row.thread_type_id)
+          const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+          const existing = existingByCompositeKey.get(key)
           if (!existing) continue
 
-          // Task 3.5: Log delivery quantity changes for audit trail
-          console.info(`[saveResults] Syncing delivery for week=${id} thread_type=${row.thread_type_id}: quantity_cones ${existing.quantity_cones ?? 0} -> ${row.quantity_cones}`)
+          console.info(`[saveResults] Syncing delivery for week=${id} thread_type=${row.thread_type_id} color=${row.thread_color}: quantity_cones ${existing.quantity_cones ?? 0} -> ${row.quantity_cones}`)
 
           const { error: syncError } = await supabase
             .from('thread_order_deliveries')
             .update({
               supplier_id: row.supplier_id,
-              // Note: delivery_date is NOT updated to preserve manual edits (per spec)
-              quantity_cones: row.quantity_cones, // Task 3.4: Sync quantity_cones
+              quantity_cones: row.quantity_cones,
+              thread_color: row.thread_color,
+              thread_color_code: row.thread_color_code,
               updated_at: nowIso,
             })
             .eq('id', existing.id)
