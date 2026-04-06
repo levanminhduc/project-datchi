@@ -1,5 +1,8 @@
 <template>
-  <q-page padding>
+  <q-page
+    padding
+    class="relative-position"
+  >
     <!-- Page Header -->
     <PageHeader
       title="Đặt Hàng Chỉ Tuần"
@@ -255,7 +258,7 @@
           label="Lưu Đơn Hàng"
           :loading="weekLoading"
           :disable="!hasResults"
-          @click="handleSave"
+          @click="handleSave()"
         />
         <AppButton
           color="positive"
@@ -290,11 +293,15 @@
     <AssignmentControlDialog
       v-model="showAssignmentControl"
     />
+    <InnerLoading
+      :showing="confirmingWeek"
+      label="Đang xử lý đơn hàng..."
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useQuasar } from 'quasar'
 import {
   useWeeklyOrder,
@@ -306,6 +313,7 @@ import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import type { PurchaseOrderWithItems, CalculationResult } from '@/types/thread'
 import { OrderWeekStatus } from '@/types/thread/enums'
+import { exportOrderResults } from '@/composables/thread/useWeeklyOrderExport'
 import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
 import AssignmentControlDialog from '@/components/thread/weekly-order/AssignmentControlDialog.vue'
 
@@ -545,7 +553,7 @@ const handleReorder = async (newOrder: CalculationResult[]) => {
   await reorderResults(newOrder)
 }
 
-const handleSave = async () => {
+const handleSave = async (options?: { skipReset?: boolean }) => {
   if (!weekName.value) {
     snackbar.error('Vui lòng nhập thông tin Đơn đặt chỉ')
     return
@@ -587,13 +595,31 @@ const handleSave = async () => {
       items,
     })
 
-    if (created) {
-      selectedWeek.value = created
-      if (hasResults.value) {
-        await saveResults(created.id, perStyleResults.value, aggregatedResults.value)
-      }
-      resultsSaved.value = true
+    if (!created) return
+
+    selectedWeek.value = created
+    if (hasResults.value) {
+      await saveResults(created.id, perStyleResults.value, aggregatedResults.value)
     }
+    resultsSaved.value = true
+  }
+
+  if (!options?.skipReset) {
+    clearAll()
+    weekName.value = ''
+    deliveryDate.value = getDefaultDeliveryDate()
+    notes.value = ''
+    selectedPOId.value = null
+    loadedPOs.value = []
+    resultsSaved.value = false
+    manualDeliveryDateEdits.value = new Set()
+    selectedWeek.value = null
+
+    await Promise.all([fetchAllPurchaseOrders(), fetchWeeks()])
+
+    nextTick(() => {
+      weekInfoCardRef.value?.focusWeekName()
+    })
   }
 }
 
@@ -685,7 +711,7 @@ const handleConfirmWeek = async () => {
 
   confirmingWeek.value = true
   try {
-    await handleSave()
+    await handleSave({ skipReset: true })
 
     if (!selectedWeek.value) {
       snackbar.error('Không thể lưu đơn hàng. Vui lòng thử lại.')
@@ -701,6 +727,22 @@ const handleConfirmWeek = async () => {
     selectedWeek.value.status = OrderWeekStatus.CONFIRMED
     snackbar.success('Đã xác nhận đặt hàng thành công')
     await fetchWeeks()
+
+    clearAll()
+    weekName.value = ''
+    deliveryDate.value = getDefaultDeliveryDate()
+    notes.value = ''
+    selectedPOId.value = null
+    loadedPOs.value = []
+    resultsSaved.value = false
+    manualDeliveryDateEdits.value = new Set()
+    selectedWeek.value = null
+
+    await fetchAllPurchaseOrders()
+
+    nextTick(() => {
+      weekInfoCardRef.value?.focusWeekName()
+    })
   } catch (err) {
     console.error('Failed to confirm week:', err)
     snackbar.error('Không thể xác nhận. Vui lòng thử lại.')
@@ -709,80 +751,7 @@ const handleConfirmWeek = async () => {
   }
 }
 
-const handleExport = async () => {
-  if (aggregatedResults.value.length === 0) {
-    snackbar.warning('Chưa có dữ liệu để xuất')
-    return
-  }
-
-  try {
-    const ExcelJS = await import('exceljs')
-    const workbook = new ExcelJS.Workbook()
-    const worksheet = workbook.addWorksheet('Đặt Hàng Chỉ')
-
-    worksheet.columns = [
-      { header: 'Loại chỉ', key: 'thread_type_name', width: 25 },
-      { header: 'NCC', key: 'supplier_name', width: 20 },
-      { header: 'Tex', key: 'tex_number', width: 10 },
-      { header: 'Màu chỉ', key: 'thread_color', width: 15 },
-      { header: 'Tổng mét', key: 'total_meters', width: 15 },
-      { header: 'Tổng cuộn', key: 'total_cones', width: 12 },
-      { header: 'Định mức (cuộn)', key: 'quota_cones', width: 15 },
-      { header: 'Mét/cuộn', key: 'meters_per_cone', width: 12 },
-      { header: 'Tồn kho KD', key: 'inventory_cones', width: 12 },
-      { header: 'Cuộn nguyên', key: 'full_cones', width: 12 },
-      { header: 'Cuộn lẻ', key: 'partial_cones', width: 12 },
-      { header: 'Tồn kho QĐ', key: 'equivalent_cones', width: 12 },
-      { header: 'SL cần đặt', key: 'sl_can_dat', width: 12 },
-      { header: 'Đặt thêm', key: 'additional_order', width: 12 },
-      { header: 'Tổng chốt', key: 'total_final', width: 12 },
-    ]
-
-    // Style header row
-    worksheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF1976D2' },
-    }
-    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
-
-    aggregatedResults.value.forEach((r) => {
-      worksheet.addRow({
-        thread_type_name: r.thread_type_name,
-        supplier_name: r.supplier_name,
-        tex_number: r.tex_number,
-        thread_color: r.thread_color || '',
-        total_meters: Number(r.total_meters.toFixed(2)),
-        total_cones: r.total_cones,
-        quota_cones: r.quota_cones || r.total_cones || '',
-        meters_per_cone: r.meters_per_cone || '',
-        inventory_cones: r.inventory_cones || '',
-        full_cones: r.full_cones ?? '',
-        partial_cones: r.partial_cones ?? '',
-        equivalent_cones: r.equivalent_cones ?? '',
-        sl_can_dat: r.sl_can_dat || '',
-        additional_order: r.additional_order || '',
-        total_final: r.total_final || '',
-      })
-    })
-
-    const buffer = await workbook.xlsx.writeBuffer()
-    const blob = new Blob([buffer], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `dat-hang-chi-${weekName.value || 'tuan'}.xlsx`
-    link.click()
-    URL.revokeObjectURL(url)
-
-    snackbar.success('Đã xuất file Excel')
-  } catch (err) {
-    snackbar.error('Không thể xuất file Excel')
-    console.error('[weekly-order] export error:', err)
-  }
-}
+const handleExport = () => exportOrderResults(aggregatedResults.value, weekName.value)
 
 // Lifecycle
 onMounted(async () => {

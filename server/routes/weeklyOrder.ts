@@ -794,7 +794,7 @@ weeklyOrder.get('/ordered-quantities', requirePermission('thread.allocations.vie
         style_id: pair.style_id,
         po_quantity: poQuantity,
         ordered_quantity: orderedQuantity,
-        remaining,
+        remaining_quantity: remaining,
       })
     }
 
