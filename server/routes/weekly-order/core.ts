@@ -76,6 +76,7 @@ core.get('/assignment-summary', requirePermission('thread.allocations.view'), as
       .from('thread_order_results')
       .select('week_id, summary_data')
       .in('week_id', weekIds)
+      .limit(10000)
 
     if (resultsError) throw resultsError
 
@@ -100,6 +101,7 @@ core.get('/assignment-summary', requirePermission('thread.allocations.view'), as
       .select('reserved_week_id, thread_type_id')
       .in('reserved_week_id', weekIds)
       .eq('status', 'RESERVED_FOR_ORDER')
+      .limit(10000)
 
     if (reservedError) throw reservedError
 
@@ -117,6 +119,7 @@ core.get('/assignment-summary', requirePermission('thread.allocations.view'), as
       .select('week_id, thread_type_id, allocated_meters, thread_type:thread_types(meters_per_cone)')
       .in('week_id', weekIds)
       .in('status', ['ISSUED', 'HARD'])
+      .limit(10000)
 
     if (allocError) throw allocError
 
@@ -192,48 +195,58 @@ core.get('/ordered-quantities', requirePermission('thread.allocations.view'), as
 
     const excludeWeekId = validated.exclude_week_id ? parseInt(validated.exclude_week_id) : undefined
 
-    const results = []
+    const validPairs = pairs.filter((p) => p.po_id && p.style_id)
+    if (validPairs.length === 0) {
+      return c.json({ data: [], error: null })
+    }
 
-    for (const pair of pairs) {
-      if (!pair.po_id || !pair.style_id) continue
+    const poIds = [...new Set(validPairs.map((p) => p.po_id))]
 
-      let itemsQuery = supabase
-        .from('thread_order_items')
-        .select('quantity, week:thread_order_weeks!inner(id, status)')
-        .eq('po_id', pair.po_id)
-        .eq('style_id', pair.style_id)
-        .neq('week.status', 'CANCELLED')
+    let orderItemsQuery = supabase
+      .from('thread_order_items')
+      .select('po_id, style_id, quantity, week:thread_order_weeks!inner(id, status)')
+      .in('po_id', poIds)
+      .neq('week.status', 'CANCELLED')
 
-      if (excludeWeekId) {
-        itemsQuery = itemsQuery.neq('week.id', excludeWeekId)
-      }
+    if (excludeWeekId) {
+      orderItemsQuery = orderItemsQuery.neq('week.id', excludeWeekId)
+    }
 
-      const { data: items } = await itemsQuery
-
-      const orderedQuantity = (items || []).reduce(
-        (sum: number, row: any) => sum + (row.quantity || 0),
-        0,
-      )
-
-      const { data: poItem } = await supabase
+    const [{ data: allOrderItems }, { data: allPoItems }] = await Promise.all([
+      orderItemsQuery.limit(10000),
+      supabase
         .from('po_items')
-        .select('quantity')
-        .eq('po_id', pair.po_id)
-        .eq('style_id', pair.style_id)
+        .select('po_id, style_id, quantity')
+        .in('po_id', poIds)
         .is('deleted_at', null)
-        .single()
+        .limit(10000),
+    ])
 
-      const poQuantity = poItem?.quantity || 0
+    const orderedMap = new Map<string, number>()
+    for (const row of (allOrderItems || []) as any[]) {
+      const key = `${row.po_id}-${row.style_id}`
+      orderedMap.set(key, (orderedMap.get(key) || 0) + (row.quantity || 0))
+    }
+
+    const poItemMap = new Map<string, number>()
+    for (const pi of allPoItems || []) {
+      poItemMap.set(`${pi.po_id}-${pi.style_id}`, pi.quantity)
+    }
+
+    const results = validPairs.map((pair) => {
+      const key = `${pair.po_id}-${pair.style_id}`
+      const orderedQuantity = orderedMap.get(key) || 0
+      const poQuantity = poItemMap.get(key) || 0
       const remaining = Math.max(0, poQuantity - orderedQuantity)
 
-      results.push({
+      return {
         po_id: pair.po_id,
         style_id: pair.style_id,
         po_quantity: poQuantity,
         ordered_quantity: orderedQuantity,
         remaining_quantity: remaining,
-      })
-    }
+      }
+    })
 
     return c.json({ data: results, error: null })
   } catch (err) {
@@ -275,7 +288,7 @@ core.get('/history-by-week', requirePermission('thread.allocations.view'), async
       }
       itemQuery = itemQuery.neq('week.status', 'CANCELLED')
 
-      const { data: matchingItems } = await itemQuery
+      const { data: matchingItems } = await itemQuery.limit(10000)
       weekIds = [...new Set((matchingItems || []).map((i: any) => i.week_id))]
 
       if (weekIds.length === 0) {
@@ -364,7 +377,7 @@ core.get('/history-by-week', requirePermission('thread.allocations.view'), async
       itemsQuery = itemsQuery.eq('style_id', parseInt(validated.style_id))
     }
 
-    const { data: items, error: itemsError } = await itemsQuery
+    const { data: items, error: itemsError } = await itemsQuery.limit(10000)
     if (itemsError) throw itemsError
 
     const uniquePairs = new Map<string, { po_id: number; style_id: number }>()
@@ -379,33 +392,42 @@ core.get('/history-by-week', requirePermission('thread.allocations.view'), async
 
     const progressMap = new Map<string, { po_quantity: number; total_ordered: number }>()
 
-    for (const pair of uniquePairs.values()) {
-      const { data: orderedItems } = await supabase
-        .from('thread_order_items')
-        .select('quantity, week:thread_order_weeks!inner(id, status)')
-        .eq('po_id', pair.po_id)
-        .eq('style_id', pair.style_id)
-        .neq('week.status', 'CANCELLED')
+    if (uniquePairs.size > 0) {
+      const batchPoIds = [...new Set([...uniquePairs.values()].map((p) => p.po_id))]
 
-      const totalOrdered = (orderedItems || []).reduce(
-        (sum: number, row: any) => sum + (row.quantity || 0),
-        0,
-      )
+      const [{ data: allOrderedItems }, { data: allPoItems }] = await Promise.all([
+        supabase
+          .from('thread_order_items')
+          .select('po_id, style_id, quantity, week:thread_order_weeks!inner(id, status)')
+          .in('po_id', batchPoIds)
+          .neq('week.status', 'CANCELLED')
+          .limit(10000),
+        supabase
+          .from('po_items')
+          .select('po_id, style_id, quantity')
+          .in('po_id', batchPoIds)
+          .is('deleted_at', null)
+          .limit(10000),
+      ])
 
-      const { data: poItem } = await supabase
-        .from('po_items')
-        .select('quantity')
-        .eq('po_id', pair.po_id)
-        .eq('style_id', pair.style_id)
-        .is('deleted_at', null)
-        .single()
+      const orderedTotalMap = new Map<string, number>()
+      for (const row of (allOrderedItems || []) as any[]) {
+        const key = `${row.po_id}-${row.style_id}`
+        orderedTotalMap.set(key, (orderedTotalMap.get(key) || 0) + (row.quantity || 0))
+      }
 
-      const poQuantity = poItem?.quantity || 0
+      const poItemMap = new Map<string, number>()
+      for (const pi of allPoItems || []) {
+        poItemMap.set(`${pi.po_id}-${pi.style_id}`, pi.quantity)
+      }
 
-      progressMap.set(`${pair.po_id}-${pair.style_id}`, {
-        po_quantity: poQuantity,
-        total_ordered: totalOrdered,
-      })
+      for (const pair of uniquePairs.values()) {
+        const key = `${pair.po_id}-${pair.style_id}`
+        progressMap.set(key, {
+          po_quantity: poItemMap.get(key) || 0,
+          total_ordered: orderedTotalMap.get(key) || 0,
+        })
+      }
     }
 
     const result = weeks.map((week: any) => {

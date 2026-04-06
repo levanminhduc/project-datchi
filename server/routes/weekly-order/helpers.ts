@@ -18,17 +18,23 @@ export const VALID_STATUS_TRANSITIONS: Record<WeeklyOrderStatus, WeeklyOrderStat
 export async function validateSubArtIds(
   items: Array<{ style_id: number; sub_art_id?: number | null }>,
 ): Promise<string | null> {
-  for (const item of items) {
-    if (!item.sub_art_id) continue
+  const itemsWithSubArt = items.filter((i) => i.sub_art_id)
+  if (itemsWithSubArt.length === 0) return null
 
-    const { data: subArt } = await supabase
-      .from('sub_arts')
-      .select('id')
-      .eq('id', item.sub_art_id)
-      .eq('style_id', item.style_id)
-      .single()
+  const allSubArtIds = [...new Set(itemsWithSubArt.map((i) => i.sub_art_id!))]
 
-    if (!subArt) {
+  const { data: subArts } = await supabase
+    .from('sub_arts')
+    .select('id, style_id')
+    .in('id', allSubArtIds)
+    .limit(10000)
+
+  const subArtSet = new Set(
+    (subArts || []).map((sa: any) => `${sa.id}-${sa.style_id}`),
+  )
+
+  for (const item of itemsWithSubArt) {
+    if (!subArtSet.has(`${item.sub_art_id}-${item.style_id}`)) {
       return `Sub-art ID ${item.sub_art_id} không tồn tại hoặc không thuộc mã hàng ID ${item.style_id}`
     }
   }
@@ -53,58 +59,80 @@ export async function validatePOQuantityLimits(
 
   if (groups.size === 0) return { valid: true, errors: [] }
 
-  const errors: string[] = []
+  const poIds = [...new Set([...groups.values()].map((g) => g.po_id))]
 
-  for (const [, group] of groups) {
-    const { data: poItem } = await supabase
+  const [{ data: allPoItems }, existingResult] = await Promise.all([
+    supabase
       .from('po_items')
-      .select('quantity')
-      .eq('po_id', group.po_id)
-      .eq('style_id', group.style_id)
+      .select('po_id, style_id, quantity')
+      .in('po_id', poIds)
       .is('deleted_at', null)
-      .single()
+      .limit(10000),
+    (() => {
+      let q = supabase
+        .from('thread_order_items')
+        .select('po_id, style_id, quantity, week:thread_order_weeks!inner(id, status)')
+        .in('po_id', poIds)
+        .neq('week.status', 'CANCELLED')
+      if (excludeWeekId) {
+        q = q.neq('week.id', excludeWeekId)
+      }
+      return q.limit(10000)
+    })(),
+  ])
 
-    if (!poItem) continue
+  const poItemMap = new Map<string, number>()
+  for (const pi of allPoItems || []) {
+    poItemMap.set(`${pi.po_id}-${pi.style_id}`, pi.quantity)
+  }
 
-    let existingQuery = supabase
-      .from('thread_order_items')
-      .select('quantity, week:thread_order_weeks!inner(id, status)')
-      .eq('po_id', group.po_id)
-      .eq('style_id', group.style_id)
-      .neq('week.status', 'CANCELLED')
+  const existingTotalMap = new Map<string, number>()
+  for (const row of (existingResult.data || []) as any[]) {
+    const key = `${row.po_id}-${row.style_id}`
+    existingTotalMap.set(key, (existingTotalMap.get(key) || 0) + (row.quantity || 0))
+  }
 
-    if (excludeWeekId) {
-      existingQuery = existingQuery.neq('week.id', excludeWeekId)
+  const errorGroups: Array<{ po_id: number; style_id: number; poQty: number; existingTotal: number; groupTotal: number }> = []
+
+  for (const [key, group] of groups) {
+    const poQty = poItemMap.get(key)
+    if (poQty === undefined) continue
+
+    const existingTotal = existingTotalMap.get(key) || 0
+
+    if (existingTotal + group.total > poQty) {
+      errorGroups.push({
+        po_id: group.po_id,
+        style_id: group.style_id,
+        poQty,
+        existingTotal,
+        groupTotal: group.total,
+      })
     }
+  }
 
-    const { data: existingItems } = await existingQuery
+  if (errorGroups.length === 0) return { valid: true, errors: [] }
 
-    const existingTotal = (existingItems || []).reduce(
-      (sum: number, row: any) => sum + (row.quantity || 0),
-      0,
+  const errorPoIds = [...new Set(errorGroups.map((e) => e.po_id))]
+  const errorStyleIds = [...new Set(errorGroups.map((e) => e.style_id))]
+
+  const [{ data: pos }, { data: styles }] = await Promise.all([
+    supabase.from('purchase_orders').select('id, po_number').in('id', errorPoIds),
+    supabase.from('styles').select('id, style_code').in('id', errorStyleIds),
+  ])
+
+  const poNumberMap = new Map((pos || []).map((p: any) => [p.id, p.po_number]))
+  const styleCodeMap = new Map((styles || []).map((s: any) => [s.id, s.style_code]))
+
+  const errors: string[] = []
+  for (const eg of errorGroups) {
+    const poNumber = poNumberMap.get(eg.po_id) || `PO#${eg.po_id}`
+    const styleCode = styleCodeMap.get(eg.style_id) || `Style#${eg.style_id}`
+    const remaining = eg.poQty - eg.existingTotal
+
+    errors.push(
+      `${poNumber} - ${styleCode}: vượt quá số lượng PO (PO: ${eg.poQty}, đã đặt: ${eg.existingTotal}, đang đặt: ${eg.groupTotal}, còn lại: ${remaining})`,
     )
-
-    if (existingTotal + group.total > poItem.quantity) {
-      const { data: po } = await supabase
-        .from('purchase_orders')
-        .select('po_number')
-        .eq('id', group.po_id)
-        .single()
-
-      const { data: style } = await supabase
-        .from('styles')
-        .select('style_code')
-        .eq('id', group.style_id)
-        .single()
-
-      const poNumber = po?.po_number || `PO#${group.po_id}`
-      const styleCode = style?.style_code || `Style#${group.style_id}`
-      const remaining = poItem.quantity - existingTotal
-
-      errors.push(
-        `${poNumber} - ${styleCode}: vượt quá số lượng PO (PO: ${poItem.quantity}, đã đặt: ${existingTotal}, đang đặt: ${group.total}, còn lại: ${remaining})`,
-      )
-    }
   }
 
   return { valid: errors.length === 0, errors }
