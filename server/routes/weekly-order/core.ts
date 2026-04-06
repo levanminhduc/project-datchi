@@ -1099,6 +1099,19 @@ core.get('/', requirePermission('thread.allocations.view'), async (c) => {
       dbQuery = dbQuery.eq('status', query.status)
     }
 
+    const auth = c.get('auth')
+    if (auth && !auth.isAdmin) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', auth.employeeId)
+        .single()
+
+      if (emp?.full_name) {
+        dbQuery = dbQuery.eq('created_by', emp.full_name)
+      }
+    }
+
     if (isPaginated) {
       const from = (page - 1) * limit
       const to = from + limit - 1
