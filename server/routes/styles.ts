@@ -15,7 +15,7 @@ styles.use('*', requirePermission('thread.types.view'))
  *   - style_name: filter by style_name (legacy)
  *   - fabric_type: filter by fabric_type
  *   - exclude_ids: comma-separated IDs to exclude (e.g., "1,2,3")
- *   - limit: max results (1-100, default: no limit)
+ *   - limit: max results (1-2000, default: no limit)
  */
 styles.get('/', async (c) => {
   try {
@@ -71,7 +71,7 @@ styles.get('/', async (c) => {
     // Limit results
     if (query.limit) {
       const limit = parseInt(query.limit)
-      if (!isNaN(limit) && limit > 0 && limit <= 100) {
+      if (!isNaN(limit) && limit > 0 && limit <= 2000) {
         dbQuery = dbQuery.limit(limit)
       }
     }

@@ -55,7 +55,7 @@ export const styleService = {
       queryParts.push(`search=${encodeURIComponent(params.search.trim())}`)
     }
     if (params.limit && params.limit > 0) {
-      queryParts.push(`limit=${Math.min(params.limit, 100)}`)
+      queryParts.push(`limit=${Math.min(params.limit, 2000)}`)
     }
     if (params.excludeIds && params.excludeIds.length > 0) {
       queryParts.push(`exclude_ids=${params.excludeIds.join(',')}`)

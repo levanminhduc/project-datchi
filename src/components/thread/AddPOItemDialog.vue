@@ -49,7 +49,7 @@ const searchStyles = useDebounceFn(async (query: string) => {
   try {
     styles.value = await styleService.search({
       search: query,
-      limit: 50,
+      limit: 2000,
       excludeIds: props.existingStyleIds
     })
   } catch (err) {
@@ -64,7 +64,7 @@ async function loadInitialStyles() {
   loadingStyles.value = true
   try {
     styles.value = await styleService.search({
-      limit: 50,
+      limit: 2000,
       excludeIds: props.existingStyleIds
     })
   } finally {
