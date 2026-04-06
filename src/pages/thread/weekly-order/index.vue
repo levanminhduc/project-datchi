@@ -328,7 +328,6 @@ const {
   updateWeek,
   loadWeek,
   saveResults,
-  loadResults,
 } = useWeeklyOrder()
 
 const {
@@ -637,18 +636,8 @@ const handleLoadWeek = async (weekId: number) => {
     loadedPOs.value = []
   }
 
-  const savedResults = await loadResults(weekId)
-  if (savedResults) {
-    if (savedResults.calculation_data) {
-      perStyleResults.value = savedResults.calculation_data
-    }
-    if (savedResults.summary_data) {
-      aggregatedResults.value = savedResults.summary_data
-    }
-    resultsSaved.value = true
-    snackbar.info('Đã tải kết quả tính toán đã lưu')
-  } else {
-    resultsSaved.value = false
+  if (canCalculate.value) {
+    await handleCalculate()
   }
 }
 
