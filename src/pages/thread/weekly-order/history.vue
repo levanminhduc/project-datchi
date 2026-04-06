@@ -355,6 +355,7 @@ import ThreadSummaryTable from "@/components/thread/weekly-order/ThreadSummaryTa
 import { dateRules } from '@/utils'
 import { formatStyleDisplay } from '@/utils/thread-format'
 import type { WeekHistoryGroup, HistoryByWeekFilter, ThreadSummaryRow } from "@/types/thread";
+import { exportOrderHistory } from "@/composables/thread/useWeeklyOrderExport";
 
 definePage({
   meta: {
@@ -525,75 +526,7 @@ function resetFilters() {
 }
 
 async function handleExportXlsx() {
-  if (weekGroups.value.length === 0) return;
-
-  try {
-    const ExcelJS = await import("exceljs");
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Lịch Sử Đặt Hàng");
-
-    worksheet.columns = [
-      { header: "Tuần", key: "week_name", width: 20 },
-      { header: "PO", key: "po_number", width: 18 },
-      { header: "Mã hàng", key: "style_code", width: 15 },
-      { header: "Tên mã hàng", key: "style_name", width: 25 },
-      { header: "Màu", key: "color_name", width: 15 },
-      { header: "SL (SP)", key: "quantity", width: 12 },
-      { header: "SL PO", key: "po_quantity", width: 12 },
-      { header: "Đã đặt", key: "total_ordered", width: 12 },
-      { header: "Còn lại", key: "remaining", width: 12 },
-      { header: "Tiến độ %", key: "progress_pct", width: 12 },
-      { header: "Người tạo", key: "created_by", width: 18 },
-      { header: "Ngày tạo", key: "created_at", width: 15 },
-      { header: "Trạng thái", key: "status", width: 15 },
-    ];
-
-    worksheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FF1976D2" },
-    };
-    worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-
-    weekGroups.value.forEach((week) => {
-      week.po_groups.forEach((poGroup) => {
-        poGroup.styles.forEach((style) => {
-          style.colors.forEach((color) => {
-            worksheet.addRow({
-              week_name: week.week_name,
-              po_number: poGroup.po_number,
-              style_code: style.style_code,
-              style_name: style.style_name,
-              color_name: color.color_name,
-              quantity: color.quantity,
-              po_quantity: style.po_quantity,
-              total_ordered: style.total_ordered,
-              remaining: style.remaining,
-              progress_pct: style.progress_pct,
-              created_by: week.created_by || "",
-              created_at: formatDate(week.created_at),
-              status: getStatusLabel(week.status),
-            });
-          });
-        });
-      });
-    });
-
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `lich-su-dat-hang-chi-${new Date().toISOString().slice(0, 10)}.xlsx`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-
-    snackbar.success("Đã xuất file Excel");
-  } catch (err) {
-    console.error("[history-by-week] export error:", err);
-    snackbar.error("Không thể xuất file Excel");
-  }
+  await exportOrderHistory(weekGroups.value, formatDate, getStatusLabel);
 }
 
 onMounted(async () => {

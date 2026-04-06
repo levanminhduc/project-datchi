@@ -90,7 +90,7 @@ function statusLabel(status: string): string {
     confirmed: 'Đã xác nhận',
     cancelled: 'Đã hủy',
   }
-  return map[status] || status
+  return map[status.toLowerCase()] || status
 }
 
 function statusColor(status: string): string {
@@ -99,7 +99,7 @@ function statusColor(status: string): string {
     confirmed: 'positive',
     cancelled: 'negative',
   }
-  return map[status] || 'grey'
+  return map[status.toLowerCase()] || 'grey'
 }
 
 function formatDate(val: string | null): string {
@@ -112,15 +112,8 @@ const columns: QTableColumn[] = [
   { name: 'week_name', label: 'Tên tuần', field: 'week_name', align: 'left', sortable: true },
   {
     name: 'start_date',
-    label: 'Từ ngày',
+    label: 'Ngày Giao',
     field: 'start_date',
-    align: 'left',
-    format: (val: string | null) => formatDate(val),
-  },
-  {
-    name: 'end_date',
-    label: 'Đến ngày',
-    field: 'end_date',
     align: 'left',
     format: (val: string | null) => formatDate(val),
   },
