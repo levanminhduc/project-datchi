@@ -653,7 +653,7 @@ onMounted(async () => {
     <div class="row q-col-gutter-md q-mb-md items-center">
       <div class="col">
         <h1 class="text-h5 q-my-none text-weight-bold text-primary">
-          Phiếu Xuất Chỉ V2
+          Phiếu Xuất Chỉ
         </h1>
         <p class="text-caption text-grey-7 q-mb-none">
           Tạo phiếu xuất và xem lịch sử
@@ -699,7 +699,7 @@ onMounted(async () => {
               @click="handleBack"
             />
             <h5 class="q-ma-none q-ml-sm">
-              Phiếu Xuất Chỉ V2
+              Phiếu Xuất Chỉ
             </h5>
             <q-space />
             <AppButton
