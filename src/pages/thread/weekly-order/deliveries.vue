@@ -364,7 +364,10 @@
     </q-dialog>
 
     <!-- Receive into Inventory Dialog -->
-    <q-dialog v-model="showReceiveDialog" persistent>
+    <q-dialog
+      v-model="showReceiveDialog"
+      persistent
+    >
       <q-card style="min-width: 400px">
         <q-card-section>
           <div class="text-h6">
@@ -421,11 +424,34 @@
             class="q-mt-md"
           />
 
-          <DatePicker
+          <AppInput
             v-model="receiveForm.expiry_date"
             label="Ngày hết hạn (tùy chọn)"
+            placeholder="DD/MM/YYYY"
+            readonly
             class="q-mt-md"
-          />
+          >
+            <template #append>
+              <q-icon
+                v-if="receiveForm.expiry_date"
+                name="clear"
+                class="cursor-pointer"
+                @click.stop.prevent="receiveForm.expiry_date = ''"
+              />
+              <q-icon
+                name="event"
+                class="cursor-pointer"
+              >
+                <q-popup-proxy
+                  cover
+                  transition-show="scale"
+                  transition-hide="scale"
+                >
+                  <DatePicker v-model="receiveForm.expiry_date" />
+                </q-popup-proxy>
+              </q-icon>
+            </template>
+          </AppInput>
 
           <div class="q-mt-md text-grey-7">
             <q-icon
