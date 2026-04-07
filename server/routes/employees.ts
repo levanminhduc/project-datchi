@@ -103,7 +103,7 @@ employees.get('/count', requirePermission('employees.view'), async (c) => {
  * GET /api/employees/departments - Get unique departments
  * Returns distinct department values from employees table
  */
-employees.get('/departments', requirePermission('employees.view'), async (c) => {
+employees.get('/departments', async (c) => {
   try {
     const { data, error } = await supabase
       .from('employees')
