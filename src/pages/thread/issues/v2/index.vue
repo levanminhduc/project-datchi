@@ -24,7 +24,6 @@ import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
 import type { QTableColumn, QTableProps } from 'quasar'
 import type {
   IssueV2Filters,
-  ThreadTypeForIssue,
   ThreadTypeForIssueWithColor,
   ValidateLineResponse,
   OrderOptionPO,
@@ -43,7 +42,6 @@ const {
   isLoading,
   hasIssue,
   lines,
-  threadTypes,
   isConfirmed,
   issues,
   total,
@@ -355,7 +353,7 @@ async function handleLoadFormData() {
     multiColorThreadTypes.value = allThreadTypes
 
     if (colorIds.length === 1) {
-      loadAllocationSummary(selectedPoId.value!, selectedStyleId.value!, colorIds[0])
+      loadAllocationSummary(selectedPoId.value!, selectedStyleId.value!, colorIds[0]!)
     } else {
       resetAllocation()
     }
@@ -373,14 +371,14 @@ async function handleAllocate() {
     await submitAllocation({
       po_id: selectedPoId.value,
       style_id: selectedStyleId.value,
-      style_color_id: selectedColorIds.value[0],
+      style_color_id: selectedColorIds.value[0]!,
       department: department.value,
       add_quantity: allocationAddQty.value,
       created_by: createdBy.value,
     })
     showAllocationModal.value = false
     allocationAddQty.value = null
-    await loadFormData(selectedPoId.value!, selectedStyleId.value!, selectedColorIds.value[0], department.value || undefined)
+    await loadFormData(selectedPoId.value!, selectedStyleId.value!, selectedColorIds.value[0]!, department.value || undefined)
   } catch {
   }
 }
@@ -594,7 +592,7 @@ async function handleBatchAddAll() {
 
   try {
     if (!hasIssue.value) {
-      const firstLine = linesToAdd[0]
+      const firstLine = linesToAdd[0]!
       const result = await createIssueWithFirstLine({
         department: department.value.trim(),
         created_by: createdBy.value.trim(),
@@ -1342,6 +1340,7 @@ onMounted(async () => {
                       variant="flat"
                       round
                       color="negative"
+                      :disable="isConfirming || isBatchAdding"
                       @click="handleRemoveLine(props.row.id)"
                     >
                       <q-tooltip>Xóa dòng</q-tooltip>
@@ -1350,6 +1349,15 @@ onMounted(async () => {
                 </template>
               </q-table>
             </q-card-section>
+            <q-inner-loading :showing="isConfirming">
+              <q-spinner-gears
+                size="50px"
+                color="primary"
+              />
+              <div class="q-mt-sm text-grey">
+                Đang xác nhận xuất chỉ...
+              </div>
+            </q-inner-loading>
           </q-card>
 
           <q-card
@@ -1375,8 +1383,8 @@ onMounted(async () => {
               label="Xác Nhận Xuất"
               color="positive"
               icon="check"
-              :loading="isLoading"
-              :disable="!canConfirm"
+              :loading="isConfirming"
+              :disable="!canConfirm || isConfirming || isBatchAdding"
               @click="handleConfirm"
             />
           </div>
