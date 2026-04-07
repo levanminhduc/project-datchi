@@ -6,6 +6,7 @@ import { getErrorMessage } from '../../utils/errorHelper'
 import {
   UpdateDeliverySchema,
   ReceiveDeliverySchema,
+  ReceiveLogsQuerySchema,
 } from '../../validation/weeklyOrder'
 import type { AppEnv } from '../../types/hono-env'
 import { formatZodError } from './helpers'
@@ -158,6 +159,88 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
     return c.json({ data: withLoanContext, error: null })
   } catch (err) {
     console.error('Error fetching deliveries overview:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+deliveries.get('/deliveries/receive-logs', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const rawQuery = {
+      delivery_id: c.req.query('delivery_id'),
+      week_id: c.req.query('week_id'),
+      limit: c.req.query('limit'),
+    }
+    const parsed = ReceiveLogsQuerySchema.parse(rawQuery)
+
+    const deliveryId = parsed.delivery_id ? parseInt(parsed.delivery_id) : undefined
+    const weekId = parsed.week_id ? parseInt(parsed.week_id) : undefined
+    const limit = Math.min(parsed.limit ? parseInt(parsed.limit) : 50, 100)
+
+    let query = supabase
+      .from('delivery_receive_logs')
+      .select(`
+        id,
+        delivery_id,
+        quantity,
+        warehouse_id,
+        received_by,
+        notes,
+        created_at,
+        delivery:thread_order_deliveries!delivery_id(
+          thread_type_id,
+          week_id,
+          quantity_cones,
+          received_quantity,
+          thread_color,
+          thread_color_code,
+          thread_type:thread_types(name, tex_number, supplier:suppliers(name), color_data:colors!color_id(name, hex_code)),
+          week:thread_order_weeks(week_name)
+        ),
+        warehouse:warehouses!warehouse_id(name)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (deliveryId) {
+      query = query.eq('delivery_id', deliveryId)
+    }
+
+    if (weekId) {
+      query = query.eq('delivery.week_id', weekId)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+
+    const enriched = (data || [])
+      .filter((row: any) => {
+        if (weekId && !row.delivery?.week_id) return false
+        if (weekId && row.delivery?.week_id !== weekId) return false
+        return true
+      })
+      .map((row: any) => ({
+        id: row.id,
+        delivery_id: row.delivery_id,
+        quantity: row.quantity,
+        warehouse_id: row.warehouse_id,
+        received_by: row.received_by,
+        notes: row.notes,
+        created_at: row.created_at,
+        thread_type_name: row.delivery?.thread_type?.name || '',
+        tex_number: row.delivery?.thread_type?.tex_number || '',
+        supplier_name: row.delivery?.thread_type?.supplier?.name || '',
+        color_name: row.delivery?.thread_color || row.delivery?.thread_type?.color_data?.name || '',
+        color_hex: row.delivery?.thread_color_code || row.delivery?.thread_type?.color_data?.hex_code || '',
+        week_name: row.delivery?.week?.week_name || '',
+        warehouse_name: row.warehouse?.name || '',
+        quantity_cones: row.delivery?.quantity_cones || 0,
+        received_quantity: row.delivery?.received_quantity || 0,
+      }))
+
+    return c.json({ data: enriched, error: null })
+  } catch (err) {
+    console.error('Error fetching receive logs:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

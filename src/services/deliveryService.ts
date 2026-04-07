@@ -1,5 +1,5 @@
 import { fetchApi } from './api'
-import type { DeliveryRecord, UpdateDeliveryDTO, DeliveryFilter, ReceiveDeliveryDTO } from '@/types/thread'
+import type { DeliveryRecord, UpdateDeliveryDTO, DeliveryFilter, ReceiveDeliveryDTO, DeliveryReceiveLog } from '@/types/thread'
 
 interface ApiResponse<T> {
   data: T | null
@@ -66,5 +66,18 @@ export const deliveryService = {
     if (response.error) throw new Error(response.error)
     if (!response.data) throw new Error('Không thể nhập kho')
     return response.data
+  },
+
+  async getReceiveLogs(params: { delivery_id?: number; week_id?: number; limit?: number }): Promise<DeliveryReceiveLog[]> {
+    const searchParams = new URLSearchParams()
+    if (params.delivery_id) searchParams.append('delivery_id', String(params.delivery_id))
+    if (params.week_id) searchParams.append('week_id', String(params.week_id))
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    const queryString = searchParams.toString()
+    const url = queryString ? `${BASE}/deliveries/receive-logs?${queryString}` : `${BASE}/deliveries/receive-logs`
+
+    const response = await fetchApi<ApiResponse<DeliveryReceiveLog[]>>(url)
+    if (response.error) throw new Error(response.error)
+    return response.data || []
   },
 }

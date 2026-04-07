@@ -29,6 +29,10 @@
         name="receive"
         label="Nhập kho"
       />
+      <q-tab
+        name="history"
+        label="Lịch sử nhập kho"
+      />
     </q-tabs>
 
     <q-separator />
@@ -265,6 +269,64 @@
           </template>
         </q-table>
       </q-tab-panel>
+
+      <!-- Tab 3: Receive History -->
+      <q-tab-panel name="history">
+        <div class="row q-mb-md q-gutter-sm items-center">
+          <AppSelect
+            v-model="historyWeekFilter"
+            :options="weekFilterOptions"
+            label="Lọc theo tuần"
+            dense
+            style="min-width: 200px"
+            @update:model-value="loadHistoryData"
+          />
+          <q-space />
+          <q-btn
+            color="primary"
+            icon="refresh"
+            label="Tải lại"
+            :loading="loadingHistory"
+            @click="loadHistoryData"
+          />
+        </div>
+
+        <q-table
+          :rows="historyLogs"
+          :columns="historyColumns"
+          row-key="id"
+          :loading="loadingHistory"
+          flat
+          bordered
+          dense
+          :rows-per-page-options="[20, 50, 0]"
+          :pagination="{ rowsPerPage: 50 }"
+        >
+          <template #body-cell-color_name="props">
+            <q-td :props="props">
+              <div class="row items-center q-gutter-x-xs no-wrap">
+                <div
+                  v-if="props.row.color_hex"
+                  style="width: 12px; height: 12px; border-radius: 50%; border: 1px solid #ccc"
+                  :style="{ backgroundColor: props.row.color_hex }"
+                />
+                <span>{{ props.row.color_name || '—' }}</span>
+              </div>
+            </q-td>
+          </template>
+          <template #body-cell-quantity="props">
+            <q-td :props="props">
+              <span class="text-weight-medium">{{ props.row.quantity }}</span>
+              <span class="text-grey-6"> / {{ props.row.quantity_cones || '—' }}</span>
+            </q-td>
+          </template>
+          <template #no-data>
+            <div class="full-width text-center q-pa-lg text-grey-6">
+              Chưa có lịch sử nhập kho
+            </div>
+          </template>
+        </q-table>
+      </q-tab-panel>
     </q-tab-panels>
 
     <!-- Mark as Delivered Dialog -->
@@ -405,9 +467,10 @@ import { ref, onMounted, computed, watch } from 'vue'
 import type { QTableColumn } from 'quasar'
 import { deliveryService } from '@/services/deliveryService'
 import { warehouseService, type Warehouse } from '@/services/warehouseService'
+import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useAuth } from '@/composables/useAuth'
-import type { DeliveryRecord } from '@/types/thread'
+import type { DeliveryRecord, DeliveryReceiveLog } from '@/types/thread'
 import { DeliveryStatus, InventoryReceiptStatus } from '@/types/thread/enums'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
@@ -455,6 +518,18 @@ const receiveForm = ref({
 
 const showResultDialog = ref(false)
 const receiveResult = ref<ReceiveResult | null>(null)
+
+const loadingHistory = ref(false)
+const historyLogs = ref<DeliveryReceiveLog[]>([])
+const historyWeekFilter = ref<number | null>(null)
+const weekOptions = ref<Array<{ id: number; week_name: string }>>([])
+
+const weekFilterOptions = computed(() => {
+  return [
+    { label: 'Tất cả', value: null },
+    ...weekOptions.value.map(w => ({ label: w.week_name, value: w.id })),
+  ]
+})
 
 const currentUser = computed(() => {
   return employee.value?.fullName || 'Chưa đăng nhập'
@@ -538,9 +613,27 @@ const receiveColumns: QTableColumn[] = [
   { name: 'actions', label: '', field: 'actions', align: 'center' },
 ]
 
+const historyColumns: QTableColumn[] = [
+  { name: 'created_at', label: 'Thời gian', field: 'created_at', align: 'left', sortable: true, format: (val: string) => formatDateTime(val) },
+  { name: 'week_name', label: 'Tuần', field: 'week_name', align: 'left', sortable: true },
+  { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
+  { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'center' },
+  { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left' },
+  { name: 'warehouse_name', label: 'Kho nhập', field: 'warehouse_name', align: 'left' },
+  { name: 'quantity', label: 'Số lượng (cuộn)', field: 'quantity', align: 'center' },
+  { name: 'received_by', label: 'Người nhập', field: 'received_by', align: 'left' },
+]
+
 function formatDate(dateStr: string): string {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function formatDateTime(dateStr: string): string {
+  if (!dateStr) return '—'
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+    ' ' + d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
 }
 
 function getDaysColor(days: number | undefined, status: string): string {
@@ -624,6 +717,28 @@ async function loadWarehouses() {
     warehouses.value = await warehouseService.getStorageOnly()
   } catch (err) {
     console.error('Error loading warehouses:', err)
+  }
+}
+
+async function loadWeekOptions() {
+  try {
+    const weeks = await weeklyOrderService.getAll()
+    weekOptions.value = weeks.map(w => ({ id: w.id, week_name: w.week_name }))
+  } catch (err) {
+    console.error('Error loading weeks:', err)
+  }
+}
+
+async function loadHistoryData() {
+  loadingHistory.value = true
+  try {
+    const params: { week_id?: number; limit?: number } = { limit: 100 }
+    if (historyWeekFilter.value) params.week_id = historyWeekFilter.value
+    historyLogs.value = await deliveryService.getReceiveLogs(params)
+  } catch (err) {
+    snackbar.error('Lỗi tải lịch sử: ' + (err instanceof Error ? err.message : 'Không xác định'))
+  } finally {
+    loadingHistory.value = false
   }
 }
 
@@ -713,11 +828,13 @@ watch(activeTab, (newTab) => {
     loadTrackingData()
   } else if (newTab === 'receive') {
     loadReceiveData()
+  } else if (newTab === 'history') {
+    loadHistoryData()
   }
 })
 
 onMounted(async () => {
-  await loadWarehouses()
+  await Promise.all([loadWarehouses(), loadWeekOptions()])
   await loadTrackingData()
 })
 </script>

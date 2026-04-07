@@ -90,6 +90,14 @@ export const HistoryByWeekQuerySchema = z.object({
   limit: z.string().optional(),
 })
 
+// ============ RECEIVE LOGS SCHEMA ============
+
+export const ReceiveLogsQuerySchema = z.object({
+  delivery_id: z.string().optional(),
+  week_id: z.string().optional(),
+  limit: z.string().optional(),
+})
+
 // ============ LOAN SCHEMAS ============
 
 export const CreateLoanSchema = z.object({

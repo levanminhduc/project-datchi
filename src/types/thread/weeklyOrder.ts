@@ -429,3 +429,22 @@ export interface ReleaseSurplusResult {
   settled_loans: number
   week_status: string
 }
+
+export interface DeliveryReceiveLog {
+  id: number
+  delivery_id: number
+  quantity: number
+  warehouse_id: number
+  received_by: string
+  notes: string | null
+  created_at: string
+  thread_type_name: string
+  tex_number: string
+  supplier_name: string
+  color_name: string
+  color_hex: string
+  week_name: string
+  warehouse_name: string
+  quantity_cones: number
+  received_quantity: number
+}
