@@ -506,6 +506,17 @@ async function handleConfirm() {
 }
 
 function handleBack() {
+  if (step2Visible.value && !hasIssue.value) {
+    step2Visible.value = false
+    selectedPoId.value = null
+    selectedStyleId.value = null
+    selectedSubArtId.value = null
+    selectedColorId.value = null
+    subArtOptions.value = []
+    colorOptions.value = []
+    lineInputs.value = {}
+    return
+  }
   clearIssue()
   activeTab.value = 'history'
   router.replace({ query: { tab: 'history' } })
