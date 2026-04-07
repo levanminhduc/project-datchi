@@ -25,6 +25,7 @@ import type { QTableColumn, QTableProps } from 'quasar'
 import type {
   IssueV2Filters,
   ThreadTypeForIssue,
+  ThreadTypeForIssueWithColor,
   ValidateLineResponse,
   OrderOptionPO,
   OrderOptionStyle,
@@ -52,6 +53,7 @@ const {
   loadFormData,
   validateLine,
   addLine,
+  batchAddLines,
   removeLine,
   confirmIssue,
   clearIssue,
@@ -86,7 +88,7 @@ const currentDeptInfo = computed(() => {
 const selectedPoId = ref<number | null>(null)
 const selectedStyleId = ref<number | null>(null)
 const selectedSubArtId = ref<number | null>(null)
-const selectedColorId = ref<number | null>(null)
+const selectedColorIds = ref<number[]>([])
 
 const poOptions = ref<{ value: number; label: string }[]>([])
 const styleOptions = ref<{ value: number; label: string; has_sub_arts?: boolean }[]>([])
@@ -97,6 +99,10 @@ const departmentOptions = ref<{ value: string; label: string }[]>([])
 const loadingOptions = ref(false)
 const loadingFormData = ref(false)
 const loadingSubArts = ref(false)
+const loadingColorProgress = ref('')
+const isBatchAdding = ref(false)
+const isConfirming = ref(false)
+const multiColorThreadTypes = ref<ThreadTypeForIssueWithColor[]>([])
 
 const selectedStyleHasSubArts = computed(() => {
   if (!selectedStyleId.value) return false
@@ -104,14 +110,14 @@ const selectedStyleHasSubArts = computed(() => {
   return opt?.has_sub_arts ?? false
 })
 
-const lineInputs = ref<Record<number, { full: number; partial: number; notes: string; validation: ValidateLineResponse | null }>>({})
+const lineInputs = ref<Record<string, { full: number; partial: number; notes: string; validation: ValidateLineResponse | null }>>({})
 
 const canCreateIssue = computed(() => {
   return department.value.trim() && createdBy.value.trim() && !hasIssue.value && !step2Visible.value
 })
 
 const canLoadThreadTypes = computed(() => {
-  if (!selectedPoId.value || !selectedStyleId.value || !selectedColorId.value) return false
+  if (!selectedPoId.value || !selectedStyleId.value || selectedColorIds.value.length === 0) return false
   if (selectedStyleHasSubArts.value && !selectedSubArtId.value) return false
   return true
 })
@@ -129,11 +135,16 @@ const canConfirm = computed(() => {
 })
 
 const availableThreadTypes = computed(() => {
-  const addedThreadTypeIds = new Set(lines.value.map((line) => line.thread_type_id))
-  return threadTypes.value.filter((tt) => !addedThreadTypeIds.has(tt.thread_type_id))
+  const addedKeys = new Set(
+    lines.value.map((line) => `${line.color_id || line.style_color_id}-${line.thread_type_id}`)
+  )
+  return multiColorThreadTypes.value.filter(
+    (tt) => !addedKeys.has(`${tt.color_id}-${tt.thread_type_id}`)
+  )
 })
 
 const columns: QTableColumn[] = [
+  { name: 'color', label: 'Màu Hàng', field: 'color_name', align: 'left' },
   { name: 'thread', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
   { name: 'quota', label: 'Định Mức Cấp', field: 'quota_cones', align: 'center' },
   { name: 'stock', label: 'Tồn Kho', field: 'stock', align: 'center' },
@@ -180,7 +191,7 @@ const addedLinesColumns: QTableColumn[] = [
   { name: 'po', label: 'PO', field: 'po_number', align: 'left' },
   { name: 'style', label: 'Mã Hàng', field: 'style_code', align: 'left' },
   { name: 'sub_art', label: 'Sub-Art', field: 'sub_art_code', align: 'left', format: (v: string | null) => v || '-' },
-  { name: 'color', label: 'Màu', field: 'color_name', align: 'left' },
+  { name: 'color', label: 'Màu Hàng', field: 'color_name', align: 'left' },
   { name: 'quota', label: 'Định Mức Cấp', field: 'quota_cones', align: 'center', format: (v: number | null) => v !== null ? `${v}` : '-' },
   { name: 'issued', label: 'Xuất', field: 'issued', align: 'center' },
   { name: 'equivalent', label: 'Quy Đổi', field: 'issued_equivalent', align: 'center', format: (v: number) => v.toFixed(2) },
@@ -197,7 +208,7 @@ function formatDate(dateStr: string): string {
 watch(selectedPoId, async (newPoId) => {
   selectedStyleId.value = null
   selectedSubArtId.value = null
-  selectedColorId.value = null
+  selectedColorIds.value = []
   styleOptions.value = []
   subArtOptions.value = []
   colorOptions.value = []
@@ -219,7 +230,7 @@ watch(selectedPoId, async (newPoId) => {
 
 watch(selectedStyleId, async (newStyleId) => {
   selectedSubArtId.value = null
-  selectedColorId.value = null
+  selectedColorIds.value = []
   subArtOptions.value = []
   colorOptions.value = []
 
@@ -253,14 +264,14 @@ watch(selectedStyleId, async (newStyleId) => {
   }
 })
 
-watch([selectedPoId, selectedStyleId, selectedSubArtId, selectedColorId], async ([poId, styleId, _subArtId, colorId]) => {
-  if (poId && styleId && colorId && canLoadThreadTypes.value) {
+watch([selectedPoId, selectedStyleId, selectedSubArtId, selectedColorIds], async ([poId, styleId, _subArtId, colorIds]) => {
+  if (poId && styleId && (colorIds as number[]).length > 0 && canLoadThreadTypes.value) {
     await handleLoadFormData()
-    loadAllocationSummary(poId, styleId, colorId)
   } else {
+    multiColorThreadTypes.value = []
     resetAllocation()
   }
-})
+}, { deep: true })
 
 watch(activeTab, (newTab) => {
   if (newTab === 'history' && !historyLoaded.value) {
@@ -299,43 +310,78 @@ async function handleLoadFormData() {
   if (!canLoadThreadTypes.value) return
 
   loadingFormData.value = true
-  try {
-    const data = await loadFormData(selectedPoId.value!, selectedStyleId.value!, selectedColorId.value!, department.value || undefined)
+  loadingColorProgress.value = ''
+  multiColorThreadTypes.value = []
+  lineInputs.value = {}
 
-    lineInputs.value = {}
-    if (data?.thread_types) {
-      for (const tt of data.thread_types) {
-        lineInputs.value[tt.thread_type_id] = {
-          full: 0,
-          partial: 0,
-          notes: '',
-          validation: null,
+  try {
+    const colorIds = selectedColorIds.value
+    let loadedCount = 0
+
+    const results = await Promise.allSettled(
+      colorIds.map(async (colorId) => {
+        const colorOption = colorOptions.value.find((c) => c.value === colorId)
+        const colorName = colorOption?.label || ''
+        const data = await loadFormData(selectedPoId.value!, selectedStyleId.value!, colorId, department.value || undefined)
+        loadedCount++
+        loadingColorProgress.value = `Đang tải ${loadedCount}/${colorIds.length} màu...`
+        return { colorId, colorName, data }
+      })
+    )
+
+    const allThreadTypes: ThreadTypeForIssueWithColor[] = []
+
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value.data?.thread_types) {
+        for (const tt of result.value.data.thread_types) {
+          allThreadTypes.push({
+            ...tt,
+            color_id: result.value.colorId,
+            color_name: result.value.colorName,
+          })
+          const key = `${result.value.colorId}-${tt.thread_type_id}`
+          lineInputs.value[key] = {
+            full: 0,
+            partial: 0,
+            notes: '',
+            validation: null,
+          }
         }
+      } else if (result.status === 'rejected') {
+        snackbar.warning(`Không thể tải dữ liệu cho 1 màu: ${result.reason?.message || 'Lỗi'}`)
       }
+    }
+
+    multiColorThreadTypes.value = allThreadTypes
+
+    if (colorIds.length === 1) {
+      loadAllocationSummary(selectedPoId.value!, selectedStyleId.value!, colorIds[0])
+    } else {
+      resetAllocation()
     }
   } finally {
     loadingFormData.value = false
+    loadingColorProgress.value = ''
   }
 }
 
 async function handleAllocate() {
   if (!allocationAddQty.value || allocationAddQty.value <= 0) return
-  if (!selectedPoId.value || !selectedStyleId.value || !selectedColorId.value || !department.value) return
+  if (!selectedPoId.value || !selectedStyleId.value || selectedColorIds.value.length !== 1 || !department.value) return
 
   try {
     await submitAllocation({
       po_id: selectedPoId.value,
       style_id: selectedStyleId.value,
-      style_color_id: selectedColorId.value,
+      style_color_id: selectedColorIds.value[0],
       department: department.value,
       add_quantity: allocationAddQty.value,
       created_by: createdBy.value,
     })
     showAllocationModal.value = false
     allocationAddQty.value = null
-    await loadFormData(selectedPoId.value!, selectedStyleId.value!, selectedColorId.value!, department.value || undefined)
+    await loadFormData(selectedPoId.value!, selectedStyleId.value!, selectedColorIds.value[0], department.value || undefined)
   } catch {
-    // error shown by composable snackbar
   }
 }
 
@@ -344,8 +390,9 @@ function fillRemainingAllocation() {
   allocationAddQty.value = remaining > 0 ? remaining : null
 }
 
-const debouncedValidate = useDebounceFn(async (threadTypeId: number) => {
-  const input = lineInputs.value[threadTypeId]
+const debouncedValidate = useDebounceFn(async (colorId: number, threadTypeId: number) => {
+  const key = `${colorId}-${threadTypeId}`
+  const input = lineInputs.value[key]
   if (!input) return
   if (input.full === 0 && input.partial === 0) {
     input.validation = null
@@ -358,8 +405,8 @@ const debouncedValidate = useDebounceFn(async (threadTypeId: number) => {
     issued_partial: input.partial,
     po_id: selectedPoId.value,
     style_id: selectedStyleId.value,
-    color_id: selectedColorId.value,
-    style_color_id: selectedColorId.value,
+    color_id: colorId,
+    style_color_id: colorId,
     sub_art_id: selectedSubArtId.value,
     department: department.value || undefined,
   })
@@ -369,18 +416,19 @@ const debouncedValidate = useDebounceFn(async (threadTypeId: number) => {
   }
 }, 300)
 
-function handleQuantityChange(threadTypeId: number) {
-  debouncedValidate(threadTypeId)
+function handleQuantityChange(colorId: number, threadTypeId: number) {
+  debouncedValidate(colorId, threadTypeId)
 }
 
-function handleInputChange(threadTypeId: number, field: 'full' | 'partial', value: number, max: number) {
-  const input = lineInputs.value[threadTypeId]
+function handleInputChange(colorId: number, threadTypeId: number, field: 'full' | 'partial', value: number, max: number) {
+  const key = `${colorId}-${threadTypeId}`
+  const input = lineInputs.value[key]
   if (!input) return
 
   const clampedValue = Math.min(Math.max(0, value), max)
   input[field] = clampedValue
 
-  handleQuantityChange(threadTypeId)
+  handleQuantityChange(colorId, threadTypeId)
 }
 
 function getLineUnderQuotaAmount(line: { quota_cones: number | null; issued_equivalent: number }): number {
@@ -389,54 +437,48 @@ function getLineUnderQuotaAmount(line: { quota_cones: number | null; issued_equi
   return remaining > 0 ? remaining : 0
 }
 
-function getUnderQuotaAmount(threadType: ThreadTypeForIssue): number {
-  const input = lineInputs.value[threadType.thread_type_id]
-  if (!input || !threadType.quota_cones) return 0
+function getUnderQuotaAmount(row: ThreadTypeForIssueWithColor): number {
+  const key = `${row.color_id}-${row.thread_type_id}`
+  const input = lineInputs.value[key]
+  if (!input || !row.quota_cones) return 0
 
   const validation = input.validation
   if (!validation) {
     if (input.full === 0 && input.partial === 0) {
-      return threadType.quota_cones
+      return row.quota_cones
     }
     return 0
   }
 
   if (validation.is_over_quota) return 0
 
-  const remaining = threadType.quota_cones - validation.issued_equivalent
+  const remaining = row.quota_cones - validation.issued_equivalent
   return remaining > 0 ? remaining : 0
 }
 
-function isAddButtonDisabled(threadTypeId: number): boolean {
-  const input = lineInputs.value[threadTypeId]
+function isAddButtonDisabled(colorId: number, threadTypeId: number): boolean {
+  const key = `${colorId}-${threadTypeId}`
+  const input = lineInputs.value[key]
   if (!input) return true
-
   if (input.full === 0 && input.partial === 0) return true
-
   if (input.validation && !input.validation.stock_sufficient) return true
-
   if (input.validation?.is_over_quota && !input.notes) return true
-
+  if (isBatchAdding.value || isConfirming.value) return true
   return false
 }
 
-function getAddButtonTooltip(threadTypeId: number): string {
-  const input = lineInputs.value[threadTypeId]
+function getAddButtonTooltip(colorId: number, threadTypeId: number): string {
+  const key = `${colorId}-${threadTypeId}`
+  const input = lineInputs.value[key]
   if (!input) return 'Nhập số lượng xuất'
-
-  if (input.full === 0 && input.partial === 0) {
-    return 'Nhập số lượng xuất'
-  }
-
-  if (input.validation && !input.validation.stock_sufficient) {
-    return 'Không đủ tồn kho'
-  }
-
+  if (input.full === 0 && input.partial === 0) return 'Nhập số lượng xuất'
+  if (input.validation && !input.validation.stock_sufficient) return 'Không đủ tồn kho'
   return 'Thêm vào phiếu'
 }
 
-async function handleAddLine(threadType: ThreadTypeForIssue) {
-  const input = lineInputs.value[threadType.thread_type_id]
+async function handleAddLine(row: ThreadTypeForIssueWithColor) {
+  const key = `${row.color_id}-${row.thread_type_id}`
+  const input = lineInputs.value[key]
   if (!input || (input.full === 0 && input.partial === 0)) {
     snackbar.warning('Nhập số lượng xuất')
     return
@@ -452,19 +494,23 @@ async function handleAddLine(threadType: ThreadTypeForIssue) {
     return
   }
 
+  const lineData = {
+    po_id: selectedPoId.value,
+    style_id: selectedStyleId.value,
+    color_id: row.color_id,
+    style_color_id: row.color_id,
+    sub_art_id: selectedSubArtId.value,
+    thread_type_id: row.thread_type_id,
+    issued_full: input.full,
+    issued_partial: input.partial,
+    over_quota_notes: input.notes.trim() || null,
+  }
+
   if (!hasIssue.value) {
     const result = await createIssueWithFirstLine({
       department: department.value.trim(),
       created_by: createdBy.value.trim(),
-      po_id: selectedPoId.value,
-      style_id: selectedStyleId.value,
-      color_id: selectedColorId.value,
-      style_color_id: selectedColorId.value,
-      sub_art_id: selectedSubArtId.value,
-      thread_type_id: threadType.thread_type_id,
-      issued_full: input.full,
-      issued_partial: input.partial,
-      over_quota_notes: input.notes.trim() || null,
+      ...lineData,
     })
 
     if (result) {
@@ -476,17 +522,7 @@ async function handleAddLine(threadType: ThreadTypeForIssue) {
     return
   }
 
-  const result = await addLine({
-    po_id: selectedPoId.value,
-    style_id: selectedStyleId.value,
-    color_id: selectedColorId.value,
-    style_color_id: selectedColorId.value,
-    sub_art_id: selectedSubArtId.value,
-    thread_type_id: threadType.thread_type_id,
-    issued_full: input.full,
-    issued_partial: input.partial,
-    over_quota_notes: input.notes.trim() || null,
-  })
+  const result = await addLine(lineData)
 
   if (result) {
     input.full = 0
@@ -500,9 +536,132 @@ async function handleRemoveLine(lineId: number) {
   await removeLine(lineId)
 }
 
+async function handleBatchAddAll() {
+  const linesToAdd: Array<{
+    colorId: number
+    key: string
+    data: {
+      po_id: number | null
+      style_id: number | null
+      color_id: number
+      style_color_id: number
+      sub_art_id: number | null
+      thread_type_id: number
+      issued_full: number
+      issued_partial: number
+      over_quota_notes: string | null
+    }
+  }> = []
+
+  for (const row of availableThreadTypes.value) {
+    const key = `${row.color_id}-${row.thread_type_id}`
+    const input = lineInputs.value[key]
+    if (!input || (input.full === 0 && input.partial === 0)) continue
+
+    if (input.validation && !input.validation.stock_sufficient) {
+      snackbar.error(`${row.color_name} - ${row.thread_code}: Không đủ tồn kho`)
+      return
+    }
+
+    if (input.validation?.is_over_quota && !input.notes.trim()) {
+      snackbar.warning(`${row.color_name} - ${row.thread_code}: Vượt định mức, cần ghi chú`)
+      return
+    }
+
+    linesToAdd.push({
+      colorId: row.color_id,
+      key,
+      data: {
+        po_id: selectedPoId.value,
+        style_id: selectedStyleId.value,
+        color_id: row.color_id,
+        style_color_id: row.color_id,
+        sub_art_id: selectedSubArtId.value,
+        thread_type_id: row.thread_type_id,
+        issued_full: input.full,
+        issued_partial: input.partial,
+        over_quota_notes: input.notes.trim() || null,
+      },
+    })
+  }
+
+  if (linesToAdd.length === 0) {
+    snackbar.warning('Không có dòng nào để thêm')
+    return
+  }
+
+  isBatchAdding.value = true
+
+  try {
+    if (!hasIssue.value) {
+      const firstLine = linesToAdd[0]
+      const result = await createIssueWithFirstLine({
+        department: department.value.trim(),
+        created_by: createdBy.value.trim(),
+        ...firstLine.data,
+      })
+
+      if (!result) {
+        return
+      }
+
+      const input = lineInputs.value[firstLine.key]
+      if (input) {
+        input.full = 0
+        input.partial = 0
+        input.notes = ''
+        input.validation = null
+      }
+
+      if (linesToAdd.length === 1) return
+
+      const remainingLines = linesToAdd.slice(1).map((l) => l.data)
+      const batchResult = await batchAddLines({ lines: remainingLines })
+
+      if (batchResult) {
+        for (const l of linesToAdd.slice(1)) {
+          const inp = lineInputs.value[l.key]
+          if (inp) {
+            inp.full = 0
+            inp.partial = 0
+            inp.notes = ''
+            inp.validation = null
+          }
+        }
+      }
+    } else {
+      const allLines = linesToAdd.map((l) => l.data)
+      const batchResult = await batchAddLines({ lines: allLines })
+
+      if (batchResult) {
+        for (const l of linesToAdd) {
+          const inp = lineInputs.value[l.key]
+          if (inp) {
+            inp.full = 0
+            inp.partial = 0
+            inp.notes = ''
+            inp.validation = null
+          }
+        }
+      }
+    }
+  } finally {
+    isBatchAdding.value = false
+  }
+}
+
+const hasBatchLines = computed(() => {
+  return Object.entries(lineInputs.value).some(([, input]) => input.full > 0 || input.partial > 0)
+})
+
 async function handleConfirm() {
   if (!canConfirm.value) return
-  await confirmIssue()
+  isConfirming.value = true
+  try {
+    await confirmIssue()
+  } finally {
+    isConfirming.value = false
+  }
 }
 
 function handleBack() {
@@ -511,7 +670,7 @@ function handleBack() {
     selectedPoId.value = null
     selectedStyleId.value = null
     selectedSubArtId.value = null
-    selectedColorId.value = null
+    selectedColorIds.value = []
     subArtOptions.value = []
     colorOptions.value = []
     lineInputs.value = {}
@@ -530,7 +689,7 @@ function handleNewIssue() {
   selectedPoId.value = null
   selectedStyleId.value = null
   selectedSubArtId.value = null
-  selectedColorId.value = null
+  selectedColorIds.value = []
   subArtOptions.value = []
   lineInputs.value = {}
 }
@@ -1167,7 +1326,7 @@ onMounted(async () => {
           </q-card>
 
           <q-card
-            v-if="(step2Visible || hasIssue) && lines.length === 0 && threadTypes.length === 0"
+            v-if="(step2Visible || hasIssue) && lines.length === 0 && multiColorThreadTypes.length === 0"
             flat
             bordered
           >
