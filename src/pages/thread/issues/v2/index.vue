@@ -1026,12 +1026,14 @@ onMounted(async () => {
                 </div>
                 <div class="col-12 col-md-3">
                   <AppSelect
-                    v-model="selectedColorId"
-                    label="Màu"
+                    v-model="selectedColorIds"
+                    label="Màu Hàng"
                     :options="colorOptions"
                     :disable="!selectedStyleId || (selectedStyleHasSubArts && !selectedSubArtId)"
                     emit-value
                     map-options
+                    multiple
+                    use-chips
                     use-input
                     fill-input
                     hide-selected
@@ -1055,10 +1057,16 @@ onMounted(async () => {
                     :disable="!canLoadThreadTypes"
                     @click="handleLoadFormData"
                   />
+                  <div
+                    v-if="loadingColorProgress"
+                    class="text-caption text-grey q-mt-xs"
+                  >
+                    {{ loadingColorProgress }}
+                  </div>
                 </div>
               </div>
               <div
-                v-if="selectedPoId && selectedStyleId && selectedColorId"
+                v-if="selectedPoId && selectedStyleId && selectedColorIds.length === 1"
                 class="q-mt-sm row items-center"
               >
                 <q-btn
@@ -1544,7 +1552,7 @@ onMounted(async () => {
     <div class="text-caption text-grey q-mb-md">
       PO: {{ poOptions.find(p => p.value === selectedPoId)?.label }}
       · Style: {{ styleOptions.find(s => s.value === selectedStyleId)?.label }}
-      · Màu: {{ colorOptions.find(c => c.value === selectedColorId)?.label }}
+      · Màu: {{ colorOptions.find(c => c.value === selectedColorIds[0])?.label }}
     </div>
 
     <template v-if="allocationSummary">
