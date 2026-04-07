@@ -99,6 +99,55 @@ employees.get('/count', requirePermission('employees.view'), async (c) => {
   }
 })
 
+employees.get('/issue-departments', async (c) => {
+  try {
+    const [empResult, settingResult] = await Promise.all([
+      supabase
+        .from('employees')
+        .select('department')
+        .not('department', 'is', null)
+        .eq('is_active', true)
+        .is('deleted_at', null),
+      supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'issue_department_options')
+        .maybeSingle(),
+    ])
+
+    if (empResult.error) {
+      console.error('Supabase error:', empResult.error)
+      return c.json<ApiResponse<null>>(
+        { data: null, error: 'Lỗi khi lấy danh sách bộ phận' },
+        500
+      )
+    }
+
+    const uniqueDepts = [...new Set(
+      (empResult.data || [])
+        .map(e => e.department)
+        .filter((d): d is string => !!d)
+    )]
+
+    const config = (settingResult.data?.value as { hidden?: string[]; custom?: string[] }) ?? {}
+    const hidden = config.hidden ?? []
+    const custom = config.custom ?? []
+    const filtered = uniqueDepts.filter(d => !hidden.includes(d))
+    const final = [...new Set([...filtered, ...custom])].sort((a, b) => a.localeCompare(b, 'vi'))
+
+    return c.json<ApiResponse<string[]>>({
+      data: final,
+      error: null,
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return c.json<ApiResponse<null>>(
+      { data: null, error: 'Lỗi hệ thống' },
+      500
+    )
+  }
+})
+
 /**
  * GET /api/employees/departments - Get unique departments
  * Returns distinct department values from employees table

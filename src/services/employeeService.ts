@@ -89,6 +89,11 @@ export const employeeService = {
     return response.data || []
   },
 
+  async getIssueDepartments(): Promise<string[]> {
+    const response = await fetchApi<ApiResponse<string[]>>('/api/employees/issue-departments')
+    return response.data ?? []
+  },
+
   async resetPassword(id: number, newPassword: string): Promise<boolean> {
     const response = await fetchApi<ApiResponse<null>>(`/api/auth/reset-password/${id}`, {
       method: 'POST',
