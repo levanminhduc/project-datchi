@@ -136,9 +136,9 @@ const availableThreadTypes = computed(() => {
   const addedKeys = new Set(
     lines.value.map((line) => `${line.color_id || line.style_color_id}-${line.thread_type_id}`)
   )
-  return multiColorThreadTypes.value.filter(
-    (tt) => !addedKeys.has(`${tt.color_id}-${tt.thread_type_id}`)
-  )
+  return multiColorThreadTypes.value
+    .filter((tt) => !addedKeys.has(`${tt.color_id}-${tt.thread_type_id}`))
+    .sort((a, b) => a.color_name.localeCompare(b.color_name) || (a.thread_code || '').localeCompare(b.thread_code || ''))
 })
 
 const columns: QTableColumn[] = [
