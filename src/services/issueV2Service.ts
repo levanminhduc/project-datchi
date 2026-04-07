@@ -15,6 +15,7 @@ import type {
   CreateIssueV2Response,
   CreateIssueWithLineDTO,
   AddIssueLineV2DTO,
+  BatchAddLinesDTO,
   ValidateIssueLineV2DTO,
   ValidateLineResponse,
   IssueFormData,
@@ -178,6 +179,19 @@ export const issueV2Service = {
 
     if (response.error || !response.data) {
       throw new Error(response.error || 'Khong the them dong')
+    }
+
+    return response.data
+  },
+
+  async batchAddLines(issueId: number, data: BatchAddLinesDTO): Promise<IssueLineV2WithComputed[]> {
+    const response = await fetchApi<ApiResponse<IssueLineV2WithComputed[]>>(`${BASE}/${issueId}/batch-lines`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+
+    if (response.error || !response.data) {
+      throw new Error(response.error || 'Không thể thêm các dòng')
     }
 
     return response.data
