@@ -20,6 +20,7 @@ import type {
   CreateIssueV2DTO,
   CreateIssueWithLineDTO,
   AddIssueLineV2DTO,
+  BatchAddLinesDTO,
   ValidateIssueLineV2DTO,
   ValidateLineResponse,
   IssueFormData,
@@ -224,6 +225,32 @@ export function useIssueV2() {
     }
   }
 
+  const batchAddLines = async (data: BatchAddLinesDTO): Promise<IssueLineV2WithComputed[] | null> => {
+    if (!currentIssue.value) {
+      snackbar.error('Chưa tạo phiếu xuất')
+      return null
+    }
+
+    clearError()
+
+    try {
+      const lines = await loading.withLoading(async () => {
+        return await issueV2Service.batchAddLines(currentIssue.value!.id, data)
+      })
+
+      await fetchIssue(currentIssue.value.id)
+
+      snackbar.success(`Đã thêm ${lines.length} dòng vào phiếu`)
+      return lines
+    } catch (err) {
+      const errorMessage = getErrorMessage(err, 'Không thể thêm các dòng')
+      error.value = errorMessage
+      snackbar.error(errorMessage)
+      console.error('[useIssueV2] batchAddLines error:', err)
+      return null
+    }
+  }
+
   /**
    * Remove a line from the current issue
    * @param lineId - Line ID to remove
@@ -339,6 +366,7 @@ export function useIssueV2() {
     loadFormData,
     validateLine,
     addLine,
+    batchAddLines,
     removeLine,
     updateLineNotes,
     confirmIssue,
