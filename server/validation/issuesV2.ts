@@ -63,6 +63,12 @@ export const AddIssueLineV2Schema = z.object({
 
 export type AddIssueLineV2DTO = z.infer<typeof AddIssueLineV2Schema>
 
+export const BatchAddLinesSchema = z.object({
+  lines: z.array(AddIssueLineV2Schema).min(1, 'Phai co it nhat 1 dong'),
+})
+
+export type BatchAddLinesDTO = z.infer<typeof BatchAddLinesSchema>
+
 // ============================================================================
 // Validate Issue Line
 // ============================================================================
