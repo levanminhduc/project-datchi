@@ -1108,12 +1108,18 @@ onMounted(async () => {
               <q-table
                 :rows="availableThreadTypes"
                 :columns="columns"
-                row-key="thread_type_id"
+                :row-key="(row: any) => `${row.color_id}-${row.thread_type_id}`"
                 flat
                 bordered
                 :pagination="{ rowsPerPage: 0 }"
                 hide-bottom
               >
+                <template #body-cell-color="props">
+                  <q-td :props="props">
+                    <span class="text-weight-medium">{{ props.row.color_name }}</span>
+                  </q-td>
+                </template>
+
                 <template #body-cell-thread="props">
                   <q-td :props="props">
                     <div class="text-weight-medium">
@@ -1151,7 +1157,7 @@ onMounted(async () => {
                   <q-td :props="props">
                     <div class="row q-gutter-xs items-center no-wrap">
                       <AppInput
-                        :model-value="lineInputs[props.row.thread_type_id]?.full ?? 0"
+                        :model-value="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.full ?? 0"
                         type="number"
                         dense
                         class="col"
@@ -1159,11 +1165,11 @@ onMounted(async () => {
                         :min="0"
                         :max="props.row.stock_available_full"
                         placeholder="Nguyên"
-                        @update:model-value="(v) => handleInputChange(props.row.thread_type_id, 'full', Number(v) || 0, props.row.stock_available_full)"
+                        @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'full', Number(v) || 0, props.row.stock_available_full)"
                       />
                       <span>+</span>
                       <AppInput
-                        :model-value="lineInputs[props.row.thread_type_id]?.partial ?? 0"
+                        :model-value="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.partial ?? 0"
                         type="number"
                         dense
                         class="col"
@@ -1171,11 +1177,11 @@ onMounted(async () => {
                         :min="0"
                         :max="props.row.stock_available_partial"
                         placeholder="Lẻ"
-                        @update:model-value="(v) => handleInputChange(props.row.thread_type_id, 'partial', Number(v) || 0, props.row.stock_available_partial)"
+                        @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'partial', Number(v) || 0, props.row.stock_available_partial)"
                       />
                     </div>
                     <div
-                      v-if="getUnderQuotaAmount(props.row) > 0 && (lineInputs[props.row.thread_type_id]?.full || lineInputs[props.row.thread_type_id]?.partial)"
+                      v-if="getUnderQuotaAmount(props.row) > 0 && (lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.full || lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.partial)"
                       class="q-mt-xs"
                     >
                       <q-badge
@@ -1186,7 +1192,7 @@ onMounted(async () => {
                       </q-badge>
                     </div>
                     <div
-                      v-if="lineInputs[props.row.thread_type_id]?.validation?.is_over_quota"
+                      v-if="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.validation?.is_over_quota"
                       class="q-mt-xs"
                     >
                       <q-badge
@@ -1199,11 +1205,11 @@ onMounted(async () => {
                         <q-chip
                           v-for="reason in OVER_QUOTA_REASONS"
                           :key="reason"
-                          :outline="lineInputs[props.row.thread_type_id]?.notes !== reason"
-                          :color="lineInputs[props.row.thread_type_id]?.notes === reason ? 'warning' : undefined"
+                          :outline="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.notes !== reason"
+                          :color="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.notes === reason ? 'warning' : undefined"
                           clickable
                           dense
-                          @click="() => { const input = lineInputs[props.row.thread_type_id]; if (input) { input.notes = input.notes === reason ? '' : reason } }"
+                          @click="() => { const input = lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]; if (input) { input.notes = input.notes === reason ? '' : reason } }"
                         >
                           {{ reason }}
                         </q-chip>
@@ -1214,10 +1220,10 @@ onMounted(async () => {
 
                 <template #body-cell-equivalent="props">
                   <q-td :props="props">
-                    <span v-if="lineInputs[props.row.thread_type_id]?.validation">
-                      {{ lineInputs[props.row.thread_type_id]?.validation?.issued_equivalent.toFixed(2) }}
+                    <span v-if="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.validation">
+                      {{ lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.validation?.issued_equivalent.toFixed(2) }}
                       <q-icon
-                        v-if="!lineInputs[props.row.thread_type_id]?.validation?.stock_sufficient"
+                        v-if="!lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.validation?.stock_sufficient"
                         name="warning"
                         color="negative"
                       >
@@ -1239,14 +1245,27 @@ onMounted(async () => {
                       color="primary"
                       dense
                       round
-                      :disable="isAddButtonDisabled(props.row.thread_type_id)"
+                      :disable="isAddButtonDisabled(props.row.color_id, props.row.thread_type_id)"
                       @click="handleAddLine(props.row)"
                     >
-                      <q-tooltip>{{ getAddButtonTooltip(props.row.thread_type_id) }}</q-tooltip>
+                      <q-tooltip>{{ getAddButtonTooltip(props.row.color_id, props.row.thread_type_id) }}</q-tooltip>
                     </AppButton>
                   </q-td>
                 </template>
               </q-table>
+              <div
+                v-if="hasBatchLines"
+                class="q-mt-md row justify-end"
+              >
+                <AppButton
+                  label="Thêm tất cả"
+                  color="primary"
+                  icon="playlist_add"
+                  :loading="isBatchAdding"
+                  :disable="isBatchAdding || isConfirming"
+                  @click="handleBatchAddAll"
+                />
+              </div>
             </q-card-section>
           </q-card>
 
