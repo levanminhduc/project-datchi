@@ -21,6 +21,7 @@ import {
   CreateIssueV2Schema,
   CreateIssueWithLineSchema,
   AddIssueLineV2Schema,
+  BatchAddLinesSchema,
   ValidateIssueLineV2Schema,
   IssueV2FiltersSchema,
   FormDataQuerySchema,
@@ -1854,6 +1855,198 @@ issuesV2.post('/:id/lines/validate', async (c) => {
         data: null,
         error: getErrorMessage(err),
       },
+      500
+    )
+  }
+})
+
+/**
+ * POST /api/issues/v2/:id/batch-lines - Add multiple lines to issue atomically
+ *
+ * Body: { lines: AddIssueLineV2DTO[] }
+ * Returns: array of created lines with computed fields
+ */
+issuesV2.post('/:id/batch-lines', async (c) => {
+  try {
+    const issueId = parseInt(c.req.param('id'))
+    if (isNaN(issueId)) {
+      return c.json<ThreadApiResponse<null>>(
+        { data: null, error: 'ID phieu xuat khong hop le' },
+        400
+      )
+    }
+
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = BatchAddLinesSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json<ThreadApiResponse<null>>(
+          { data: null, error: formatZodError(err) },
+          400
+        )
+      }
+      throw err
+    }
+
+    const { data: issue, error: issueError } = await supabase
+      .from('thread_issues')
+      .select('id, status, department')
+      .eq('id', issueId)
+      .single()
+
+    if (issueError || !issue) {
+      return c.json<ThreadApiResponse<null>>(
+        { data: null, error: 'Khong tim thay phieu xuat' },
+        404
+      )
+    }
+
+    if (issue.status !== 'DRAFT') {
+      return c.json<ThreadApiResponse<null>>(
+        { data: null, error: 'Chi co the them dong vao phieu nhap - Phieu da xac nhan' },
+        400
+      )
+    }
+
+    const ratio = await getPartialConeRatio()
+    const insertRows: Array<Record<string, unknown>> = []
+    const lineResults: Array<Record<string, unknown>> = []
+
+    for (let i = 0; i < validated.lines.length; i++) {
+      const line = validated.lines[i]
+      const {
+        po_id, style_id, style_color_id, color_id, sub_art_id,
+        thread_type_id, issued_full, issued_partial, over_quota_notes,
+      } = line
+      const effectiveColorId = style_color_id || color_id
+
+      const subArtError = await validateSubArtId(style_id, sub_art_id)
+      if (subArtError) {
+        return c.json<ThreadApiResponse<null>>(
+          { data: null, error: `Dong ${i + 1}: ${subArtError}` },
+          400
+        )
+      }
+
+      if (await isComboCompletedInAllWeeks(po_id, style_id, effectiveColorId)) {
+        return c.json<ThreadApiResponse<null>>(
+          { data: null, error: `Dong ${i + 1}: PO-Style-Mau da hoan tat xuat trong tat ca tuan` },
+          400
+        )
+      }
+
+      const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio, issue.department)
+      const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
+      const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
+
+      if (isOverQuota && !over_quota_notes?.trim()) {
+        return c.json<ThreadApiResponse<null>>(
+          { data: null, error: `Dong ${i + 1}: Vuot dinh muc, yeu cau ghi chu ly do` },
+          400
+        )
+      }
+
+      const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
+      const detectedWarehouseId = await detectWarehouseForThread(thread_type_id, weekIds)
+      const stock = await getStockAvailability(thread_type_id, detectedWarehouseId, weekIds)
+      const stockSufficient =
+        (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
+
+      if (!stockSufficient) {
+        const shortFull = Math.max(0, (issued_full || 0) - stock.full_cones)
+        const shortPartial = Math.max(0, (issued_partial || 0) - stock.partial_cones)
+        return c.json<ThreadApiResponse<null>>(
+          {
+            data: null,
+            error: `Dong ${i + 1}: Khong du ton kho. Thieu ${shortFull > 0 ? shortFull + ' cuon nguyen' : ''}${shortFull > 0 && shortPartial > 0 ? ', ' : ''}${shortPartial > 0 ? shortPartial + ' cuon le' : ''}`,
+          },
+          400
+        )
+      }
+
+      insertRows.push({
+        issue_id: issueId,
+        po_id: po_id || null,
+        style_id: style_id || null,
+        style_color_id: style_color_id || null,
+        color_id: color_id || null,
+        sub_art_id: sub_art_id || null,
+        thread_type_id,
+        quota_cones: quotaCones,
+        issued_full: issued_full || 0,
+        issued_partial: issued_partial || 0,
+        returned_full: 0,
+        returned_partial: 0,
+        over_quota_notes: over_quota_notes || null,
+      })
+
+      lineResults.push({
+        issuedEquivalent,
+        isOverQuota,
+        stock,
+        thread_type_id,
+        sub_art_id,
+      })
+    }
+
+    const { data: insertedLines, error: insertError } = await supabase
+      .from('thread_issue_lines')
+      .insert(insertRows)
+      .select('*')
+
+    if (insertError || !insertedLines) {
+      console.error('Error batch inserting lines:', insertError)
+      return c.json<ThreadApiResponse<null>>(
+        { data: null, error: 'Khong the them cac dong: ' + (insertError?.message || 'Loi khong xac dinh') },
+        500
+      )
+    }
+
+    const threadTypeIds = [...new Set(insertedLines.map((l: { thread_type_id: number }) => l.thread_type_id))]
+    const { data: threadTypes } = await supabase
+      .from('thread_types')
+      .select('id, code, name')
+      .in('id', threadTypeIds)
+
+    const ttMap = new Map((threadTypes || []).map((t: { id: number; code: string; name: string }) => [t.id, t]))
+
+    const subArtIds = [...new Set(insertedLines.map((l: { sub_art_id: number | null }) => l.sub_art_id).filter(Boolean))]
+    let subArtMap = new Map<number, string>()
+    if (subArtIds.length > 0) {
+      const { data: subArts } = await supabase
+        .from('sub_arts')
+        .select('id, sub_art_code')
+        .in('id', subArtIds)
+      subArtMap = new Map((subArts || []).map((s: { id: number; sub_art_code: string }) => [s.id, s.sub_art_code]))
+    }
+
+    const enrichedLines = insertedLines.map((line: Record<string, unknown>, idx: number) => {
+      const meta = lineResults[idx]
+      const tt = ttMap.get(line.thread_type_id as number)
+      return {
+        ...line,
+        issued_equivalent: meta.issuedEquivalent,
+        is_over_quota: meta.isOverQuota,
+        stock_available_full: (meta.stock as { full_cones: number }).full_cones,
+        stock_available_partial: (meta.stock as { partial_cones: number }).partial_cones,
+        thread_code: tt?.code,
+        thread_name: tt?.name,
+        sub_art_code: line.sub_art_id ? subArtMap.get(line.sub_art_id as number) || null : null,
+      }
+    })
+
+    return c.json({
+      data: enrichedLines,
+      error: null,
+      message: `Them ${enrichedLines.length} dong thanh cong`,
+    })
+  } catch (err) {
+    console.error('Error in POST /api/issues/v2/:id/batch-lines:', err)
+    return c.json<ThreadApiResponse<null>>(
+      { data: null, error: getErrorMessage(err) },
       500
     )
   }
