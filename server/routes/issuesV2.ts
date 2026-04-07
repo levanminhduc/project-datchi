@@ -913,6 +913,140 @@ async function detectWarehouseForThread(
   return bestWarehouseId
 }
 
+async function getStockBreakdownByWarehouse(
+  threadTypeId: number,
+  weekIds: number[]
+): Promise<{ warehouse_id: number; warehouse_name: string; full_cones: number; partial_cones: number }[]> {
+  const warehouseMap = new Map<number, { warehouse_name: string; full_cones: number; partial_cones: number }>()
+
+  if (weekIds.length > 0) {
+    const { data: reserved } = await supabase
+      .from('thread_inventory')
+      .select('warehouse_id, is_partial, warehouses!inner(name)')
+      .eq('thread_type_id', threadTypeId)
+      .eq('status', 'RESERVED_FOR_ORDER')
+      .in('reserved_week_id', weekIds)
+      .limit(10000)
+
+    if (reserved) {
+      for (const cone of reserved) {
+        const whId = cone.warehouse_id
+        const whName = (cone.warehouses as any)?.name || ''
+        if (!warehouseMap.has(whId)) {
+          warehouseMap.set(whId, { warehouse_name: whName, full_cones: 0, partial_cones: 0 })
+        }
+        const entry = warehouseMap.get(whId)!
+        if (cone.is_partial) entry.partial_cones++
+        else entry.full_cones++
+      }
+    }
+  }
+
+  const { data: free } = await supabase
+    .from('thread_inventory')
+    .select('warehouse_id, is_partial, warehouses!inner(name)')
+    .eq('thread_type_id', threadTypeId)
+    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
+    .limit(10000)
+
+  if (free) {
+    for (const cone of free) {
+      const whId = cone.warehouse_id
+      const whName = (cone.warehouses as any)?.name || ''
+      if (!warehouseMap.has(whId)) {
+        warehouseMap.set(whId, { warehouse_name: whName, full_cones: 0, partial_cones: 0 })
+      }
+      const entry = warehouseMap.get(whId)!
+      if (cone.is_partial) entry.partial_cones++
+      else entry.full_cones++
+    }
+  }
+
+  return Array.from(warehouseMap.entries()).map(([warehouse_id, data]) => ({
+    warehouse_id,
+    ...data,
+  }))
+}
+
+async function transferConesForIssue(
+  threadTypeId: number,
+  fromWarehouseId: number,
+  toWarehouseId: number,
+  fullCount: number,
+  partialCount: number,
+  performedBy: string,
+  issueId: number
+): Promise<{ success: boolean; transferred_full: number; transferred_partial: number }> {
+  const coneIds: number[] = []
+  let transferredFull = 0
+  let transferredPartial = 0
+
+  if (fullCount > 0) {
+    const { data: fullCones } = await supabase
+      .from('thread_inventory')
+      .select('id')
+      .eq('thread_type_id', threadTypeId)
+      .eq('warehouse_id', fromWarehouseId)
+      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
+      .eq('is_partial', false)
+      .order('expiry_date', { ascending: true, nullsFirst: false })
+      .order('received_date', { ascending: true })
+      .limit(fullCount)
+
+    if (fullCones) {
+      coneIds.push(...fullCones.map((c) => c.id))
+      transferredFull = fullCones.length
+    }
+  }
+
+  if (partialCount > 0) {
+    const { data: partialCones } = await supabase
+      .from('thread_inventory')
+      .select('id')
+      .eq('thread_type_id', threadTypeId)
+      .eq('warehouse_id', fromWarehouseId)
+      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
+      .eq('is_partial', true)
+      .order('expiry_date', { ascending: true, nullsFirst: false })
+      .order('received_date', { ascending: true })
+      .limit(partialCount)
+
+    if (partialCones) {
+      coneIds.push(...partialCones.map((c) => c.id))
+      transferredPartial = partialCones.length
+    }
+  }
+
+  if (coneIds.length === 0) {
+    return { success: false, transferred_full: 0, transferred_partial: 0 }
+  }
+
+  const { error: updateError } = await supabase
+    .from('thread_inventory')
+    .update({ warehouse_id: toWarehouseId })
+    .in('id', coneIds)
+
+  if (updateError) {
+    console.error('[transferConesForIssue] Update error:', updateError)
+    return { success: false, transferred_full: 0, transferred_partial: 0 }
+  }
+
+  await supabase
+    .from('batch_transactions')
+    .insert({
+      operation_type: 'TRANSFER',
+      from_warehouse_id: fromWarehouseId,
+      to_warehouse_id: toWarehouseId,
+      cone_ids: coneIds,
+      cone_count: coneIds.length,
+      notes: `Muon kho cho phieu xuat #${issueId}`,
+      performed_by: performedBy,
+      performed_at: new Date().toISOString(),
+    })
+
+  return { success: true, transferred_full: transferredFull, transferred_partial: transferredPartial }
+}
+
 /**
  * Deduct stock using FEFO (First Expired First Out)
  * Uses RPC fn_issue_cones_with_movements for atomic operation with movement logging
@@ -1664,7 +1798,7 @@ issuesV2.get('/form-data', async (c) => {
       throw err
     }
 
-    const { po_id, style_id, style_color_id, color_id, department } = validated
+    const { po_id, style_id, style_color_id, color_id, department, warehouse_id } = validated
     const effectiveColorId = style_color_id || color_id
 
     // Get thread types from BOM (style_color_thread_specs -> style_thread_specs)
@@ -1715,8 +1849,9 @@ issuesV2.get('/form-data', async (c) => {
         const spec = filteredSpecs.find((s: any) => s.thread_type_id === threadTypeId) as any
         const threadType = spec?.thread_types as any
         const detectedWarehouseId = await detectWarehouseForThread(threadTypeId, weekIds)
+        const effectiveWarehouseId = warehouse_id || detectedWarehouseId
         const [stock, quotaCones, baseQuota, confirmedGross] = await Promise.all([
-          getStockAvailability(threadTypeId!, detectedWarehouseId, weekIds),
+          getStockAvailability(threadTypeId!, effectiveWarehouseId, weekIds),
           getQuotaCones(po_id, style_id, effectiveColorId, threadTypeId!, ratio, department),
           getBaseQuotaCones(po_id!, style_id!, effectiveColorId!, threadTypeId!),
           getConfirmedIssuedGross(po_id!, style_id!, effectiveColorId!, threadTypeId!, ratio),
@@ -1727,7 +1862,7 @@ issuesV2.get('/form-data', async (c) => {
         const colorName = (spec as any)?.thread_color?.name || ''
         const displayName = [supplierName, texPart, colorName].filter(Boolean).join(' - ') || threadType?.name || ''
 
-        return {
+        const result: any = {
           thread_type_id: threadTypeId,
           thread_code: threadType?.code || '',
           thread_name: displayName,
@@ -1736,7 +1871,14 @@ issuesV2.get('/form-data', async (c) => {
           confirmed_issued_gross: confirmedGross,
           stock_available_full: stock.full_cones,
           stock_available_partial: stock.partial_cones,
+          detected_warehouse_id: detectedWarehouseId,
         }
+
+        if (warehouse_id) {
+          result.stock_by_warehouse = await getStockBreakdownByWarehouse(threadTypeId, weekIds)
+        }
+
+        return result
       })
     )
 
@@ -2635,7 +2777,7 @@ issuesV2.post('/:id/confirm', async (c) => {
       throw err
     }
 
-    const { idempotency_key, confirmed_by } = validated
+    const { idempotency_key, confirmed_by, warehouse_id, allow_transfer } = validated
     const performedBy = getPerformedBy(c, confirmed_by)
     const requestHash = hashPayload({ issueId, ...body })
 
@@ -2791,6 +2933,7 @@ issuesV2.post('/:id/confirm', async (c) => {
     const warehouseCache = new Map<string, number | undefined>()
 
     async function getCachedWarehouse(threadTypeId: number, wIds: number[]): Promise<number | undefined> {
+      if (warehouse_id) return warehouse_id
       const cacheKey = `${threadTypeId}:${[...wIds].sort().join(',')}`
       if (warehouseCache.has(cacheKey)) return warehouseCache.get(cacheKey)
       const whId = await detectWarehouseForThread(threadTypeId, wIds)
@@ -2810,22 +2953,6 @@ issuesV2.post('/:id/confirm', async (c) => {
           .single()
         errors.push(`${threadType?.name || 'Loai chi'}: Vuot dinh muc nhung chua co ghi chu`)
       }
-
-      const lineWeekIds = weekIdsMap.get(line.id) || []
-      const lineWarehouseId = await getCachedWarehouse(line.thread_type_id, lineWeekIds)
-      const stock = await getStockAvailability(line.thread_type_id, lineWarehouseId, lineWeekIds)
-      if (line.issued_full > stock.full_cones || line.issued_partial > stock.partial_cones) {
-        const { data: threadType } = await supabase
-          .from('thread_types')
-          .select('name')
-          .eq('id', line.thread_type_id)
-          .single()
-        const shortFull = Math.max(0, line.issued_full - stock.full_cones)
-        const shortPartial = Math.max(0, line.issued_partial - stock.partial_cones)
-        errors.push(
-          `${threadType?.name || 'Loai chi'}: Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le`
-        )
-      }
     }
 
     if (errors.length > 0) {
@@ -2841,6 +2968,141 @@ issuesV2.post('/:id/confirm', async (c) => {
         },
         400
       )
+    }
+
+    if (warehouse_id && !allow_transfer) {
+      const shortages: any[] = []
+
+      for (const line of lines) {
+        const lineWeekIds = weekIdsMap.get(line.id) || []
+        const stock = await getStockAvailability(line.thread_type_id, warehouse_id, lineWeekIds)
+        const shortFull = Math.max(0, line.issued_full - stock.full_cones)
+        const shortPartial = Math.max(0, line.issued_partial - stock.partial_cones)
+
+        if (shortFull > 0 || shortPartial > 0) {
+          const { data: threadType } = await supabase
+            .from('thread_types')
+            .select('name')
+            .eq('id', line.thread_type_id)
+            .single()
+
+          const otherWarehouses = (await getStockBreakdownByWarehouse(line.thread_type_id, lineWeekIds))
+            .filter((w) => w.warehouse_id !== warehouse_id)
+
+          shortages.push({
+            thread_type_id: line.thread_type_id,
+            thread_name: threadType?.name || 'Loai chi',
+            needed_full: line.issued_full,
+            needed_partial: line.issued_partial,
+            available_full: stock.full_cones,
+            available_partial: stock.partial_cones,
+            shortage_full: shortFull,
+            shortage_partial: shortPartial,
+            other_warehouses: otherWarehouses,
+          })
+        }
+      }
+
+      if (shortages.length > 0) {
+        await supabase
+          .from('issue_operations_log')
+          .update({ status: 'FAILED', error_info: 'INSUFFICIENT_STOCK', completed_at: new Date().toISOString() })
+          .eq('idempotency_key', idempotency_key)
+          .eq('operation_type', 'CONFIRM')
+        return c.json({
+          data: {
+            status: 'INSUFFICIENT_STOCK' as const,
+            shortages,
+          },
+          error: null,
+        })
+      }
+    }
+
+    if (!warehouse_id) {
+      for (const line of lines) {
+        const lineWeekIds = weekIdsMap.get(line.id) || []
+        const lineWarehouseId = await getCachedWarehouse(line.thread_type_id, lineWeekIds)
+        const stock = await getStockAvailability(line.thread_type_id, lineWarehouseId, lineWeekIds)
+        if (line.issued_full > stock.full_cones || line.issued_partial > stock.partial_cones) {
+          const { data: threadType } = await supabase
+            .from('thread_types')
+            .select('name')
+            .eq('id', line.thread_type_id)
+            .single()
+          const shortFull = Math.max(0, line.issued_full - stock.full_cones)
+          const shortPartial = Math.max(0, line.issued_partial - stock.partial_cones)
+          errors.push(
+            `${threadType?.name || 'Loai chi'}: Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le`
+          )
+        }
+      }
+
+      if (errors.length > 0) {
+        await supabase
+          .from('issue_operations_log')
+          .update({ status: 'FAILED', error_info: errors.join('. '), completed_at: new Date().toISOString() })
+          .eq('idempotency_key', idempotency_key)
+          .eq('operation_type', 'CONFIRM')
+        return c.json<ThreadApiResponse<null>>(
+          {
+            data: null,
+            error: errors.join('. '),
+          },
+          400
+        )
+      }
+    }
+
+    const transfers: { from_warehouse: string; to_warehouse: string; thread_name: string; count: number }[] = []
+
+    if (warehouse_id && allow_transfer) {
+      const { data: targetWh } = await supabase
+        .from('warehouses')
+        .select('name')
+        .eq('id', warehouse_id)
+        .single()
+      const targetWarehouseName = targetWh?.name || ''
+
+      for (const line of lines) {
+        const lineWeekIds = weekIdsMap.get(line.id) || []
+        const stock = await getStockAvailability(line.thread_type_id, warehouse_id, lineWeekIds)
+        const shortFull = Math.max(0, line.issued_full - stock.full_cones)
+        const shortPartial = Math.max(0, line.issued_partial - stock.partial_cones)
+
+        if (shortFull > 0 || shortPartial > 0) {
+          const otherWarehouses = (await getStockBreakdownByWarehouse(line.thread_type_id, lineWeekIds))
+            .filter((w) => w.warehouse_id !== warehouse_id)
+            .sort((a, b) => (b.full_cones + b.partial_cones) - (a.full_cones + a.partial_cones))
+
+          if (otherWarehouses.length > 0) {
+            const source = otherWarehouses[0]
+            const transferResult = await transferConesForIssue(
+              line.thread_type_id,
+              source.warehouse_id,
+              warehouse_id,
+              shortFull,
+              shortPartial,
+              performedBy,
+              issueId
+            )
+
+            if (transferResult.success) {
+              const { data: threadType } = await supabase
+                .from('thread_types')
+                .select('name')
+                .eq('id', line.thread_type_id)
+                .single()
+              transfers.push({
+                from_warehouse: source.warehouse_name,
+                to_warehouse: targetWarehouseName,
+                thread_name: threadType?.name || '',
+                count: transferResult.transferred_full + transferResult.transferred_partial,
+              })
+            }
+          }
+        }
+      }
     }
 
     const succeededLineIds: number[] = []
@@ -2872,7 +3134,7 @@ issuesV2.post('/:id/confirm', async (c) => {
 
     const firstLine = lines[0]
     const firstLineWeekIds = weekIdsMap.get(firstLine.id) || []
-    const issueWarehouseId = await getCachedWarehouse(firstLine.thread_type_id, firstLineWeekIds)
+    const issueWarehouseId = warehouse_id || await getCachedWarehouse(firstLine.thread_type_id, firstLineWeekIds)
 
     const { data: updatedIssue, error: updateError } = await supabase
       .from('thread_issues')
@@ -2918,7 +3180,7 @@ issuesV2.post('/:id/confirm', async (c) => {
       .eq('operation_type', 'CONFIRM')
 
     return c.json({
-      data: updatedIssue,
+      data: transfers.length > 0 ? { ...updatedIssue, transfers } : updatedIssue,
       error: null,
       message: 'Xac nhan xuat kho thanh cong',
     })

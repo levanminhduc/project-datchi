@@ -28,6 +28,7 @@ import type {
   ReturnGroupedDTO,
   ReturnGroupedResponse,
   GroupedReturnLog,
+  IssueInsufficientStockResponse,
 } from '@/types/thread/issueV2'
 
 const BASE = '/api/issues/v2'
@@ -149,13 +150,14 @@ export const issueV2Service = {
    * @param colorId - Color ID
    * @returns Thread types with quota and stock info
    */
-  async getFormData(poId: number, styleId: number, colorId: number, department?: string): Promise<IssueFormData> {
+  async getFormData(poId: number, styleId: number, colorId: number, department?: string, warehouseId?: number): Promise<IssueFormData> {
     const params = new URLSearchParams({
       po_id: String(poId),
       style_id: String(styleId),
       style_color_id: String(colorId),
     })
     if (department) params.append('department', department)
+    if (warehouseId) params.append('warehouse_id', String(warehouseId))
     const response = await fetchApi<ApiResponse<IssueFormData>>(`${BASE}/form-data?${params}`)
 
     if (response.error || !response.data) {
@@ -224,11 +226,14 @@ export const issueV2Service = {
    * @param idempotencyKey - UUID for idempotent request
    * @returns Updated issue with CONFIRMED status
    */
-  async confirm(issueId: number, idempotencyKey?: string): Promise<IssueV2WithLines> {
+  async confirm(issueId: number, idempotencyKey?: string, warehouseId?: number, allowTransfer?: boolean): Promise<IssueV2WithLines | IssueInsufficientStockResponse> {
     const key = idempotencyKey || crypto.randomUUID()
-    const response = await fetchApi<ApiResponse<IssueV2WithLines>>(`${BASE}/${issueId}/confirm`, {
+    const body: Record<string, unknown> = { idempotency_key: key }
+    if (warehouseId) body.warehouse_id = warehouseId
+    if (allowTransfer) body.allow_transfer = true
+    const response = await fetchApi<ApiResponse<IssueV2WithLines | IssueInsufficientStockResponse>>(`${BASE}/${issueId}/confirm`, {
       method: 'POST',
-      body: JSON.stringify({ idempotency_key: key }),
+      body: JSON.stringify(body),
     })
 
     if (response.error || !response.data) {

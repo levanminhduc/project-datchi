@@ -112,6 +112,7 @@ export const FormDataQuerySchema = z.object({
   style_color_id: z.coerce.number().int().positive().optional(),
   color_id: z.coerce.number().int().positive().optional(),
   department: z.string().trim().optional(),
+  warehouse_id: z.coerce.number().int().positive().optional(),
 })
 
 export type FormDataQueryDTO = z.infer<typeof FormDataQuerySchema>
@@ -185,6 +186,8 @@ export const ReturnGroupLogsQuerySchema = z.object({
 export const ConfirmIssueV2Schema = z.object({
   confirmed_by: z.string().optional(),
   idempotency_key: z.string().uuid('idempotency_key phai la UUID'),
+  warehouse_id: z.number().int().positive().optional(),
+  allow_transfer: z.boolean().optional().default(false),
 })
 
 export type ConfirmIssueV2DTO = z.infer<typeof ConfirmIssueV2Schema>

@@ -15,6 +15,7 @@ import { IssueV2Status, OVER_QUOTA_REASONS } from '@/types/thread/issueV2'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
+import AppWarehouseSelect from '@/components/ui/inputs/AppWarehouseSelect.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
@@ -29,6 +30,7 @@ import type {
   OrderOptionPO,
   OrderOptionStyle,
   OrderOptionColor,
+  IssueShortageDetail,
 } from '@/types/thread/issueV2'
 
 const route = useRoute()
@@ -102,6 +104,9 @@ const isBatchAdding = ref(false)
 const isConfirming = ref(false)
 const multiColorThreadTypes = ref<ThreadTypeForIssueWithColor[]>([])
 
+const selectedWarehouseId = ref<number | null>(null)
+const shortageData = ref<IssueShortageDetail[] | null>(null)
+const showBorrowDialog = ref(false)
 const selectedStyleHasSubArts = computed(() => {
   if (!selectedStyleId.value) return false
   const opt = styleOptions.value.find((s) => s.value === selectedStyleId.value)
@@ -262,11 +267,24 @@ watch(selectedStyleId, async (newStyleId) => {
   }
 })
 
-watch([selectedPoId, selectedStyleId, selectedSubArtId, selectedColorIds], async ([poId, styleId, _subArtId, colorIds]) => {
-  if (poId && styleId && (colorIds as number[]).length > 0 && canLoadThreadTypes.value) {
-    await handleLoadFormData()
+watch([selectedPoId, selectedStyleId, selectedSubArtId], () => {
+  multiColorThreadTypes.value = []
+  lineInputs.value = {}
+  resetAllocation()
+})
+
+const debouncedLoadFormData = useDebounceFn(() => {
+  if (canLoadThreadTypes.value) {
+    handleLoadFormData()
+  }
+}, 500)
+
+watch(selectedColorIds, (colorIds) => {
+  if (colorIds.length > 0 && canLoadThreadTypes.value) {
+    debouncedLoadFormData()
   } else {
     multiColorThreadTypes.value = []
+    lineInputs.value = {}
     resetAllocation()
   }
 }, { deep: true })
@@ -309,48 +327,62 @@ async function handleLoadFormData() {
 
   loadingFormData.value = true
   loadingColorProgress.value = ''
-  multiColorThreadTypes.value = []
-  lineInputs.value = {}
 
-  try {
-    const colorIds = selectedColorIds.value
-    let loadedCount = 0
+  const colorIds = selectedColorIds.value
+  const existingColorIds = new Set(multiColorThreadTypes.value.map((tt) => tt.color_id))
+  const newColorIds = colorIds.filter((id) => !existingColorIds.has(id))
 
-    const results = await Promise.allSettled(
-      colorIds.map(async (colorId) => {
-        const colorOption = colorOptions.value.find((c) => c.value === colorId)
-        const colorName = colorOption?.label || ''
-        const data = await loadFormData(selectedPoId.value!, selectedStyleId.value!, colorId, department.value || undefined)
-        loadedCount++
-        loadingColorProgress.value = `Đang tải ${loadedCount}/${colorIds.length} màu...`
-        return { colorId, colorName, data }
-      })
+  const removedColorIds = [...existingColorIds].filter((id) => !colorIds.includes(id))
+  if (removedColorIds.length > 0) {
+    multiColorThreadTypes.value = multiColorThreadTypes.value.filter(
+      (tt) => !removedColorIds.includes(tt.color_id)
     )
-
-    const allThreadTypes: ThreadTypeForIssueWithColor[] = []
-
-    for (const result of results) {
-      if (result.status === 'fulfilled' && result.value.data?.thread_types) {
-        for (const tt of result.value.data.thread_types) {
-          allThreadTypes.push({
-            ...tt,
-            color_id: result.value.colorId,
-            color_name: result.value.colorName,
-          })
-          const key = `${result.value.colorId}-${tt.thread_type_id}`
-          lineInputs.value[key] = {
-            full: 0,
-            partial: 0,
-            notes: '',
-            validation: null,
-          }
-        }
-      } else if (result.status === 'rejected') {
-        snackbar.warning(`Không thể tải dữ liệu cho 1 màu: ${result.reason?.message || 'Lỗi'}`)
+    for (const key of Object.keys(lineInputs.value)) {
+      const colorId = Number(key.split('-')[0])
+      if (removedColorIds.includes(colorId)) {
+        delete lineInputs.value[key]
       }
     }
+  }
 
-    multiColorThreadTypes.value = allThreadTypes
+  if (newColorIds.length === 0) {
+    loadingFormData.value = false
+    return
+  }
+
+  try {
+    let loadedCount = 0
+
+    await Promise.allSettled(
+      newColorIds.map(async (colorId) => {
+        const colorOption = colorOptions.value.find((c) => c.value === colorId)
+        const colorName = colorOption?.label || ''
+        const data = await loadFormData(selectedPoId.value!, selectedStyleId.value!, colorId, department.value || undefined, selectedWarehouseId.value || undefined)
+        loadedCount++
+        loadingColorProgress.value = `Đang tải ${loadedCount}/${newColorIds.length} màu...`
+
+        if (data?.thread_types) {
+          const newTypes: ThreadTypeForIssueWithColor[] = data.thread_types.map((tt) => ({
+            ...tt,
+            color_id: colorId,
+            color_name: colorName,
+          }))
+          multiColorThreadTypes.value = [...multiColorThreadTypes.value, ...newTypes]
+
+          for (const tt of data.thread_types) {
+            const key = `${colorId}-${tt.thread_type_id}`
+            if (!lineInputs.value[key]) {
+              lineInputs.value[key] = {
+                full: 0,
+                partial: 0,
+                notes: '',
+                validation: null,
+              }
+            }
+          }
+        }
+      })
+    )
 
     if (colorIds.length === 1) {
       loadAllocationSummary(selectedPoId.value!, selectedStyleId.value!, colorIds[0]!)
@@ -656,7 +688,22 @@ async function handleConfirm() {
   if (!canConfirm.value) return
   isConfirming.value = true
   try {
-    await confirmIssue()
+    const result = await confirmIssue(selectedWarehouseId.value || undefined)
+    if (typeof result === 'object' && result !== null && 'status' in result && result.status === 'INSUFFICIENT_STOCK') {
+      shortageData.value = result.shortages
+      showBorrowDialog.value = true
+    }
+  } finally {
+    isConfirming.value = false
+  }
+}
+
+async function handleConfirmWithTransfer() {
+  isConfirming.value = true
+  try {
+    await confirmIssue(selectedWarehouseId.value || undefined, true)
+    showBorrowDialog.value = false
+    shortageData.value = null
   } finally {
     isConfirming.value = false
   }
@@ -688,8 +735,11 @@ function handleNewIssue() {
   selectedStyleId.value = null
   selectedSubArtId.value = null
   selectedColorIds.value = []
+  selectedWarehouseId.value = null
   subArtOptions.value = []
   lineInputs.value = {}
+  shortageData.value = null
+  showBorrowDialog.value = false
 }
 
 function getRowClass(line: { is_over_quota: boolean }): string {
@@ -905,7 +955,7 @@ onMounted(async () => {
                 Bước 1: Tạo Phiếu Xuất
               </div>
               <div class="row q-col-gutter-md">
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <AppSelect
                     v-model="department"
                     label="Bộ Phận"
@@ -920,12 +970,20 @@ onMounted(async () => {
                     placeholder="Chọn bộ phận..."
                   />
                 </div>
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <AppInput
                     v-model="createdBy"
                     label="Người Tạo"
                     required
                     readonly
+                  />
+                </div>
+                <div class="col-12 col-md-4">
+                  <AppWarehouseSelect
+                    v-model="selectedWarehouseId"
+                    label="Kho Xuất"
+                    clearable
+                    hint="Bỏ trống để tự động phát hiện"
                   />
                 </div>
               </div>
@@ -1107,7 +1165,7 @@ onMounted(async () => {
           </q-card>
 
           <q-card
-            v-if="(step2Visible || hasIssue) && availableThreadTypes.length > 0 && !isConfirmed"
+            v-if="(step2Visible || hasIssue) && (availableThreadTypes.length > 0 || loadingFormData) && !isConfirmed"
             flat
             bordered
             class="q-mb-lg"
@@ -1117,14 +1175,34 @@ onMounted(async () => {
                 Bước 3: Nhập Số Lượng Xuất
               </div>
 
+              <div
+                v-if="loadingFormData && availableThreadTypes.length === 0"
+                class="text-center q-py-lg"
+              >
+                <q-spinner-dots
+                  color="primary"
+                  size="40px"
+                />
+                <div class="text-caption text-grey q-mt-sm">
+                  {{ loadingColorProgress || 'Đang tải dữ liệu...' }}
+                </div>
+              </div>
+
               <q-table
+                v-if="availableThreadTypes.length > 0"
                 :rows="availableThreadTypes"
                 :columns="columns"
                 :row-key="(row: any) => `${row.color_id}-${row.thread_type_id}`"
                 flat
                 bordered
+                virtual-scroll
+                :virtual-scroll-item-size="72"
+                :virtual-scroll-sticky-size-start="40"
+                style="max-height: 60vh"
                 :pagination="{ rowsPerPage: 0 }"
+                :rows-per-page-options="[0]"
                 hide-bottom
+                :loading="loadingFormData"
               >
                 <template #body-cell-color="props">
                   <q-td :props="props">
@@ -1375,7 +1453,7 @@ onMounted(async () => {
           </q-card>
 
           <q-card
-            v-if="(step2Visible || hasIssue) && lines.length === 0 && multiColorThreadTypes.length === 0"
+            v-if="(step2Visible || hasIssue) && lines.length === 0 && multiColorThreadTypes.length === 0 && !loadingFormData"
             flat
             bordered
           >
@@ -1665,6 +1743,93 @@ onMounted(async () => {
       </div>
     </div>
   </FormDialog>
+
+  <q-dialog
+    v-model="showBorrowDialog"
+    persistent
+  >
+    <q-card style="min-width: 600px; max-width: 800px;">
+      <q-card-section>
+        <div class="text-h6 text-negative">
+          Kho xuất không đủ tồn
+        </div>
+      </q-card-section>
+      <q-card-section>
+        <q-markup-table
+          flat
+          bordered
+          dense
+        >
+          <thead>
+            <tr>
+              <th class="text-left">
+                Loại chỉ
+              </th>
+              <th class="text-right">
+                Cần
+              </th>
+              <th class="text-right">
+                Có
+              </th>
+              <th class="text-right">
+                Thiếu
+              </th>
+              <th class="text-left">
+                Kho khác
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="shortage in shortageData"
+              :key="shortage.thread_type_id"
+            >
+              <td>{{ shortage.thread_name }}</td>
+              <td class="text-right">
+                {{ shortage.needed_full }} / {{ shortage.needed_partial }}
+              </td>
+              <td class="text-right">
+                {{ shortage.available_full }} / {{ shortage.available_partial }}
+              </td>
+              <td class="text-right text-negative">
+                {{ shortage.shortage_full }} / {{ shortage.shortage_partial }}
+              </td>
+              <td>
+                <span
+                  v-for="(wh, idx) in shortage.other_warehouses"
+                  :key="wh.warehouse_id"
+                >
+                  {{ wh.warehouse_name }}: {{ wh.full_cones + wh.partial_cones }}{{ idx < shortage.other_warehouses.length - 1 ? ', ' : '' }}
+                </span>
+                <span
+                  v-if="shortage.other_warehouses.length === 0"
+                  class="text-grey"
+                >
+                  Không có kho khác
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </q-markup-table>
+        <div class="text-caption text-grey q-mt-sm">
+          Cuộn nguyên / Cuộn lẻ
+        </div>
+      </q-card-section>
+      <q-card-actions align="right">
+        <AppButton
+          label="Hủy"
+          variant="flat"
+          @click="showBorrowDialog = false; shortageData = null"
+        />
+        <AppButton
+          label="Mượn & Xuất"
+          color="primary"
+          :loading="isConfirming"
+          @click="handleConfirmWithTransfer"
+        />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 </template>
 
 <style scoped>

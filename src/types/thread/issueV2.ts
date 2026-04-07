@@ -261,6 +261,34 @@ export interface GroupedReturnLog {
 }
 
 // ============================================================================
+// Warehouse Stock Types
+// ============================================================================
+
+export interface WarehouseStock {
+  warehouse_id: number
+  warehouse_name: string
+  full_cones: number
+  partial_cones: number
+}
+
+export interface IssueShortageDetail {
+  thread_type_id: number
+  thread_name: string
+  needed_full: number
+  needed_partial: number
+  available_full: number
+  available_partial: number
+  shortage_full: number
+  shortage_partial: number
+  other_warehouses: WarehouseStock[]
+}
+
+export interface IssueInsufficientStockResponse {
+  status: 'INSUFFICIENT_STOCK'
+  shortages: IssueShortageDetail[]
+}
+
+// ============================================================================
 // Form Data Types
 // ============================================================================
 
@@ -277,6 +305,8 @@ export interface ThreadTypeForIssue {
   confirmed_issued_gross: number
   stock_available_full: number
   stock_available_partial: number
+  detected_warehouse_id?: number
+  stock_by_warehouse?: WarehouseStock[]
 }
 
 export interface ThreadTypeForIssueWithColor extends ThreadTypeForIssue {

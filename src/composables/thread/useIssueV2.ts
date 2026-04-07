@@ -25,6 +25,7 @@ import type {
   ValidateLineResponse,
   IssueFormData,
   IssueV2Filters,
+  IssueInsufficientStockResponse,
 } from '@/types/thread/issueV2'
 
 export function useIssueV2() {
@@ -161,13 +162,13 @@ export function useIssueV2() {
    * @param styleId - Style ID
    * @param colorId - Color ID
    */
-  const loadFormData = async (poId: number, styleId: number, colorId: number, department?: string) => {
+  const loadFormData = async (poId: number, styleId: number, colorId: number, department?: string, warehouseId?: number) => {
     clearError()
     formData.value = null
 
     try {
       formData.value = await loading.withLoading(async () => {
-        return await issueV2Service.getFormData(poId, styleId, colorId, department)
+        return await issueV2Service.getFormData(poId, styleId, colorId, department, warehouseId)
       })
 
       return formData.value
@@ -309,7 +310,7 @@ export function useIssueV2() {
   /**
    * Confirm the current issue (deduct stock)
    */
-  const confirmIssue = async (): Promise<boolean> => {
+  const confirmIssue = async (warehouseId?: number, allowTransfer?: boolean): Promise<IssueInsufficientStockResponse | boolean> => {
     if (!currentIssue.value) {
       snackbar.error('Chưa tạo phiếu xuất')
       return false
@@ -318,9 +319,15 @@ export function useIssueV2() {
     clearError()
 
     try {
-      currentIssue.value = await loading.withLoading(async () => {
-        return await issueV2Service.confirm(currentIssue.value!.id)
+      const result = await loading.withLoading(async () => {
+        return await issueV2Service.confirm(currentIssue.value!.id, undefined, warehouseId || undefined, allowTransfer)
       })
+
+      if ('status' in result && result.status === 'INSUFFICIENT_STOCK') {
+        return result as IssueInsufficientStockResponse
+      }
+
+      currentIssue.value = result as IssueV2WithLines
 
       snackbar.success(`Đã xác nhận phiếu ${currentIssue.value.issue_code}`)
       return true
