@@ -1037,6 +1037,20 @@ onMounted(async () => {
                     hide-selected
                     placeholder="Chọn màu..."
                   >
+                    <template #option="{ itemProps, opt, selected, toggleOption }">
+                      <q-item v-bind="itemProps">
+                        <q-item-section side>
+                          <q-checkbox
+                            :model-value="selected"
+                            dense
+                            @update:model-value="toggleOption(opt)"
+                          />
+                        </q-item-section>
+                        <q-item-section>
+                          {{ opt.label }}
+                        </q-item-section>
+                      </q-item>
+                    </template>
                     <template #no-option>
                       <q-item>
                         <q-item-section class="text-grey">
