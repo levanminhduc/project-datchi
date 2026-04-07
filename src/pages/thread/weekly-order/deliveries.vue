@@ -364,7 +364,7 @@
     </q-dialog>
 
     <!-- Receive into Inventory Dialog -->
-    <q-dialog v-model="showReceiveDialog">
+    <q-dialog v-model="showReceiveDialog" persistent>
       <q-card style="min-width: 400px">
         <q-card-section>
           <div class="text-h6">
@@ -386,7 +386,7 @@
               NCC: {{ selectedReceiveDelivery.supplier_name }}
             </p>
             <p class="q-mb-xs">
-              Tuần: {{ selectedReceiveDelivery.week_name }}
+              Thông Tin: {{ selectedReceiveDelivery.week_name }}
             </p>
             <p class="q-mb-none">
               Số đặt: {{ selectedReceiveDelivery.quantity_cones || 0 }} cuộn |
@@ -783,10 +783,14 @@ async function confirmDelivered() {
 
 function openReceiveDialog(delivery: DeliveryRecord) {
   selectedReceiveDelivery.value = delivery
+  const today = new Date()
+  const day = String(today.getDate()).padStart(2, '0')
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const year = today.getFullYear()
   receiveForm.value = {
     warehouse_id: null,
     quantity: getPendingQuantity(delivery),
-    expiry_date: '',
+    expiry_date: `${day}/${month}/${year}`,
   }
   showReceiveDialog.value = true
 }

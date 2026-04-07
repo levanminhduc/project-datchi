@@ -231,7 +231,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import type { TransferableSummaryItem } from '@/types/thread/batch'
 
-const TRANSFER_LIMIT = 10000
+const TRANSFER_LIMIT = 20000
 
 export interface TransferItem {
   thread_type_id: number

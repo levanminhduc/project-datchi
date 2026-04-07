@@ -247,7 +247,7 @@ batch.get('/transferable-summary', requirePermission('thread.batch.transfer'), a
       `)
       .eq('warehouse_id', warehouseId)
       .in('status', [...TRANSFERABLE_STATUSES, 'RESERVED_FOR_ORDER'])
-      .limit(10000)
+      .limit(150000)
 
     if (coneError) {
       console.error('Transferable summary error:', coneError)
