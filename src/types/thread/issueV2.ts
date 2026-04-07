@@ -142,6 +142,10 @@ export interface AddIssueLineV2DTO {
   over_quota_notes?: string | null
 }
 
+export interface BatchAddLinesDTO {
+  lines: AddIssueLineV2DTO[]
+}
+
 /**
  * DTO for validating line before adding
  */
@@ -273,6 +277,11 @@ export interface ThreadTypeForIssue {
   confirmed_issued_gross: number
   stock_available_full: number
   stock_available_partial: number
+}
+
+export interface ThreadTypeForIssueWithColor extends ThreadTypeForIssue {
+  color_id: number
+  color_name: string
 }
 
 /**
