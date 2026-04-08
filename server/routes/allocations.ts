@@ -889,20 +889,15 @@ allocations.post('/:id/receive', requirePermission('thread.allocations.manage'),
 
     const allocatedCones = (allocation as AllocationWithRelations).thread_allocation_cones || []
 
-    // Issue each cone
-    let hasError = false
-    for (const cone of allocatedCones) {
-      const { error: rpcError } = await supabase
-        .rpc('fn_issue_cone', {
-          p_cone_id: cone.cone_id,
-          p_allocation_id: id,
-          p_confirmed_by: body.received_by,
-        })
+    const { error: rpcError } = await supabase
+      .rpc('fn_issue_cone', {
+        p_allocation_id: id,
+        p_confirmed_by: body.received_by,
+      })
 
-      if (rpcError) {
-        console.error('RPC error for cone:', cone.cone_id, rpcError)
-        hasError = true
-      }
+    const hasError = !!rpcError
+    if (rpcError) {
+      console.error('RPC error for allocation:', id, rpcError)
     }
 
     // Update status to RECEIVED
@@ -1001,30 +996,26 @@ allocations.post('/:id/issue', requirePermission('thread.allocations.manage'), a
       }, 400)
     }
 
-    // Issue each cone using RPC
+    const { data: issueResult, error: rpcError } = await supabase
+      .rpc('fn_issue_cone', {
+        p_allocation_id: id,
+        p_confirmed_by: body.confirmed_by || null,
+      })
+
     const issueResults: IssueConeResult[] = []
     let hasError = false
 
-    for (const cone of allocatedCones) {
-      const { data: result, error: rpcError } = await supabase
-        .rpc('fn_issue_cone', {
-          p_cone_id: cone.cone_id,
-          p_allocation_id: id,
-          p_confirmed_by: body.confirmed_by || null,
-        })
-
-      if (rpcError) {
-        console.error('RPC error for cone:', cone.cone_id, rpcError)
-        hasError = true
-        issueResults.push({
-          success: false,
-          movement_id: null,
-          cone_ids: [cone.cone_id],
-          message: rpcError.message,
-        })
-      } else {
-        issueResults.push(result as IssueConeResult)
-      }
+    if (rpcError) {
+      console.error('RPC error for allocation:', id, rpcError)
+      hasError = true
+      issueResults.push({
+        success: false,
+        movement_id: null,
+        cone_ids: allocatedCones.map(c => c.cone_id),
+        message: rpcError.message,
+      })
+    } else {
+      issueResults.push(issueResult as IssueConeResult)
     }
 
     // Update allocation status to ISSUED

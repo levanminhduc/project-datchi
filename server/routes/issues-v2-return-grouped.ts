@@ -366,6 +366,55 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
     const returnLogRows: Array<{ issue_id: number; line_id: number; returned_full: number; returned_partial: number }> = []
     const distribution: Array<{ thread_type_id: number; line_id: number; returned_full: number; returned_partial: number }> = []
 
+    const allMatchingLineIds = matchingLines.map(l => l.id)
+
+    const [{ data: allFullCones }, { data: allPartialCones }] = await Promise.all([
+      supabase
+        .from('thread_inventory')
+        .select('id, quantity_meters, status, issued_line_id')
+        .in('issued_line_id', allMatchingLineIds)
+        .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
+        .eq('is_partial', false)
+        .order('id', { ascending: true })
+        .limit(10000),
+      supabase
+        .from('thread_inventory')
+        .select('id, status, issued_line_id')
+        .in('issued_line_id', allMatchingLineIds)
+        .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
+        .eq('is_partial', true)
+        .order('id', { ascending: true })
+        .limit(10000),
+    ])
+
+    const fullConesByLine = new Map<number, Array<{ id: number; quantity_meters: number; status: string }>>()
+    const partialConesByLine = new Map<number, Array<{ id: number; status: string }>>()
+
+    for (const cone of allFullCones || []) {
+      const lineIdKey = (cone as any).issued_line_id as number
+      const arr = fullConesByLine.get(lineIdKey) || []
+      arr.push({ id: cone.id, quantity_meters: cone.quantity_meters, status: cone.status })
+      fullConesByLine.set(lineIdKey, arr)
+    }
+
+    for (const cone of allPartialCones || []) {
+      const lineIdKey = (cone as any).issued_line_id as number
+      const arr = partialConesByLine.get(lineIdKey) || []
+      arr.push({ id: cone.id, status: cone.status })
+      partialConesByLine.set(lineIdKey, arr)
+    }
+
+    const uniqueThreadTypeIds = [...new Set(matchingLines.map(l => l.thread_type_id))]
+    const { data: threadTypesData } = await supabase
+      .from('thread_types')
+      .select('id, meters_per_cone')
+      .in('id', uniqueThreadTypeIds)
+
+    const metersPerConeMap = new Map<number, number | null>()
+    for (const tt of threadTypesData || []) {
+      metersPerConeMap.set(tt.id, tt.meters_per_cone)
+    }
+
     for (const requestLine of requestLines) {
       const { thread_type_id, returned_full: reqFull, returned_partial: reqPartial } = requestLine
       if (reqFull <= 0 && reqPartial <= 0) continue
@@ -398,6 +447,11 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
           allocPartial,
           performedBy,
           partialConeRatio,
+          {
+            fullCones: fullConesByLine.get(candidate.id) || [],
+            partialCones: partialConesByLine.get(candidate.id) || [],
+            metersPerCone: metersPerConeMap.get(candidate.thread_type_id) ?? null,
+          },
         )
 
         if (!result.success) {

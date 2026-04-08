@@ -151,6 +151,12 @@ interface ProcessReturnLineResult {
   error?: string
 }
 
+interface PrefetchedReturnData {
+  fullCones: Array<{ id: number; quantity_meters: number; status: string }>
+  partialCones: Array<{ id: number; status: string }>
+  metersPerCone: number | null
+}
+
 async function processReturnForLine(
   lineId: number,
   line: IssueLine,
@@ -158,47 +164,58 @@ async function processReturnForLine(
   requestedPartial: number,
   performedBy: string,
   partialConeRatio: number,
+  prefetchedData?: PrefetchedReturnData,
 ): Promise<ProcessReturnLineResult> {
   if (requestedFull <= 0 && requestedPartial <= 0) {
     return { success: true, line_id: lineId, returned_full: 0, returned_partial: 0 }
   }
 
-  const { data: returnableFullConesRaw, error: fullConesError } = await supabase
-    .from('thread_inventory')
-    .select('id, quantity_meters, status')
-    .eq('issued_line_id', lineId)
-    .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
-    .eq('is_partial', false)
-    .order('id', { ascending: true })
-    .limit(10000)
+  let returnableFullConesRaw: Array<{ id: number; quantity_meters: number; status: string }> | null
+  let returnablePartialConesRaw: Array<{ id: number; status: string }> | null
 
-  if (fullConesError) {
-    return {
-      success: false,
-      line_id: lineId,
-      returned_full: 0,
-      returned_partial: 0,
-      error: `Khong the tai cuon nguyen dang xuat cho dong ${lineId}`,
+  if (prefetchedData) {
+    returnableFullConesRaw = prefetchedData.fullCones
+    returnablePartialConesRaw = prefetchedData.partialCones
+  } else {
+    const { data: fullData, error: fullConesError } = await supabase
+      .from('thread_inventory')
+      .select('id, quantity_meters, status')
+      .eq('issued_line_id', lineId)
+      .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
+      .eq('is_partial', false)
+      .order('id', { ascending: true })
+      .limit(10000)
+
+    if (fullConesError) {
+      return {
+        success: false,
+        line_id: lineId,
+        returned_full: 0,
+        returned_partial: 0,
+        error: `Khong the tai cuon nguyen dang xuat cho dong ${lineId}`,
+      }
     }
-  }
+    returnableFullConesRaw = fullData
 
-  const { data: returnablePartialConesRaw, error: partialConesError } = await supabase
-    .from('thread_inventory')
-    .select('id, status')
-    .eq('issued_line_id', lineId)
-    .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
-    .eq('is_partial', true)
-    .order('id', { ascending: true })
-    .limit(10000)
+    const { data: partialData, error: partialConesError } = await supabase
+      .from('thread_inventory')
+      .select('id, status')
+      .eq('issued_line_id', lineId)
+      .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
+      .eq('is_partial', true)
+      .order('id', { ascending: true })
+      .limit(10000)
 
-  if (partialConesError) {
-    return {
-      success: false,
-      line_id: lineId,
-      returned_full: 0,
-      returned_partial: 0,
-      error: `Khong the tai cuon le dang xuat cho dong ${lineId}`,
+    if (partialConesError) {
+      return {
+        success: false,
+        line_id: lineId,
+        returned_full: 0,
+        returned_partial: 0,
+        error: `Khong the tai cuon le dang xuat cho dong ${lineId}`,
+      }
     }
+    returnablePartialConesRaw = partialData
   }
 
   const statusRank = (status: string): number => {
@@ -245,7 +262,7 @@ async function processReturnForLine(
 
   const partialReturnsPayload: ReturnPartialPayloadItem[] = []
   if (partialNeedConvertCount > 0) {
-    const metersPerCone = await getMetersPerCone(line.thread_type_id)
+    const metersPerCone = prefetchedData ? prefetchedData.metersPerCone : await getMetersPerCone(line.thread_type_id)
     if (!metersPerCone || metersPerCone <= 0) {
       return {
         success: false,
@@ -3628,6 +3645,55 @@ issuesV2.post('/:id/return', async (c) => {
     const succeededLineIds: number[] = []
     const returnLogRows: Array<{ line_id: number; returned_full: number; returned_partial: number }> = []
 
+    const allLineIds = validated.lines.map(l => l.line_id)
+
+    const [{ data: allFullCones }, { data: allPartialCones }] = await Promise.all([
+      supabase
+        .from('thread_inventory')
+        .select('id, quantity_meters, status, issued_line_id')
+        .in('issued_line_id', allLineIds)
+        .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
+        .eq('is_partial', false)
+        .order('id', { ascending: true })
+        .limit(10000),
+      supabase
+        .from('thread_inventory')
+        .select('id, status, issued_line_id')
+        .in('issued_line_id', allLineIds)
+        .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
+        .eq('is_partial', true)
+        .order('id', { ascending: true })
+        .limit(10000),
+    ])
+
+    const fullConesByLine = new Map<number, Array<{ id: number; quantity_meters: number; status: string }>>()
+    const partialConesByLine = new Map<number, Array<{ id: number; status: string }>>()
+
+    for (const cone of allFullCones || []) {
+      const lineIdKey = (cone as any).issued_line_id as number
+      const arr = fullConesByLine.get(lineIdKey) || []
+      arr.push({ id: cone.id, quantity_meters: cone.quantity_meters, status: cone.status })
+      fullConesByLine.set(lineIdKey, arr)
+    }
+
+    for (const cone of allPartialCones || []) {
+      const lineIdKey = (cone as any).issued_line_id as number
+      const arr = partialConesByLine.get(lineIdKey) || []
+      arr.push({ id: cone.id, status: cone.status })
+      partialConesByLine.set(lineIdKey, arr)
+    }
+
+    const uniqueThreadTypeIds = [...new Set(validated.lines.map(l => lineMap.get(l.line_id)!.thread_type_id))]
+    const { data: threadTypesData } = await supabase
+      .from('thread_types')
+      .select('id, meters_per_cone')
+      .in('id', uniqueThreadTypeIds)
+
+    const metersPerConeMap = new Map<number, number | null>()
+    for (const tt of threadTypesData || []) {
+      metersPerConeMap.set(tt.id, tt.meters_per_cone)
+    }
+
     for (const returnLine of validated.lines) {
       const line = lineMap.get(returnLine.line_id)!
       const result = await processReturnForLine(
@@ -3637,6 +3703,11 @@ issuesV2.post('/:id/return', async (c) => {
         returnLine.returned_partial || 0,
         performedBy,
         partialConeRatio,
+        {
+          fullCones: fullConesByLine.get(returnLine.line_id) || [],
+          partialCones: partialConesByLine.get(returnLine.line_id) || [],
+          metersPerCone: metersPerConeMap.get(line.thread_type_id) ?? null,
+        },
       )
 
       if (!result.success) {
@@ -3928,6 +3999,7 @@ export {
   type IssueLine,
   type ProcessReturnLineResult,
   type ReturnPartialPayloadItem,
+  type PrefetchedReturnData,
 }
 
 export default issuesV2
