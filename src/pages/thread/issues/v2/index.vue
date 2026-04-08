@@ -94,6 +94,7 @@ const poOptions = ref<{ value: number; label: string }[]>([])
 const styleOptions = ref<{ value: number; label: string; has_sub_arts?: boolean }[]>([])
 const subArtOptions = ref<{ value: number; label: string }[]>([])
 const colorOptions = ref<{ value: number; label: string }[]>([])
+const allColorOptions = ref<{ value: number; label: string }[]>([])
 const departmentOptions = ref<{ value: string; label: string }[]>([])
 
 const loadingOptions = ref(false)
@@ -240,28 +241,13 @@ watch(selectedStyleId, async (newStyleId) => {
   selectedColorIds.value = []
   subArtOptions.value = []
   colorOptions.value = []
+  allColorOptions.value = []
 
   if (!newStyleId || !selectedPoId.value) return
 
-  if (selectedStyleHasSubArts.value) {
-    loadingSubArts.value = true
-    try {
-      const subArts = await subArtService.getByStyleId(newStyleId, selectedPoId.value!)
-      subArtOptions.value = subArts.map((sa: SubArt) => ({
-        value: sa.id,
-        label: sa.sub_art_code,
-      }))
-    } catch (err) {
-      console.error('Failed to load sub-arts:', err)
-      snackbar.error('Không thể tải danh sách Sub-Art')
-    } finally {
-      loadingSubArts.value = false
-    }
-  }
-
   try {
     const colors = await issueV2Service.getOrderOptions(selectedPoId.value, newStyleId)
-    colorOptions.value = (colors as OrderOptionColor[]).map((c) => ({
+    allColorOptions.value = (colors as OrderOptionColor[]).map((c) => ({
       value: c.id,
       label: c.name,
     }))
@@ -269,6 +255,47 @@ watch(selectedStyleId, async (newStyleId) => {
     console.error('Failed to load colors:', err)
     snackbar.error('Không thể tải danh sách màu')
   }
+
+  if (selectedStyleHasSubArts.value) {
+    const colorPrefixes = new Set(
+      allColorOptions.value.map((c) => c.label.split(' - ')[0]).filter(Boolean)
+    )
+
+    loadingSubArts.value = true
+    try {
+      const subArts = await subArtService.getByStyleId(newStyleId)
+      subArtOptions.value = subArts
+        .filter((sa: SubArt) => colorPrefixes.has(sa.sub_art_code))
+        .map((sa: SubArt) => ({
+          value: sa.id,
+          label: sa.sub_art_code,
+        }))
+    } catch (err) {
+      console.error('Failed to load sub-arts:', err)
+      snackbar.error('Không thể tải danh sách Sub-Art')
+    } finally {
+      loadingSubArts.value = false
+    }
+  } else {
+    colorOptions.value = [...allColorOptions.value]
+  }
+})
+
+watch(selectedSubArtId, (newSubArtId) => {
+  selectedColorIds.value = []
+
+  if (!newSubArtId) {
+    colorOptions.value = []
+    return
+  }
+
+  const subArt = subArtOptions.value.find((sa) => sa.value === newSubArtId)
+  if (!subArt) {
+    colorOptions.value = []
+    return
+  }
+
+  colorOptions.value = allColorOptions.value.filter((c) => c.label.startsWith(subArt.label))
 })
 
 watch([selectedPoId, selectedStyleId, selectedSubArtId], () => {
