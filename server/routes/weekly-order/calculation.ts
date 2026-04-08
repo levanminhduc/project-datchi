@@ -273,9 +273,9 @@ calculation.post('/:id/results', requirePermission('thread.allocations.manage'),
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { error: fetchError } = await supabase
+    const { data: week, error: fetchError } = await supabase
       .from('thread_order_weeks')
-      .select('id')
+      .select('id, status')
       .eq('id', id)
       .single()
 
@@ -285,6 +285,8 @@ calculation.post('/:id/results', requirePermission('thread.allocations.manage'),
       }
       throw fetchError
     }
+
+    const isConfirmed = week.status === 'CONFIRMED'
 
     const body = await c.req.json()
 
@@ -356,7 +358,7 @@ calculation.post('/:id/results', requirePermission('thread.allocations.manage'),
 
     if (error) throw error
 
-    if (enrichedSummaryData && Array.isArray(enrichedSummaryData)) {
+    if (isConfirmed && enrichedSummaryData && Array.isArray(enrichedSummaryData)) {
       const summaryRows = enrichedSummaryData as Array<{
         thread_type_id: number
         supplier_id?: number | null
@@ -490,7 +492,7 @@ calculation.post('/:id/results', requirePermission('thread.allocations.manage'),
       }
     }
 
-    if (validated.calculation_data && Array.isArray(validated.calculation_data)) {
+    if (isConfirmed && validated.calculation_data && Array.isArray(validated.calculation_data)) {
       const allocationRows: Array<{
         order_id: string
         order_reference: string
