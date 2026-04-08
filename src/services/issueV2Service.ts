@@ -343,4 +343,24 @@ export const issueV2Service = {
     }
     return response.data || []
   },
+
+  async refreshStock(params: {
+    po_id: number
+    style_id: number
+    items: Array<{
+      thread_type_id: number
+      thread_color_id?: number | null
+      warehouse_id?: number | null
+      color_id: number
+    }>
+  }): Promise<Array<{ thread_type_id: number; thread_color_id: number | null; full_cones: number; partial_cones: number }>> {
+    const response = await fetchApi<ApiResponse<{ stocks: Array<{ thread_type_id: number; thread_color_id: number | null; full_cones: number; partial_cones: number }> }>>(`${BASE}/stock-refresh`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+    if (response.error || !response.data) {
+      throw new Error(response.error || 'Không thể refresh tồn kho')
+    }
+    return response.data.stocks
+  },
 }

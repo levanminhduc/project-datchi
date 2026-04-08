@@ -202,3 +202,22 @@ export const OrderOptionsQuerySchema = z.object({
 })
 
 export type OrderOptionsQueryDTO = z.infer<typeof OrderOptionsQuerySchema>
+
+// ============================================================================
+// Stock Refresh
+// ============================================================================
+
+export const StockRefreshItemSchema = z.object({
+  thread_type_id: z.number().int().positive(),
+  thread_color_id: z.number().int().positive().nullable().optional(),
+  warehouse_id: z.number().int().positive().nullable().optional(),
+  color_id: z.number().int().positive(),
+})
+
+export const StockRefreshSchema = z.object({
+  po_id: z.number().int().positive(),
+  style_id: z.number().int().positive(),
+  items: z.array(StockRefreshItemSchema).min(1, 'Phai co it nhat 1 item'),
+})
+
+export type StockRefreshDTO = z.infer<typeof StockRefreshSchema>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDebounceFn } from '@vueuse/core'
 import { useIssueV2 } from '@/composables/thread/useIssueV2'
@@ -396,6 +396,7 @@ async function handleLoadFormData() {
   } finally {
     loadingFormData.value = false
     loadingColorProgress.value = ''
+    startStockPolling()
   }
 }
 
@@ -714,6 +715,7 @@ async function handleConfirmWithTransfer() {
 }
 
 function handleBack() {
+  stopStockPolling()
   if (step2Visible.value && !hasIssue.value) {
     step2Visible.value = false
     selectedPoId.value = null
@@ -850,7 +852,91 @@ watch(
   }
 )
 
+const STOCK_POLL_INTERVAL = 20_000
+const STOCK_STALE_THRESHOLD = 30_000
+let stockPollTimer: ReturnType<typeof setInterval> | null = null
+let tabHiddenAt = 0
+
+async function refreshStockData() {
+  if (!selectedPoId.value || !selectedStyleId.value) return
+  const items = multiColorThreadTypes.value.map((tt) => ({
+    thread_type_id: tt.thread_type_id,
+    thread_color_id: tt.thread_color_id ?? undefined,
+    warehouse_id: tt.detected_warehouse_id ?? undefined,
+    color_id: tt.color_id,
+  }))
+  if (items.length === 0) return
+
+  try {
+    const stocks = await issueV2Service.refreshStock({
+      po_id: selectedPoId.value!,
+      style_id: selectedStyleId.value!,
+      items,
+    })
+
+    for (const stock of stocks) {
+      const matches = multiColorThreadTypes.value.filter(
+        (tt) =>
+          tt.thread_type_id === stock.thread_type_id &&
+          (tt.thread_color_id ?? null) === (stock.thread_color_id ?? null)
+      )
+      for (const match of matches) {
+        match.stock_available_full = stock.full_cones
+        match.stock_available_partial = stock.partial_cones
+      }
+    }
+  } catch (err) {
+    console.error('[IssueV2] refreshStockData error:', err)
+  }
+}
+
+function startStockPolling() {
+  stopStockPolling()
+  if (multiColorThreadTypes.value.length === 0) return
+  if (isConfirmed.value) return
+  stockPollTimer = setInterval(refreshStockData, STOCK_POLL_INTERVAL)
+}
+
+function stopStockPolling() {
+  if (stockPollTimer) {
+    clearInterval(stockPollTimer)
+    stockPollTimer = null
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.hidden) {
+    tabHiddenAt = Date.now()
+    stopStockPolling()
+    return
+  }
+
+  startStockPolling()
+
+  const hiddenDuration = Date.now() - tabHiddenAt
+  if (hiddenDuration < STOCK_STALE_THRESHOLD) return
+  if (!step2Visible.value && !hasIssue.value) return
+  if (multiColorThreadTypes.value.length === 0) return
+  if (isConfirmed.value) return
+  if (loadingFormData.value) return
+
+  refreshStockData()
+  snackbar.info('Đã cập nhật dữ liệu tồn kho')
+}
+
+watch(isConfirmed, (confirmed) => {
+  if (confirmed) stopStockPolling()
+})
+
+watch(
+  () => multiColorThreadTypes.value.length,
+  (len) => {
+    if (len === 0) stopStockPolling()
+  }
+)
+
 onMounted(async () => {
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   loadInitialOptions()
 
   const loaded = await loadDraftFromQuery(route.query.issue)
@@ -860,6 +946,11 @@ onMounted(async () => {
     historyLoaded.value = true
     loadHistoryData()
   }
+})
+
+onUnmounted(() => {
+  stopStockPolling()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 

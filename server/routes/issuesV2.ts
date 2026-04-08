@@ -28,6 +28,7 @@ import {
   ReturnIssueV2Schema,
   ConfirmIssueV2Schema,
   OrderOptionsQuerySchema,
+  StockRefreshSchema,
 } from '../validation/issuesV2'
 import type { ThreadApiResponse } from '../types/thread'
 import type { AppEnv } from '../types/hono-env'
@@ -1855,6 +1856,81 @@ issuesV2.post('/create-with-lines', async (c) => {
       },
       500
     )
+  }
+})
+
+issuesV2.post('/stock-refresh', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    let validated
+    try {
+      validated = StockRefreshSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json<ThreadApiResponse<null>>({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    const { po_id, style_id, items } = validated
+
+    const colorGroups = new Map<number, typeof items>()
+    for (const item of items) {
+      const group = colorGroups.get(item.color_id) || []
+      group.push(item)
+      colorGroups.set(item.color_id, group)
+    }
+
+    const allWeekIds = new Set<number>()
+    for (const colorId of colorGroups.keys()) {
+      const weekIds = await findConfirmedWeekIds(po_id, style_id, colorId)
+      for (const wid of weekIds) allWeekIds.add(wid)
+    }
+
+    const allThreadTypeIds = [...new Set(items.map((i) => i.thread_type_id))]
+
+    let reservedRows: { thread_type_id: number; color_id: number | null; warehouse_id: number | null; is_partial: boolean }[] = []
+    if (allWeekIds.size > 0) {
+      const { data } = await supabase
+        .from('thread_inventory')
+        .select('thread_type_id, color_id, warehouse_id, is_partial')
+        .in('thread_type_id', allThreadTypeIds)
+        .eq('status', 'RESERVED_FOR_ORDER')
+        .in('reserved_week_id', [...allWeekIds])
+        .limit(50000)
+      reservedRows = (data as typeof reservedRows) || []
+    }
+
+    const { data: freeData } = await supabase
+      .from('thread_inventory')
+      .select('thread_type_id, color_id, warehouse_id, is_partial')
+      .in('thread_type_id', allThreadTypeIds)
+      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
+      .limit(50000)
+    const freeRows = (freeData as typeof reservedRows) || []
+
+    const allRows = [...reservedRows, ...freeRows]
+
+    const stocks = items.map((item) => {
+      const matching = allRows.filter((r) => {
+        if (r.thread_type_id !== item.thread_type_id) return false
+        if (item.thread_color_id && r.color_id !== item.thread_color_id) return false
+        if (item.warehouse_id && r.warehouse_id !== item.warehouse_id) return false
+        return true
+      })
+      return {
+        thread_type_id: item.thread_type_id,
+        thread_color_id: item.thread_color_id ?? null,
+        full_cones: matching.filter((r) => !r.is_partial).length,
+        partial_cones: matching.filter((r) => r.is_partial).length,
+      }
+    })
+
+    return c.json({ data: { stocks }, error: null })
+  } catch (err) {
+    console.error('Error in POST /api/issues/v2/stock-refresh:', err)
+    return c.json<ThreadApiResponse<null>>({ data: null, error: getErrorMessage(err) }, 500)
   }
 })
 
