@@ -5,6 +5,7 @@
     :columns="columns"
     :loading="loading"
     :filter="filter"
+    :filter-method="customFilter"
     :row-key="(row: any) => `${row.thread_type_id}-${row.color_id ?? 'no-color'}`"
     :rows-per-page-options="[10, 25, 50, 0]"
     :pagination="{ rowsPerPage: 25 }"
@@ -47,6 +48,12 @@
             />
           </template>
         </q-input>
+
+        <q-checkbox
+          v-model="filterColor"
+          dense
+          label="Màu"
+        />
 
         <!-- Refresh -->
         <q-btn
@@ -316,6 +323,7 @@ const emit = defineEmits<{
 
 // Local state
 const filter = ref('')
+const filterColor = ref(true)
 const getTexDisplay = (row: ConeSummaryRow): string => row.tex_label || row.tex_number || '-'
 
 const getDisplayName = (row: ConeSummaryRow): string => {
@@ -325,6 +333,20 @@ const getDisplayName = (row: ConeSummaryRow): string => {
     row.color_data?.name || null,
   ].filter(Boolean)
   return parts.join(' - ')
+}
+
+const customFilter = (rows: readonly ConeSummaryRow[], terms: string): ConeSummaryRow[] => {
+  if (!terms) return rows as ConeSummaryRow[]
+
+  const needle = terms.toLowerCase()
+  return (rows as ConeSummaryRow[]).filter((row) => {
+    if (filterColor.value) {
+      const color = (row.color_data?.name ?? '').toString().toLowerCase()
+      return color.includes(needle)
+    }
+    const name = getDisplayName(row).toLowerCase()
+    return name.includes(needle)
+  })
 }
 
 // Columns definition
