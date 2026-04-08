@@ -17,6 +17,9 @@ docker/volumes/db/
 # Database backups
 backups/
 
+# Supabase product configs (local only)
+supabase/product/
+
 # Log files
 npm-debug.log*
 yarn-debug.log*
