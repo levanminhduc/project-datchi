@@ -85,6 +85,7 @@ export interface IssueLineV2WithComputed extends IssueLineV2 {
   is_over_quota: boolean
   stock_available_full: number
   stock_available_partial: number
+  thread_color_id?: number | null
   // Joined data
   thread_name?: string
   thread_code?: string
@@ -298,6 +299,7 @@ export interface IssueInsufficientStockResponse {
  */
 export interface ThreadTypeForIssue {
   thread_type_id: number
+  thread_color_id: number | null
   thread_code: string
   thread_name: string
   quota_cones: number | null

@@ -104,6 +104,10 @@ const isBatchAdding = ref(false)
 const isConfirming = ref(false)
 const multiColorThreadTypes = ref<ThreadTypeForIssueWithColor[]>([])
 
+function ttKey(colorId: number | null | undefined, threadTypeId: number, threadColorId?: number | null): string {
+  return `${colorId}-${threadTypeId}-${threadColorId ?? 'null'}`
+}
+
 const selectedWarehouseId = ref<number | null>(null)
 const shortageData = ref<IssueShortageDetail[] | null>(null)
 const showBorrowDialog = ref(false)
@@ -139,10 +143,10 @@ const canConfirm = computed(() => {
 
 const availableThreadTypes = computed(() => {
   const addedKeys = new Set(
-    lines.value.map((line) => `${line.color_id || line.style_color_id}-${line.thread_type_id}`)
+    lines.value.map((line) => `${line.color_id || line.style_color_id}-${line.thread_type_id}-${line.thread_color_id ?? 'null'}`)
   )
   return multiColorThreadTypes.value
-    .filter((tt) => !addedKeys.has(`${tt.color_id}-${tt.thread_type_id}`))
+    .filter((tt) => !addedKeys.has(`${tt.color_id}-${tt.thread_type_id}-${tt.thread_color_id ?? 'null'}`))
     .sort((a, b) => a.color_name.localeCompare(b.color_name) || (a.thread_code || '').localeCompare(b.thread_code || ''))
 })
 
@@ -370,7 +374,7 @@ async function handleLoadFormData() {
           multiColorThreadTypes.value = [...multiColorThreadTypes.value, ...newTypes]
 
           for (const tt of data.thread_types) {
-            const key = `${colorId}-${tt.thread_type_id}`
+            const key = ttKey(colorId, tt.thread_type_id, tt.thread_color_id)
             if (!lineInputs.value[key]) {
               lineInputs.value[key] = {
                 full: 0,
@@ -420,8 +424,8 @@ function fillRemainingAllocation() {
   allocationAddQty.value = remaining > 0 ? remaining : null
 }
 
-const debouncedValidate = useDebounceFn(async (colorId: number, threadTypeId: number) => {
-  const key = `${colorId}-${threadTypeId}`
+const debouncedValidate = useDebounceFn(async (colorId: number, threadTypeId: number, threadColorId?: number | null) => {
+  const key = ttKey(colorId, threadTypeId, threadColorId)
   const input = lineInputs.value[key]
   if (!input) return
   if (input.full === 0 && input.partial === 0) {
@@ -446,19 +450,19 @@ const debouncedValidate = useDebounceFn(async (colorId: number, threadTypeId: nu
   }
 }, 300)
 
-function handleQuantityChange(colorId: number, threadTypeId: number) {
-  debouncedValidate(colorId, threadTypeId)
+function handleQuantityChange(colorId: number, threadTypeId: number, threadColorId?: number | null) {
+  debouncedValidate(colorId, threadTypeId, threadColorId)
 }
 
-function handleInputChange(colorId: number, threadTypeId: number, field: 'full' | 'partial', value: number, max: number) {
-  const key = `${colorId}-${threadTypeId}`
+function handleInputChange(colorId: number, threadTypeId: number, field: 'full' | 'partial', value: number, max: number, threadColorId?: number | null) {
+  const key = ttKey(colorId, threadTypeId, threadColorId)
   const input = lineInputs.value[key]
   if (!input) return
 
   const clampedValue = Math.min(Math.max(0, value), max)
   input[field] = clampedValue
 
-  handleQuantityChange(colorId, threadTypeId)
+  handleQuantityChange(colorId, threadTypeId, threadColorId)
 }
 
 function getLineUnderQuotaAmount(line: { quota_cones: number | null; issued_equivalent: number }): number {
@@ -468,7 +472,7 @@ function getLineUnderQuotaAmount(line: { quota_cones: number | null; issued_equi
 }
 
 function getUnderQuotaAmount(row: ThreadTypeForIssueWithColor): number {
-  const key = `${row.color_id}-${row.thread_type_id}`
+  const key = ttKey(row.color_id, row.thread_type_id, row.thread_color_id)
   const input = lineInputs.value[key]
   if (!input || !row.quota_cones) return 0
 
@@ -486,8 +490,8 @@ function getUnderQuotaAmount(row: ThreadTypeForIssueWithColor): number {
   return remaining > 0 ? remaining : 0
 }
 
-function isAddButtonDisabled(colorId: number, threadTypeId: number): boolean {
-  const key = `${colorId}-${threadTypeId}`
+function isAddButtonDisabled(colorId: number, threadTypeId: number, threadColorId?: number | null): boolean {
+  const key = ttKey(colorId, threadTypeId, threadColorId)
   const input = lineInputs.value[key]
   if (!input) return true
   if (input.full === 0 && input.partial === 0) return true
@@ -497,8 +501,8 @@ function isAddButtonDisabled(colorId: number, threadTypeId: number): boolean {
   return false
 }
 
-function getAddButtonTooltip(colorId: number, threadTypeId: number): string {
-  const key = `${colorId}-${threadTypeId}`
+function getAddButtonTooltip(colorId: number, threadTypeId: number, threadColorId?: number | null): string {
+  const key = ttKey(colorId, threadTypeId, threadColorId)
   const input = lineInputs.value[key]
   if (!input) return 'Nhập số lượng xuất'
   if (input.full === 0 && input.partial === 0) return 'Nhập số lượng xuất'
@@ -507,7 +511,7 @@ function getAddButtonTooltip(colorId: number, threadTypeId: number): string {
 }
 
 async function handleAddLine(row: ThreadTypeForIssueWithColor) {
-  const key = `${row.color_id}-${row.thread_type_id}`
+  const key = ttKey(row.color_id, row.thread_type_id, row.thread_color_id)
   const input = lineInputs.value[key]
   if (!input || (input.full === 0 && input.partial === 0)) {
     snackbar.warning('Nhập số lượng xuất')
@@ -584,7 +588,7 @@ async function handleBatchAddAll() {
   }> = []
 
   for (const row of availableThreadTypes.value) {
-    const key = `${row.color_id}-${row.thread_type_id}`
+    const key = ttKey(row.color_id, row.thread_type_id, row.thread_color_id)
     const input = lineInputs.value[key]
     if (!input || (input.full === 0 && input.partial === 0)) continue
 
@@ -1192,7 +1196,7 @@ onMounted(async () => {
                 v-if="availableThreadTypes.length > 0"
                 :rows="availableThreadTypes"
                 :columns="columns"
-                :row-key="(row: any) => `${row.color_id}-${row.thread_type_id}`"
+                :row-key="(row: any) => ttKey(row.color_id, row.thread_type_id, row.thread_color_id)"
                 flat
                 bordered
                 virtual-scroll
@@ -1247,7 +1251,7 @@ onMounted(async () => {
                   <q-td :props="props">
                     <div class="row q-gutter-xs items-center no-wrap">
                       <AppInput
-                        :model-value="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.full ?? 0"
+                        :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.full ?? 0"
                         type="number"
                         dense
                         class="col"
@@ -1255,11 +1259,11 @@ onMounted(async () => {
                         :min="0"
                         :max="props.row.stock_available_full"
                         placeholder="Nguyên"
-                        @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'full', Number(v) || 0, props.row.stock_available_full)"
+                        @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'full', Number(v) || 0, props.row.stock_available_full, props.row.thread_color_id)"
                       />
                       <span>+</span>
                       <AppInput
-                        :model-value="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.partial ?? 0"
+                        :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.partial ?? 0"
                         type="number"
                         dense
                         class="col"
@@ -1267,11 +1271,11 @@ onMounted(async () => {
                         :min="0"
                         :max="props.row.stock_available_partial"
                         placeholder="Lẻ"
-                        @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'partial', Number(v) || 0, props.row.stock_available_partial)"
+                        @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'partial', Number(v) || 0, props.row.stock_available_partial, props.row.thread_color_id)"
                       />
                     </div>
                     <div
-                      v-if="getUnderQuotaAmount(props.row) > 0 && (lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.full || lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.partial)"
+                      v-if="getUnderQuotaAmount(props.row) > 0 && (lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.full || lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.partial)"
                       class="q-mt-xs"
                     >
                       <q-badge
@@ -1282,7 +1286,7 @@ onMounted(async () => {
                       </q-badge>
                     </div>
                     <div
-                      v-if="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.validation?.is_over_quota"
+                      v-if="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation?.is_over_quota"
                       class="q-mt-xs"
                     >
                       <q-badge
@@ -1295,11 +1299,11 @@ onMounted(async () => {
                         <q-chip
                           v-for="reason in OVER_QUOTA_REASONS"
                           :key="reason"
-                          :outline="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.notes !== reason"
-                          :color="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.notes === reason ? 'warning' : undefined"
+                          :outline="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.notes !== reason"
+                          :color="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.notes === reason ? 'warning' : undefined"
                           clickable
                           dense
-                          @click="() => { const input = lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]; if (input) { input.notes = input.notes === reason ? '' : reason } }"
+                          @click="() => { const input = lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]; if (input) { input.notes = input.notes === reason ? '' : reason } }"
                         >
                           {{ reason }}
                         </q-chip>
@@ -1310,10 +1314,10 @@ onMounted(async () => {
 
                 <template #body-cell-equivalent="props">
                   <q-td :props="props">
-                    <span v-if="lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.validation">
-                      {{ lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.validation?.issued_equivalent.toFixed(2) }}
+                    <span v-if="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation">
+                      {{ lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation?.issued_equivalent.toFixed(2) }}
                       <q-icon
-                        v-if="!lineInputs[`${props.row.color_id}-${props.row.thread_type_id}`]?.validation?.stock_sufficient"
+                        v-if="!lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation?.stock_sufficient"
                         name="warning"
                         color="negative"
                       >
@@ -1335,10 +1339,10 @@ onMounted(async () => {
                       color="primary"
                       dense
                       round
-                      :disable="isAddButtonDisabled(props.row.color_id, props.row.thread_type_id)"
+                      :disable="isAddButtonDisabled(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)"
                       @click="handleAddLine(props.row)"
                     >
-                      <q-tooltip>{{ getAddButtonTooltip(props.row.color_id, props.row.thread_type_id) }}</q-tooltip>
+                      <q-tooltip>{{ getAddButtonTooltip(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id) }}</q-tooltip>
                     </AppButton>
                   </q-td>
                 </template>
