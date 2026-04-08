@@ -3691,15 +3691,15 @@ issuesV2.post('/:id/return', async (c) => {
     }
 
     try {
-      for (const logRow of returnLogRows) {
+      if (returnLogRows.length > 0) {
         await supabase
           .from('thread_issue_return_logs')
-          .insert({
+          .insert(returnLogRows.map((r) => ({
             issue_id: issueId,
-            line_id: logRow.line_id,
-            returned_full: logRow.returned_full,
-            returned_partial: logRow.returned_partial,
-          })
+            line_id: r.line_id,
+            returned_full: r.returned_full,
+            returned_partial: r.returned_partial,
+          })))
       }
     } catch (logError) {
       console.error('[return] Failed to insert return log:', logError)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useDebounceFn } from '@vueuse/core'
+import { useDebounceFn, useLocalStorage } from '@vueuse/core'
 import { useIssueV2 } from '@/composables/thread/useIssueV2'
 import { useDeptAllocation } from '@/composables/thread/useDeptAllocation'
 import { issueV2Service } from '@/services/issueV2Service'
@@ -108,7 +108,7 @@ function ttKey(colorId: number | null | undefined, threadTypeId: number, threadC
   return `${colorId}-${threadTypeId}-${threadColorId ?? 'null'}`
 }
 
-const selectedWarehouseId = ref<number | null>(null)
+const selectedWarehouseId = useLocalStorage<number | null>('issue-v2-warehouse', null)
 const shortageData = ref<IssueShortageDetail[] | null>(null)
 const showBorrowDialog = ref(false)
 const selectedStyleHasSubArts = computed(() => {
@@ -741,7 +741,6 @@ function handleNewIssue() {
   selectedStyleId.value = null
   selectedSubArtId.value = null
   selectedColorIds.value = []
-  selectedWarehouseId.value = null
   subArtOptions.value = []
   lineInputs.value = {}
   shortageData.value = null
@@ -921,7 +920,6 @@ function handleVisibilityChange() {
   if (loadingFormData.value) return
 
   refreshStockData()
-  snackbar.info('Đã cập nhật dữ liệu tồn kho')
 }
 
 watch(isConfirmed, (confirmed) => {
@@ -1066,19 +1064,19 @@ onUnmounted(() => {
                   />
                 </div>
                 <div class="col-12 col-md-4">
-                  <AppInput
-                    v-model="createdBy"
-                    label="Người Tạo"
-                    required
-                    readonly
-                  />
-                </div>
-                <div class="col-12 col-md-4">
                   <AppWarehouseSelect
                     v-model="selectedWarehouseId"
                     label="Kho Xuất"
                     clearable
                     hint="Bỏ trống để tự động phát hiện"
+                  />
+                </div>
+                <div class="col-12 col-md-4">
+                  <AppInput
+                    v-model="createdBy"
+                    label="Người Tạo"
+                    required
+                    readonly
                   />
                 </div>
               </div>

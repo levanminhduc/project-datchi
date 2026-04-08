@@ -160,31 +160,7 @@ styleThreadSpecs.post('/', async (c) => {
     let displayOrder = 0
 
     if (addToTop) {
-      // Shift all existing rows for this style: display_order += 1
-      await supabase
-        .from('style_thread_specs')
-        .update({ display_order: supabase.rpc('increment', { x: 1 }) })
-        .eq('style_id', body.style_id)
-        .gte('display_order', 0)
-      
-      // Actually, Supabase doesn't support increment like that directly
-      // We need to use raw SQL or a different approach
-      // Let's use a workaround: get all rows, update their display_order
-      const { data: existingRows } = await supabase
-        .from('style_thread_specs')
-        .select('id, display_order')
-        .eq('style_id', body.style_id)
-        .order('display_order', { ascending: true })
-      
-      if (existingRows && existingRows.length > 0) {
-        // Increment all display_orders by 1
-        for (const row of existingRows) {
-          await supabase
-            .from('style_thread_specs')
-            .update({ display_order: row.display_order + 1 })
-            .eq('id', row.id)
-        }
-      }
+      await supabase.rpc('fn_increment_style_thread_spec_order', { p_style_id: body.style_id })
       displayOrder = 0
     } else {
       // Get MAX display_order + 1 for this style

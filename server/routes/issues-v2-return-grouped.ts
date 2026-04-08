@@ -442,14 +442,16 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
     }
 
     try {
-      for (const logRow of returnLogRows) {
-        await supabase.from('thread_issue_return_logs').insert({
-          issue_id: logRow.issue_id,
-          line_id: logRow.line_id,
-          returned_full: logRow.returned_full,
-          returned_partial: logRow.returned_partial,
-          created_by: performedBy || null,
-        })
+      if (returnLogRows.length > 0) {
+        await supabase
+          .from('thread_issue_return_logs')
+          .insert(returnLogRows.map((r) => ({
+            issue_id: r.issue_id,
+            line_id: r.line_id,
+            returned_full: r.returned_full,
+            returned_partial: r.returned_partial,
+            created_by: performedBy || null,
+          })))
       }
     } catch (logError) {
       console.error('[return-grouped] Failed to insert return logs:', logError)
