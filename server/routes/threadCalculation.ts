@@ -208,27 +208,43 @@ async function getSupplierMetersPerCone(
   return map
 }
 
-/**
- * Query available inventory cones grouped by thread_type_id
- * Returns a Map of thread_type_id -> available cone count
- */
-async function getAvailableInventory(threadTypeIds: number[]): Promise<Map<number, number>> {
+async function getAvailableInventory(threadTypeIds: number[]): Promise<Map<string, number>> {
   if (threadTypeIds.length === 0) return new Map()
 
   const usableStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED']
   const { data, error } = await supabase
     .from('thread_inventory')
-    .select('thread_type_id')
+    .select('thread_type_id, color_id')
     .in('status', usableStatuses)
     .in('thread_type_id', threadTypeIds)
+    .limit(50000)
 
   if (error) throw error
 
-  // Count cones per thread_type_id
-  const inventoryMap = new Map<number, number>()
+  const colorIds = [...new Set(
+    (data || [])
+      .map(r => r.color_id as number | null)
+      .filter((id): id is number => id != null),
+  )]
+
+  const colorIdToName = new Map<number, string>()
+  if (colorIds.length > 0) {
+    const { data: colorRows } = await supabase
+      .from('colors')
+      .select('id, name')
+      .in('id', colorIds)
+      .limit(colorIds.length)
+
+    for (const c of colorRows || []) {
+      colorIdToName.set(c.id, c.name)
+    }
+  }
+
+  const inventoryMap = new Map<string, number>()
   for (const row of data || []) {
-    const current = inventoryMap.get(row.thread_type_id) || 0
-    inventoryMap.set(row.thread_type_id, current + 1)
+    const colorName = row.color_id ? colorIdToName.get(row.color_id as number) ?? '' : ''
+    const key = `${row.thread_type_id}_${colorName}`
+    inventoryMap.set(key, (inventoryMap.get(key) || 0) + 1)
   }
 
   return inventoryMap
@@ -256,9 +272,9 @@ async function applyInventoryPreview(results: CalculationResult[]): Promise<void
 
   const inventoryMap = await getAvailableInventory([...threadTypeIds])
 
-  const runningBalance = new Map<number, number>()
-  for (const [threadTypeId, available] of inventoryMap) {
-    runningBalance.set(threadTypeId, available)
+  const runningBalance = new Map<string, number>()
+  for (const [key, available] of inventoryMap) {
+    runningBalance.set(key, available)
   }
 
   for (const result of results) {
@@ -274,33 +290,34 @@ async function applyInventoryPreview(results: CalculationResult[]): Promise<void
       }
 
       if (calc.color_breakdown && calc.color_breakdown.length > 0) {
-        // Group color_breakdown entries by thread_type_id to compute per-type cone needs
-        const neededByType = new Map<number, number>()
+        const neededByKey = new Map<string, number>()
         for (const cb of calc.color_breakdown) {
           if (!cb.thread_type_id) continue
+          const key = `${cb.thread_type_id}_${cb.thread_color ?? ''}`
           const mpc = cb.meters_per_cone ?? metersPerCone
           const cbCones = mpc > 0 ? Math.ceil(cb.total_meters / mpc) : 0
-          neededByType.set(cb.thread_type_id, (neededByType.get(cb.thread_type_id) || 0) + cbCones)
+          neededByKey.set(key, (neededByKey.get(key) || 0) + cbCones)
         }
 
         let totalAvailable = 0
-        for (const [ttId, needed] of neededByType) {
-          const available = runningBalance.get(ttId) || 0
+        for (const [key, needed] of neededByKey) {
+          const available = runningBalance.get(key) || 0
           const allocated = Math.min(needed, available)
           totalAvailable += allocated
-          runningBalance.set(ttId, available - allocated)
+          runningBalance.set(key, available - allocated)
         }
 
         calc.inventory_available = totalAvailable
         calc.shortage_cones = Math.max(0, totalCones - totalAvailable)
         calc.is_fully_stocked = calc.shortage_cones === 0
       } else {
-        const available = runningBalance.get(calc.thread_type_id) || 0
+        const key = `${calc.thread_type_id}_${calc.thread_color ?? ''}`
+        const available = runningBalance.get(key) || 0
         const allocated = Math.min(totalCones, available)
         calc.inventory_available = allocated
         calc.shortage_cones = Math.max(0, totalCones - allocated)
         calc.is_fully_stocked = calc.shortage_cones === 0
-        runningBalance.set(calc.thread_type_id, available - allocated)
+        runningBalance.set(key, available - allocated)
       }
     }
   }
