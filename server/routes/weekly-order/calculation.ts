@@ -34,19 +34,91 @@ calculation.post('/enrich-inventory', requirePermission('thread.allocations.mana
 
     const partialConeRatio = await getPartialConeRatio()
 
-    const { data: inventoryCounts, error: invError } = await supabase.rpc('fn_count_available_cones', {
-      p_thread_type_ids: threadTypeIds,
-    })
+    const colorNames = [...new Set(
+      summary_rows
+        .map((r) => (r as Record<string, unknown>).thread_color as string | null | undefined)
+        .filter((c): c is string => !!c && c.trim() !== ''),
+    )]
 
-    if (invError) throw invError
+    const colorNameToId = new Map<string, number>()
+    if (colorNames.length > 0) {
+      const { data: colorRows } = await supabase
+        .from('colors')
+        .select('id, name')
+        .in('name', colorNames)
+        .limit(colorNames.length)
 
-    const fullMap = new Map<number, number>()
-    const partialMap = new Map<number, number>()
-    for (const row of inventoryCounts || []) {
-      if (row.is_partial) {
-        partialMap.set(row.thread_type_id, row.cone_count)
-      } else {
-        fullMap.set(row.thread_type_id, row.cone_count)
+      for (const c of colorRows || []) {
+        colorNameToId.set(c.name, c.id)
+      }
+    }
+
+    const coloredTypeIds: number[] = []
+    const coloredColorIds: number[] = []
+    const nonColoredTypeIds: number[] = []
+
+    for (const row of summary_rows) {
+      const tc = (row as Record<string, unknown>).thread_color as string | null | undefined
+      if (tc && tc.trim() !== '' && colorNameToId.has(tc)) {
+        coloredTypeIds.push(row.thread_type_id)
+        coloredColorIds.push(colorNameToId.get(tc)!)
+      } else if (!tc || tc.trim() === '') {
+        nonColoredTypeIds.push(row.thread_type_id)
+      }
+    }
+
+    const uniqueColoredTypeIds = [...new Set(coloredTypeIds)]
+    const uniqueColoredColorIds = [...new Set(coloredColorIds)]
+    const uniqueNonColoredTypeIds = [...new Set(nonColoredTypeIds)]
+
+    const inventoryMap = new Map<string, { full: number; partial: number }>()
+
+    if (uniqueColoredTypeIds.length > 0 && uniqueColoredColorIds.length > 0) {
+      const { data: coloredCounts, error: coloredError } = await supabase
+        .from('thread_inventory')
+        .select('thread_type_id, color_id, is_partial')
+        .in('status', ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED'])
+        .in('thread_type_id', uniqueColoredTypeIds)
+        .in('color_id', uniqueColoredColorIds)
+        .limit(50000)
+
+      if (coloredError) throw coloredError
+
+      const colorIdToName = new Map<number, string>()
+      for (const [name, id] of colorNameToId) {
+        colorIdToName.set(id, name)
+      }
+
+      for (const inv of coloredCounts || []) {
+        const cName = colorIdToName.get(inv.color_id)
+        if (!cName) continue
+        const key = `${inv.thread_type_id}_${cName}`
+        const entry = inventoryMap.get(key) || { full: 0, partial: 0 }
+        if (inv.is_partial) {
+          entry.partial++
+        } else {
+          entry.full++
+        }
+        inventoryMap.set(key, entry)
+      }
+    }
+
+    if (uniqueNonColoredTypeIds.length > 0) {
+      const { data: inventoryCounts, error: invError } = await supabase.rpc('fn_count_available_cones', {
+        p_thread_type_ids: uniqueNonColoredTypeIds,
+      })
+
+      if (invError) throw invError
+
+      for (const row of inventoryCounts || []) {
+        const key = `${row.thread_type_id}_`
+        const entry = inventoryMap.get(key) || { full: 0, partial: 0 }
+        if (row.is_partial) {
+          entry.partial = Number(row.cone_count)
+        } else {
+          entry.full = Number(row.cone_count)
+        }
+        inventoryMap.set(key, entry)
       }
     }
 
@@ -80,8 +152,11 @@ calculation.post('/enrich-inventory', requirePermission('thread.allocations.mana
     }
 
     const enrichedRows = summary_rows.map((row) => {
-      const full_cones = fullMap.get(row.thread_type_id) || 0
-      const partial_cones = partialMap.get(row.thread_type_id) || 0
+      const tc = (row as Record<string, unknown>).thread_color as string | null | undefined
+      const key = `${row.thread_type_id}_${tc && tc.trim() !== '' ? tc : ''}`
+      const inv = inventoryMap.get(key) || { full: 0, partial: 0 }
+      const full_cones = inv.full
+      const partial_cones = inv.partial
       const inventory_cones = full_cones + partial_cones
       const equivalent_cones = Math.round((full_cones + partial_cones * partialConeRatio) * 10) / 10
       const sl_can_dat = Math.max(0, Math.ceil(row.total_cones - equivalent_cones))
