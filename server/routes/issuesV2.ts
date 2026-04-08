@@ -33,6 +33,21 @@ import {
 import type { ThreadApiResponse } from '../types/thread'
 import type { AppEnv } from '../types/hono-env'
 import returnGroupedRoutes from './issues-v2-return-grouped'
+import {
+  batchLookupThreadColorIds,
+  batchFindConfirmedWeekIds,
+  batchLoadInventoryData,
+} from '../utils/issue-v2-batch-lookups'
+import {
+  detectWarehouseFromData,
+  computeStockFromData,
+  batchGetStockBreakdownByWarehouse,
+  batchGetConfirmedIssuedGross,
+} from '../utils/issue-v2-batch-stock'
+import {
+  batchGetBaseQuotaCones,
+  batchGetQuotaCones,
+} from '../utils/issue-v2-batch-quota'
 
 const issuesV2 = new Hono<AppEnv>()
 
@@ -644,7 +659,7 @@ async function getDeptAllocation(
   return data
 }
 
-async function getConfirmedIssuedGross(
+async function _getConfirmedIssuedGross(
   poId: number,
   styleId: number,
   colorId: number,
@@ -678,7 +693,7 @@ async function getConfirmedIssuedGross(
   )
 }
 
-async function getBaseQuotaCones(
+async function _getBaseQuotaCones(
   poId: number,
   styleId: number,
   colorId: number,
@@ -2004,51 +2019,64 @@ issuesV2.get('/form-data', async (c) => {
     const ratio = await getPartialConeRatio()
     const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
 
-    const threadTypes = await Promise.all(
-      uniqueKeys.map(async (key) => {
-        const [ttIdStr, tcIdStr] = key.split('-')
-        const threadTypeId = Number(ttIdStr)
-        const threadColorId = tcIdStr === 'null' ? undefined : Number(tcIdStr)
+    const items = uniqueKeys.map((key) => {
+      const [ttIdStr, tcIdStr] = key.split('-')
+      const threadTypeId = Number(ttIdStr)
+      const threadColorId = tcIdStr === 'null' ? undefined : Number(tcIdStr)
+      const spec = filteredSpecs.find((s: any) =>
+        s.thread_type_id === threadTypeId &&
+        (s.thread_color_id ?? 'null').toString() === (threadColorId?.toString() ?? 'null')
+      ) as any
+      return { threadTypeId, threadColorId, spec }
+    })
 
-        const spec = filteredSpecs.find((s: any) =>
-          s.thread_type_id === threadTypeId &&
-          (s.thread_color_id ?? 'null').toString() === (threadColorId?.toString() ?? 'null')
-        ) as any
-        const threadType = spec?.thread_types as any
-        const detectedWarehouseId = await detectWarehouseForThread(threadTypeId, weekIds, threadColorId)
-        const effectiveWarehouseId = warehouse_id || detectedWarehouseId
-        const [stock, quotaCones, baseQuota, confirmedGross] = await Promise.all([
-          getStockAvailability(threadTypeId!, effectiveWarehouseId, weekIds, threadColorId),
-          getQuotaCones(po_id, style_id, effectiveColorId, threadTypeId!, ratio, department),
-          getBaseQuotaCones(po_id!, style_id!, effectiveColorId!, threadTypeId!),
-          getConfirmedIssuedGross(po_id!, style_id!, effectiveColorId!, threadTypeId!, ratio),
-        ])
+    const allThreadTypeIds = [...new Set(items.map((i) => i.threadTypeId))]
+    const inventoryData = await batchLoadInventoryData(allThreadTypeIds, weekIds)
 
-        const supplierName = (threadType?.supplier_data as any)?.name || ''
-        const texPart = (threadType as any)?.tex_label || (threadType?.tex_number ? `TEX ${threadType.tex_number}` : '')
-        const colorName = (spec as any)?.thread_color?.name || ''
-        const displayName = [supplierName, texPart, colorName].filter(Boolean).join(' - ') || threadType?.name || ''
+    const [quotaMap, baseQuotaMap, grossMap, breakdownMap] = await Promise.all([
+      batchGetQuotaCones(allThreadTypeIds, po_id!, style_id!, effectiveColorId!, ratio, department),
+      batchGetBaseQuotaCones(allThreadTypeIds, po_id!, style_id!, effectiveColorId!),
+      batchGetConfirmedIssuedGross(allThreadTypeIds, po_id!, style_id!, effectiveColorId!, ratio),
+      warehouse_id
+        ? batchGetStockBreakdownByWarehouse(
+            items.map((i) => ({ threadTypeId: i.threadTypeId, colorId: i.threadColorId })),
+            weekIds
+          )
+        : Promise.resolve(null),
+    ])
 
-        const result: any = {
-          thread_type_id: threadTypeId,
-          thread_color_id: threadColorId ?? null,
-          thread_code: threadType?.code || '',
-          thread_name: displayName,
-          quota_cones: quotaCones,
-          base_quota_cones: baseQuota,
-          confirmed_issued_gross: confirmedGross,
-          stock_available_full: stock.full_cones,
-          stock_available_partial: stock.partial_cones,
-          detected_warehouse_id: detectedWarehouseId,
-        }
+    const threadTypes = items.map((item) => {
+      const { threadTypeId, threadColorId, spec } = item
+      const threadType = spec?.thread_types as any
+      const detectedWarehouseId = detectWarehouseFromData(threadTypeId, weekIds, threadColorId, inventoryData)
+      const effectiveWarehouseId = warehouse_id || detectedWarehouseId
+      const stock = computeStockFromData(threadTypeId, effectiveWarehouseId, weekIds, threadColorId, inventoryData)
 
-        if (warehouse_id) {
-          result.stock_by_warehouse = await getStockBreakdownByWarehouse(threadTypeId, weekIds, threadColorId)
-        }
+      const supplierName = (threadType?.supplier_data as any)?.name || ''
+      const texPart = (threadType as any)?.tex_label || (threadType?.tex_number ? `TEX ${threadType.tex_number}` : '')
+      const colorName = (spec as any)?.thread_color?.name || ''
+      const displayName = [supplierName, texPart, colorName].filter(Boolean).join(' - ') || threadType?.name || ''
 
-        return result
-      })
-    )
+      const result: any = {
+        thread_type_id: threadTypeId,
+        thread_color_id: threadColorId ?? null,
+        thread_code: threadType?.code || '',
+        thread_name: displayName,
+        quota_cones: quotaMap.get(threadTypeId) ?? null,
+        base_quota_cones: baseQuotaMap.get(threadTypeId) ?? null,
+        confirmed_issued_gross: grossMap.get(threadTypeId) ?? 0,
+        stock_available_full: stock.full_cones,
+        stock_available_partial: stock.partial_cones,
+        detected_warehouse_id: detectedWarehouseId,
+      }
+
+      if (warehouse_id && breakdownMap) {
+        const bdKey = `${threadTypeId}-${threadColorId ?? 'null'}`
+        result.stock_by_warehouse = breakdownMap.get(bdKey) ?? []
+      }
+
+      return result
+    })
 
     return c.json({
       data: { thread_types: threadTypes },
@@ -2729,45 +2757,64 @@ issuesV2.get('/:id', async (c) => {
     // Get partial cone ratio
     const ratio = await getPartialConeRatio()
 
-    // Compute fields for each line
-    const linesWithComputed = await Promise.all(
-      (lines || []).map(async (line: any) => {
-        const issuedEquivalent = calculateIssuedEquivalent(
-          line.issued_full,
-          line.issued_partial,
-          ratio
-        )
-        const isOverQuota = line.quota_cones !== null && issuedEquivalent > line.quota_cones
-        const lineColorId = line.style_color_id || line.color_id
-        const lineThreadColorId = await lookupThreadColorId(line.thread_type_id, lineColorId)
-        const lineWeekIds = await findConfirmedWeekIds(line.po_id, line.style_id, lineColorId)
-        const detectedWarehouseId = await detectWarehouseForThread(line.thread_type_id, lineWeekIds, lineThreadColorId)
-        const stock = await getStockAvailability(line.thread_type_id, detectedWarehouseId, lineWeekIds, lineThreadColorId)
+    // Batch lookups instead of N+1
+    const lineItems = (lines || []).map((line: any) => ({
+      thread_type_id: line.thread_type_id,
+      style_color_id: line.style_color_id || line.color_id,
+      po_id: line.po_id,
+      style_id: line.style_id,
+    }))
 
-        return {
-          ...line,
-          issued_equivalent: issuedEquivalent,
-          is_over_quota: isOverQuota,
-          stock_available_full: stock.full_cones,
-          stock_available_partial: stock.partial_cones,
-          thread_color_id: lineThreadColorId ?? null,
-          thread_code: line.thread_types?.code,
-          thread_name: line.thread_types?.name,
-          po_number: line.purchase_orders?.po_number,
-          style_code: line.styles?.style_code,
-          style_name: line.styles?.style_name,
-          color_name: line.style_colors?.color_name ?? line.colors?.name ?? null,
-          sub_art_code: line.sub_arts?.sub_art_code || null,
-          // Remove nested objects
-          thread_types: undefined,
-          purchase_orders: undefined,
-          styles: undefined,
-          style_colors: undefined,
-          colors: undefined,
-          sub_arts: undefined,
-        }
-      })
-    )
+    const [threadColorMap, weekIdsMap] = await Promise.all([
+      batchLookupThreadColorIds(lineItems),
+      batchFindConfirmedWeekIds(lineItems.map((i) => ({
+        po_id: i.po_id,
+        style_id: i.style_id,
+        style_color_id: i.style_color_id,
+      }))),
+    ])
+
+    const allThreadTypeIds = [...new Set(lineItems.map((i) => i.thread_type_id))]
+    const allWeekIds = [...new Set([...weekIdsMap.values()].flat())]
+    const inventoryData = await batchLoadInventoryData(allThreadTypeIds, allWeekIds)
+
+    const linesWithComputed = (lines || []).map((line: any) => {
+      const issuedEquivalent = calculateIssuedEquivalent(
+        line.issued_full,
+        line.issued_partial,
+        ratio
+      )
+      const isOverQuota = line.quota_cones !== null && issuedEquivalent > line.quota_cones
+      const lineColorId = line.style_color_id || line.color_id
+      const tcKey = `${line.thread_type_id}-${lineColorId}`
+      const lineThreadColorId = threadColorMap.get(tcKey)
+      const wKey = `${line.po_id}-${line.style_id}-${lineColorId}`
+      const lineWeekIds = weekIdsMap.get(wKey) ?? []
+      const detectedWarehouseId = detectWarehouseFromData(line.thread_type_id, lineWeekIds, lineThreadColorId, inventoryData)
+      const stock = computeStockFromData(line.thread_type_id, detectedWarehouseId, lineWeekIds, lineThreadColorId, inventoryData)
+
+      return {
+        ...line,
+        issued_equivalent: issuedEquivalent,
+        is_over_quota: isOverQuota,
+        stock_available_full: stock.full_cones,
+        stock_available_partial: stock.partial_cones,
+        thread_color_id: lineThreadColorId ?? null,
+        thread_code: line.thread_types?.code,
+        thread_name: line.thread_types?.name,
+        po_number: line.purchase_orders?.po_number,
+        style_code: line.styles?.style_code,
+        style_name: line.styles?.style_name,
+        color_name: line.style_colors?.color_name ?? line.colors?.name ?? null,
+        sub_art_code: line.sub_arts?.sub_art_code || null,
+        thread_types: undefined,
+        purchase_orders: undefined,
+        styles: undefined,
+        style_colors: undefined,
+        colors: undefined,
+        sub_arts: undefined,
+      }
+    })
 
     return c.json({
       data: {
