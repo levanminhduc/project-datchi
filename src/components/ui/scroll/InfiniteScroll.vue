@@ -4,6 +4,7 @@
  * Wraps QInfiniteScroll for lazy loading
  */
 import { ref } from 'vue'
+import AppSpinner from '@/components/ui/feedback/AppSpinner.vue'
 
 interface Props {
   offset?: number
@@ -53,10 +54,7 @@ defineExpose({
     <template #loading>
       <slot name="loading">
         <div class="row justify-center q-my-md">
-          <q-spinner
-            color="primary"
-            size="40px"
-          />
+          <AppSpinner />
         </div>
       </slot>
     </template>

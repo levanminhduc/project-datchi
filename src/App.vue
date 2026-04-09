@@ -9,7 +9,9 @@ import { useNotifications } from "./composables/useNotifications";
 import { useAuth } from "./composables/useAuth";
 import { useVersionCheck } from "./composables/useVersionCheck";
 import AnnouncementPopup from './components/ui/AnnouncementPopup.vue'
+import NetworkStatusBanner from './components/ui/feedback/NetworkStatusBanner.vue'
 import { useAnnouncements } from './composables/use-announcements'
+import { initNetworkStatus } from './composables/useNetworkStatus'
 
 const route = useRoute();
 const router = useRouter();
@@ -64,6 +66,7 @@ watch(showSidebar, (show) => {
 
 onMounted(() => {
   initDarkMode();
+  initNetworkStatus();
 });
 </script>
 
@@ -111,6 +114,7 @@ onMounted(() => {
     </q-drawer>
 
     <q-page-container>
+      <NetworkStatusBanner />
       <router-view v-slot="{ Component }">
         <keep-alive
           v-if="shouldKeepAlive"

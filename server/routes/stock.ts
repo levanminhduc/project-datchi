@@ -306,7 +306,7 @@ stock.get('/manual-history', requirePermission('thread.batch.receive'), async (c
     const lotIds = lots.map(l => l.id)
 
     const [ttResult, whResult, suppResult, empResult, coneCountResult] = await Promise.all([
-      supabase.from('thread_types').select('id, code, name, color_id').in('id', threadTypeIds),
+      supabase.from('thread_types').select('id, code, name, color_id, tex_number').in('id', threadTypeIds),
       supabase.from('warehouses').select('id, name').in('id', warehouseIds),
       supplierIds.length > 0
         ? supabase.from('suppliers').select('id, name').in('id', supplierIds)
@@ -314,21 +314,22 @@ stock.get('/manual-history', requirePermission('thread.batch.receive'), async (c
       employeeIds.length > 0
         ? supabase.from('employees').select('id, full_name').in('id', employeeIds)
         : { data: [], error: null },
-      supabase.from('thread_inventory').select('lot_id, is_partial').in('lot_id', lotIds).limit(5000),
+      supabase.from('thread_inventory').select('lot_id, is_partial, color_id').in('lot_id', lotIds).limit(5000),
     ])
 
-    const coneCountMap = new Map<number, { full_cones: number; partial_cones: number }>()
+    const coneCountMap = new Map<number, { full_cones: number; partial_cones: number; color_id: number | null }>()
     if (coneCountResult.data) {
       for (const cone of coneCountResult.data) {
         if (!cone.lot_id) continue
-        const existing = coneCountMap.get(cone.lot_id) || { full_cones: 0, partial_cones: 0 }
+        const existing = coneCountMap.get(cone.lot_id) || { full_cones: 0, partial_cones: 0, color_id: null }
         if (cone.is_partial) existing.partial_cones += 1
         else existing.full_cones += 1
+        if (!existing.color_id && cone.color_id) existing.color_id = cone.color_id
         coneCountMap.set(cone.lot_id, existing)
       }
     }
 
-    const colorIds = [...new Set((ttResult.data || []).map(t => t.color_id).filter((id): id is number => id != null))]
+    const colorIds = [...new Set([...coneCountMap.values()].map(c => c.color_id).filter((id): id is number => id != null))]
     const colorResult = colorIds.length > 0
       ? await supabase.from('colors').select('id, name, hex_code').in('id', colorIds)
       : { data: [] }
@@ -341,8 +342,8 @@ stock.get('/manual-history', requirePermission('thread.batch.receive'), async (c
 
     const rows = lots.map(lot => {
       const tt = ttMap.get(lot.thread_type_id)
-      const color = tt?.color_id ? colorMap.get(tt.color_id) : null
-      const coneCounts = coneCountMap.get(lot.id) || { full_cones: 0, partial_cones: 0 }
+      const coneCounts = coneCountMap.get(lot.id) || { full_cones: 0, partial_cones: 0, color_id: null }
+      const color = coneCounts.color_id ? colorMap.get(coneCounts.color_id) : null
 
       return {
         id: lot.id,
@@ -351,7 +352,7 @@ stock.get('/manual-history', requirePermission('thread.batch.receive'), async (c
         total_cones: lot.total_cones,
         full_cones: coneCounts.full_cones,
         partial_cones: coneCounts.partial_cones,
-        thread_type: tt ? { code: tt.code, name: tt.name, color: color ? { name: color.name, hex_code: color.hex_code } : null } : null,
+        thread_type: tt ? { code: tt.code, name: tt.name, tex_number: tt.tex_number || null, color: color ? { name: color.name, hex_code: color.hex_code } : null } : null,
         warehouse: whMap.get(lot.warehouse_id) ? { name: whMap.get(lot.warehouse_id)!.name } : null,
         supplier: lot.supplier_id ? (suppMap.get(lot.supplier_id) ? { name: suppMap.get(lot.supplier_id)!.name } : null) : null,
         created_by: lot.created_by_employee_id ? (empMap.get(lot.created_by_employee_id) ? { full_name: empMap.get(lot.created_by_employee_id)!.full_name } : null) : null,

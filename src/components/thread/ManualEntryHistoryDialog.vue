@@ -34,13 +34,12 @@ const pagination = ref({
 
 const columns = [
   { name: 'created_at', label: 'Ngày nhập', field: 'created_at', align: 'left' as const, sortable: false },
-  { name: 'thread_type', label: 'Loại chỉ', field: 'thread_type', align: 'left' as const, sortable: false },
-  { name: 'warehouse', label: 'Kho', field: 'warehouse', align: 'left' as const, sortable: false },
-  { name: 'full_cones', label: 'Cuộn nguyên', field: 'full_cones', align: 'center' as const, sortable: false },
-  { name: 'partial_cones', label: 'Cuộn lẻ', field: 'partial_cones', align: 'center' as const, sortable: false },
-  { name: 'total_cones', label: 'Tổng cuộn', field: 'total_cones', align: 'center' as const, sortable: false },
-  { name: 'lot_number', label: 'Mã lô', field: 'lot_number', align: 'left' as const, sortable: false },
   { name: 'supplier', label: 'NCC', field: 'supplier', align: 'left' as const, sortable: false },
+  { name: 'tex', label: 'Tex', field: 'tex', align: 'left' as const, sortable: false },
+  { name: 'color', label: 'Màu', field: 'color', align: 'left' as const, sortable: false },
+  { name: 'full_cones', label: 'C.Nguyên', field: 'full_cones', align: 'center' as const, sortable: false },
+  { name: 'partial_cones', label: 'C.Lẻ', field: 'partial_cones', align: 'center' as const, sortable: false },
+  { name: 'warehouse', label: 'Kho', field: 'warehouse', align: 'left' as const, sortable: false },
   { name: 'created_by', label: 'Người nhập', field: 'created_by', align: 'left' as const, sortable: false },
 ]
 
@@ -49,9 +48,7 @@ function formatDate(dateStr: string): string {
   const dd = String(d.getDate()).padStart(2, '0')
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const yyyy = d.getFullYear()
-  const hh = String(d.getHours()).padStart(2, '0')
-  const min = String(d.getMinutes()).padStart(2, '0')
-  return `${dd}/${mm}/${yyyy} ${hh}:${min}`
+  return `${dd}/${mm}/${yyyy}`
 }
 
 async function onRequest(tableProps: { pagination: { page: number; rowsPerPage: number; rowsNumber?: number; sortBy: string; descending: boolean } }) {
@@ -103,18 +100,29 @@ watch(dialogValue, (isOpen) => {
         </q-td>
       </template>
 
-      <template #body-cell-thread_type="scope">
+      <template #body-cell-supplier="scope">
+        <q-td :props="scope">
+          {{ scope.row.supplier?.name || '-' }}
+        </q-td>
+      </template>
+
+      <template #body-cell-tex="scope">
+        <q-td :props="scope">
+          {{ scope.row.thread_type?.tex_number || '-' }}
+        </q-td>
+      </template>
+
+      <template #body-cell-color="scope">
         <q-td :props="scope">
           <div
-            v-if="scope.row.thread_type"
+            v-if="scope.row.thread_type?.color"
             class="row items-center q-gutter-x-xs no-wrap"
           >
             <div
-              v-if="scope.row.thread_type.color?.hex_code"
               class="color-dot"
               :style="{ backgroundColor: scope.row.thread_type.color.hex_code }"
             />
-            <span>{{ scope.row.thread_type.name }}</span>
+            <span>{{ scope.row.thread_type.color.name }}</span>
           </div>
           <span
             v-else
@@ -126,12 +134,6 @@ watch(dialogValue, (isOpen) => {
       <template #body-cell-warehouse="scope">
         <q-td :props="scope">
           {{ scope.row.warehouse?.name || '-' }}
-        </q-td>
-      </template>
-
-      <template #body-cell-supplier="scope">
-        <q-td :props="scope">
-          {{ scope.row.supplier?.name || '-' }}
         </q-td>
       </template>
 

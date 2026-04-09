@@ -96,6 +96,7 @@ declare module 'vue' {
     ManualEntryHistoryDialog: typeof import('./components/thread/ManualEntryHistoryDialog.vue')['default']
     ManualReturnDialog: typeof import('./components/thread/weekly-order/ManualReturnDialog.vue')['default']
     ManualWeightInput: typeof import('./components/hardware/ManualWeightInput.vue')['default']
+    NetworkStatusBanner: typeof import('./components/ui/feedback/NetworkStatusBanner.vue')['default']
     NotificationBell: typeof import('./components/ui/NotificationBell.vue')['default']
     OfflineSyncBanner: typeof import('./components/offline/OfflineSyncBanner.vue')['default']
     PageHeader: typeof import('./components/ui/layout/PageHeader.vue')['default']

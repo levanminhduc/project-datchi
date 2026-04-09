@@ -34,6 +34,27 @@ export class NetworkError extends Error {
   }
 }
 
+const WAIT_FOR_NETWORK_TIMEOUT_MS = 300_000
+
+function waitForNetwork(timeoutMs = WAIT_FOR_NETWORK_TIMEOUT_MS): Promise<void> {
+  if (navigator.onLine) return Promise.resolve()
+
+  return new Promise<void>((resolve, reject) => {
+    const onOnline = () => {
+      clearTimeout(timer)
+      window.removeEventListener('online', onOnline)
+      resolve()
+    }
+
+    const timer = setTimeout(() => {
+      window.removeEventListener('online', onOnline)
+      reject(new ApiError(503, 'Mất kết nối quá lâu, vui lòng kiểm tra mạng'))
+    }, timeoutMs)
+
+    window.addEventListener('online', onOnline)
+  })
+}
+
 let refreshPromise: Promise<Session> | null = null
 let isLoggingOut = false
 
@@ -218,35 +239,83 @@ function isTokenExpiringSoon(token: string): boolean {
 export async function fetchApiRaw(
   endpointOrUrl: string,
   options: RequestOptions = {},
-  config: { includeJsonContentType?: boolean; timeout?: number } = {}
+  config: { includeJsonContentType?: boolean; timeout?: number; retryOnNetworkError?: boolean } = {}
 ): Promise<Response> {
   const url = resolveRequestUrl(endpointOrUrl)
   const includeJsonContentType = config.includeJsonContentType ?? false
   const timeoutMs = config.timeout ?? REQUEST_TIMEOUT_MS
+  const method = (options.method || 'GET').toUpperCase()
+  const IDEMPOTENT_METHODS = ['GET', 'PUT', 'DELETE']
+  const shouldRetryNetwork = config.retryOnNetworkError || IDEMPOTENT_METHODS.includes(method)
+  const NETWORK_RETRY_DELAYS = [1000, 3000]
 
   const makeRequest = async (token?: string): Promise<Response> => {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    const doFetch = async (): Promise<Response> => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+      try {
+        const headers = buildRequestHeaders(
+          options.headers,
+          token,
+          includeJsonContentType
+        )
+
+        return await fetch(url, {
+          ...options,
+          headers,
+          signal: controller.signal,
+        })
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new ApiError(408, 'Yêu cầu quá thời gian. Vui lòng thử lại')
+        }
+        throw error
+      } finally {
+        clearTimeout(timeoutId)
+      }
+    }
 
     try {
-      const headers = buildRequestHeaders(
-        options.headers,
-        token,
-        includeJsonContentType
-      )
-
-      return await fetch(url, {
-        ...options,
-        headers,
-        signal: controller.signal,
-      })
+      return await doFetch()
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ApiError(408, 'Yêu cầu quá thời gian. Vui lòng thử lại')
+      if (error instanceof ApiError) throw error
+
+      if (error instanceof TypeError && shouldRetryNetwork) {
+        if (!navigator.onLine) {
+          await waitForNetwork()
+          try {
+            return await doFetch()
+          } catch (retryError) {
+            if (retryError instanceof ApiError) throw retryError
+            if (!(retryError instanceof TypeError)) throw retryError
+          }
+        }
+
+        for (const delay of NETWORK_RETRY_DELAYS) {
+          await new Promise(r => setTimeout(r, delay))
+          if (!navigator.onLine) {
+            await waitForNetwork()
+          }
+          try {
+            return await doFetch()
+          } catch (retryError) {
+            if (retryError instanceof ApiError) throw retryError
+            if (!(retryError instanceof TypeError)) throw retryError
+          }
+        }
       }
+
+      if (error instanceof TypeError) {
+        throw new ApiError(
+          503,
+          navigator.onLine
+            ? 'Lỗi kết nối, vui lòng thử lại'
+            : 'Mất kết nối mạng, vui lòng thử lại khi có mạng'
+        )
+      }
+
       throw error
-    } finally {
-      clearTimeout(timeoutId)
     }
   }
 
@@ -317,11 +386,12 @@ export async function fetchApiRaw(
 export async function fetchApi<T>(
   endpoint: string,
   options: RequestOptions = {},
-  config?: { timeout?: number }
+  config?: { timeout?: number; retryOnNetworkError?: boolean }
 ): Promise<T> {
   const response = await fetchApiRaw(endpoint, options, {
     includeJsonContentType: true,
     timeout: config?.timeout,
+    retryOnNetworkError: config?.retryOnNetworkError,
   })
 
   let payload: unknown = null

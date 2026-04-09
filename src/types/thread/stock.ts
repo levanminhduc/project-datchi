@@ -93,6 +93,7 @@ export interface ManualEntryHistoryRow {
   thread_type: {
     code: string
     name: string
+    tex_number: string | null
     color: { name: string; hex_code: string } | null
   } | null
   warehouse: { name: string } | null
