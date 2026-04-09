@@ -15,6 +15,7 @@ import type {
   ReturnStockDTO,
   DeductStockResponse,
   StockApiResponse,
+  ManualEntryHistoryRow,
 } from '@/types/thread/stock'
 
 /**
@@ -119,6 +120,14 @@ export const stockService = {
    */
   async getByWarehouse(warehouseId: number): Promise<AggregatedStockRecord[]> {
     return this.getAll({ warehouse_id: warehouseId })
+  },
+
+  async getManualEntryHistory(params: { page: number; pageSize: number }): Promise<{ data: ManualEntryHistoryRow[]; count: number }> {
+    const qs = new URLSearchParams({ page: String(params.page), pageSize: String(params.pageSize) })
+    const response = await fetchApi<{ data: ManualEntryHistoryRow[]; count: number; error: string | null }>(
+      `/api/stock/manual-history?${qs}`
+    )
+    return { data: response.data || [], count: response.count || 0 }
   },
 
   /**

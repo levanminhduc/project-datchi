@@ -120,6 +120,15 @@
                 class="full-width-xs"
                 @click="showManualEntryDialog = true"
               />
+              <q-btn
+                v-if="canReceive"
+                color="blue-grey"
+                icon="history"
+                label="Lịch sử nhập"
+                outline
+                class="full-width-xs"
+                @click="showManualEntryHistoryDialog = true"
+              />
               <!-- TODO: Tạm ẩn - bật lại khi cần -->
               <!-- <q-btn
                 color="secondary"
@@ -742,6 +751,9 @@
       :supplier-breakdown="supplierBreakdown"
       :loading="breakdownLoading"
     />
+
+    <!-- Manual Entry History Dialog -->
+    <ManualEntryHistoryDialog v-model="showManualEntryHistoryDialog" />
   </q-page>
 </template>
 
@@ -756,6 +768,7 @@ import type { ThreadType } from '@/types/thread/thread-type'
 import { QrScannerDialog, QrPrintDialog } from '@/components/qr'
 import ConeSummaryTable from '@/components/thread/ConeSummaryTable.vue'
 import ConeWarehouseBreakdownDialog from '@/components/thread/ConeWarehouseBreakdownDialog.vue'
+import ManualEntryHistoryDialog from '@/components/thread/ManualEntryHistoryDialog.vue'
 import type { ConeLabelData } from '@/types/qr-label'
 import { threadService } from '@/services/threadService'
 import { stockService } from '@/services/stockService'
@@ -1179,6 +1192,7 @@ const openPrintSingle = (cone: Cone) => {
 
 // ============ Manual Stock Entry ============
 const showManualEntryDialog = ref(false)
+const showManualEntryHistoryDialog = ref(false)
 const manualEntryLoading = ref(false)
 const manualEntrySubmitting = ref(false)
 const manualEntryThreadTypes = ref<ThreadType[]>([])

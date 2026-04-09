@@ -82,3 +82,20 @@ export interface StockApiResponse<T> {
   error?: string
   message?: string
 }
+
+export interface ManualEntryHistoryRow {
+  id: number
+  lot_number: string
+  created_at: string
+  total_cones: number
+  full_cones: number
+  partial_cones: number
+  thread_type: {
+    code: string
+    name: string
+    color: { name: string; hex_code: string } | null
+  } | null
+  warehouse: { name: string } | null
+  supplier: { name: string } | null
+  created_by: { full_name: string } | null
+}

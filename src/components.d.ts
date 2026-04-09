@@ -93,6 +93,7 @@ declare module 'vue' {
     LotFormDialog: typeof import('./components/thread/LotFormDialog.vue')['default']
     LotSelector: typeof import('./components/thread/LotSelector.vue')['default']
     LotStatusBadge: typeof import('./components/thread/LotStatusBadge.vue')['default']
+    ManualEntryHistoryDialog: typeof import('./components/thread/ManualEntryHistoryDialog.vue')['default']
     ManualReturnDialog: typeof import('./components/thread/weekly-order/ManualReturnDialog.vue')['default']
     ManualWeightInput: typeof import('./components/hardware/ManualWeightInput.vue')['default']
     NotificationBell: typeof import('./components/ui/NotificationBell.vue')['default']

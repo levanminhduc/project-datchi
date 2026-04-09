@@ -8,6 +8,7 @@ import {
   AddStockSchema,
   DeductStockSchema,
   ReturnStockSchema,
+  ManualHistoryQuerySchema,
 } from '../validation/stock'
 
 interface StockApiResponse<T> {
@@ -262,6 +263,109 @@ stock.get('/summary', requirePermission('thread.inventory.view'), async (c) => {
 })
 
 // ============================================================================
+// GET /api/stock/manual-history - Paginated history of manual stock entries
+// ============================================================================
+stock.get('/manual-history', requirePermission('thread.batch.receive'), async (c) => {
+  try {
+    const rawParams = {
+      page: c.req.query('page'),
+      pageSize: c.req.query('pageSize'),
+    }
+
+    const parseResult = ManualHistoryQuerySchema.safeParse(rawParams)
+    if (!parseResult.success) {
+      return c.json({
+        data: null,
+        error: parseResult.error.issues[0]?.message || 'Tham số không hợp lệ',
+      }, 400)
+    }
+
+    const { page, pageSize } = parseResult.data
+    const offset = (page - 1) * pageSize
+
+    const { data: lots, error: lotsError, count } = await supabase
+      .from('lots')
+      .select('id, lot_number, thread_type_id, warehouse_id, supplier_id, total_cones, created_at, created_by_employee_id', { count: 'exact' })
+      .like('lot_number', 'MC-LOT-%')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + pageSize - 1)
+
+    if (lotsError) {
+      console.error('Manual history query error:', lotsError)
+      return c.json({ data: null, error: 'Lỗi khi tải lịch sử nhập thủ công' }, 500)
+    }
+
+    if (!lots || lots.length === 0) {
+      return c.json({ data: [], count: 0, page, pageSize, error: null })
+    }
+
+    const threadTypeIds = [...new Set(lots.map(l => l.thread_type_id))]
+    const warehouseIds = [...new Set(lots.map(l => l.warehouse_id))]
+    const supplierIds = [...new Set(lots.map(l => l.supplier_id).filter((id): id is number => id != null))]
+    const employeeIds = [...new Set(lots.map(l => l.created_by_employee_id).filter((id): id is number => id != null))]
+    const lotIds = lots.map(l => l.id)
+
+    const [ttResult, whResult, suppResult, empResult, coneCountResult] = await Promise.all([
+      supabase.from('thread_types').select('id, code, name, color_id').in('id', threadTypeIds),
+      supabase.from('warehouses').select('id, name').in('id', warehouseIds),
+      supplierIds.length > 0
+        ? supabase.from('suppliers').select('id, name').in('id', supplierIds)
+        : { data: [], error: null },
+      employeeIds.length > 0
+        ? supabase.from('employees').select('id, full_name').in('id', employeeIds)
+        : { data: [], error: null },
+      supabase.from('thread_inventory').select('lot_id, is_partial').in('lot_id', lotIds).limit(5000),
+    ])
+
+    const coneCountMap = new Map<number, { full_cones: number; partial_cones: number }>()
+    if (coneCountResult.data) {
+      for (const cone of coneCountResult.data) {
+        if (!cone.lot_id) continue
+        const existing = coneCountMap.get(cone.lot_id) || { full_cones: 0, partial_cones: 0 }
+        if (cone.is_partial) existing.partial_cones += 1
+        else existing.full_cones += 1
+        coneCountMap.set(cone.lot_id, existing)
+      }
+    }
+
+    const colorIds = [...new Set((ttResult.data || []).map(t => t.color_id).filter((id): id is number => id != null))]
+    const colorResult = colorIds.length > 0
+      ? await supabase.from('colors').select('id, name, hex_code').in('id', colorIds)
+      : { data: [] }
+
+    const ttMap = new Map((ttResult.data || []).map(t => [t.id, t]))
+    const whMap = new Map((whResult.data || []).map(w => [w.id, w]))
+    const suppMap = new Map((suppResult.data || []).map(s => [s.id, s]))
+    const empMap = new Map((empResult.data || []).map(e => [e.id, e]))
+    const colorMap = new Map((colorResult.data || []).map(c => [c.id, c]))
+
+    const rows = lots.map(lot => {
+      const tt = ttMap.get(lot.thread_type_id)
+      const color = tt?.color_id ? colorMap.get(tt.color_id) : null
+      const coneCounts = coneCountMap.get(lot.id) || { full_cones: 0, partial_cones: 0 }
+
+      return {
+        id: lot.id,
+        lot_number: lot.lot_number,
+        created_at: lot.created_at,
+        total_cones: lot.total_cones,
+        full_cones: coneCounts.full_cones,
+        partial_cones: coneCounts.partial_cones,
+        thread_type: tt ? { code: tt.code, name: tt.name, color: color ? { name: color.name, hex_code: color.hex_code } : null } : null,
+        warehouse: whMap.get(lot.warehouse_id) ? { name: whMap.get(lot.warehouse_id)!.name } : null,
+        supplier: lot.supplier_id ? (suppMap.get(lot.supplier_id) ? { name: suppMap.get(lot.supplier_id)!.name } : null) : null,
+        created_by: lot.created_by_employee_id ? (empMap.get(lot.created_by_employee_id) ? { full_name: empMap.get(lot.created_by_employee_id)!.full_name } : null) : null,
+      }
+    })
+
+    return c.json({ data: rows, count, page, pageSize, error: null })
+  } catch (err) {
+    console.error('Manual history error:', err)
+    return c.json({ data: null, error: 'Lỗi hệ thống' }, 500)
+  }
+})
+
+// ============================================================================
 // POST /api/stock - Manual stock entry → creates individual thread_inventory cones
 // ============================================================================
 stock.post('/', requirePermission('thread.batch.receive'), async (c) => {
@@ -285,6 +389,8 @@ stock.post('/', requirePermission('thread.batch.receive'), async (c) => {
         error: 'Phải có ít nhất 1 cuộn (nguyên hoặc lẻ)',
       }, 400)
     }
+
+    const auth = c.get('auth') as { employeeId: number }
 
     const { data: threadType, error: threadError } = await supabase
       .from('thread_types')
@@ -332,6 +438,7 @@ stock.post('/', requirePermission('thread.batch.receive'), async (c) => {
         available_cones: totalCones,
         status: 'ACTIVE',
         notes: data.notes || null,
+        created_by_employee_id: auth.employeeId,
       })
       .select('id')
       .single()
