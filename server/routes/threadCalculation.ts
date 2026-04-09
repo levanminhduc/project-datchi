@@ -382,14 +382,8 @@ function buildCalculation(
         )
       }
 
-      const resolvedSupplierName =
-        colorSpec?.thread_types?.suppliers?.name ||
-        spec.suppliers?.name ||
-        ''
-      const resolvedSupplierId =
-        colorSpec?.thread_types?.supplier_id ??
-        spec.suppliers?.id ??
-        null
+      const resolvedSupplierName = spec.suppliers?.name || ''
+      const resolvedSupplierId = spec.suppliers?.id ?? null
       const resolvedTexNumber =
         colorSpec?.thread_types?.tex_label ||
         colorSpec?.thread_types?.tex_number ||
