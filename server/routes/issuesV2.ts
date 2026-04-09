@@ -1905,7 +1905,7 @@ issuesV2.post('/stock-refresh', async (c) => {
       throw err
     }
 
-    const { po_id, style_id, items } = validated
+    const { po_id, style_id, items, department, ratio: requestRatio } = validated
 
     const colorGroups = new Map<number, typeof items>()
     for (const item of items) {
@@ -1944,7 +1944,15 @@ issuesV2.post('/stock-refresh', async (c) => {
 
     const allRows = [...reservedRows, ...freeRows]
 
-    const stocks = items.map((item) => {
+    const stocks: Array<{
+      thread_type_id: number
+      thread_color_id: number | null
+      full_cones: number
+      partial_cones: number
+      quota_cones: number | null
+      base_quota_cones: number | null
+      confirmed_issued_gross: number | null
+    }> = items.map((item) => {
       const matching = allRows.filter((r) => {
         if (r.thread_type_id !== item.thread_type_id) return false
         if (item.thread_color_id && r.color_id !== item.thread_color_id) return false
@@ -1956,8 +1964,38 @@ issuesV2.post('/stock-refresh', async (c) => {
         thread_color_id: item.thread_color_id ?? null,
         full_cones: matching.filter((r) => !r.is_partial).length,
         partial_cones: matching.filter((r) => r.is_partial).length,
+        quota_cones: null,
+        base_quota_cones: null,
+        confirmed_issued_gross: null,
       }
     })
+
+    try {
+      const ratio = requestRatio ?? await getPartialConeRatio()
+
+      for (const [colorId, groupItems] of colorGroups) {
+        const ttIds = [...new Set(groupItems.map((i) => i.thread_type_id))]
+
+        const [quotaMap, baseQuotaMap, issuedMap] = await Promise.all([
+          batchGetQuotaCones(ttIds, po_id, style_id, colorId, ratio, department),
+          batchGetBaseQuotaCones(ttIds, po_id, style_id, colorId),
+          batchGetConfirmedIssuedGross(ttIds, po_id, style_id, colorId, ratio),
+        ])
+
+        for (const stock of stocks) {
+          const matchesGroup = groupItems.some(
+            (gi) => gi.thread_type_id === stock.thread_type_id && (gi.thread_color_id ?? null) === stock.thread_color_id
+          )
+          if (!matchesGroup) continue
+
+          stock.quota_cones = quotaMap.get(stock.thread_type_id) ?? null
+          stock.base_quota_cones = baseQuotaMap.get(stock.thread_type_id) ?? null
+          stock.confirmed_issued_gross = issuedMap.get(stock.thread_type_id) ?? null
+        }
+      }
+    } catch (quotaErr) {
+      console.error('[stock-refresh] Quota computation failed, returning stock only:', quotaErr)
+    }
 
     return c.json({ data: { stocks }, error: null })
   } catch (err) {

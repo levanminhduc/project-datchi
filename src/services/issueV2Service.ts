@@ -353,8 +353,10 @@ export const issueV2Service = {
       warehouse_id?: number | null
       color_id: number
     }>
-  }): Promise<Array<{ thread_type_id: number; thread_color_id: number | null; full_cones: number; partial_cones: number }>> {
-    const response = await fetchApi<ApiResponse<{ stocks: Array<{ thread_type_id: number; thread_color_id: number | null; full_cones: number; partial_cones: number }> }>>(`${BASE}/stock-refresh`, {
+    department?: string
+    ratio?: number
+  }): Promise<Array<{ thread_type_id: number; thread_color_id: number | null; full_cones: number; partial_cones: number; quota_cones: number | null; base_quota_cones: number | null; confirmed_issued_gross: number | null }>> {
+    const response = await fetchApi<ApiResponse<{ stocks: Array<{ thread_type_id: number; thread_color_id: number | null; full_cones: number; partial_cones: number; quota_cones: number | null; base_quota_cones: number | null; confirmed_issued_gross: number | null }> }>>(`${BASE}/stock-refresh`, {
       method: 'POST',
       body: JSON.stringify(params),
     })

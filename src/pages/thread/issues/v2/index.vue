@@ -353,13 +353,26 @@ async function handleCreateIssue() {
   step2Visible.value = true
 }
 
-async function handleLoadFormData() {
+async function handleLoadFormData(forceReload = false) {
   if (!canLoadThreadTypes.value) return
 
   loadingFormData.value = true
   loadingColorProgress.value = ''
 
   const colorIds = selectedColorIds.value
+
+  if (forceReload) {
+    multiColorThreadTypes.value = multiColorThreadTypes.value.filter(
+      (tt) => !colorIds.includes(tt.color_id)
+    )
+    for (const key of Object.keys(lineInputs.value)) {
+      const colorId = Number(key.split('-')[0])
+      if (colorIds.includes(colorId)) {
+        delete lineInputs.value[key]
+      }
+    }
+  }
+
   const existingColorIds = new Set(multiColorThreadTypes.value.map((tt) => tt.color_id))
   const newColorIds = colorIds.filter((id) => !existingColorIds.has(id))
 
@@ -888,7 +901,7 @@ async function refreshStockData() {
   const items = multiColorThreadTypes.value.map((tt) => ({
     thread_type_id: tt.thread_type_id,
     thread_color_id: tt.thread_color_id ?? undefined,
-    warehouse_id: tt.detected_warehouse_id ?? undefined,
+    warehouse_id: selectedWarehouseId.value || (tt.detected_warehouse_id ?? undefined),
     color_id: tt.color_id,
   }))
   if (items.length === 0) return
@@ -898,6 +911,7 @@ async function refreshStockData() {
       po_id: selectedPoId.value!,
       style_id: selectedStyleId.value!,
       items,
+      department: department.value || undefined,
     })
 
     for (const stock of stocks) {
@@ -909,6 +923,9 @@ async function refreshStockData() {
       for (const match of matches) {
         match.stock_available_full = stock.full_cones
         match.stock_available_partial = stock.partial_cones
+        if (stock.quota_cones !== null) match.quota_cones = stock.quota_cones
+        if (stock.base_quota_cones !== null) match.base_quota_cones = stock.base_quota_cones
+        if (stock.confirmed_issued_gross !== null) match.confirmed_issued_gross = stock.confirmed_issued_gross
       }
     }
   } catch (err) {
@@ -1245,7 +1262,7 @@ onUnmounted(() => {
                     icon="refresh"
                     :loading="loadingFormData"
                     :disable="!canLoadThreadTypes"
-                    @click="handleLoadFormData"
+                    @click="handleLoadFormData(true)"
                   />
                   <div
                     v-if="loadingColorProgress"

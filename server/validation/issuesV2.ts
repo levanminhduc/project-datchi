@@ -218,6 +218,8 @@ export const StockRefreshSchema = z.object({
   po_id: z.number().int().positive(),
   style_id: z.number().int().positive(),
   items: z.array(StockRefreshItemSchema).min(1, 'Phai co it nhat 1 item'),
+  department: z.string().optional(),
+  ratio: z.number().positive().optional(),
 })
 
 export type StockRefreshDTO = z.infer<typeof StockRefreshSchema>
