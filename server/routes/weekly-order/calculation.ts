@@ -74,13 +74,10 @@ calculation.post('/enrich-inventory', requirePermission('thread.allocations.mana
     const inventoryMap = new Map<string, { full: number; partial: number }>()
 
     if (uniqueColoredTypeIds.length > 0 && uniqueColoredColorIds.length > 0) {
-      const { data: coloredCounts, error: coloredError } = await supabase
-        .from('thread_inventory')
-        .select('thread_type_id, color_id, is_partial')
-        .in('status', ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED'])
-        .in('thread_type_id', uniqueColoredTypeIds)
-        .in('color_id', uniqueColoredColorIds)
-        .limit(50000)
+      const { data: coloredCounts, error: coloredError } = await supabase.rpc('fn_count_colored_cones', {
+        p_thread_type_ids: uniqueColoredTypeIds,
+        p_color_ids: uniqueColoredColorIds,
+      })
 
       if (coloredError) throw coloredError
 
@@ -95,9 +92,9 @@ calculation.post('/enrich-inventory', requirePermission('thread.allocations.mana
         const key = `${inv.thread_type_id}_${cName}`
         const entry = inventoryMap.get(key) || { full: 0, partial: 0 }
         if (inv.is_partial) {
-          entry.partial++
+          entry.partial += Number(inv.cone_count)
         } else {
-          entry.full++
+          entry.full += Number(inv.cone_count)
         }
         inventoryMap.set(key, entry)
       }
