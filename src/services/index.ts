@@ -30,6 +30,9 @@ export { reconciliationService } from './reconciliationService'
 export { stockService } from './stockService'
 export { issueV2Service } from './issueV2Service'
 
+// Over-quota analysis
+export { overQuotaService } from './overQuotaService'
+
 // Reports
 export { reportService } from './reportService'
 export type {

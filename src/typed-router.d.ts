@@ -303,6 +303,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/thread/over-quota-analysis': RouteRecordInfo<
+      '/thread/over-quota-analysis',
+      '/thread/over-quota-analysis',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/thread/purchase-orders/': RouteRecordInfo<
       '/thread/purchase-orders/',
       '/thread/purchase-orders',
@@ -681,6 +688,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/mobile/recovery.vue': {
       routes:
         | '/thread/mobile/recovery'
+      views:
+        | never
+    }
+    'src/pages/thread/over-quota-analysis.vue': {
+      routes:
+        | '/thread/over-quota-analysis'
       views:
         | never
     }

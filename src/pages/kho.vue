@@ -81,6 +81,13 @@ const threadModules = [
     color: 'cyan'
   },
   {
+    title: 'Phân tích vượt ĐM',
+    description: 'Phân tích vượt định mức cấp chỉ',
+    icon: 'analytics',
+    to: '/thread/over-quota-analysis',
+    color: 'deep-purple'
+  },
+  {
     title: 'Thu Hồi',
     description: 'Thu hồi chỉ dư từ sản xuất',
     icon: 'assignment_return',
