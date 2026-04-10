@@ -336,6 +336,7 @@ const {
   updateWeek,
   loadWeek,
   saveResults,
+  loadResults,
 } = useWeeklyOrder()
 
 const {
@@ -664,6 +665,35 @@ const handleLoadWeek = async (weekId: number) => {
 
   if (canCalculate.value) {
     await handleCalculate()
+
+    const savedResults = await loadResults(weekId).catch(() => null)
+    if (savedResults?.summary_data?.length) {
+      const savedMap = new Map<string, { additional_order: number; delivery_date: string | null; total_final: number }>(
+        savedResults.summary_data.map((s) => [
+          `${s.thread_type_id}_${s.thread_color ?? ''}`,
+          {
+            additional_order: s.additional_order ?? 0,
+            delivery_date: s.delivery_date ?? null,
+            total_final: s.total_final ?? 0,
+          },
+        ])
+      )
+
+      for (const row of aggregatedResults.value) {
+        const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+        const saved = savedMap.get(key)
+        if (!saved) continue
+
+        row.additional_order = saved.additional_order
+        row.total_final = (row.sl_can_dat || 0) + saved.additional_order
+        if (saved.delivery_date) {
+          row.delivery_date = saved.delivery_date
+          manualDeliveryDateEdits.value.add(key)
+        }
+      }
+
+      resultsSaved.value = true
+    }
   }
 }
 

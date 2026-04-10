@@ -13,6 +13,8 @@ export interface ThreadOrderWeek {
   updated_at: string
   item_count?: number
   items?: ThreadOrderItem[]
+  leader_signed_by?: number | null
+  leader_signed_at?: string | null
 }
 
 export interface ThreadOrderItem {

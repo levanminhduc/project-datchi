@@ -423,6 +423,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/thread/weekly-order/leader-review': RouteRecordInfo<
+      '/thread/weekly-order/leader-review',
+      '/thread/weekly-order/leader-review',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
   }
 
   /**
@@ -778,6 +785,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/weekly-order/history.vue': {
       routes:
         | '/thread/weekly-order/history'
+      views:
+        | never
+    }
+    'src/pages/thread/weekly-order/leader-review.vue': {
+      routes:
+        | '/thread/weekly-order/leader-review'
       views:
         | never
     }

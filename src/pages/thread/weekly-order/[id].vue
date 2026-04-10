@@ -106,6 +106,37 @@
                 {{ week.created_by }}
               </div>
             </div>
+            <div class="col-12 col-sm-3">
+              <div class="text-caption text-grey-6">
+                Lãnh đạo ký duyệt
+              </div>
+              <div
+                v-if="week.leader_signed_by_name"
+                class="text-body2"
+              >
+                <q-icon
+                  name="verified"
+                  color="positive"
+                  class="q-mr-xs"
+                />
+                {{ week.leader_signed_by_name }}
+                <div class="text-caption text-grey-6">
+                  {{ formatDate(week.leader_signed_at ?? null) }}
+                </div>
+              </div>
+              <div
+                v-else-if="week.status === 'CONFIRMED'"
+                class="text-body2 text-warning"
+              >
+                Chưa ký duyệt
+              </div>
+              <div
+                v-else
+                class="text-body2 text-grey-5"
+              >
+                —
+              </div>
+            </div>
           </div>
         </q-card-section>
       </q-card>

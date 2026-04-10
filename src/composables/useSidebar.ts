@@ -29,7 +29,8 @@ const navItems: NavItem[] = [
     to: '/ke-hoach#top',
     children: [
       { label: 'Tính Toán & Đặt Hàng', icon: 'o_shopping_cart', to: '/thread/weekly-order' },
-      { label: 'Lịch Sử Đặt Hàng', icon: 'o_history', to: '/thread/weekly-order/history' }
+      { label: 'Lịch Sử Đặt Hàng', icon: 'o_history', to: '/thread/weekly-order/history' },
+      { label: 'Lãnh Đạo Ký Duyệt', icon: 'o_approval', to: '/thread/weekly-order/leader-review' }
     ]
   },
   {

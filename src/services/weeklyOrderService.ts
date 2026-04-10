@@ -34,12 +34,27 @@ import type {
   SurplusPreview,
   ReleaseSurplusResult,
   ThreadSummaryRow,
+  ThreadOrderItem,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
   data: T | null
   error: string | null
   message?: string
+}
+
+export interface LeaderReviewItem {
+  id: number
+  week_name: string
+  start_date: string | null
+  created_by: string | null
+  created_at: string
+  status: string
+  item_count: number
+  summary_preview: AggregatedRow[]
+  items: ThreadOrderItem[]
+  leader_signed_by_name?: string | null
+  leader_signed_at?: string | null
 }
 
 
@@ -538,6 +553,31 @@ export const weeklyOrderService = {
     )
     if (response.error) throw new Error(response.error)
     if (!response.data) throw new Error('Không thể tra cứu tuần hoàn tất')
+    return response.data
+  },
+
+  async getLeaderReview(
+    params: { signed?: boolean; page?: number; limit?: number } = {},
+  ): Promise<{ data: LeaderReviewItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
+    const searchParams = new URLSearchParams()
+    if (params.signed) searchParams.append('signed', 'true')
+    if (params.page) searchParams.append('page', String(params.page))
+    if (params.limit) searchParams.append('limit', String(params.limit))
+
+    const response = await fetchApi<any>(`${BASE}/leader-review?${searchParams.toString()}`)
+    if (response.error) throw new Error(response.error)
+    return {
+      data: response.data || [],
+      pagination: response.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 },
+    }
+  },
+
+  async leaderSign(id: number): Promise<ThreadOrderWeek> {
+    const response = await fetchApi<ApiResponse<ThreadOrderWeek>>(`${BASE}/${id}/leader-sign`, {
+      method: 'PATCH',
+    })
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Ký duyệt thất bại')
     return response.data
   },
 }

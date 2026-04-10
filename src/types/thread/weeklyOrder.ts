@@ -14,6 +14,9 @@ export interface ThreadOrderWeek {
   updated_at: string
   item_count?: number
   items?: ThreadOrderItem[]
+  leader_signed_by?: number | null
+  leader_signed_at?: string | null
+  leader_signed_by_name?: string | null
 }
 
 export interface ThreadOrderItem {
@@ -59,6 +62,7 @@ export interface UpdateWeeklyOrderDTO {
     color_id: number
     quantity: number
     sub_art_id?: number | null
+    style_color_id: number
   }>
 }
 

@@ -79,3 +79,37 @@ export async function getWarehouseEmployeeIds(): Promise<number[]> {
 
   return Array.from(employeeIds)
 }
+
+export async function getLeaderEmployeeIds(): Promise<number[]> {
+  const { data: directPerms, error: directError } = await supabaseAdmin
+    .from('employee_permissions')
+    .select('employee_id, permissions!inner(code)')
+    .eq('permissions.code', 'thread.leader.sign')
+    .eq('granted', true)
+
+  if (directError) {
+    console.error('getLeaderEmployeeIds direct error:', directError)
+  }
+
+  const { data: rolePerms, error: roleError } = await supabaseAdmin
+    .from('employee_roles')
+    .select('employee_id, roles!inner(role_permissions!inner(permissions!inner(code)))')
+    .eq('roles.role_permissions.permissions.code', 'thread.leader.sign')
+
+  if (roleError) {
+    console.error('getLeaderEmployeeIds role error:', roleError)
+  }
+
+  const employeeIds = new Set<number>()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of (directPerms || []) as any[]) {
+    employeeIds.add(row.employee_id)
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of (rolePerms || []) as any[]) {
+    employeeIds.add(row.employee_id)
+  }
+
+  return Array.from(employeeIds)
+}

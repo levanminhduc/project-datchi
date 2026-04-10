@@ -3,7 +3,7 @@ import { ZodError } from 'zod'
 import { supabaseAdmin as supabase } from '../../db/supabase'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
-import { broadcastNotification, getWarehouseEmployeeIds } from '../../utils/notificationService'
+import { broadcastNotification, getWarehouseEmployeeIds, getLeaderEmployeeIds } from '../../utils/notificationService'
 import { dispatchExternalNotification } from '../../utils/external-notification-dispatcher'
 import {
   CreateWeeklyOrderSchema,
@@ -20,6 +20,7 @@ import {
   validateSubArtIds,
   validatePOQuantityLimits,
 } from './helpers'
+import { syncDeliveries } from './save-results-helpers'
 
 const core = new Hono<AppEnv>()
 
@@ -524,6 +525,103 @@ core.get('/history-by-week', requirePermission('thread.allocations.view'), async
   }
 })
 
+core.get('/leader-review', requirePermission('thread.leader.sign'), async (c) => {
+  try {
+    const signed = c.req.query('signed') === 'true'
+    const page = c.req.query('page') ? Math.max(1, parseInt(c.req.query('page')!)) : 1
+    const limit = c.req.query('limit') ? Math.min(Math.max(1, parseInt(c.req.query('limit')!)), 50) : 10
+    const from = (page - 1) * limit
+
+    let countQuery = supabase
+      .from('thread_order_weeks')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'CONFIRMED')
+
+    if (signed) {
+      countQuery = countQuery.not('leader_signed_by', 'is', null)
+    } else {
+      countQuery = countQuery.is('leader_signed_by', null)
+    }
+
+    const selectFields = signed
+      ? `
+        id, week_name, start_date, status, created_by, created_at,
+        leader_signed_by, leader_signed_at,
+        leader:employees!leader_signed_by (id, full_name),
+        items:thread_order_items (
+          id, po_id, style_id, style_color_id, quantity, sub_art_id,
+          style:styles (id, style_code, style_name),
+          style_color:style_colors (id, color_name, hex_code),
+          po:purchase_orders (id, po_number),
+          sub_art:sub_arts (id, sub_art_code)
+        )
+      `
+      : `
+        id, week_name, start_date, status, created_by, created_at,
+        items:thread_order_items (
+          id, po_id, style_id, style_color_id, quantity, sub_art_id,
+          style:styles (id, style_code, style_name),
+          style_color:style_colors (id, color_name, hex_code),
+          po:purchase_orders (id, po_number),
+          sub_art:sub_arts (id, sub_art_code)
+        )
+      `
+
+    let weeksQuery = supabase
+      .from('thread_order_weeks')
+      .select(selectFields)
+      .eq('status', 'CONFIRMED')
+      .order('created_at', { ascending: false })
+      .range(from, from + limit - 1)
+
+    if (signed) {
+      weeksQuery = weeksQuery.not('leader_signed_by', 'is', null)
+    } else {
+      weeksQuery = weeksQuery.is('leader_signed_by', null)
+    }
+
+    const [{ count }, { data: weeks, error: weeksError }] = await Promise.all([countQuery, weeksQuery])
+
+    const total = count ?? 0
+    const totalPages = Math.ceil(total / limit)
+    const pagination = { page, limit, total, totalPages }
+
+    if (weeksError) throw weeksError
+    if (!weeks || weeks.length === 0) {
+      return c.json({ data: [], error: null, pagination })
+    }
+
+    const weekIds = weeks.map((w: { id: number }) => w.id)
+    const { data: resultsData, error: resultsError } = await supabase
+      .from('thread_order_results')
+      .select('week_id, summary_data')
+      .in('week_id', weekIds)
+      .limit(limit)
+
+    if (resultsError) throw resultsError
+
+    const summaryMap = new Map<number, unknown[]>()
+    for (const r of resultsData || []) {
+      const rows = (r.summary_data as Array<{ total_final?: number }>) || []
+      summaryMap.set(r.week_id, rows.filter((row) => (row.total_final ?? 0) > 0))
+    }
+
+    const result = weeks.map((w: any) => ({
+      ...w,
+      item_count: (w.items || []).length,
+      summary_preview: summaryMap.get(w.id) || [],
+      ...(signed && w.leader ? {
+        leader_signed_by_name: w.leader.full_name,
+      } : {}),
+    }))
+
+    return c.json({ data: result, error: null, pagination })
+  } catch (err) {
+    console.error('Error fetching leader review:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 core.get('/:id', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
@@ -537,6 +635,7 @@ core.get('/:id', requirePermission('thread.allocations.view'), async (c) => {
       .select(
         `
         *,
+        leader:employees!leader_signed_by (id, full_name),
         items:thread_order_items (
           id,
           week_id,
@@ -563,7 +662,13 @@ core.get('/:id', requirePermission('thread.allocations.view'), async (c) => {
       throw error
     }
 
-    return c.json({ data, error: null })
+    const result = {
+      ...data,
+      leader_signed_by_name: (data as any)?.leader?.full_name || null,
+    }
+    delete (result as any).leader
+
+    return c.json({ data: result, error: null })
   } catch (err) {
     console.error('Error fetching weekly order:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -880,6 +985,56 @@ core.delete('/:id', requirePermission('thread.allocations.manage'), async (c) =>
   }
 })
 
+core.patch('/:id/leader-sign', requirePermission('thread.leader.sign'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const auth = c.get('auth')
+    const employeeId = auth.employeeId
+
+    const { data: week, error: weekError } = await supabase
+      .from('thread_order_weeks')
+      .select('id, status, leader_signed_by')
+      .eq('id', id)
+      .single()
+
+    if (weekError) {
+      if (weekError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
+      }
+      throw weekError
+    }
+
+    if (week.status !== 'CONFIRMED') {
+      return c.json({ data: null, error: 'Chỉ có thể ký duyệt đơn đã xác nhận' }, 400)
+    }
+
+    if (week.leader_signed_by) {
+      return c.json({ data: null, error: 'Đơn hàng đã được ký duyệt' }, 400)
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from('thread_order_weeks')
+      .update({
+        leader_signed_by: employeeId,
+        leader_signed_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (updateError) throw updateError
+
+    return c.json({ data: updated, error: null, message: 'Ký duyệt thành công' })
+  } catch (err) {
+    console.error('Error leader signing:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 core.patch('/:id/status', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
@@ -984,6 +1139,18 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
         })
 
         if (newStatus === 'CONFIRMED') {
+          const leaderIds = await getLeaderEmployeeIds()
+          const uniqueLeaderIds = leaderIds.filter((lid) => !warehouseIds.includes(lid))
+          if (uniqueLeaderIds.length > 0) {
+            broadcastNotification({
+              employeeIds: uniqueLeaderIds,
+              type: 'WEEKLY_ORDER',
+              title: `Đơn đặt hàng tuần #${id} cần ký duyệt`,
+              actionUrl: `/thread/weekly-order/leader-review`,
+              metadata: { weekly_order_id: id, new_status: newStatus, action: 'LEADER_SIGN' },
+            })
+          }
+
           const itemCount = (result?.reservation_summary || []).length
           const totalQuantity = (result?.reservation_summary || []).reduce(
             (sum: number, s: any) => sum + (s.reserved || 0), 0
@@ -995,6 +1162,20 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
             itemCount,
             totalQuantity,
           })
+        }
+
+        try {
+          const { data: resultsData } = await supabase
+            .from('thread_order_results')
+            .select('summary_data')
+            .eq('week_id', id)
+            .maybeSingle()
+
+          if (resultsData?.summary_data && Array.isArray(resultsData.summary_data)) {
+            await syncDeliveries(supabase, id, resultsData.summary_data as any)
+          }
+        } catch (deliveryErr) {
+          console.warn('[PATCH status] syncDeliveries after confirm failed:', deliveryErr)
         }
 
         return c.json({
@@ -1060,6 +1241,18 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
     })
 
     if (newStatus === 'CONFIRMED') {
+      const leaderIds = await getLeaderEmployeeIds()
+      const uniqueLeaderIds = leaderIds.filter((lid) => !warehouseIds.includes(lid))
+      if (uniqueLeaderIds.length > 0) {
+        broadcastNotification({
+          employeeIds: uniqueLeaderIds,
+          type: 'WEEKLY_ORDER',
+          title: `Đơn đặt hàng tuần #${id} cần ký duyệt`,
+          actionUrl: `/thread/weekly-order/leader-review`,
+          metadata: { weekly_order_id: id, new_status: newStatus, action: 'LEADER_SIGN' },
+        })
+      }
+
       dispatchExternalNotification('ORDER_CONFIRMED', {
         weekId: id,
         weekLabel: data?.week_name || `#${id}`,
