@@ -11,6 +11,10 @@ import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { createErrorHandler } from '@/utils/errorMessages'
 import type { ThreadType, ThreadTypeFormData, ThreadTypeFilters } from '@/types/thread'
+import { getCacheEntry, setCacheEntry, invalidateCache } from '@/lib/api-cache'
+
+const CACHE_TTL = 5 * 60_000
+const CACHE_PREFIX = '/api/thread-types'
 
 /**
  * Vietnamese messages for user feedback
@@ -63,9 +67,15 @@ export function useThreadTypes() {
   const fetchThreadTypes = async (newFilters?: ThreadTypeFilters): Promise<void> => {
     clearError()
 
-    // Update filters if provided
     if (newFilters) {
       filters.value = { ...filters.value, ...newFilters }
+    }
+
+    const cacheKey = `${CACHE_PREFIX}:${JSON.stringify(filters.value)}`
+    const cached = getCacheEntry<ThreadType[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      threadTypes.value = cached.data
+      return
     }
 
     try {
@@ -74,7 +84,9 @@ export function useThreadTypes() {
       })
 
       threadTypes.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { threadTypes.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(errorMessage)
@@ -99,6 +111,7 @@ export function useThreadTypes() {
 
       // Add to local state at the beginning (newest first)
       threadTypes.value = [newThreadType, ...threadTypes.value]
+      invalidateCache(CACHE_PREFIX)
       snackbar.success(MESSAGES.CREATE_SUCCESS)
 
       return newThreadType
@@ -133,6 +146,7 @@ export function useThreadTypes() {
       threadTypes.value = threadTypes.value.map((type) =>
         type.id === id ? updatedThreadType : type
       )
+      invalidateCache(CACHE_PREFIX)
 
       // Update selected if it was the one updated
       if (selectedThreadType.value?.id === id) {
@@ -169,6 +183,7 @@ export function useThreadTypes() {
       threadTypes.value = threadTypes.value.map((type) =>
         type.id === id ? { ...type, is_active: false } : type
       )
+      invalidateCache(CACHE_PREFIX)
 
       // Clear selected if it was the one deleted
       if (selectedThreadType.value?.id === id) {
