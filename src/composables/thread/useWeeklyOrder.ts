@@ -10,6 +10,7 @@ import { useSnackbar } from '../useSnackbar'
 import { useConfirm } from '../useConfirm'
 import { useLoading } from '../useLoading'
 import { createErrorHandler } from '@/utils/errorMessages'
+import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
 import type {
   ThreadOrderWeek,
   CreateWeeklyOrderDTO,
@@ -27,6 +28,8 @@ const MESSAGES = {
   DELETE_SUCCESS: 'Xóa tuần đặt hàng thành công',
   SAVE_RESULTS_SUCCESS: 'Lưu kết quả tính toán thành công',
 }
+
+const CACHE_TTL = 10_000
 
 const getErrorMessage = createErrorHandler({
   duplicate: 'Tên tuần đã tồn tại',
@@ -52,11 +55,15 @@ export function useWeeklyOrder() {
     error.value = null
   }
 
-  /**
-   * Fetch all weeks from API
-   */
   const fetchWeeks = async (): Promise<void> => {
     clearError()
+
+    const cacheKey = '/api/weekly-order'
+    const cached = getCacheEntry<ThreadOrderWeek[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      weeks.value = cached.data
+      return
+    }
 
     try {
       const data = await loading.withLoading(async () => {
@@ -64,7 +71,9 @@ export function useWeeklyOrder() {
       })
 
       weeks.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { weeks.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(errorMessage)
