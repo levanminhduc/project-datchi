@@ -154,6 +154,10 @@ export const ReserveFromStockSchema = z.object({
 
 // ============ MANUAL RETURN SCHEMA ============
 
+export const RemovePOFromWeekSchema = z.object({
+  po_id: z.number().int().positive('po_id phải là số nguyên dương'),
+})
+
 export const ManualReturnSchema = z.object({
   quantity: z
     .number({ error:'Số cuộn là bắt buộc' })

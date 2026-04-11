@@ -150,6 +150,30 @@ export async function syncDeliveries(
       }
     }
   }
+
+  const desiredKeys = new Set(desiredDeliveryMap.keys())
+  const orphanIds: number[] = []
+  for (const delivery of (existingDeliveries || []) as ExistingDelivery[]) {
+    const key = `${delivery.thread_type_id}_${delivery.thread_color ?? ''}`
+    if (desiredKeys.has(key)) continue
+    if (delivery.status !== 'PENDING') continue
+    if (delivery.received_quantity != null && delivery.received_quantity > 0) continue
+    orphanIds.push(delivery.id)
+    console.info(`[saveResults] Orphan delivery found: week=${weekId} thread_type=${delivery.thread_type_id} color=${delivery.thread_color ?? ''} — will delete`)
+  }
+
+  if (orphanIds.length > 0) {
+    const { error: orphanError } = await supabase
+      .from('thread_order_deliveries')
+      .delete()
+      .in('id', orphanIds)
+
+    if (orphanError) {
+      console.warn('Error deleting orphan deliveries:', orphanError)
+    } else {
+      console.info(`[saveResults] Deleted ${orphanIds.length} orphan PENDING deliveries for week=${weekId}`)
+    }
+  }
 }
 
 export async function createAllocations(

@@ -11,6 +11,7 @@ import {
   UpdateStatusSchema,
   OrderedQuantitiesQuerySchema,
   HistoryByWeekQuerySchema,
+  RemovePOFromWeekSchema,
 } from '../../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../../types/weeklyOrder'
 import type { AppEnv } from '../../types/hono-env'
@@ -772,6 +773,161 @@ core.post('/', requirePermission('thread.allocations.manage'), async (c) => {
     )
   } catch (err) {
     console.error('Error creating weekly order:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+core.post('/:id/remove-po', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json()
+    let validated
+    try {
+      validated = RemovePOFromWeekSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+
+    const { data: week, error: weekError } = await supabase
+      .from('thread_order_weeks')
+      .select('id, status')
+      .eq('id', id)
+      .single()
+
+    if (weekError) {
+      if (weekError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
+      }
+      throw weekError
+    }
+
+    if (week.status === 'COMPLETED' || week.status === 'CANCELLED') {
+      return c.json({ data: null, error: 'Không thể xóa PO từ đơn đã hoàn thành hoặc đã hủy' }, 400)
+    }
+
+    const { data: removedItems, error: deleteError } = await supabase
+      .from('thread_order_items')
+      .delete()
+      .eq('week_id', id)
+      .eq('po_id', validated.po_id)
+      .select('id, style_id')
+
+    if (deleteError) throw deleteError
+
+    const removedCount = removedItems?.length ?? 0
+    console.info(`[remove-po] Removed ${removedCount} items from week=${id} po=${validated.po_id}`)
+
+    let deliveriesRemoved = 0
+    let reservationsReleased = 0
+
+    if (week.status === 'CONFIRMED' && removedCount > 0) {
+      const { data: remainingItems } = await supabase
+        .from('thread_order_items')
+        .select('style_id')
+        .eq('week_id', id)
+        .limit(10000)
+
+      const remainingStyleIds = new Set((remainingItems || []).map((i: { style_id: number }) => i.style_id))
+
+      const { data: resultsRow } = await supabase
+        .from('thread_order_results')
+        .select('id, calculation_data, summary_data')
+        .eq('week_id', id)
+        .maybeSingle()
+
+      if (resultsRow?.calculation_data && Array.isArray(resultsRow.calculation_data)) {
+        type CalcResult = { style_id: number; calculations: Array<{ color_breakdown?: Array<{ thread_type_id: number }> }> }
+
+        const oldThreadTypeIds = new Set<number>()
+        for (const r of resultsRow.calculation_data as CalcResult[]) {
+          for (const calc of r.calculations) {
+            if (calc.color_breakdown) {
+              for (const cb of calc.color_breakdown) {
+                oldThreadTypeIds.add(cb.thread_type_id)
+              }
+            }
+          }
+        }
+
+        const filteredCalcData = (resultsRow.calculation_data as CalcResult[])
+          .filter((r) => remainingStyleIds.has(r.style_id))
+
+        const remainingThreadTypeIds = new Set<number>()
+        for (const r of filteredCalcData) {
+          for (const calc of r.calculations) {
+            if (calc.color_breakdown) {
+              for (const cb of calc.color_breakdown) {
+                remainingThreadTypeIds.add(cb.thread_type_id)
+              }
+            }
+          }
+        }
+
+        let filteredSummaryData = resultsRow.summary_data
+        if (Array.isArray(resultsRow.summary_data)) {
+          filteredSummaryData = (resultsRow.summary_data as Array<{ thread_type_id: number }>)
+            .filter((row) => remainingThreadTypeIds.has(row.thread_type_id))
+        }
+
+        await supabase
+          .from('thread_order_results')
+          .update({
+            calculation_data: filteredCalcData,
+            summary_data: filteredSummaryData,
+            calculated_at: new Date().toISOString(),
+          })
+          .eq('id', resultsRow.id)
+
+        console.info(`[remove-po] Updated results: calc ${resultsRow.calculation_data.length} -> ${filteredCalcData.length}, summary ${Array.isArray(resultsRow.summary_data) ? resultsRow.summary_data.length : '?'} -> ${Array.isArray(filteredSummaryData) ? filteredSummaryData.length : '?'}`)
+
+        try {
+          const summaryForSync = Array.isArray(filteredSummaryData) ? filteredSummaryData : []
+          await syncDeliveries(supabase, id, summaryForSync as any)
+
+          const { data: remainingDeliveries } = await supabase
+            .from('thread_order_deliveries')
+            .select('id')
+            .eq('week_id', id)
+            .limit(1)
+
+          deliveriesRemoved = remainingDeliveries ? 0 : 1
+        } catch (syncErr) {
+          console.warn('[remove-po] syncDeliveries failed:', syncErr)
+        }
+
+        const removedThreadTypeIds = [...oldThreadTypeIds].filter((ttId) => !remainingThreadTypeIds.has(ttId))
+
+        if (removedThreadTypeIds.length > 0) {
+          const { data: releasedCones } = await supabase
+            .from('thread_inventory')
+            .update({ status: 'AVAILABLE', reserved_week_id: null })
+            .eq('reserved_week_id', id)
+            .in('thread_type_id', removedThreadTypeIds)
+            .eq('status', 'RESERVED_FOR_ORDER')
+            .select('id')
+
+          reservationsReleased = releasedCones?.length ?? 0
+          if (reservationsReleased > 0) {
+            console.info(`[remove-po] Đã giải phóng ${reservationsReleased} cone cho ${removedThreadTypeIds.length} loại chỉ bị xóa khỏi tuần ${id}`)
+          }
+        }
+      }
+    }
+
+    return c.json({
+      data: { removed_count: removedCount, deliveries_cleaned: deliveriesRemoved > 0, reservations_released: reservationsReleased },
+      error: null,
+      message: 'Đã xóa PO khỏi đơn đặt hàng',
+    })
+  } catch (err) {
+    console.error('Error removing PO from weekly order:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

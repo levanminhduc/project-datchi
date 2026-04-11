@@ -187,6 +187,19 @@ export const weeklyOrderService = {
     }
   },
 
+  async removePOFromWeek(weekId: number, poId: number): Promise<{ removed_count: number }> {
+    const response = await fetchApi<ApiResponse<{ removed_count: number }>>(`${BASE}/${weekId}/remove-po`, {
+      method: 'POST',
+      body: JSON.stringify({ po_id: poId }),
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || { removed_count: 0 }
+  },
+
   /**
    * Cập nhật trạng thái tuần đặt hàng (draft -> confirmed -> cancelled)
    * @param id - Weekly order ID

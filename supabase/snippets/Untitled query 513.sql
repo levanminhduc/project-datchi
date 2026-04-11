@@ -16,6 +16,10 @@ BEGIN
         (calc.value->>'spec_id')::INTEGER
       ) AS tt_id,
       CASE
+        WHEN cb.value IS NOT NULL THEN cb.value->>'thread_color'
+        ELSE calc.value->>'thread_color'
+      END AS thread_color_name,
+      CASE
         WHEN cb.value IS NOT NULL THEN
           CEIL(
             COALESCE((cb.value->>'total_meters')::NUMERIC, 0)
@@ -41,12 +45,12 @@ BEGIN
         OR jsonb_array_length(calc.value->'color_breakdown') = 0
       )
   )
-  SELECT p.tt_id, tt.color_id, SUM(COALESCE(p.cones, 0))::INTEGER
+  SELECT p.tt_id, c.id, SUM(COALESCE(p.cones, 0))::INTEGER
   FROM parsed p
-  JOIN thread_types tt ON tt.id = p.tt_id
+  LEFT JOIN colors c ON c.name = p.thread_color_name
   WHERE p.tt_id IS NOT NULL AND p.cones IS NOT NULL AND p.cones > 0
     AND (p_thread_type_id IS NULL OR p.tt_id = p_thread_type_id)
-  GROUP BY p.tt_id, tt.color_id;
+  GROUP BY p.tt_id, c.id;
 END;
 $$ LANGUAGE plpgsql STABLE;
 
