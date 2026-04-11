@@ -42,7 +42,7 @@ const navItems: NavItem[] = [
       { label: 'Theo Dõi & Nhập Kho', icon: 'o_local_shipping', to: '/thread/weekly-order/deliveries' },
       { label: 'Xuất Kho', icon: 'o_output', to: '/thread/issues/v2' },
       { label: 'Tồn Kho', icon: 'o_inventory', to: '/thread/inventory' },
-      { label: 'Trả Kho', icon: 'o_assignment_return', to: '/thread/issues/v2/return' },
+      { label: 'Trả Kho', icon: 'o_assignment_return', to: '/thread/return' },
       { label: 'Mượn Chỉ', icon: 'o_swap_horiz', to: '/thread/loans' },
       { label: 'Chuyển Kho', icon: 'o_compare_arrows', to: '/thread/batch/transfer' },
     ]
