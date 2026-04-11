@@ -15,6 +15,7 @@ import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
 import type {
   IssueV2,
+  IssueV2WithSummary,
   IssueV2WithLines,
   IssueLineV2WithComputed,
   CreateIssueV2DTO,
@@ -31,7 +32,7 @@ import type {
 export function useIssueV2() {
   // State
   const currentIssue = ref<IssueV2WithLines | null>(null)
-  const issues = ref<IssueV2[]>([])
+  const issues = ref<IssueV2WithSummary[]>([])
   const formData = ref<IssueFormData | null>(null)
   const validationResult = ref<ValidateLineResponse | null>(null)
   const error = ref<string | null>(null)

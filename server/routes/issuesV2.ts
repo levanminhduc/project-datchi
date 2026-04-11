@@ -2787,7 +2787,7 @@ issuesV2.get('/:id', async (c) => {
       .select(
         `
         *,
-        thread_types!inner(id, code, name),
+        thread_types!inner(id, code, name, supplier_id, tex_number, tex_label),
         purchase_orders(id, po_number),
         styles(id, style_code, style_name),
         style_colors:style_color_id(id, color_name),
@@ -2831,7 +2831,38 @@ issuesV2.get('/:id', async (c) => {
 
     const allThreadTypeIds = [...new Set(lineItems.map((i) => i.thread_type_id))]
     const allWeekIds = [...new Set([...weekIdsMap.values()].flat())]
-    const inventoryData = await batchLoadInventoryData(allThreadTypeIds, allWeekIds)
+
+    const supplierIds = new Set<number>()
+    for (const l of lines || []) {
+      const tt = (l as any).thread_types as any
+      if (tt?.supplier_id) supplierIds.add(tt.supplier_id)
+    }
+
+    const [inventoryData, supplierResult, threadColorResult] = await Promise.all([
+      batchLoadInventoryData(allThreadTypeIds, allWeekIds),
+      supplierIds.size > 0
+        ? supabase.from('suppliers').select('id, name').in('id', [...supplierIds])
+        : null,
+      allThreadTypeIds.length > 0
+        ? supabase.from('thread_inventory').select('thread_type_id, color_id, colors(name)').in('thread_type_id', allThreadTypeIds)
+        : null,
+    ])
+
+    const supplierMap = new Map((supplierResult?.data || []).map((s) => [s.id, s.name]))
+    const ttColorMap = new Map<number, string>()
+    for (const inv of threadColorResult?.data || []) {
+      const i = inv as any
+      if (i.thread_type_id && !ttColorMap.has(i.thread_type_id)) {
+        ttColorMap.set(i.thread_type_id, (i.colors as any)?.name || '')
+      }
+    }
+
+    const buildThreadDisplayName = (tt: any): string => {
+      const supplierName = tt?.supplier_id ? supplierMap.get(tt.supplier_id) || '' : ''
+      const texPart = tt?.tex_label || (tt?.tex_number ? `TEX ${tt.tex_number}` : '')
+      const threadColor = tt?.id ? ttColorMap.get(tt.id) || '' : ''
+      return [supplierName, texPart, threadColor].filter(Boolean).join(' - ') || tt?.name || ''
+    }
 
     const linesWithComputed = (lines || []).map((line: any) => {
       const issuedEquivalent = calculateIssuedEquivalent(
@@ -2856,7 +2887,7 @@ issuesV2.get('/:id', async (c) => {
         stock_available_partial: stock.partial_cones,
         thread_color_id: lineThreadColorId ?? null,
         thread_code: line.thread_types?.code,
-        thread_name: line.thread_types?.name,
+        thread_name: buildThreadDisplayName(line.thread_types),
         po_number: line.purchase_orders?.po_number,
         style_code: line.styles?.style_code,
         style_name: line.styles?.style_name,
@@ -2953,9 +2984,8 @@ issuesV2.get('/', async (c) => {
       )
     }
 
-    // Fetch first line's PO/Style/Color for each issue
     const issueIds = (data || []).map((row: any) => row.id)
-    const lineSummaryMap: Record<number, { po_number?: string; style_code?: string; color_name?: string }> = {}
+    const lineSummaryMap: Record<number, { po_number?: string; style_code?: string; sub_art_code?: string; color_names: string[] }> = {}
 
     if (issueIds.length > 0) {
       const { data: linesSummary } = await supabase
@@ -2964,6 +2994,7 @@ issuesV2.get('/', async (c) => {
           issue_id,
           purchase_orders:po_id(po_number),
           styles:style_id(style_code),
+          sub_arts:sub_art_id(sub_art_code),
           style_colors:style_color_id(color_name),
           colors:color_id(name)
         `)
@@ -2972,12 +3003,16 @@ issuesV2.get('/', async (c) => {
 
       if (linesSummary) {
         for (const line of linesSummary) {
+          const colorName = (line.style_colors as any)?.color_name ?? (line.colors as any)?.name
           if (!lineSummaryMap[line.issue_id]) {
             lineSummaryMap[line.issue_id] = {
               po_number: (line.purchase_orders as any)?.po_number || undefined,
               style_code: (line.styles as any)?.style_code || undefined,
-              color_name: (line.style_colors as any)?.color_name ?? (line.colors as any)?.name ?? undefined,
+              sub_art_code: (line.sub_arts as any)?.sub_art_code || undefined,
+              color_names: colorName ? [colorName] : [],
             }
+          } else if (colorName && !lineSummaryMap[line.issue_id].color_names.includes(colorName)) {
+            lineSummaryMap[line.issue_id].color_names.push(colorName)
           }
         }
       }

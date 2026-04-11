@@ -185,9 +185,9 @@ const statusOptions = [
 ]
 
 const historyColumns: QTableColumn[] = [
-  { name: 'issue_code', label: 'Mã Phiếu', field: 'issue_code', align: 'left', sortable: true },
+  { name: 'order_info', label: 'PO/Style/SubArt', field: 'po_number', align: 'left' },
+  { name: 'colors', label: 'Màu Hàng', field: 'color_names', align: 'left' },
   { name: 'department', label: 'Bộ Phận', field: 'department', align: 'left', sortable: true },
-  { name: 'line_count', label: 'Số Dòng', field: 'line_count', align: 'center' },
   { name: 'status', label: 'Trạng Thái', field: 'status', align: 'center' },
   { name: 'created_at', label: 'Ngày Tạo', field: 'created_at', align: 'left', sortable: true },
   { name: 'created_by', label: 'Người Tạo', field: 'created_by', align: 'left' },
@@ -1728,6 +1728,22 @@ onUnmounted(() => {
             @request="handleHistoryRequest"
             @row-click="handleHistoryRowClick"
           >
+            <template #body-cell-order_info="props">
+              <q-td :props="props">
+                <span v-if="props.row.po_number">
+                  {{ props.row.po_number }} / {{ props.row.style_code || '-' }}
+                  <template v-if="props.row.sub_art_code"> / {{ props.row.sub_art_code }}</template>
+                </span>
+                <span v-else>-</span>
+              </q-td>
+            </template>
+
+            <template #body-cell-colors="props">
+              <q-td :props="props">
+                {{ props.row.color_names?.join(', ') || '-' }}
+              </q-td>
+            </template>
+
             <template #body-cell-status="props">
               <q-td :props="props">
                 <IssueV2StatusBadge :status="props.row.status" />

@@ -50,7 +50,8 @@ export interface IssueV2 {
 export interface IssueV2WithSummary extends IssueV2 {
   po_number?: string
   style_code?: string
-  color_name?: string
+  sub_art_code?: string
+  color_names?: string[]
   line_count?: number
 }
 
@@ -343,7 +344,7 @@ export interface IssueV2Filters {
  * Paginated list response
  */
 export interface IssueV2ListResponse {
-  data: IssueV2[]
+  data: IssueV2WithSummary[]
   total: number
   page: number
   limit: number
