@@ -4,6 +4,7 @@ import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
+import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
 import type {
   ReturnGroup,
   ReturnGroupThread,
@@ -11,6 +12,8 @@ import type {
   GroupedReturnLog,
   CompletionInfo,
 } from '@/types/thread/issueV2'
+
+const CACHE_TTL = 10_000
 
 export function useReturnV2() {
   const returnGroups = ref<ReturnGroup[]>([])
@@ -35,10 +38,18 @@ export function useReturnV2() {
 
   const loadReturnGroups = async (): Promise<void> => {
     clearError()
+    const cacheKey = '/api/issues-v2/returns'
+    const cached = getCacheEntry<ReturnGroup[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      returnGroups.value = cached.data
+      return
+    }
     try {
       const result = await loading.withLoading(() => issueV2Service.getReturnGroups())
       returnGroups.value = result
+      setCacheEntry(cacheKey, result, CACHE_TTL)
     } catch (err) {
+      if (cached) { returnGroups.value = cached.data; return }
       const msg = getErrorMessage(err, 'Không thể tải danh sách nhóm trả')
       error.value = msg
       snackbar.error(msg)
