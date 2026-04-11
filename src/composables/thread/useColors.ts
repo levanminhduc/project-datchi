@@ -11,6 +11,10 @@ import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { createErrorHandler } from '@/utils/errorMessages'
 import type { Color, ColorFormData, ColorFilters } from '@/types/thread/color'
+import { getCacheEntry, setCacheEntry, invalidateCache } from '@/lib/api-cache'
+
+const CACHE_TTL = 5 * 60_000
+const CACHE_PREFIX = '/api/colors'
 
 /**
  * Vietnamese messages for user feedback
@@ -67,13 +71,22 @@ export function useColors() {
       filters.value = { ...filters.value, ...newFilters }
     }
 
+    const cacheKey = `${CACHE_PREFIX}:${JSON.stringify(filters.value)}`
+    const cached = getCacheEntry<Color[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      colors.value = cached.data
+      return
+    }
+
     try {
       const data = await loading.withLoading(async () => {
         return await colorService.getAll(filters.value)
       })
 
       colors.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { colors.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(errorMessage)
@@ -96,6 +109,7 @@ export function useColors() {
 
       // Add to local state at the beginning (newest first)
       colors.value = [newColor, ...colors.value]
+      invalidateCache(CACHE_PREFIX)
       snackbar.success(MESSAGES.CREATE_SUCCESS)
 
       return newColor
@@ -130,6 +144,7 @@ export function useColors() {
       colors.value = colors.value.map((color) =>
         color.id === id ? updatedColor : color
       )
+      invalidateCache(CACHE_PREFIX)
 
       // Update selected if it was the one updated
       if (selectedColor.value?.id === id) {
@@ -166,6 +181,7 @@ export function useColors() {
       colors.value = colors.value.map((color) =>
         color.id === id ? { ...color, is_active: false } : color
       )
+      invalidateCache(CACHE_PREFIX)
 
       // Clear selected if it was the one deleted
       if (selectedColor.value?.id === id) {
