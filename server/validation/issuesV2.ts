@@ -103,6 +103,20 @@ export const IssueV2FiltersSchema = z.object({
 export type IssueV2FiltersDTO = z.infer<typeof IssueV2FiltersSchema>
 
 // ============================================================================
+// Return List Filters
+// ============================================================================
+
+export const ReturnListFiltersSchema = z.object({
+  search: z.string().trim().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+})
+
+export type ReturnListFiltersDTO = z.infer<typeof ReturnListFiltersSchema>
+
+// ============================================================================
 // Form Data Query
 // ============================================================================
 
