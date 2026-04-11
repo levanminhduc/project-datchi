@@ -11,12 +11,12 @@ import { inventoryService } from '@/services/inventoryService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
+import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
 import type { Cone, InventoryFilters, ReceiveStockDTO } from '@/types/thread'
 import { ConeStatus } from '@/types/thread/enums'
 
-/**
- * Vietnamese messages for user feedback
- */
+const CACHE_TTL = 10_000
+
 const MESSAGES = {
   // Success messages
   RECEIVE_SUCCESS: 'Nhập kho thành công',
@@ -65,15 +65,19 @@ export function useInventory() {
     error.value = null
   }
 
-  /**
-   * Fetch all inventory from API
-   * @param newFilters - Optional filters to apply
-   */
   const fetchInventory = async (newFilters?: InventoryFilters): Promise<void> => {
     clearError()
 
     if (newFilters) {
       filters.value = { ...filters.value, ...newFilters }
+    }
+
+    const cacheKey = `/api/inventory:${JSON.stringify({ page: currentPage.value, pageSize: pageSize.value, sortBy: sortBy.value, descending: descending.value, ...filters.value })}`
+    const cached = getCacheEntry<{ data: Cone[]; count: number }>(cacheKey)
+    if (cached && !cached.isStale) {
+      inventory.value = cached.data.data
+      totalCount.value = cached.data.count
+      return
     }
 
     try {
@@ -93,7 +97,9 @@ export function useInventory() {
 
       inventory.value = result.data
       totalCount.value = result.count
+      setCacheEntry(cacheKey, result, CACHE_TTL)
     } catch (err) {
+      if (cached) { inventory.value = cached.data.data; totalCount.value = cached.data.count; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(errorMessage)
