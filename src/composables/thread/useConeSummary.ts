@@ -11,15 +11,15 @@ import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { useRealtime } from '../useRealtime'
 import { getErrorMessage } from '@/utils/errorMessages'
+import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
 import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters } from '@/types/thread'
 
-/**
- * Vietnamese messages for user feedback
- */
 const MESSAGES = {
   FETCH_ERROR: 'Không thể tải dữ liệu tổng hợp',
   BREAKDOWN_ERROR: 'Không thể tải chi tiết theo kho',
 }
+
+const CACHE_TTL = 10_000
 
 export function useConeSummary() {
   // State
@@ -63,15 +63,18 @@ export function useConeSummary() {
     error.value = null
   }
 
-  /**
-   * Fetch cone summary from API
-   * @param newFilters - Optional filters to apply
-   */
   const fetchSummary = async (newFilters?: ConeSummaryFilters): Promise<void> => {
     clearError()
 
     if (newFilters) {
       filters.value = { ...filters.value, ...newFilters }
+    }
+
+    const cacheKey = `/api/cone-summary:${JSON.stringify(filters.value)}`
+    const cached = getCacheEntry<ConeSummaryRow[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      summaryList.value = cached.data
+      return
     }
 
     try {
@@ -80,7 +83,9 @@ export function useConeSummary() {
       })
 
       summaryList.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { summaryList.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(MESSAGES.FETCH_ERROR)
