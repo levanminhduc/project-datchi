@@ -3032,10 +3032,22 @@ issuesV2.get('/:id', async (c) => {
       }
     }
 
-    const buildThreadDisplayName = (tt: any): string => {
+    const allColorIds = new Set<number>()
+    for (const line of lines || []) {
+      const tcKey = `${(line as any).thread_type_id}-${(line as any).style_color_id || (line as any).color_id}`
+      const tcId = threadColorMap.get(tcKey)
+      if (tcId) allColorIds.add(tcId)
+    }
+    const colorNameMap = new Map<number, string>()
+    if (allColorIds.size > 0) {
+      const { data: colorRows } = await supabase.from('colors').select('id, name').in('id', [...allColorIds])
+      for (const c of colorRows || []) colorNameMap.set(c.id, c.name)
+    }
+
+    const buildThreadDisplayName = (tt: any, threadColorId?: number | null): string => {
       const supplierName = tt?.supplier_id ? supplierMap.get(tt.supplier_id) || '' : ''
       const texPart = tt?.tex_label || (tt?.tex_number ? `TEX ${tt.tex_number}` : '')
-      const threadColor = tt?.id ? ttColorMap.get(tt.id) || '' : ''
+      const threadColor = threadColorId ? colorNameMap.get(threadColorId) || '' : (tt?.id ? ttColorMap.get(tt.id) || '' : '')
       return [supplierName, texPart, threadColor].filter(Boolean).join(' - ') || tt?.name || ''
     }
 
@@ -3062,7 +3074,7 @@ issuesV2.get('/:id', async (c) => {
         stock_available_partial: stock.partial_cones,
         thread_color_id: lineThreadColorId ?? null,
         thread_code: line.thread_types?.code,
-        thread_name: buildThreadDisplayName(line.thread_types),
+        thread_name: buildThreadDisplayName(line.thread_types, lineThreadColorId),
         po_number: line.purchase_orders?.po_number,
         style_code: line.styles?.style_code,
         style_name: line.styles?.style_name,
