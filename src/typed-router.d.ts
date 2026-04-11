@@ -254,13 +254,6 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
-    '/thread/issues/v2/return': RouteRecordInfo<
-      '/thread/issues/v2/return',
-      '/thread/issues/v2/return',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
     '/thread/loans': RouteRecordInfo<
       '/thread/loans',
       '/thread/loans',
@@ -343,6 +336,20 @@ declare module 'vue-router/auto-routes' {
       '/thread/requests',
       Record<never, never>,
       Record<never, never>,
+      | never
+    >,
+    '/thread/return/': RouteRecordInfo<
+      '/thread/return/',
+      '/thread/return',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/thread/return/[id]': RouteRecordInfo<
+      '/thread/return/[id]',
+      '/thread/return/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
       | never
     >,
     '/thread/stocktake': RouteRecordInfo<
@@ -649,12 +656,6 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/thread/issues/v2/return.vue': {
-      routes:
-        | '/thread/issues/v2/return'
-      views:
-        | never
-    }
     'src/pages/thread/loans.vue': {
       routes:
         | '/thread/loans'
@@ -724,6 +725,18 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/requests.vue': {
       routes:
         | '/thread/requests'
+      views:
+        | never
+    }
+    'src/pages/thread/return/index.vue': {
+      routes:
+        | '/thread/return/'
+      views:
+        | never
+    }
+    'src/pages/thread/return/[id].vue': {
+      routes:
+        | '/thread/return/[id]'
       views:
         | never
     }
