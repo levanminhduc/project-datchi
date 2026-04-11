@@ -340,6 +340,14 @@ export interface IssueV2Filters {
   limit?: number
 }
 
+export interface ReturnListFilters {
+  search?: string
+  from?: string
+  to?: string
+  page?: number
+  limit?: number
+}
+
 /**
  * Paginated list response
  */

@@ -29,6 +29,7 @@ import type {
   ReturnGroupedResponse,
   GroupedReturnLog,
   IssueInsufficientStockResponse,
+  ReturnListFilters,
 } from '@/types/thread/issueV2'
 
 const BASE = '/api/issues/v2'
@@ -113,6 +114,28 @@ export const issueV2Service = {
   async list(filters?: IssueV2Filters): Promise<IssueV2ListResponse> {
     const queryString = buildQueryString(filters)
     const response = await fetchApi<ApiResponse<IssueV2ListResponse>>(`${BASE}${queryString}`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || { data: [], total: 0, page: 1, limit: 20, totalPages: 0 }
+  },
+
+  async listForReturn(filters?: ReturnListFilters): Promise<IssueV2ListResponse> {
+    if (!filters) return { data: [], total: 0, page: 1, limit: 20, totalPages: 0 }
+
+    const params = new URLSearchParams()
+    if (filters.search) params.append('search', filters.search)
+    if (filters.from) params.append('from', convertDateFormat(filters.from))
+    if (filters.to) params.append('to', convertDateFormat(filters.to))
+    if (filters.page) params.append('page', String(filters.page))
+    if (filters.limit) params.append('limit', String(filters.limit))
+
+    const queryString = params.toString()
+    const url = `${BASE}/return-list${queryString ? `?${queryString}` : ''}`
+
+    const response = await fetchApi<ApiResponse<IssueV2ListResponse>>(url)
 
     if (response.error) {
       throw new Error(response.error)
