@@ -46,8 +46,8 @@ const returnableLines = computed(() =>
 )
 
 const columns: QTableColumn[] = [
-  { name: 'thread_name', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
   { name: 'order_info', label: 'Đơn Hàng', field: 'po_number', align: 'left' },
+  { name: 'thread_name', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
   { name: 'quota_cones', label: 'Định Mức', field: 'quota_cones', align: 'center' },
   { name: 'issued', label: 'Đã Xuất', field: 'issued_full', align: 'center' },
   { name: 'returned', label: 'Đã Trả', field: 'returned_full', align: 'center' },
@@ -55,8 +55,8 @@ const columns: QTableColumn[] = [
 ]
 
 const returnColumns: QTableColumn[] = [
-  { name: 'thread_name', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
   { name: 'order_info', label: 'Đơn Hàng', field: 'po_number', align: 'left' },
+  { name: 'thread_name', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
   { name: 'outstanding', label: 'Còn Lại', field: 'id', align: 'center' },
   { name: 'return_full', label: 'Trả Nguyên', field: 'id', align: 'center' },
   { name: 'return_partial', label: 'Trả Lẻ', field: 'id', align: 'center' },
