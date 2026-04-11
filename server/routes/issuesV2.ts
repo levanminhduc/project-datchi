@@ -29,6 +29,7 @@ import {
   ConfirmIssueV2Schema,
   OrderOptionsQuerySchema,
   StockRefreshSchema,
+  ReturnListFiltersSchema,
 } from '../validation/issuesV2'
 import type { ThreadApiResponse } from '../types/thread'
 import type { AppEnv } from '../types/hono-env'
@@ -2155,6 +2156,180 @@ issuesV2.get('/form-data', async (c) => {
  * Body: { thread_type_id, issued_full, issued_partial, po_id?, style_id?, color_id? }
  * Returns: { issued_equivalent, is_over_quota, stock_sufficient, quota_cones, stock_available_full, stock_available_partial, message? }
  */
+/**
+ * GET /api/issues/v2/return-list - List confirmed issues for return page
+ */
+issuesV2.get('/return-list', requirePermission('thread.issues.return'), async (c) => {
+  try {
+    const query = c.req.query()
+
+    let validated
+    try {
+      validated = ReturnListFiltersSchema.parse(query)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json<ThreadApiResponse<null>>(
+          { data: null, error: formatZodError(err) },
+          400
+        )
+      }
+      throw err
+    }
+
+    const { search, from, to, page = 1, limit = 20 } = validated
+
+    // Step 1: If search provided, find matching issue IDs via lines
+    let matchingIssueIds: number[] | null = null
+
+    if (search && search.length > 0) {
+      const { data: matchingLines } = await supabase
+        .from('thread_issue_lines')
+        .select(`
+          issue_id,
+          purchase_orders:po_id(po_number),
+          styles:style_id(style_code),
+          sub_arts:sub_art_id(sub_art_code),
+          style_colors:style_color_id(color_name),
+          colors:color_id(name)
+        `)
+        .limit(1000)
+
+      if (matchingLines) {
+        const ids = new Set<number>()
+        for (const line of matchingLines) {
+          const poNumber = (line.purchase_orders as any)?.po_number || ''
+          const styleCode = (line.styles as any)?.style_code || ''
+          const subArtCode = (line.sub_arts as any)?.sub_art_code || ''
+          const colorName = (line.style_colors as any)?.color_name || (line.colors as any)?.name || ''
+
+          const searchLower = search.toLowerCase()
+          if (
+            poNumber.toLowerCase().includes(searchLower) ||
+            styleCode.toLowerCase().includes(searchLower) ||
+            subArtCode.toLowerCase().includes(searchLower) ||
+            colorName.toLowerCase().includes(searchLower)
+          ) {
+            ids.add(line.issue_id)
+          }
+        }
+        matchingIssueIds = Array.from(ids)
+
+        if (matchingIssueIds.length === 0) {
+          return c.json({
+            data: { data: [], total: 0, page, limit, totalPages: 0 },
+            error: null,
+          })
+        }
+      }
+    }
+
+    // Step 2: Query thread_issues with filters
+    let dbQuery = supabase
+      .from('thread_issues')
+      .select('*, line_count:thread_issue_lines(count)', { count: 'exact' })
+      .eq('status', 'CONFIRMED')
+      .order('created_at', { ascending: false })
+
+    // Permission filter: non-admin only sees own issues
+    const auth = c.get('auth')
+    if (auth && !auth.isAdmin) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('full_name')
+        .eq('id', auth.employeeId)
+        .single()
+
+      if (emp?.full_name) {
+        dbQuery = dbQuery.eq('created_by', emp.full_name)
+      }
+    }
+
+    if (matchingIssueIds) {
+      dbQuery = dbQuery.in('id', matchingIssueIds)
+    }
+
+    if (from) {
+      dbQuery = dbQuery.gte('created_at', `${from}T00:00:00`)
+    }
+    if (to) {
+      dbQuery = dbQuery.lte('created_at', `${to}T23:59:59`)
+    }
+
+    const offset = (page - 1) * limit
+    dbQuery = dbQuery.range(offset, offset + limit - 1)
+
+    const { data, error, count } = await dbQuery
+
+    if (error) {
+      console.error('Error listing return issues:', error)
+      return c.json<ThreadApiResponse<null>>(
+        { data: null, error: 'Không thể tải danh sách phiếu trả kho' },
+        500
+      )
+    }
+
+    // Step 3: Fetch line summary (PO, style, colors) - same pattern as GET /
+    const issueIds = (data || []).map((row: any) => row.id)
+    const lineSummaryMap: Record<number, { po_number?: string; style_code?: string; sub_art_code?: string; color_names: string[] }> = {}
+
+    if (issueIds.length > 0) {
+      const { data: linesSummary } = await supabase
+        .from('thread_issue_lines')
+        .select(`
+          issue_id,
+          purchase_orders:po_id(po_number),
+          styles:style_id(style_code),
+          sub_arts:sub_art_id(sub_art_code),
+          style_colors:style_color_id(color_name),
+          colors:color_id(name)
+        `)
+        .in('issue_id', issueIds)
+        .order('created_at', { ascending: true })
+
+      if (linesSummary) {
+        for (const line of linesSummary) {
+          const colorName = (line.style_colors as any)?.color_name ?? (line.colors as any)?.name
+          if (!lineSummaryMap[line.issue_id]) {
+            lineSummaryMap[line.issue_id] = {
+              po_number: (line.purchase_orders as any)?.po_number || undefined,
+              style_code: (line.styles as any)?.style_code || undefined,
+              sub_art_code: (line.sub_arts as any)?.sub_art_code || undefined,
+              color_names: colorName ? [colorName] : [],
+            }
+          } else if (colorName && !lineSummaryMap[line.issue_id].color_names.includes(colorName)) {
+            lineSummaryMap[line.issue_id].color_names.push(colorName)
+          }
+        }
+      }
+    }
+
+    const result = (data || []).map((row: any) => ({
+      ...row,
+      line_count: row.line_count?.[0]?.count ?? 0,
+      ...(lineSummaryMap[row.id] || {}),
+    }))
+
+    const total = count ?? 0
+
+    return c.json({
+      data: {
+        data: result,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+      error: null,
+    })
+  } catch (err) {
+    console.error('Error in GET /api/issues/v2/return-list:', err)
+    return c.json<ThreadApiResponse<null>>(
+      { data: null, error: getErrorMessage(err) },
+      500
+    )
+  }
+})
+
 issuesV2.route('/', returnGroupedRoutes)
 
 issuesV2.post('/:id/lines/validate', async (c) => {
