@@ -11,6 +11,10 @@ import { settingsService, type SystemSetting } from '@/services/settingsService'
 import { useSnackbar } from './useSnackbar'
 import { useLoading } from './useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
+import { getCacheEntry, setCacheEntry, invalidateCache } from '@/lib/api-cache'
+
+const CACHE_TTL = 5 * 60_000
+const CACHE_PREFIX = '/api/settings'
 
 export function useSettings() {
   // State
@@ -38,11 +42,20 @@ export function useSettings() {
   const fetchSettings = async (): Promise<void> => {
     clearError()
 
+    const cacheKey = CACHE_PREFIX
+    const cached = getCacheEntry<SystemSetting[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      settings.value = cached.data
+      return
+    }
+
     try {
       settings.value = await loading.withLoading(async () => {
         return await settingsService.getAll()
       })
+      setCacheEntry(cacheKey, settings.value, CACHE_TTL)
     } catch (err) {
+      if (cached) { settings.value = cached.data; return }
       const errorMessage = getErrorMessage(err, 'Khong the tai danh sach cai dat')
       error.value = errorMessage
       snackbar.error(errorMessage)
@@ -91,6 +104,7 @@ export function useSettings() {
       if (index !== -1) {
         settings.value[index] = updated
       }
+      invalidateCache(CACHE_PREFIX)
 
       snackbar.success('Da cap nhat cai dat thanh cong')
       return updated
