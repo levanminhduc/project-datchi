@@ -11,6 +11,10 @@ import { useSnackbar } from './useSnackbar'
 import { useLoading } from './useLoading'
 import { createErrorHandler } from '@/utils/errorMessages'
 import type { Employee, EmployeeFormData } from '@/types'
+import { getCacheEntry, setCacheEntry, invalidateCache } from '@/lib/api-cache'
+
+const CACHE_TTL = 5 * 60_000
+const CACHE_PREFIX = '/api/employees'
 
 /**
  * Vietnamese messages for user feedback
@@ -57,14 +61,23 @@ export function useEmployees() {
    */
   const fetchEmployees = async (): Promise<void> => {
     clearError()
-    
+
+    const cacheKey = CACHE_PREFIX
+    const cached = getCacheEntry<Employee[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      employees.value = cached.data
+      return
+    }
+
     try {
       const data = await loading.withLoading(async () => {
         return await employeeService.getAll()
       })
-      
+
       employees.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { employees.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(errorMessage)
@@ -87,6 +100,7 @@ export function useEmployees() {
       
       // Add to local state
       employees.value = [...employees.value, newEmployee]
+      invalidateCache(CACHE_PREFIX)
       snackbar.success(MESSAGES.CREATE_SUCCESS)
       
       return newEmployee
@@ -121,6 +135,7 @@ export function useEmployees() {
       employees.value = employees.value.map((emp) =>
         emp.id === id ? updatedEmployee : emp
       )
+      invalidateCache(CACHE_PREFIX)
       
       // Update selected if it was the one updated
       if (selectedEmployee.value?.id === id) {
@@ -155,6 +170,7 @@ export function useEmployees() {
       
       // Remove from local state
       employees.value = employees.value.filter((emp) => emp.id !== id)
+      invalidateCache(CACHE_PREFIX)
       
       // Clear selected if it was the one deleted
       if (selectedEmployee.value?.id === id) {
