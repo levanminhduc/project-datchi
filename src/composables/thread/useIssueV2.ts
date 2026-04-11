@@ -14,7 +14,6 @@ import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
 import type {
-  IssueV2,
   IssueV2WithSummary,
   IssueV2WithLines,
   IssueLineV2WithComputed,
