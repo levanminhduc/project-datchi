@@ -11,6 +11,10 @@ import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { createErrorHandler } from '@/utils/errorMessages'
 import type { Supplier, SupplierFormData, SupplierFilters } from '@/types/thread/supplier'
+import { getCacheEntry, setCacheEntry, invalidateCache } from '@/lib/api-cache'
+
+const CACHE_TTL = 5 * 60_000
+const CACHE_PREFIX = '/api/suppliers'
 
 /**
  * Vietnamese messages for user feedback
@@ -67,13 +71,22 @@ export function useSuppliers() {
       filters.value = { ...filters.value, ...newFilters }
     }
 
+    const cacheKey = `${CACHE_PREFIX}:${JSON.stringify(filters.value)}`
+    const cached = getCacheEntry<Supplier[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      suppliers.value = cached.data
+      return
+    }
+
     try {
       const data = await loading.withLoading(async () => {
         return await supplierService.getAll(filters.value)
       })
 
       suppliers.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { suppliers.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(errorMessage)
@@ -96,6 +109,7 @@ export function useSuppliers() {
 
       // Add to local state at the beginning (newest first)
       suppliers.value = [newSupplier, ...suppliers.value]
+      invalidateCache(CACHE_PREFIX)
       snackbar.success(MESSAGES.CREATE_SUCCESS)
 
       return newSupplier
@@ -130,6 +144,7 @@ export function useSuppliers() {
       suppliers.value = suppliers.value.map((supplier) =>
         supplier.id === id ? updatedSupplier : supplier
       )
+      invalidateCache(CACHE_PREFIX)
 
       // Update selected if it was the one updated
       if (selectedSupplier.value?.id === id) {
@@ -166,6 +181,7 @@ export function useSuppliers() {
       suppliers.value = suppliers.value.map((supplier) =>
         supplier.id === id ? { ...supplier, is_active: false } : supplier
       )
+      invalidateCache(CACHE_PREFIX)
 
       // Clear selected if it was the one deleted
       if (selectedSupplier.value?.id === id) {
