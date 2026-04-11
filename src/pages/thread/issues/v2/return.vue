@@ -1,393 +1,229 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { date } from 'quasar'
-import { useReturnV2 } from '@/composables/thread/useReturnV2'
-import AppButton from '@/components/ui/buttons/AppButton.vue'
-import AppSelect from '@/components/ui/inputs/AppSelect.vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useIssueV2 } from '@/composables/thread/useIssueV2'
+import { IssueV2Status } from '@/types/thread/issueV2'
+import type { IssueV2Filters } from '@/types/thread/issueV2'
+import type { QTableColumn, QTableProps } from 'quasar'
+import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
-import type { ReturnGroup } from '@/types/thread/issueV2'
+import AppButton from '@/components/ui/buttons/AppButton.vue'
+import DataTable from '@/components/ui/tables/DataTable.vue'
+import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
+import { dateRules } from '@/utils'
 
-const {
-  returnGroups,
-  selectedGroup,
-  returnLogs,
-  isLoading,
-  completionInfo,
-  loadReturnGroups,
-  selectGroup,
-  submitGroupedReturn,
-  validateReturnQuantities,
-  confirmBatchCompletion,
-  lookupAndMarkCompletion,
-  clearCompletionInfo,
-} = useReturnV2()
+const router = useRouter()
+const { issues, total, filters, isLoading, fetchIssues } = useIssueV2()
 
-const selectedGroupKey = ref<string | null>(null)
-const returnInputs = ref<Map<number, { full: number; partial: number }>>(new Map())
-const validationErrors = ref<string[]>([])
-const showWeekDialog = ref(false)
-const selectedWeekIds = ref<number[]>([])
-
-const pendingWeeks = computed(() => completionInfo.value?.pending_selection || [])
-
-const groupOptions = computed(() =>
-  returnGroups.value.map((g) => ({
-    value: g.group_key,
-    label: `${g.po_number} / ${g.style_code} / ${g.color_name} (${g.issue_count} phiếu)`,
-  }))
-)
-
-const hasReturnInputs = computed(() => {
-  for (const [, v] of returnInputs.value) {
-    if (v.full > 0 || v.partial > 0) return true
-  }
-  return false
+const localFilters = ref<IssueV2Filters>({
+  status: IssueV2Status.CONFIRMED,
+  from: undefined,
+  to: undefined,
+  page: 1,
+  limit: 20,
 })
 
-function formatDate(dateStr: string) {
-  return date.formatDate(dateStr, 'DD/MM/YYYY HH:mm')
-}
-
-function getReturnInput(threadTypeId: number) {
-  if (!returnInputs.value.has(threadTypeId)) {
-    returnInputs.value.set(threadTypeId, { full: 0, partial: 0 })
-  }
-  return returnInputs.value.get(threadTypeId)!
-}
-
-function handleReset() {
-  returnInputs.value = new Map()
-  validationErrors.value = []
-}
-
-async function handleSubmit() {
-  if (!selectedGroup.value) return
-
-  const lines = Array.from(returnInputs.value.entries()).map(([ttId, v]) => ({
-    thread_type_id: ttId,
-    returned_full: v.full || 0,
-    returned_partial: v.partial || 0,
-  }))
-
-  const validation = validateReturnQuantities(lines, selectedGroup.value.threads)
-  if (!validation.valid) {
-    validationErrors.value = validation.errors
-    return
-  }
-
-  validationErrors.value = []
-  await submitGroupedReturn(selectedGroup.value, lines)
-  handleReset()
-}
-
-async function handleConfirmWeeks() {
-  const itemIds: number[] = []
-  for (const week of pendingWeeks.value) {
-    if (selectedWeekIds.value.includes(week.week_id)) {
-      itemIds.push(...week.item_ids)
-    }
-  }
-  await confirmBatchCompletion(itemIds)
-  showWeekDialog.value = false
-}
-
-function handleDismissDialog() {
-  showWeekDialog.value = false
-  clearCompletionInfo()
-}
-
-async function handleMarkCompletion() {
-  if (!selectedGroup.value) return
-  await lookupAndMarkCompletion(selectedGroup.value)
-  if (completionInfo.value?.pending_selection?.length) {
-    selectedWeekIds.value = completionInfo.value.pending_selection.map((w) => w.week_id)
-    showWeekDialog.value = true
-  }
-}
-
-watch(selectedGroupKey, (key) => {
-  const group = key ? returnGroups.value.find((g: ReturnGroup) => g.group_key === key) || null : null
-  selectGroup(group)
-  handleReset()
+const pagination = ref({
+  page: 1,
+  rowsPerPage: 20,
+  rowsNumber: 0,
 })
 
-watch(selectedGroup, (group) => {
-  if (!group) selectedGroupKey.value = null
-})
+const columns: QTableColumn[] = [
+  { name: 'order_info', label: 'PO/Style/SubArt', field: 'po_number', align: 'left' },
+  { name: 'colors', label: 'Màu Hàng', field: 'color_names', align: 'left' },
+  { name: 'department', label: 'Bộ Phận', field: 'department', align: 'left', sortable: true },
+  { name: 'status', label: 'Trạng Thái', field: 'status', align: 'center' },
+  { name: 'created_at', label: 'Ngày Tạo', field: 'created_at', align: 'left', sortable: true },
+  { name: 'created_by', label: 'Người Tạo', field: 'created_by', align: 'left' },
+]
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('vi-VN')
+}
+
+const loadData = async () => {
+  filters.value = { ...localFilters.value }
+  await fetchIssues()
+  pagination.value.rowsNumber = total.value
+}
+
+const handleRequest = async (props: Parameters<NonNullable<QTableProps['onRequest']>>[0]) => {
+  localFilters.value.page = props.pagination.page
+  localFilters.value.limit = props.pagination.rowsPerPage
+  pagination.value.page = props.pagination.page
+  pagination.value.rowsPerPage = props.pagination.rowsPerPage
+  await loadData()
+}
+
+const handleSearch = async () => {
+  localFilters.value.page = 1
+  pagination.value.page = 1
+  await loadData()
+}
+
+const handleClearFilters = () => {
+  localFilters.value = {
+    status: IssueV2Status.CONFIRMED,
+    from: undefined,
+    to: undefined,
+    page: 1,
+    limit: 20,
+  }
+  handleSearch()
+}
+
+const handleRowClick = (_evt: Event, row: { id: number }) => {
+  router.push(`/thread/issues/v2/${row.id}`)
+}
 
 onMounted(() => {
-  loadReturnGroups()
+  loadData()
 })
 </script>
 
 <template>
   <q-page padding>
-    <div class="row items-center justify-between q-mb-md">
-      <h1 class="text-h5 q-my-none text-weight-bold text-primary">
-        Nhập Lại Chỉ
-      </h1>
-    </div>
+    <PageHeader
+      title="Trả Kho"
+      subtitle="Chọn phiếu xuất đã xác nhận để trả chỉ về kho"
+    />
 
     <q-card
       flat
       bordered
-      class="q-mb-md"
+      class="q-mb-lg"
     >
       <q-card-section>
-        <AppSelect
-          v-model="selectedGroupKey"
-          :options="groupOptions"
-          label="Chọn nhóm PO / Style / Màu"
-          :loading="isLoading"
-          clearable
-          use-input
-          fill-input
-          hide-selected
-          style="max-width: 600px"
-        />
-      </q-card-section>
-    </q-card>
-
-    <q-card
-      v-if="selectedGroup"
-      flat
-      bordered
-      class="q-mb-md"
-    >
-      <q-card-section>
-        <div class="text-subtitle1 q-mb-sm">
-          {{ selectedGroup.po_number }} / {{ selectedGroup.style_code }} / {{ selectedGroup.color_name }}
-          <q-badge
-            color="blue-grey"
-            class="q-ml-sm"
-          >
-            {{ selectedGroup.issue_count }} phiếu
-          </q-badge>
-        </div>
-      </q-card-section>
-
-      <q-card-section>
-        <q-banner
-          v-if="validationErrors.length > 0"
-          class="bg-negative text-white q-mb-md"
-          rounded
-        >
-          <div
-            v-for="(err, i) in validationErrors"
-            :key="i"
-          >
-            {{ err }}
+        <div class="row items-end q-col-gutter-md">
+          <div class="col-12 col-sm-6 col-md-3">
+            <AppInput
+              v-model="localFilters.from"
+              label="Từ ngày"
+              placeholder="DD/MM/YYYY"
+              :rules="[dateRules.date]"
+              dense
+              clearable
+              hide-bottom-space
+            >
+              <template #append>
+                <q-icon
+                  name="event"
+                  class="cursor-pointer"
+                >
+                  <q-popup-proxy
+                    cover
+                    transition-show="scale"
+                    transition-hide="scale"
+                  >
+                    <DatePicker v-model="localFilters.from" />
+                  </q-popup-proxy>
+                </q-icon>
+              </template>
+            </AppInput>
           </div>
-        </q-banner>
 
-        <q-table
-          :rows="selectedGroup.threads"
-          :columns="[
-            { name: 'thread', label: 'Loại chỉ', field: 'thread_name', align: 'left' as const },
-            { name: 'outstanding_full', label: 'Còn nguyên', field: 'outstanding_full', align: 'center' as const },
-            { name: 'outstanding_partial', label: 'Còn lẻ', field: 'outstanding_partial', align: 'center' as const },
-            { name: 'return_full', label: 'Trả nguyên', field: 'outstanding_full', align: 'center' as const },
-            { name: 'return_partial', label: 'Trả lẻ', field: 'outstanding_partial', align: 'center' as const },
-          ]"
-          row-key="thread_type_id"
-          flat
-          bordered
-          :pagination="{ rowsPerPage: 0 }"
-          hide-bottom
-        >
-          <template #body-cell-thread="props">
-            <q-td :props="props">
-              <div class="text-weight-medium">
-                {{ props.row.thread_name }}
-              </div>
-              <div class="text-caption text-grey-6">
-                {{ props.row.thread_code }}
-              </div>
-            </q-td>
-          </template>
+          <div class="col-12 col-sm-6 col-md-3">
+            <AppInput
+              v-model="localFilters.to"
+              label="Đến ngày"
+              placeholder="DD/MM/YYYY"
+              :rules="[dateRules.date]"
+              dense
+              clearable
+              hide-bottom-space
+            >
+              <template #append>
+                <q-icon
+                  name="event"
+                  class="cursor-pointer"
+                >
+                  <q-popup-proxy
+                    cover
+                    transition-show="scale"
+                    transition-hide="scale"
+                  >
+                    <DatePicker v-model="localFilters.to" />
+                  </q-popup-proxy>
+                </q-icon>
+              </template>
+            </AppInput>
+          </div>
 
-          <template #body-cell-return_full="props">
-            <q-td :props="props">
-              <AppInput
-                v-model.number="getReturnInput(props.row.thread_type_id).full"
-                type="number"
-                dense
-                :min="0"
-                :max="props.row.outstanding_full"
-                style="max-width: 80px"
+          <div class="col-12 col-sm-6 col-md-auto">
+            <div class="row q-gutter-sm">
+              <AppButton
+                color="primary"
+                label="Tìm kiếm"
+                icon="search"
+                unelevated
+                @click="handleSearch"
               />
-            </q-td>
-          </template>
-
-          <template #body-cell-return_partial="props">
-            <q-td :props="props">
-              <AppInput
-                v-model.number="getReturnInput(props.row.thread_type_id).partial"
-                type="number"
-                dense
-                :min="0"
-                :max="props.row.outstanding_full + props.row.outstanding_partial - getReturnInput(props.row.thread_type_id).full"
-                style="max-width: 80px"
+              <AppButton
+                outline
+                color="grey"
+                label="Xóa"
+                icon="clear"
+                @click="handleClearFilters"
               />
-            </q-td>
-          </template>
-        </q-table>
-      </q-card-section>
-
-      <q-card-actions
-        align="right"
-        class="q-px-md q-pb-md"
-      >
-        <AppButton
-          variant="flat"
-          label="Đặt lại"
-          @click="handleReset"
-        />
-        <q-space />
-        <AppButton
-          variant="flat"
-          color="teal"
-          label="Đánh dấu hoàn tất xuất chỉ"
-          icon="check_circle"
-          :loading="isLoading"
-          @click="handleMarkCompletion"
-        />
-        <AppButton
-          label="Nhập lại kho"
-          color="primary"
-          :loading="isLoading"
-          :disable="!hasReturnInputs"
-          @click="handleSubmit"
-        />
-      </q-card-actions>
-    </q-card>
-
-    <q-card
-      v-if="selectedGroup && returnLogs.length > 0"
-      flat
-      bordered
-      class="q-mt-md"
-    >
-      <q-card-section>
-        <div class="text-subtitle1 q-mb-md">
-          Lịch Sử Trả Kho
-        </div>
-        <q-table
-          :rows="returnLogs"
-          :columns="[
-            { name: 'index', label: '#', field: 'id', align: 'center' as const },
-            { name: 'issue_code', label: 'Phiếu', field: 'issue_code', align: 'left' as const },
-            { name: 'thread', label: 'Loại chỉ', field: 'thread_name', align: 'left' as const },
-            { name: 'returned_full', label: 'Nguyên', field: 'returned_full', align: 'center' as const },
-            { name: 'returned_partial', label: 'Lẻ', field: 'returned_partial', align: 'center' as const },
-            { name: 'created_at', label: 'Thời gian', field: 'created_at', align: 'left' as const },
-          ]"
-          row-key="id"
-          flat
-          bordered
-          :pagination="{ rowsPerPage: 0 }"
-          hide-bottom
-        >
-          <template #body-cell-index="props">
-            <q-td :props="props">
-              {{ props.rowIndex + 1 }}
-            </q-td>
-          </template>
-          <template #body-cell-thread="props">
-            <q-td :props="props">
-              <div class="text-weight-medium">
-                {{ props.row.thread_name }}
-              </div>
-              <div class="text-caption text-grey-6">
-                {{ props.row.thread_code }}
-              </div>
-            </q-td>
-          </template>
-          <template #body-cell-created_at="props">
-            <q-td :props="props">
-              {{ formatDate(props.row.created_at) }}
-            </q-td>
-          </template>
-        </q-table>
-      </q-card-section>
-    </q-card>
-
-    <q-card
-      v-else-if="!isLoading && !selectedGroupKey"
-      flat
-      bordered
-    >
-      <q-card-section class="text-center text-grey q-pa-xl">
-        <q-icon
-          name="assignment_return"
-          size="64px"
-          class="q-mb-md"
-        />
-        <div>Chọn một nhóm PO / Style / Màu để nhập lại chỉ về kho</div>
-      </q-card-section>
-    </q-card>
-
-    <q-card
-      v-else-if="isLoading && selectedGroupKey"
-      flat
-      bordered
-    >
-      <q-card-section class="text-center q-pa-xl">
-        <q-spinner
-          color="primary"
-          size="48px"
-        />
-        <div class="q-mt-md text-grey">
-          Đang tải...
+            </div>
+          </div>
         </div>
       </q-card-section>
     </q-card>
 
-    <q-dialog
-      v-model="showWeekDialog"
-      persistent
+    <DataTable
+      v-model:pagination="pagination"
+      :rows="issues"
+      :columns="columns"
+      :loading="isLoading"
+      row-key="id"
+      empty-icon="assignment_return"
+      empty-title="Chưa có phiếu xuất nào đã xác nhận"
+      empty-subtitle="Phiếu xuất cần được xác nhận trước khi trả kho"
+      class="return-table"
+      @request="handleRequest"
+      @row-click="handleRowClick"
     >
-      <q-card style="min-width: 350px">
-        <q-card-section>
-          <div class="text-h6">
-            Đánh dấu hoàn tất xuất chỉ
-          </div>
-          <div class="text-body2 text-grey q-mt-sm">
-            PO-Style-Màu này có nhiều tuần. Chọn tuần muốn đánh dấu hoàn tất:
-          </div>
-        </q-card-section>
+      <template #body-cell-order_info="props">
+        <q-td :props="props">
+          <span v-if="props.row.po_number">
+            {{ props.row.po_number }} / {{ props.row.style_code || '-' }}
+            <template v-if="props.row.sub_art_code"> / {{ props.row.sub_art_code }}</template>
+          </span>
+          <span v-else>-</span>
+        </q-td>
+      </template>
 
-        <q-card-section class="q-pt-none">
-          <div
-            v-for="week in pendingWeeks"
-            :key="week.week_id"
-            class="q-mb-sm"
-          >
-            <q-checkbox
-              :model-value="selectedWeekIds.includes(week.week_id)"
-              :label="week.week_name"
-              @update:model-value="(val: boolean | null) => {
-                if (val) selectedWeekIds.push(week.week_id)
-                else selectedWeekIds.splice(selectedWeekIds.indexOf(week.week_id), 1)
-              }"
-            />
-          </div>
-        </q-card-section>
+      <template #body-cell-colors="props">
+        <q-td :props="props">
+          {{ props.row.color_names?.join(', ') || '-' }}
+        </q-td>
+      </template>
 
-        <q-card-actions align="right">
-          <AppButton
-            variant="flat"
-            label="Bỏ qua"
-            @click="handleDismissDialog"
-          />
-          <AppButton
-            label="Xác nhận"
-            color="primary"
-            :disable="selectedWeekIds.length === 0"
-            @click="handleConfirmWeeks"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+      <template #body-cell-status="props">
+        <q-td :props="props">
+          <IssueV2StatusBadge :status="props.row.status" />
+        </q-td>
+      </template>
+
+      <template #body-cell-created_at="props">
+        <q-td :props="props">
+          {{ formatDate(props.row.created_at) }}
+        </q-td>
+      </template>
+    </DataTable>
   </q-page>
 </template>
+
+<style scoped>
+.return-table :deep(.q-table tbody tr) {
+  cursor: pointer;
+}
+.return-table :deep(.q-table tbody tr:hover) {
+  background: rgba(0, 0, 0, 0.03);
+}
+</style>
