@@ -9,6 +9,7 @@ import { styleThreadSpecService } from '@/services'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
+import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
 import type {
   StyleThreadSpec,
   StyleColorThreadSpec,
@@ -18,6 +19,8 @@ import type {
   UpdateStyleColorThreadSpecDTO,
   StyleThreadSpecFilter,
 } from '@/types/thread'
+
+const CACHE_TTL = 10_000
 
 export function useStyleThreadSpecs() {
   // State
@@ -43,15 +46,18 @@ export function useStyleThreadSpecs() {
     error.value = null
   }
 
-  /**
-   * Fetch all style thread specs from API
-   * @param newFilters - Optional filters to apply
-   */
   const fetchStyleThreadSpecs = async (newFilters?: StyleThreadSpecFilter): Promise<void> => {
     clearError()
 
     if (newFilters) {
       filters.value = { ...filters.value, ...newFilters }
+    }
+
+    const cacheKey = `/api/style-thread-specs:${JSON.stringify(filters.value)}`
+    const cached = getCacheEntry<StyleThreadSpec[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      styleThreadSpecs.value = cached.data
+      return
     }
 
     try {
@@ -60,7 +66,9 @@ export function useStyleThreadSpecs() {
       })
 
       styleThreadSpecs.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { styleThreadSpecs.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(errorMessage)
