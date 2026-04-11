@@ -2706,7 +2706,7 @@ issuesV2.get('/:id/return-logs', async (c) => {
           style_color_id,
           style_colors:style_color_id ( id, color_name ),
           color_id,
-          colors ( id, name )
+          colors!color_id ( id, name )
         `)
         .in('id', lineIds)
 
@@ -2791,7 +2791,7 @@ issuesV2.get('/:id', async (c) => {
         purchase_orders(id, po_number),
         styles(id, style_code, style_name),
         style_colors:style_color_id(id, color_name),
-        colors(id, name),
+        colors!color_id(id, name),
         sub_arts(id, sub_art_code)
       `
       )
