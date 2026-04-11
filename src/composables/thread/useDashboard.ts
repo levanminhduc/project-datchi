@@ -17,14 +17,14 @@ import {
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
+import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
 
-/**
- * Vietnamese messages for user feedback
- */
 const MESSAGES = {
   REFRESH_SUCCESS: 'Đã cập nhật dữ liệu',
   FETCH_ERROR: 'Không thể tải dữ liệu dashboard',
 }
+
+const CACHE_TTL = 10_000
 
 export function useDashboard() {
   // State
@@ -73,14 +73,19 @@ export function useDashboard() {
     error.value = null
   }
 
-  /**
-   * Fetch dashboard summary statistics
-   */
   const fetchSummary = async (): Promise<void> => {
+    const cacheKey = '/api/dashboard:summary'
+    const cached = getCacheEntry<DashboardSummary>(cacheKey)
+    if (cached && !cached.isStale) {
+      summary.value = cached.data
+      return
+    }
     try {
       const data = await dashboardService.getSummary()
       summary.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { summary.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       console.error('[useDashboard] fetchSummary error:', err)
@@ -88,14 +93,19 @@ export function useDashboard() {
     }
   }
 
-  /**
-   * Fetch stock alerts
-   */
   const fetchAlerts = async (): Promise<void> => {
+    const cacheKey = '/api/dashboard:alerts'
+    const cached = getCacheEntry<StockAlert[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      alerts.value = cached.data
+      return
+    }
     try {
       const data = await dashboardService.getAlerts()
       alerts.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { alerts.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       console.error('[useDashboard] fetchAlerts error:', err)
@@ -103,14 +113,19 @@ export function useDashboard() {
     }
   }
 
-  /**
-   * Fetch conflicts information
-   */
   const fetchConflicts = async (): Promise<void> => {
+    const cacheKey = '/api/dashboard:conflicts'
+    const cached = getCacheEntry<ConflictsSummary>(cacheKey)
+    if (cached && !cached.isStale) {
+      conflicts.value = cached.data
+      return
+    }
     try {
       const data = await dashboardService.getConflicts()
       conflicts.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { conflicts.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       console.error('[useDashboard] fetchConflicts error:', err)
@@ -118,14 +133,19 @@ export function useDashboard() {
     }
   }
 
-  /**
-   * Fetch pending items counts
-   */
   const fetchPending = async (): Promise<void> => {
+    const cacheKey = '/api/dashboard:pending'
+    const cached = getCacheEntry<PendingItems>(cacheKey)
+    if (cached && !cached.isStale) {
+      pending.value = cached.data
+      return
+    }
     try {
       const data = await dashboardService.getPending()
       pending.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { pending.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       console.error('[useDashboard] fetchPending error:', err)
@@ -133,14 +153,19 @@ export function useDashboard() {
     }
   }
 
-  /**
-   * Fetch activity feed
-   */
   const fetchActivity = async (): Promise<void> => {
+    const cacheKey = '/api/dashboard:activity'
+    const cached = getCacheEntry<ActivityItem[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      activity.value = cached.data
+      return
+    }
     try {
       const data = await dashboardService.getActivity()
       activity.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { activity.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       console.error('[useDashboard] fetchActivity error:', err)
