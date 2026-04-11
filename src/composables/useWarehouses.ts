@@ -11,6 +11,9 @@ import { warehouseService, type Warehouse, type WarehouseTreeNode } from '@/serv
 import { useSnackbar } from './useSnackbar'
 import { useLoading } from './useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
+import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
+
+const CACHE_TTL = 5 * 60_000
 
 export interface WarehouseOption {
   label: string
@@ -139,13 +142,22 @@ export function useWarehouses() {
   const fetchWarehouses = async (): Promise<void> => {
     clearError()
 
+    const cacheKey = '/api/warehouses'
+    const cached = getCacheEntry<Warehouse[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      warehouses.value = cached.data
+      return
+    }
+
     try {
       const data = await loading.withLoading(async () => {
         return await warehouseService.getAll()
       })
 
       warehouses.value = data
+      setCacheEntry(cacheKey, data, CACHE_TTL)
     } catch (err) {
+      if (cached) { warehouses.value = cached.data; return }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(errorMessage)
@@ -159,14 +171,27 @@ export function useWarehouses() {
   const fetchWarehouseTree = async (): Promise<void> => {
     clearError()
 
+    const cacheKey = '/api/warehouses:tree'
+    const cached = getCacheEntry<WarehouseTreeNode[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      warehouseTree.value = cached.data
+      const flatList: Warehouse[] = []
+      for (const location of cached.data) {
+        flatList.push(location)
+        flatList.push(...location.children)
+      }
+      warehouses.value = flatList
+      return
+    }
+
     try {
       const data = await loading.withLoading(async () => {
         return await warehouseService.getTree()
       })
 
       warehouseTree.value = data
-      
-      // Also populate flat list from tree for backward compatibility
+      setCacheEntry(cacheKey, data, CACHE_TTL)
+
       const flatList: Warehouse[] = []
       for (const location of data) {
         flatList.push(location)
@@ -174,6 +199,16 @@ export function useWarehouses() {
       }
       warehouses.value = flatList
     } catch (err) {
+      if (cached) {
+        warehouseTree.value = cached.data
+        const flatList: Warehouse[] = []
+        for (const location of cached.data) {
+          flatList.push(location)
+          flatList.push(...location.children)
+        }
+        warehouses.value = flatList
+        return
+      }
       const errorMessage = getErrorMessage(err)
       error.value = errorMessage
       snackbar.error(errorMessage)
