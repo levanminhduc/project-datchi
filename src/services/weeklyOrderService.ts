@@ -206,11 +206,11 @@ export const weeklyOrderService = {
    * @param status - New status
    * @returns Updated weekly order
    */
-  async updateStatus(id: number, status: string): Promise<ConfirmWithReserveResult | ThreadOrderWeek> {
+  async updateStatus(id: number, status: string, config?: { timeout?: number }): Promise<ConfirmWithReserveResult | ThreadOrderWeek> {
     const response = await fetchApi<ApiResponse<ConfirmWithReserveResult | ThreadOrderWeek>>(`${BASE}/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
-    })
+    }, config)
 
     if (response.error) {
       throw new Error(response.error)
@@ -221,6 +221,30 @@ export const weeklyOrderService = {
     }
 
     return response.data
+  },
+
+  async syncDeliveries(id: number): Promise<{ synced: boolean }> {
+    const response = await fetchApi<ApiResponse<{ synced: boolean }>>(`${BASE}/${id}/sync-deliveries`, {
+      method: 'POST',
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || { synced: false }
+  },
+
+  async notifyConfirmation(id: number): Promise<{ notified: boolean }> {
+    const response = await fetchApi<ApiResponse<{ notified: boolean }>>(`${BASE}/${id}/notify`, {
+      method: 'POST',
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || { notified: false }
   },
 
   /**

@@ -222,7 +222,7 @@ export function useWeeklyOrder() {
       error.value = errorMessage
       snackbar.error(errorMessage)
       console.error('[useWeeklyOrder] saveResults error:', err)
-      return null
+      throw err
     }
   }
 

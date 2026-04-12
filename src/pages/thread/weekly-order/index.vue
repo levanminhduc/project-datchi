@@ -265,7 +265,7 @@
           icon="check_circle"
           label="Xác Nhận Đặt Hàng"
           :disable="!hasResults || selectedWeek?.status === OrderWeekStatus.CONFIRMED"
-          :loading="confirmingWeek"
+          :loading="showConfirmDialog"
           @click="handleConfirmWeek"
         >
           <AppTooltip v-if="selectedWeek?.status === OrderWeekStatus.CONFIRMED">
@@ -293,15 +293,15 @@
     <AssignmentControlDialog
       v-model="showAssignmentControl"
     />
-    <InnerLoading
-      :showing="confirmingWeek"
-      label="Đang xử lý đơn hàng..."
+    <ConfirmProgressDialog
+      v-model="showConfirmDialog"
+      :steps="confirmSteps"
     />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { useQuasar } from 'quasar'
 import {
   useWeeklyOrder,
@@ -316,6 +316,8 @@ import { OrderWeekStatus } from '@/types/thread/enums'
 import { exportOrderResults } from '@/composables/thread/useWeeklyOrderExport'
 import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
 import AssignmentControlDialog from '@/components/thread/weekly-order/AssignmentControlDialog.vue'
+import ConfirmProgressDialog from '@/components/thread/weekly-order/ConfirmProgressDialog.vue'
+import type { ConfirmStep } from '@/components/thread/weekly-order/ConfirmProgressDialog.vue'
 
 definePage({
   meta: {
@@ -397,7 +399,13 @@ const loadedPOs = ref<PurchaseOrderWithItems[]>([])
 const resultView = ref<'detail' | 'summary'>('summary')
 const showHistory = ref(false)
 const showAssignmentControl = ref(false)
-const confirmingWeek = ref(false)
+const showConfirmDialog = ref(false)
+const confirmSteps = reactive<ConfirmStep[]>([
+  { label: 'Lưu đơn hàng', status: 'pending' },
+  { label: 'Xác nhận & đặt trước chỉ', status: 'pending' },
+  { label: 'Đồng bộ giao hàng', status: 'pending' },
+  { label: 'Gửi thông báo', status: 'pending' },
+])
 const resultsSaved = ref(false)
 const manualDeliveryDateEdits = ref(new Set<string>())
 
@@ -575,7 +583,6 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
     return
   }
 
-  // Merge any delivery date overrides into results before saving
   mergeDeliveryDateOverrides()
 
   const items = orderEntries.value.flatMap((entry) =>
@@ -592,12 +599,14 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
   )
 
   if (selectedWeek.value) {
-    await updateWeek(selectedWeek.value.id, {
+    const updated = await updateWeek(selectedWeek.value.id, {
       week_name: weekName.value,
       start_date: deliveryDate.value || undefined,
       notes: notes.value || undefined,
       items,
     })
+
+    if (!updated) return
 
     if (hasResults.value) {
       await saveResults(selectedWeek.value.id, perStyleResults.value, aggregatedResults.value)
@@ -746,6 +755,13 @@ const handleWeekNameBlur = async () => {
   }
 }
 
+const resetConfirmSteps = () => {
+  for (const step of confirmSteps) {
+    step.status = 'pending'
+    step.errorMessage = undefined
+  }
+}
+
 const handleConfirmWeek = async () => {
   if (!hasResults.value) return
 
@@ -754,46 +770,96 @@ const handleConfirmWeek = async () => {
     return
   }
 
-  confirmingWeek.value = true
+  resetConfirmSteps()
+  showConfirmDialog.value = true
+
+  const setStepStatus = (index: number, status: ConfirmStep['status'], errorMessage?: string) => {
+    const step = confirmSteps[index]
+    if (!step) return
+    step.status = status
+    if (errorMessage) step.errorMessage = errorMessage
+  }
+
   try {
+    setStepStatus(0, 'loading')
     await handleSave({ skipReset: true })
 
     if (!selectedWeek.value) {
-      snackbar.error('Không thể lưu đơn hàng. Vui lòng thử lại.')
+      setStepStatus(0, 'error', 'Không thể lưu đơn hàng')
       return
     }
-
-    if (selectedWeek.value.status === OrderWeekStatus.CONFIRMED) {
-      snackbar.info('Đơn hàng đã được xác nhận')
-      return
-    }
-
-    await weeklyOrderService.updateStatus(selectedWeek.value.id, OrderWeekStatus.CONFIRMED)
-    selectedWeek.value.status = OrderWeekStatus.CONFIRMED
-    snackbar.success('Đã xác nhận đặt hàng thành công')
-    await fetchWeeks()
-
-    clearAll()
-    weekName.value = ''
-    deliveryDate.value = getDefaultDeliveryDate()
-    notes.value = ''
-    selectedPOId.value = null
-    loadedPOs.value = []
-    resultsSaved.value = false
-    manualDeliveryDateEdits.value = new Set()
-    selectedWeek.value = null
-
-    await fetchAllPurchaseOrders()
-
-    nextTick(() => {
-      weekInfoCardRef.value?.focusWeekName()
-    })
+    setStepStatus(0, 'success')
   } catch (err) {
-    console.error('Failed to confirm week:', err)
-    snackbar.error('Không thể xác nhận. Vui lòng thử lại.')
-  } finally {
-    confirmingWeek.value = false
+    setStepStatus(0, 'error', err instanceof Error ? err.message : 'Lỗi lưu đơn hàng')
+    return
   }
+
+  if (selectedWeek.value.status === OrderWeekStatus.CONFIRMED) {
+    setStepStatus(1, 'success')
+    setStepStatus(2, 'loading')
+  } else {
+    try {
+      setStepStatus(1, 'loading')
+      await weeklyOrderService.updateStatus(
+        selectedWeek.value.id,
+        OrderWeekStatus.CONFIRMED,
+        { timeout: 60000 },
+      )
+      selectedWeek.value.status = OrderWeekStatus.CONFIRMED
+      setStepStatus(1, 'success')
+    } catch (err) {
+      try {
+        const week = await weeklyOrderService.getById(selectedWeek.value!.id)
+        if (week.status === OrderWeekStatus.CONFIRMED) {
+          selectedWeek.value!.status = OrderWeekStatus.CONFIRMED
+          setStepStatus(1, 'success')
+        } else {
+          setStepStatus(1, 'error', err instanceof Error ? err.message : 'Lỗi xác nhận')
+          return
+        }
+      } catch {
+        setStepStatus(1, 'error', err instanceof Error ? err.message : 'Lỗi xác nhận')
+        return
+      }
+    }
+  }
+
+  try {
+    setStepStatus(2, 'loading')
+    await weeklyOrderService.syncDeliveries(selectedWeek.value!.id)
+    setStepStatus(2, 'success')
+  } catch (err) {
+    setStepStatus(2, 'error', err instanceof Error ? err.message : 'Lỗi đồng bộ giao hàng')
+    return
+  }
+
+  try {
+    setStepStatus(3, 'loading')
+    await weeklyOrderService.notifyConfirmation(selectedWeek.value!.id)
+    setStepStatus(3, 'success')
+  } catch (err) {
+    setStepStatus(3, 'error', err instanceof Error ? err.message : 'Lỗi gửi thông báo')
+    return
+  }
+
+  snackbar.success('Đã xác nhận đặt hàng thành công')
+  await fetchWeeks()
+
+  clearAll()
+  weekName.value = ''
+  deliveryDate.value = getDefaultDeliveryDate()
+  notes.value = ''
+  selectedPOId.value = null
+  loadedPOs.value = []
+  resultsSaved.value = false
+  manualDeliveryDateEdits.value = new Set()
+  selectedWeek.value = null
+
+  await fetchAllPurchaseOrders()
+
+  nextTick(() => {
+    weekInfoCardRef.value?.focusWeekName()
+  })
 }
 
 const handleExport = () => exportOrderResults(aggregatedResults.value, weekName.value)

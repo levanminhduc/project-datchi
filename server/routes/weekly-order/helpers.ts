@@ -10,7 +10,7 @@ export function formatZodError(err: ZodError): string {
 
 export const VALID_STATUS_TRANSITIONS: Record<WeeklyOrderStatus, WeeklyOrderStatus[]> = {
   DRAFT: ['CONFIRMED'],
-  CONFIRMED: ['CANCELLED'],
+  CONFIRMED: ['CANCELLED', 'CONFIRMED'],
   CANCELLED: [],
   COMPLETED: [],
 }

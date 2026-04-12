@@ -1141,6 +1141,117 @@ core.delete('/:id', requirePermission('thread.allocations.manage'), async (c) =>
   }
 })
 
+core.post('/:id/sync-deliveries', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data: week, error: fetchError } = await supabase
+      .from('thread_order_weeks')
+      .select('id, status')
+      .eq('id', id)
+      .single()
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
+      }
+      throw fetchError
+    }
+
+    if (week.status !== 'CONFIRMED') {
+      return c.json({ data: null, error: 'Tuần đặt hàng phải được xác nhận trước khi đồng bộ giao hàng' }, 400)
+    }
+
+    const { data: resultsData } = await supabase
+      .from('thread_order_results')
+      .select('summary_data')
+      .eq('week_id', id)
+      .maybeSingle()
+
+    if (resultsData?.summary_data && Array.isArray(resultsData.summary_data)) {
+      await syncDeliveries(supabase, id, resultsData.summary_data as any)
+    }
+
+    return c.json({ data: { synced: true }, error: null })
+  } catch (err) {
+    console.error('Error syncing deliveries:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+core.post('/:id/notify', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data: week, error: fetchError } = await supabase
+      .from('thread_order_weeks')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
+      }
+      throw fetchError
+    }
+
+    if (week.status !== 'CONFIRMED') {
+      return c.json({ data: null, error: 'Tuần đặt hàng phải được xác nhận trước khi gửi thông báo' }, 400)
+    }
+
+    const warehouseIds = await getWarehouseEmployeeIds()
+    broadcastNotification({
+      employeeIds: warehouseIds,
+      type: 'WEEKLY_ORDER',
+      title: `Đơn đặt hàng tuần #${id} đã được xác nhận`,
+      actionUrl: `/thread/weekly-order/${id}`,
+      metadata: { weekly_order_id: id, new_status: 'CONFIRMED' },
+    })
+
+    const leaderIds = await getLeaderEmployeeIds()
+    const uniqueLeaderIds = leaderIds.filter((lid) => !warehouseIds.includes(lid))
+    if (uniqueLeaderIds.length > 0) {
+      broadcastNotification({
+        employeeIds: uniqueLeaderIds,
+        type: 'WEEKLY_ORDER',
+        title: `Đơn đặt hàng tuần #${id} cần ký duyệt`,
+        actionUrl: `/thread/weekly-order/leader-review`,
+        metadata: { weekly_order_id: id, new_status: 'CONFIRMED', action: 'LEADER_SIGN' },
+      })
+    }
+
+    const { data: resultsData } = await supabase
+      .from('thread_order_results')
+      .select('summary_data')
+      .eq('week_id', id)
+      .maybeSingle()
+
+    const summaries = resultsData?.summary_data as any[] || []
+    const itemCount = summaries.length
+    const totalQuantity = summaries.reduce((sum: number, s: any) => sum + (s.sl_can_dat || 0), 0)
+
+    dispatchExternalNotification('ORDER_CONFIRMED', {
+      weekId: id,
+      weekLabel: week.week_name || `#${id}`,
+      createdBy: week.created_by || '',
+      itemCount,
+      totalQuantity,
+    })
+
+    return c.json({ data: { notified: true }, error: null })
+  } catch (err) {
+    console.error('Error sending notifications:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 core.patch('/:id/leader-sign', requirePermission('thread.leader.sign'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
@@ -1240,6 +1351,20 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
     }
 
     if (newStatus === 'CONFIRMED') {
+      if (currentStatus === 'CONFIRMED') {
+        const { data: week } = await supabase
+          .from('thread_order_weeks')
+          .select('*')
+          .eq('id', id)
+          .single()
+
+        return c.json({
+          data: { week, reservation_summary: [] },
+          error: null,
+          message: 'Tuần đã được xác nhận trước đó',
+        })
+      }
+
       let result = null
       let lastError = null
       const maxRetries = 3
@@ -1251,11 +1376,11 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
         })
 
         if (rpcError) {
-          lastError = rpcError
           if (rpcError.code === '42883' || rpcError.message?.includes('does not exist')) {
-            lastError = null
-            break
+            console.error('[PATCH status] RPC function error (42883):', rpcError)
+            return c.json({ data: null, error: `Lỗi RPC: ${rpcError.message}` }, 500)
           }
+          lastError = rpcError
           break
         }
 
@@ -1284,56 +1409,6 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
           .eq('id', id)
           .single()
 
-        const statusLabels: Record<string, string> = { CONFIRMED: 'xác nhận', CANCELLED: 'hủy' }
-        const warehouseIds = await getWarehouseEmployeeIds()
-        broadcastNotification({
-          employeeIds: warehouseIds,
-          type: 'WEEKLY_ORDER',
-          title: `Đơn đặt hàng tuần #${id} đã được ${statusLabels[newStatus] || newStatus}`,
-          actionUrl: `/thread/weekly-order/${id}`,
-          metadata: { weekly_order_id: id, new_status: newStatus },
-        })
-
-        if (newStatus === 'CONFIRMED') {
-          const leaderIds = await getLeaderEmployeeIds()
-          const uniqueLeaderIds = leaderIds.filter((lid) => !warehouseIds.includes(lid))
-          if (uniqueLeaderIds.length > 0) {
-            broadcastNotification({
-              employeeIds: uniqueLeaderIds,
-              type: 'WEEKLY_ORDER',
-              title: `Đơn đặt hàng tuần #${id} cần ký duyệt`,
-              actionUrl: `/thread/weekly-order/leader-review`,
-              metadata: { weekly_order_id: id, new_status: newStatus, action: 'LEADER_SIGN' },
-            })
-          }
-
-          const itemCount = (result?.reservation_summary || []).length
-          const totalQuantity = (result?.reservation_summary || []).reduce(
-            (sum: number, s: any) => sum + (s.reserved || 0), 0
-          )
-          dispatchExternalNotification('ORDER_CONFIRMED', {
-            weekId: id,
-            weekLabel: week?.week_name || `#${id}`,
-            createdBy: week?.created_by || '',
-            itemCount,
-            totalQuantity,
-          })
-        }
-
-        try {
-          const { data: resultsData } = await supabase
-            .from('thread_order_results')
-            .select('summary_data')
-            .eq('week_id', id)
-            .maybeSingle()
-
-          if (resultsData?.summary_data && Array.isArray(resultsData.summary_data)) {
-            await syncDeliveries(supabase, id, resultsData.summary_data as any)
-          }
-        } catch (deliveryErr) {
-          console.warn('[PATCH status] syncDeliveries after confirm failed:', deliveryErr)
-        }
-
         return c.json({
           data: {
             week,
@@ -1343,6 +1418,8 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
           message: 'Xác nhận và đặt trước thành công',
         })
       }
+
+      return c.json({ data: null, error: 'Không thể xác nhận tuần đặt hàng' }, 500)
     }
 
     if (newStatus === 'CANCELLED') {
@@ -1384,7 +1461,6 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
     if (error) throw error
 
     const statusLabels: Record<string, string> = {
-      CONFIRMED: 'xác nhận',
       CANCELLED: 'hủy',
     }
     const warehouseIds = await getWarehouseEmployeeIds()
@@ -1395,28 +1471,6 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
       actionUrl: `/thread/weekly-order/${id}`,
       metadata: { weekly_order_id: id, new_status: newStatus },
     })
-
-    if (newStatus === 'CONFIRMED') {
-      const leaderIds = await getLeaderEmployeeIds()
-      const uniqueLeaderIds = leaderIds.filter((lid) => !warehouseIds.includes(lid))
-      if (uniqueLeaderIds.length > 0) {
-        broadcastNotification({
-          employeeIds: uniqueLeaderIds,
-          type: 'WEEKLY_ORDER',
-          title: `Đơn đặt hàng tuần #${id} cần ký duyệt`,
-          actionUrl: `/thread/weekly-order/leader-review`,
-          metadata: { weekly_order_id: id, new_status: newStatus, action: 'LEADER_SIGN' },
-        })
-      }
-
-      dispatchExternalNotification('ORDER_CONFIRMED', {
-        weekId: id,
-        weekLabel: data?.week_name || `#${id}`,
-        createdBy: data?.created_by || '',
-        itemCount: 0,
-        totalQuantity: 0,
-      })
-    }
 
     return c.json({ data, error: null, message: 'Cập nhật trạng thái thành công' })
   } catch (err) {

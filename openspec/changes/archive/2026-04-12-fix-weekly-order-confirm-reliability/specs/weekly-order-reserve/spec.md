@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Auto-reserve inventory on Weekly Order confirmation
 The system SHALL automatically reserve available cones when a Weekly Order is confirmed. The PATCH /:id/status endpoint SHALL perform ONLY the atomic confirm + reserve operation. It SHALL NOT perform delivery sync, in-app notification broadcast, or external notification dispatch as part of this endpoint.
@@ -23,38 +23,7 @@ The system SHALL automatically reserve available cones when a Weekly Order is co
 - **WHEN** user calls PATCH /:id/status with status=CONFIRMED and the week is already CONFIRMED
 - **THEN** system SHALL return HTTP 200 with the current week data without re-executing the reservation RPC
 
-### Requirement: Auto-release reservations on Weekly Order cancellation
-The system SHALL release all reserved cones when a Weekly Order is cancelled.
-
-#### Scenario: Cancel WO with reservations
-- **WHEN** user cancels Weekly Order that has 6 reserved cones
-- **THEN** system SHALL update those cones to status=AVAILABLE and reserved_week_id=NULL
-
-#### Scenario: Cancel WO with no reservations
-- **WHEN** user cancels Weekly Order that has 0 reserved cones
-- **THEN** system SHALL update WO status to CANCELLED without inventory changes
-
-### Requirement: Auto-reserve on delivery receipt
-The system SHALL automatically reserve newly received cones for the delivery's Weekly Order shortage.
-
-#### Scenario: Receive delivery for WO with shortage
-- **WHEN** NCC delivers 10 cones for WO#5 which has shortage of 4
-- **THEN** system SHALL reserve 4 cones for WO#5 and leave 6 as AVAILABLE
-
-#### Scenario: Receive delivery for WO with no shortage
-- **WHEN** NCC delivers 10 cones for WO#5 which has no shortage
-- **THEN** system SHALL leave all 10 cones as AVAILABLE (status=RECEIVED)
-
-### Requirement: View reservation status
-The system SHALL display reservation status for Weekly Orders.
-
-#### Scenario: View WO with full reservation
-- **WHEN** user views Weekly Order detail
-- **THEN** system SHALL display per-thread-type: {needed: X, reserved: Y, shortage: Z}
-
-#### Scenario: View reserved cones list
-- **WHEN** user requests reservation detail for a thread type in WO
-- **THEN** system SHALL return list of cone_ids reserved for that WO and thread type
+## ADDED Requirements
 
 ### Requirement: Sync deliveries endpoint
 The system SHALL provide a POST /:id/sync-deliveries endpoint that synchronizes delivery data from thread_order_results.summary_data after confirmation.

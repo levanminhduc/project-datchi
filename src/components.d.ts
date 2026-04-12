@@ -64,6 +64,7 @@ declare module 'vue' {
     ConeSummaryTable: typeof import('./components/thread/ConeSummaryTable.vue')['default']
     ConeWarehouseBreakdownDialog: typeof import('./components/thread/ConeWarehouseBreakdownDialog.vue')['default']
     ConfirmDialog: typeof import('./components/ui/dialogs/ConfirmDialog.vue')['default']
+    ConfirmProgressDialog: typeof import('./components/thread/weekly-order/ConfirmProgressDialog.vue')['default']
     ConflictDialog: typeof import('./components/offline/ConflictDialog.vue')['default']
     ConflictResolutionPanel: typeof import('./components/thread/ConflictResolutionPanel.vue')['default']
     ConflictTimeline: typeof import('./components/thread/ConflictTimeline.vue')['default']
