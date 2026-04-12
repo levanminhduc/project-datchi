@@ -149,3 +149,47 @@ export interface BatchTransactionFilters {
   to_date?: string
   reference_number?: string
 }
+
+export interface TransferHistoryItem {
+  id: number
+  from_warehouse_id: number
+  to_warehouse_id: number
+  from_warehouse: { id: number; code: string; name: string }
+  to_warehouse: { id: number; code: string; name: string }
+  cone_ids: number[]
+  cone_count: number
+  lot_id: number | null
+  lot: { id: number; lot_number: string } | null
+  reference_number: string | null
+  notes: string | null
+  performed_by: string | null
+  performed_at: string
+}
+
+export interface TransferHistorySummary {
+  total_transfers: number
+  total_cones: number
+  top_source: { name: string; count: number } | null
+  top_destination: { name: string; count: number } | null
+}
+
+export interface TransferHistoryFilters {
+  from_warehouse_id?: number
+  to_warehouse_id?: number
+  from_date?: string
+  to_date?: string
+  search?: string
+}
+
+export interface TransferHistoryResponse {
+  data: {
+    items: TransferHistoryItem[]
+    total: number
+  }
+  error: string | null
+}
+
+export interface TransferHistorySummaryResponse {
+  data: TransferHistorySummary | null
+  error: string | null
+}
