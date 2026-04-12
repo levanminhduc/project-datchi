@@ -80,11 +80,11 @@
                       border: '1px solid #ccc',
                     }"
                   />
-                  <span class="text-weight-medium text-body2">{{ group.color_name }}</span>
                   <AppChip
                     dense
                     size="sm"
-                    :label="`${group.quantity} SP`"
+                    text-color="white"
+                    :label="`${group.color_name} — ${group.quantity} SP`"
                   />
                 </div>
                 <q-table

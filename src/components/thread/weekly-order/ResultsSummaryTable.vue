@@ -18,6 +18,11 @@
         hide-bottom
         :rows-per-page-options="[0]"
       >
+        <template #body-cell-stt="props">
+          <q-td :props="props">
+            {{ props.rowIndex + 1 }}
+          </q-td>
+        </template>
         <template #body-cell-thread_type_name="props">
           <q-td
             :props="props"
@@ -164,10 +169,11 @@ function toIso(displayDate: string): string {
 }
 
 const columns: QTableColumn[] = [
+  { name: 'stt', label: 'STT', field: '', align: 'center' },
   { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
-  { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
+  { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left', sortable: true },
   { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'left' },
-  { name: 'thread_color', label: 'Màu chỉ', field: 'thread_color', align: 'left' },
+  { name: 'thread_color', label: 'Màu chỉ', field: 'thread_color', align: 'left', sortable: true },
   {
     name: 'total_meters',
     label: 'Tổng mét',
