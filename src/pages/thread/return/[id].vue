@@ -429,13 +429,13 @@ onMounted(() => {
             <template #body-cell-return_full="props">
               <q-td :props="props">
                 <AppInput
-                  :model-value="issueReturn.getInput(props.row.id).returned_full"
+                  :model-value="issueReturn.getInput(props.row.id).returned_full || null"
                   type="number"
                   dense
                   :min="0"
                   :max="getMaxFullReturn(props.row)"
                   style="width: 90px"
-                  hide-bottom-space
+                  :rules="[(v: any) => !v || Number(v) <= getMaxFullReturn(props.row) || `Tối đa ${getMaxFullReturn(props.row)}`]"
                   @update:model-value="issueReturn.getInput(props.row.id).returned_full = Number($event) || 0"
                 />
               </q-td>
@@ -444,13 +444,13 @@ onMounted(() => {
             <template #body-cell-return_partial="props">
               <q-td :props="props">
                 <AppInput
-                  :model-value="issueReturn.getInput(props.row.id).returned_partial"
+                  :model-value="issueReturn.getInput(props.row.id).returned_partial || null"
                   type="number"
                   dense
                   :min="0"
                   :max="getMaxPartialReturn(props.row)"
                   style="width: 90px"
-                  hide-bottom-space
+                  :rules="[(v: any) => !v || Number(v) <= getMaxPartialReturn(props.row) || `Tối đa ${getMaxPartialReturn(props.row)}`]"
                   @update:model-value="issueReturn.getInput(props.row.id).returned_partial = Number($event) || 0"
                 />
               </q-td>

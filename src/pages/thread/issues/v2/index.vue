@@ -158,6 +158,7 @@ const columns: QTableColumn[] = [
   { name: 'stock', label: 'Tồn Kho', field: 'stock', align: 'center' },
   { name: 'issue_full', label: 'Xuất Nguyên', field: 'issue_full', align: 'center' },
   { name: 'issue_partial', label: 'Xuất Lẻ', field: 'issue_partial', align: 'center' },
+  { name: 'line_status', label: 'Trạng Thái', field: 'line_status', align: 'center' },
   { name: 'equivalent', label: 'Quy Đổi', field: 'issued_equivalent', align: 'center' },
   { name: 'actions', label: '', field: 'actions', align: 'center' },
 ]
@@ -1384,13 +1385,13 @@ onUnmounted(() => {
                 <template #body-cell-issue_full="props">
                   <q-td :props="props">
                     <AppInput
-                      :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.full ?? 0"
+                      :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.full || null"
                       type="number"
                       dense
                       :min="0"
                       :max="props.row.stock_available_full"
                       style="width: 90px"
-                      hide-bottom-space
+                      :rules="[(v: any) => !v || Number(v) <= props.row.stock_available_full || `Tối đa ${props.row.stock_available_full}`]"
                       @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'full', Number(v) || 0, props.row.stock_available_full, props.row.thread_color_id)"
                     />
                   </q-td>
@@ -1399,18 +1400,22 @@ onUnmounted(() => {
                 <template #body-cell-issue_partial="props">
                   <q-td :props="props">
                     <AppInput
-                      :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.partial ?? 0"
+                      :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.partial || null"
                       type="number"
                       dense
                       :min="0"
                       :max="props.row.stock_available_partial"
                       style="width: 90px"
-                      hide-bottom-space
+                      :rules="[(v: any) => !v || Number(v) <= props.row.stock_available_partial || `Tối đa ${props.row.stock_available_partial}`]"
                       @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'partial', Number(v) || 0, props.row.stock_available_partial, props.row.thread_color_id)"
                     />
+                  </q-td>
+                </template>
+
+                <template #body-cell-line_status="props">
+                  <q-td :props="props">
                     <div
                       v-if="getUnderQuotaAmount(props.row) > 0 && (lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.full || lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.partial)"
-                      class="q-mt-xs"
                     >
                       <q-badge
                         color="info"
@@ -1421,7 +1426,6 @@ onUnmounted(() => {
                     </div>
                     <div
                       v-if="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation?.is_over_quota"
-                      class="q-mt-xs"
                     >
                       <q-badge
                         color="warning"
