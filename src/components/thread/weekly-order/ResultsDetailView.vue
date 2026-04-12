@@ -84,7 +84,7 @@
                     dense
                     size="sm"
                     text-color="white"
-                    :label="`${group.color_name} — ${group.quantity} SP`"
+                    :label="`${getColorName(result.style_id, group.color_id, group.color_name)} — ${group.quantity} SP`"
                   />
                 </div>
                 <q-table
@@ -422,14 +422,22 @@ const colorGroupsMap = computed(() => {
   return map
 })
 
-function getColorHex(result: CalculationResult, colorId: number): string {
-  if (!props.orderEntries) return '#ccc'
+function getEntryColor(styleId: number, colorId: number) {
+  if (!props.orderEntries) return null
   for (const entry of props.orderEntries) {
-    if (entry.style_id !== result.style_id) continue
-    const c = entry.colors.find(c => c.color_id === colorId)
-    if (c) return c.hex_code || '#ccc'
+    if (entry.style_id !== styleId) continue
+    const c = entry.colors.find(c => c.color_id === colorId || c.style_color_id === colorId)
+    if (c) return c
   }
-  return '#ccc'
+  return null
+}
+
+function getColorHex(result: CalculationResult, colorId: number): string {
+  return getEntryColor(result.style_id, colorId)?.hex_code || '#ccc'
+}
+
+function getColorName(styleId: number, colorId: number, fallback: string): string {
+  return getEntryColor(styleId, colorId)?.color_name || fallback
 }
 
 const colorColumns: QTableColumn[] = [
