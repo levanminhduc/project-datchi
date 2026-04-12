@@ -13,7 +13,10 @@ import type {
   BatchOperationResponse,
   BatchTransaction,
   BatchTransactionFilters,
-  TransferableSummaryItem
+  TransferableSummaryItem,
+  TransferHistoryFilters,
+  TransferHistoryResponse,
+  TransferHistorySummaryResponse
 } from '@/types/thread/batch'
 
 interface ApiResponse<T> {
@@ -111,5 +114,44 @@ export const batchService = {
     )
     if (response.error) throw new Error(response.error)
     return response.data || []
+  },
+
+  async getTransferHistory(params: {
+    filters: TransferHistoryFilters
+    page: number
+    pageSize: number
+    sortBy: string
+    descending: boolean
+  }): Promise<TransferHistoryResponse> {
+    const urlParams = new URLSearchParams()
+    urlParams.append('page', params.page.toString())
+    urlParams.append('page_size', params.pageSize.toString())
+    urlParams.append('sort_by', params.sortBy)
+    urlParams.append('descending', params.descending.toString())
+
+    const { filters } = params
+    if (filters.from_warehouse_id) urlParams.append('from_warehouse_id', filters.from_warehouse_id.toString())
+    if (filters.to_warehouse_id) urlParams.append('to_warehouse_id', filters.to_warehouse_id.toString())
+    if (filters.from_date) urlParams.append('from_date', convertDateFormat(filters.from_date))
+    if (filters.to_date) urlParams.append('to_date', convertDateFormat(filters.to_date))
+    if (filters.search) urlParams.append('search', filters.search)
+
+    const response = await fetchApi<TransferHistoryResponse>(`/api/batch/transfer-history?${urlParams.toString()}`)
+    if (response.error) throw new Error(response.error)
+    return response
+  },
+
+  async getTransferHistorySummary(filters: TransferHistoryFilters): Promise<TransferHistorySummaryResponse> {
+    const urlParams = new URLSearchParams()
+    if (filters.from_warehouse_id) urlParams.append('from_warehouse_id', filters.from_warehouse_id.toString())
+    if (filters.to_warehouse_id) urlParams.append('to_warehouse_id', filters.to_warehouse_id.toString())
+    if (filters.from_date) urlParams.append('from_date', convertDateFormat(filters.from_date))
+    if (filters.to_date) urlParams.append('to_date', convertDateFormat(filters.to_date))
+    if (filters.search) urlParams.append('search', filters.search)
+
+    const qs = urlParams.toString()
+    const response = await fetchApi<TransferHistorySummaryResponse>(`/api/batch/transfer-history/summary${qs ? '?' + qs : ''}`)
+    if (response.error) throw new Error(response.error)
+    return response
   }
 }
