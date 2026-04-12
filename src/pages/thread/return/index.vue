@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed } from 'vue'
+import { watchDebounced } from '@vueuse/core'
 import { useRouter } from 'vue-router'
 import { issueV2Service } from '@/services/issueV2Service'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -9,7 +10,6 @@ import type { IssueV2WithSummary, ReturnListFilters } from '@/types/thread/issue
 import type { QTableColumn, QTableProps } from 'quasar'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
-import AppButton from '@/components/ui/buttons/AppButton.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
@@ -86,24 +86,28 @@ const handleSearch = async () => {
   await loadData()
 }
 
-const handleClearFilters = () => {
-  localFilters.value = {
-    search: undefined,
-    from: undefined,
-    to: undefined,
-    page: 1,
-    limit: 20,
-  }
-  handleSearch()
-}
-
 const handleRowClick = (_evt: Event, row: { id: number }) => {
   router.push(`/thread/return/${row.id}`)
 }
 
-onMounted(() => {
-  loadData()
-})
+const filterFields = computed(() => ({
+  search: localFilters.value.search,
+  from: localFilters.value.from,
+  to: localFilters.value.to,
+}))
+
+watchDebounced(
+  filterFields,
+  () => {
+    const search = localFilters.value.search
+    if (search && search.length < 2) return
+
+    localFilters.value.page = 1
+    pagination.value.page = 1
+    loadData()
+  },
+  { debounce: 400, maxWait: 2000, deep: true, immediate: true }
+)
 </script>
 
 <template>
@@ -120,11 +124,11 @@ onMounted(() => {
     >
       <q-card-section>
         <div class="row items-end q-col-gutter-md">
-          <div class="col-12 col-sm-6 col-md-3">
+          <div class="col-12 col-sm-6 col-md-4">
             <AppInput
               v-model="localFilters.search"
               label="Tìm kiếm"
-              placeholder="PO, Style, SubArt, Màu..."
+              placeholder="PO, Style, SubArt, Màu... (≥2 ký tự)"
               dense
               clearable
               hide-bottom-space
@@ -136,7 +140,7 @@ onMounted(() => {
             </AppInput>
           </div>
 
-          <div class="col-12 col-sm-6 col-md-3">
+          <div class="col-12 col-sm-6 col-md-4">
             <AppInput
               v-model="localFilters.from"
               label="Từ ngày"
@@ -163,7 +167,7 @@ onMounted(() => {
             </AppInput>
           </div>
 
-          <div class="col-12 col-sm-6 col-md-3">
+          <div class="col-12 col-sm-6 col-md-4">
             <AppInput
               v-model="localFilters.to"
               label="Đến ngày"
@@ -188,25 +192,6 @@ onMounted(() => {
                 </q-icon>
               </template>
             </AppInput>
-          </div>
-
-          <div class="col-12 col-sm-6 col-md-auto">
-            <div class="row q-gutter-sm">
-              <AppButton
-                color="primary"
-                label="Tìm kiếm"
-                icon="search"
-                unelevated
-                @click="handleSearch"
-              />
-              <AppButton
-                outline
-                color="grey"
-                label="Xóa"
-                icon="clear"
-                @click="handleClearFilters"
-              />
-            </div>
           </div>
         </div>
       </q-card-section>
