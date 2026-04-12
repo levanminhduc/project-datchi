@@ -161,6 +161,7 @@ export interface ValidateIssueLineV2DTO {
   style_color_id?: number | null
   sub_art_id?: number | null
   department?: string
+  warehouse_id?: number | null
 }
 
 /**
@@ -170,6 +171,7 @@ export interface ValidateLineResponse {
   issued_equivalent: number
   is_over_quota: boolean
   stock_sufficient: boolean
+  can_borrow?: boolean
   quota_cones: number | null
   stock_available_full: number
   stock_available_partial: number

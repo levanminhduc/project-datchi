@@ -254,10 +254,11 @@ export const issueV2Service = {
     const body: Record<string, unknown> = { idempotency_key: key }
     if (warehouseId) body.warehouse_id = warehouseId
     if (allowTransfer) body.allow_transfer = true
+    const timeout = allowTransfer ? 60_000 : 30_000
     const response = await fetchApi<ApiResponse<IssueV2WithLines | IssueInsufficientStockResponse>>(`${BASE}/${issueId}/confirm`, {
       method: 'POST',
       body: JSON.stringify(body),
-    })
+    }, { timeout })
 
     if (response.error || !response.data) {
       throw new Error(response.error || 'Khong the xac nhan phieu xuat')

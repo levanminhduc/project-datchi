@@ -83,6 +83,7 @@ export const ValidateIssueLineV2Schema = z.object({
   color_id: z.number().int().positive().optional().nullable(),
   sub_art_id: z.number().int().positive().optional().nullable(),
   department: z.string().optional(),
+  warehouse_id: z.number().int().positive().optional().nullable(),
 })
 
 export type ValidateIssueLineV2DTO = z.infer<typeof ValidateIssueLineV2Schema>

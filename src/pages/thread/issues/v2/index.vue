@@ -486,6 +486,7 @@ const debouncedValidate = useDebounceFn(async (colorId: number, threadTypeId: nu
     style_color_id: colorId,
     sub_art_id: selectedSubArtId.value,
     department: department.value || undefined,
+    warehouse_id: selectedWarehouseId.value || undefined,
   })
 
   if (result) {
@@ -538,7 +539,7 @@ function isAddButtonDisabled(colorId: number, threadTypeId: number, threadColorI
   const input = lineInputs.value[key]
   if (!input) return true
   if (input.full === 0 && input.partial === 0) return true
-  if (input.validation && !input.validation.stock_sufficient) return true
+  if (input.validation && !input.validation.stock_sufficient && !input.validation.can_borrow) return true
   if (input.validation?.is_over_quota && !input.notes) return true
   if (isBatchAdding.value || isConfirming.value) return true
   return false
@@ -549,7 +550,8 @@ function getAddButtonTooltip(colorId: number, threadTypeId: number, threadColorI
   const input = lineInputs.value[key]
   if (!input) return 'Nhập số lượng xuất'
   if (input.full === 0 && input.partial === 0) return 'Nhập số lượng xuất'
-  if (input.validation && !input.validation.stock_sufficient) return 'Không đủ tồn kho'
+  if (input.validation && !input.validation.stock_sufficient && !input.validation.can_borrow) return 'Không đủ tồn kho'
+  if (input.validation && !input.validation.stock_sufficient && input.validation.can_borrow) return 'Thiếu tồn kho — sẽ mượn từ kho khác khi xác nhận'
   return 'Thêm vào phiếu'
 }
 
@@ -561,7 +563,7 @@ async function handleAddLine(row: ThreadTypeForIssueWithColor) {
     return
   }
 
-  if (input.validation && !input.validation.stock_sufficient) {
+  if (input.validation && !input.validation.stock_sufficient && !input.validation.can_borrow) {
     snackbar.error('Không đủ tồn kho để xuất')
     return
   }
@@ -635,7 +637,7 @@ async function handleBatchAddAll() {
     const input = lineInputs.value[key]
     if (!input || (input.full === 0 && input.partial === 0)) continue
 
-    if (input.validation && !input.validation.stock_sufficient) {
+    if (input.validation && !input.validation.stock_sufficient && !input.validation.can_borrow) {
       snackbar.error(`${row.color_name} - ${row.thread_code}: Không đủ tồn kho`)
       return
     }
@@ -1455,11 +1457,18 @@ onUnmounted(() => {
                     <span v-if="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation">
                       {{ lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation?.issued_equivalent.toFixed(2) }}
                       <q-icon
-                        v-if="!lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation?.stock_sufficient"
+                        v-if="!lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation?.stock_sufficient && !lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation?.can_borrow"
                         name="warning"
                         color="negative"
                       >
                         <q-tooltip>Không đủ tồn kho</q-tooltip>
+                      </q-icon>
+                      <q-icon
+                        v-else-if="!lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation?.stock_sufficient && lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.validation?.can_borrow"
+                        name="swap_horiz"
+                        color="warning"
+                      >
+                        <q-tooltip>Thiếu tồn kho — sẽ mượn từ kho khác khi xác nhận</q-tooltip>
                       </q-icon>
                     </span>
                     <span
@@ -1977,6 +1986,7 @@ onUnmounted(() => {
         <AppButton
           label="Hủy"
           variant="flat"
+          :disable="isConfirming"
           @click="showBorrowDialog = false; shortageData = null"
         />
         <AppButton

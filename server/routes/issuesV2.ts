@@ -1633,7 +1633,7 @@ issuesV2.post('/validate-line', async (c) => {
       throw err
     }
 
-    const { thread_type_id, issued_full, issued_partial, po_id, style_id, style_color_id, color_id, sub_art_id, department } = validated
+    const { thread_type_id, issued_full, issued_partial, po_id, style_id, style_color_id, color_id, sub_art_id, department, warehouse_id } = validated
     const effectiveColorId = style_color_id || color_id
 
     const subArtError = await validateSubArtId(style_id, sub_art_id)
@@ -1654,11 +1654,17 @@ issuesV2.post('/validate-line', async (c) => {
 
     const threadColorId = await lookupThreadColorId(thread_type_id, effectiveColorId)
     const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
-    const detectedWarehouseId = await detectWarehouseForThread(thread_type_id, weekIds, threadColorId)
-    const stock = await getStockAvailability(thread_type_id, detectedWarehouseId, weekIds, threadColorId)
+    const effectiveWarehouseId = warehouse_id || await detectWarehouseForThread(thread_type_id, weekIds, threadColorId)
+    const stock = await getStockAvailability(thread_type_id, effectiveWarehouseId, weekIds, threadColorId)
 
     const stockSufficient =
       (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
+
+    let canBorrowFromOther = false
+    if (!stockSufficient && warehouse_id) {
+      const totalStock = await getStockAvailability(thread_type_id, undefined, weekIds, threadColorId)
+      canBorrowFromOther = (issued_full || 0) <= totalStock.full_cones && (issued_partial || 0) <= totalStock.partial_cones
+    }
 
     let message: string | undefined
     if (isOverQuota) {
@@ -1667,9 +1673,10 @@ issuesV2.post('/validate-line', async (c) => {
     if (!stockSufficient) {
       const shortFull = Math.max(0, (issued_full || 0) - stock.full_cones)
       const shortPartial = Math.max(0, (issued_partial || 0) - stock.partial_cones)
+      const borrowHint = canBorrowFromOther ? ' (co the muon tu kho khac)' : ''
       message = message
-        ? `${message}. Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le`
-        : `Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le`
+        ? `${message}. Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le${borrowHint}`
+        : `Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le${borrowHint}`
     }
 
     return c.json({
@@ -1677,6 +1684,7 @@ issuesV2.post('/validate-line', async (c) => {
         issued_equivalent: issuedEquivalent,
         is_over_quota: isOverQuota,
         stock_sufficient: stockSufficient,
+        can_borrow: canBorrowFromOther,
         quota_cones: quotaCones,
         stock_available_full: stock.full_cones,
         stock_available_partial: stock.partial_cones,
@@ -2331,7 +2339,7 @@ issuesV2.post('/:id/lines/validate', async (c) => {
       throw err
     }
 
-    const { thread_type_id, issued_full, issued_partial, po_id, style_id, style_color_id: validateStyleColorId, color_id: validateColorId, sub_art_id: validateSubArt, department: validateDepartment } = validated
+    const { thread_type_id, issued_full, issued_partial, po_id, style_id, style_color_id: validateStyleColorId, color_id: validateColorId, sub_art_id: validateSubArt, department: validateDepartment, warehouse_id: validateWarehouseId } = validated
     const validateEffectiveColorId = validateStyleColorId || validateColorId
 
     if (await isComboCompletedInAllWeeks(po_id, style_id, validateEffectiveColorId)) {
@@ -2363,12 +2371,18 @@ issuesV2.post('/:id/lines/validate', async (c) => {
 
     const validateThreadColorId = await lookupThreadColorId(thread_type_id, validateEffectiveColorId)
     const weekIds = await findConfirmedWeekIds(po_id, style_id, validateEffectiveColorId)
-    const detectedWarehouseId = await detectWarehouseForThread(thread_type_id, weekIds, validateThreadColorId)
-    const stock = await getStockAvailability(thread_type_id, detectedWarehouseId, weekIds, validateThreadColorId)
+    const effectiveWarehouseId = validateWarehouseId || await detectWarehouseForThread(thread_type_id, weekIds, validateThreadColorId)
+    const stock = await getStockAvailability(thread_type_id, effectiveWarehouseId, weekIds, validateThreadColorId)
 
     // Check if stock is sufficient
     const stockSufficient =
       (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
+
+    let canBorrowFromOther = false
+    if (!stockSufficient && validateWarehouseId) {
+      const totalStock = await getStockAvailability(thread_type_id, undefined, weekIds, validateThreadColorId)
+      canBorrowFromOther = (issued_full || 0) <= totalStock.full_cones && (issued_partial || 0) <= totalStock.partial_cones
+    }
 
     // Build message
     let message: string | undefined
@@ -2378,9 +2392,10 @@ issuesV2.post('/:id/lines/validate', async (c) => {
     if (!stockSufficient) {
       const shortFull = Math.max(0, (issued_full || 0) - stock.full_cones)
       const shortPartial = Math.max(0, (issued_partial || 0) - stock.partial_cones)
+      const borrowHint = canBorrowFromOther ? ' (co the muon tu kho khac)' : ''
       message = message
-        ? `${message}. Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le`
-        : `Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le`
+        ? `${message}. Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le${borrowHint}`
+        : `Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le${borrowHint}`
     }
 
     return c.json({
@@ -2388,6 +2403,7 @@ issuesV2.post('/:id/lines/validate', async (c) => {
         issued_equivalent: issuedEquivalent,
         is_over_quota: isOverQuota,
         stock_sufficient: stockSufficient,
+        can_borrow: canBorrowFromOther,
         quota_cones: quotaCones,
         stock_available_full: stock.full_cones,
         stock_available_partial: stock.partial_cones,
