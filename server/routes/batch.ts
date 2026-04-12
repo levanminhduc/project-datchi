@@ -759,6 +759,143 @@ batch.post('/return', requirePermission('thread.batch.issue'), async (c) => {
   }
 })
 
+batch.get('/transfer-history', requirePermission('thread.inventory.view'), async (c) => {
+  try {
+    const rawPage = parseInt(c.req.query('page') || '1')
+    const rawPageSize = parseInt(c.req.query('page_size') || '25')
+    const rawFromWarehouse = c.req.query('from_warehouse_id')
+    const rawToWarehouse = c.req.query('to_warehouse_id')
+    const fromDate = c.req.query('from_date')
+    const toDate = c.req.query('to_date')
+    const search = c.req.query('search')
+    const sortBy = c.req.query('sort_by') || 'performed_at'
+    const descending = c.req.query('descending') !== 'false'
+
+    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage
+    const pageSize = isNaN(rawPageSize) ? 25 : Math.min(100, Math.max(1, rawPageSize))
+
+    const fromWarehouseId = rawFromWarehouse ? parseInt(rawFromWarehouse) : undefined
+    const toWarehouseId = rawToWarehouse ? parseInt(rawToWarehouse) : undefined
+    if (rawFromWarehouse && isNaN(fromWarehouseId!)) {
+      return c.json({ data: null, error: 'from_warehouse_id không hợp lệ' }, 400)
+    }
+    if (rawToWarehouse && isNaN(toWarehouseId!)) {
+      return c.json({ data: null, error: 'to_warehouse_id không hợp lệ' }, 400)
+    }
+
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+    if (fromDate && !dateRegex.test(fromDate)) {
+      return c.json({ data: null, error: 'from_date phải có định dạng YYYY-MM-DD' }, 400)
+    }
+    if (toDate && !dateRegex.test(toDate)) {
+      return c.json({ data: null, error: 'to_date phải có định dạng YYYY-MM-DD' }, 400)
+    }
+
+    const ALLOWED_SORT = ['performed_at', 'cone_count', 'id']
+    const safeSortBy = ALLOWED_SORT.includes(sortBy) ? sortBy : 'performed_at'
+    const offset = (page - 1) * pageSize
+
+    let query = supabase
+      .from('batch_transactions')
+      .select(`
+        id, from_warehouse_id, to_warehouse_id, cone_ids, cone_count,
+        lot_id, reference_number, notes, performed_by, performed_at,
+        lot:lots(id, lot_number),
+        from_warehouse:warehouses!batch_transactions_from_warehouse_id_fkey(id, code, name),
+        to_warehouse:warehouses!batch_transactions_to_warehouse_id_fkey(id, code, name)
+      `, { count: 'exact' })
+      .eq('operation_type', 'TRANSFER')
+
+    if (fromWarehouseId) query = query.eq('from_warehouse_id', fromWarehouseId)
+    if (toWarehouseId) query = query.eq('to_warehouse_id', toWarehouseId)
+    if (fromDate) query = query.gte('performed_at', fromDate)
+    if (toDate) query = query.lte('performed_at', toDate + 'T23:59:59')
+    if (search) {
+      const s = sanitizeFilterValue(search)
+      query = query.or(`notes.ilike.%${s}%,reference_number.ilike.%${s}%,performed_by.ilike.%${s}%`)
+    }
+
+    query = query.order(safeSortBy, { ascending: !descending })
+      .range(offset, offset + pageSize - 1)
+
+    const { data, error, count } = await query
+
+    if (error) {
+      console.error('[transfer-history] query error:', error)
+      return c.json({ data: null, error: 'Lỗi khi tải lịch sử chuyển kho' }, 500)
+    }
+
+    return c.json({
+      data: {
+        items: data || [],
+        total: count || 0,
+      },
+      error: null
+    })
+  } catch (err) {
+    console.error('[transfer-history] server error:', err)
+    return c.json({ data: null, error: 'Lỗi hệ thống' }, 500)
+  }
+})
+
+batch.get('/transfer-history/summary', requirePermission('thread.inventory.view'), async (c) => {
+  try {
+    const rawFromWarehouse = c.req.query('from_warehouse_id')
+    const rawToWarehouse = c.req.query('to_warehouse_id')
+    const fromDate = c.req.query('from_date')
+    const toDate = c.req.query('to_date')
+    const search = c.req.query('search')
+
+    const fromWarehouseId = rawFromWarehouse ? parseInt(rawFromWarehouse) : null
+    const toWarehouseId = rawToWarehouse ? parseInt(rawToWarehouse) : null
+    if (rawFromWarehouse && isNaN(fromWarehouseId!)) {
+      return c.json({ data: null, error: 'from_warehouse_id không hợp lệ' }, 400)
+    }
+    if (rawToWarehouse && isNaN(toWarehouseId!)) {
+      return c.json({ data: null, error: 'to_warehouse_id không hợp lệ' }, 400)
+    }
+
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+    if (fromDate && !dateRegex.test(fromDate)) {
+      return c.json({ data: null, error: 'from_date phải có định dạng YYYY-MM-DD' }, 400)
+    }
+    if (toDate && !dateRegex.test(toDate)) {
+      return c.json({ data: null, error: 'to_date phải có định dạng YYYY-MM-DD' }, 400)
+    }
+
+    const sanitizedSearch = search ? sanitizeFilterValue(search) : null
+    const { data, error } = await supabase.rpc('fn_transfer_history_summary', {
+      p_from_warehouse_id: fromWarehouseId,
+      p_to_warehouse_id: toWarehouseId,
+      p_from_date: fromDate || null,
+      p_to_date: toDate ? toDate + 'T23:59:59' : null,
+      p_search: sanitizedSearch,
+    }).single()
+
+    if (error) {
+      console.error('[transfer-history/summary] RPC error:', error)
+      return c.json({ data: null, error: 'Lỗi khi tải thống kê' }, 500)
+    }
+
+    return c.json({
+      data: {
+        total_transfers: data.total_transfers || 0,
+        total_cones: data.total_cones || 0,
+        top_source: data.top_source_name
+          ? { name: data.top_source_name, count: data.top_source_count }
+          : null,
+        top_destination: data.top_dest_name
+          ? { name: data.top_dest_name, count: data.top_dest_count }
+          : null,
+      },
+      error: null
+    })
+  } catch (err) {
+    console.error('[transfer-history/summary] server error:', err)
+    return c.json({ data: null, error: 'Lỗi hệ thống' }, 500)
+  }
+})
+
 /**
  * GET /api/batch/transactions - List all batch transactions
  */
