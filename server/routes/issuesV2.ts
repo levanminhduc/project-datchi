@@ -2178,48 +2178,27 @@ issuesV2.get('/return-list', requirePermission('thread.issues.return'), async (c
 
     const { search, from, to, page = 1, limit = 20 } = validated
 
-    // Step 1: If search provided, find matching issue IDs via lines
     let matchingIssueIds: number[] | null = null
 
-    if (search && search.length > 0) {
-      const { data: matchingLines } = await supabase
-        .from('thread_issue_lines')
-        .select(`
-          issue_id,
-          purchase_orders:po_id(po_number),
-          styles:style_id(style_code),
-          sub_arts:sub_art_id(sub_art_code),
-          style_colors:style_color_id(color_name),
-          colors:color_id(name)
-        `)
-        .limit(1000)
+    if (search && search.length >= 2) {
+      const { data: ids, error: rpcError } = await supabase
+        .rpc('fn_search_return_issue_ids', { p_keyword: search })
 
-      if (matchingLines) {
-        const ids = new Set<number>()
-        for (const line of matchingLines) {
-          const poNumber = (line.purchase_orders as any)?.po_number || ''
-          const styleCode = (line.styles as any)?.style_code || ''
-          const subArtCode = (line.sub_arts as any)?.sub_art_code || ''
-          const colorName = (line.style_colors as any)?.color_name || (line.colors as any)?.name || ''
+      if (rpcError) {
+        console.error('Error searching return issues:', rpcError)
+        return c.json<ThreadApiResponse<null>>(
+          { data: null, error: 'Lỗi tìm kiếm' },
+          500
+        )
+      }
 
-          const searchLower = search.toLowerCase()
-          if (
-            poNumber.toLowerCase().includes(searchLower) ||
-            styleCode.toLowerCase().includes(searchLower) ||
-            subArtCode.toLowerCase().includes(searchLower) ||
-            colorName.toLowerCase().includes(searchLower)
-          ) {
-            ids.add(line.issue_id)
-          }
-        }
-        matchingIssueIds = Array.from(ids)
+      matchingIssueIds = ids || []
 
-        if (matchingIssueIds.length === 0) {
-          return c.json({
-            data: { data: [], total: 0, page, limit, totalPages: 0 },
-            error: null,
-          })
-        }
+      if (matchingIssueIds.length === 0) {
+        return c.json({
+          data: { data: [], total: 0, page, limit, totalPages: 0 },
+          error: null,
+        })
       }
     }
 
