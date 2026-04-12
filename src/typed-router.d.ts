@@ -205,6 +205,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/thread/batch/transfer-history': RouteRecordInfo<
+      '/thread/batch/transfer-history',
+      '/thread/batch/transfer-history',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/thread/calculation/': RouteRecordInfo<
       '/thread/calculation/',
       '/thread/calculation',
@@ -611,6 +618,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/batch/transfer.vue': {
       routes:
         | '/thread/batch/transfer'
+      views:
+        | never
+    }
+    'src/pages/thread/batch/transfer-history.vue': {
+      routes:
+        | '/thread/batch/transfer-history'
       views:
         | never
     }

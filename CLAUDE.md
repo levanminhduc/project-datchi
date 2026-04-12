@@ -29,6 +29,8 @@ npm run e2e:headed   # Playwright headed browser
 # Database
 psql -h 127.0.0.1 -p 55422 -U postgres -d postgres  # Direct DB access
 supabase migration up                                  # Apply new migrations (SAFE)
+npm run db:backup    # Export DB backup
+npm run db:restore   # Restore DB from backup
 ```
 
 ## CRITICAL SAFETY RULES
@@ -45,9 +47,9 @@ supabase migration up                                  # Apply new migrations (S
 
 **Thread Inventory Management System (Hệ thống Quản lý Kho Chỉ)** — Vietnamese B2B app for garment industry.
 
-**Stack:** Vue 3 + Quasar 2 + TypeScript 5.9 + Vite 8 | Hono 4 (Node.js via tsx) | Supabase (PostgreSQL) + Zod 4
+**Stack:** Vue 3 + Quasar 2 + TypeScript 5.9 + Vite 8 | Hono 4 (Node.js via tsx) | Supabase (PostgreSQL) + Zod 4 | Tiptap 3 (rich-text) + ECharts 6 (charts) + @vueuse/core + date-fns 4
 
-**Domains:** Thread master data, Inventory (kg + meters dual UoM), Allocations (FEFO), Recovery, Batch ops, Weekly ordering, Issue V2, Reports, HR/Auth (RBAC), Purchase Orders, Reconciliation, Thread Calculation, Sub-Arts, Style Colors, Styles, Notifications (In-app + External: Telegram/Email)
+**Domains:** Thread master data, Inventory (kg + meters dual UoM), Allocations (FEFO), Dept Allocations, Recovery, Batch ops, Weekly ordering, Delivery, Issue V2, Import (bulk thread types), Reports, Dashboard, HR/Auth (RBAC), Purchase Orders, Reconciliation, Thread Calculation, Over-Quota Analysis, Sub-Arts, Style Colors, Styles, Guides/Knowledge Base (Tiptap), Announcements, Notifications (In-app + External: Telegram/Email)
 
 **Environment:** Copy `.env.example` → `.env`. Required: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `VITE_API_URL`. Optional: `TELEGRAM_BOT_TOKEN` (external notifications). Vite proxies `/api` → `http://localhost:3000`.
 
@@ -82,6 +84,8 @@ src/pages/ → file-based routing (unplugin-vue-router)
 src/components/ui/ → App* wrappers over Quasar
 ```
 
+**Production:** Docker — `Dockerfile.frontend` (nginx:8080) + `Dockerfile.backend` (Hono:3010)
+
 **Key principles:**
 - Frontend NEVER calls Supabase directly for CRUD → always through Hono API
 - Exception: Realtime subscriptions (`useRealtime`) use Supabase client directly
@@ -91,23 +95,7 @@ src/components/ui/ → App* wrappers over Quasar
 
 ### Notification System
 
-Two layers: **In-app** (DB-persisted, polling) + **External** (Telegram now, Email future).
-
-```
-Event occurs (e.g. ORDER_CONFIRMED)
-  ├─ In-app: broadcastNotification() → notifications table → polling (30s)
-  └─ External: dispatchExternalNotification() → fire-and-forget
-       ├─ sendToGroups() — notification_channel_groups table
-       └─ sendToSubscribers() — notification_channels table (per-employee)
-```
-
-**Key design decisions:**
-- Backend dispatches each channel (Telegram, Email, …) independently → non-blocking (`Promise.allSettled`)
-- `notification_channels` = per-employee subscriptions | `notification_channel_groups` = shared group channels
-- `channel_config` (JSONB) stores channel-specific config (e.g. `{ chat_id }` for Telegram)
-- `event_types` (TEXT[]) = configurable per channel — controls who receives what
-- Email channel type reserved (`'EMAIL'`) but not yet implemented
-- External dispatch is fire-and-forget — failures logged but don't block business logic
+Two layers: **In-app** (DB-persisted, polling 30s) + **External** (Telegram now, Email future). See `.claude/rules/notification-system.md` for full architecture.
 
 ## Conventions
 
@@ -120,6 +108,10 @@ Event occurs (e.g. ORDER_CONFIRMED)
 | `fetch('/api/...')` directly | `fetchApi()` wrapper |
 | Supabase CRUD from frontend | API call through Hono |
 | `q-input`, `q-select`, `q-table` | `AppInput`, `AppSelect`, `DataTable` |
+| `q-editor` directly | `AppEditor` wrapper (`src/components/ui/pickers/AppEditor.vue`) |
+| `$q.dialog()` directly | `useConfirm()` composable (`src/composables/useConfirm.ts`) |
+| `as any` / `@ts-ignore` | Fix types properly |
+| `createFoo(formData)` reactive directly | Spread first: `createFoo({ ...formData })` |
 | Hardcode Vietnamese in logic | Use constants/i18n |
 | Auth middleware change without frontend check | Verify `fetchApi()` sends `Authorization` header |
 | Guess column names | `\d table_name` or read migrations |
@@ -128,33 +120,25 @@ Event occurs (e.g. ORDER_CONFIRMED)
 | Query N+1 (loop gọi DB từng record) | **TUYỆT ĐỐI KHÔNG.** Batch: `.in('id', ids)` / RPC / view |
 
 ### Database
-- Tables: `snake_case` + `created_at`, `updated_at`, `deleted_at` (soft delete)
-- Views: `v_` prefix | Functions: `fn_` prefix | Enums: ALL UPPERCASE (`'PENDING'`, `'ACTIVE'`)
-- **Supabase PostgREST default limit = 1000 rows.** Mọi `.select()` trả nhiều rows PHẢI có `.limit(N)` hoặc `.single()` / `.range()`. Không có → âm thầm cắt data, gây sai lệch nghiêm trọng.
+- Tables: `snake_case` + `created_at`, `updated_at`, `deleted_at` (soft delete). See `.claude/rules/db-conventions.md`
 
 ### API (Hono)
-- Response: `{ data: T|null, error: string|null, message?: string }`
-- Route order: specific (`/:id/return-logs`) BEFORE generic (`/:id`)
-- Validation: Zod schemas in `server/validation/`
+- Response: `{ data: T|null, error: string|null, message?: string }`. See `.claude/rules/api-conventions.md`
 
 ### Frontend
-- Components: `AppInput`, `AppSelect`, `AppButton` (not raw `q-*`)
-- Tables: `DataTable` — listing, dialog, inline — không dùng `q-table` trực tiếp
-- Toasts: `useSnackbar()` → `snackbar.success()` / `snackbar.error()`
-- Dates: `DatePicker` with `DD/MM/YYYY` (not `<input type="date">`)
-- All user-facing messages in Vietnamese
+- Components: `AppInput`, `AppSelect`, `AppButton`, `AppEditor`, `DatePicker` (not raw `q-*`). See `.claude/rules/frontend-conventions.md`
 
 ## Pattern References
 
 | Pattern | File | Notes |
 |---------|------|-------|
-| Server-side pagination | `src/pages/thread/inventory.vue` + `useInventory.ts` | Reference cho mọi trang large data |
+| Server-side pagination | `src/pages/thread/inventory.vue` + `src/composables/thread/useInventory.ts` | Reference cho mọi trang large data |
 | Excel Export | `src/composables/useReports.ts` | Dynamic import ExcelJS |
 | DatePicker | `src/components/ui/pickers/DatePicker.vue` | DD/MM/YYYY |
 | API Service | `src/services/threadService.ts` | fetchApi pattern |
 | Auth middleware | `server/middleware/auth.ts` | JWT + permission guards |
 | Zod validation | `server/validation/` | Request body schemas |
-| Cone Summary | `src/composables/useConeSummary.ts` | Pre-aggregated view + RPC |
+| Cone Summary | `src/composables/thread/useConeSummary.ts` | Pre-aggregated view + RPC |
 | Realtime | `src/composables/useRealtime.ts` | Smart filter + debounce |
 | Notification Channels | `server/utils/external-notification-dispatcher.ts` | Event → channel dispatch pattern |
 | Telegram Service | `server/utils/telegram-service.ts` | Bot API + group/subscriber delivery |
@@ -162,19 +146,7 @@ Event occurs (e.g. ORDER_CONFIRMED)
 
 ## Large Dataset Architecture
 
-**KHÔNG load toàn bộ data vào frontend.** Pattern chuẩn: server-side pagination.
-
-```
-DataTable @request → composable.handleTableRequest()
-→ service.getPaginated({ page, pageSize, sortBy, descending })
-→ Hono: range(offset, offset+pageSize-1) + { count: 'exact' }
-→ DB: LIMIT/OFFSET + COUNT(*)
-```
-
-- Default 25 rows/page, options `[10, 25, 50, 100]`, backend cap `100`
-- Pre-aggregated views: `v_cone_summary` (no filter) | `fn_cone_summary_filtered()` (dynamic WHERE)
-- Batch fetch: `BATCH_SIZE = 1000`, loop với `.range(offset, offset+999)`
-- Realtime: subscribe → smart filter → debounced refresh (100ms) | Search: 300ms debounce
+**KHÔNG load toàn bộ data vào frontend.** Pattern chuẩn: server-side pagination. See `.claude/rules/large-dataset-pattern.md` for full details.
 
 ## Key Files
 
@@ -201,11 +173,16 @@ Rules auto-load from `.claude/rules/`:
 - `development-rules.md` — Code patterns, pre-commit checklist
 - `primary-workflow.md` — Before/during/after code flow
 - `orchestration-protocol.md` — When to spawn subagents
-- `spx-workflow.md` — OpenSpec plan/apply/verify
+- `osf-workflow.md` — OpenSpec plan/apply/verify
 - `team-coordination-rules.md` — Agent team file ownership
 - `documentation-management.md` — Doc update triggers
+- `notification-system.md` — Notification architecture (paths: `server/utils/*notification*`, `server/routes/notification*`)
+- `large-dataset-pattern.md` — Pagination, batch fetch, realtime (paths: `src/pages/**`, `src/composables/**`)
+- `api-conventions.md` — Hono API patterns (paths: `server/**`)
+- `db-conventions.md` — Database patterns (paths: `supabase/migrations/**`)
+- `frontend-conventions.md` — Vue/Quasar patterns (paths: `src/**`)
 
-**SPX:** `/spx-ff` (plan+artifacts) → `/spx-apply` (implement) → `/spx-verify` (verify)
+**OSF:** `/feat` (explore+plan) → `/proposal` (artifacts) → `/apply` (implement) → `/verify` (verify)
 
 **Hook Response Protocol** — When blocked by `@@PRIVACY_PROMPT@@`:
 1. Parse JSON between `@@PRIVACY_PROMPT_START@@` / `@@PRIVACY_PROMPT_END@@`
@@ -216,4 +193,4 @@ Rules auto-load from `.claude/rules/`:
 
 **Modularization:** Max 200 lines/file → split if exceeded. kebab-case. Not for: Markdown, config, env files.
 
-**Docs:** `./docs/` — project-overview-pdr, code-standards, codebase-summary, design-guidelines, deployment-guide, system-architecture, project-roadmap.
+**Docs:** `./docs/` — project-overview-pdr, code-standards, codebase-summary, docker-deployment-guide, system-architecture, project-roadmap.
