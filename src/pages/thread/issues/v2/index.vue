@@ -156,7 +156,8 @@ const columns: QTableColumn[] = [
   { name: 'thread', label: 'Loại Chỉ', field: 'thread_name', align: 'left' },
   { name: 'quota', label: 'Định Mức Cấp', field: 'quota_cones', align: 'center' },
   { name: 'stock', label: 'Tồn Kho', field: 'stock', align: 'center' },
-  { name: 'issue', label: 'Xuất', field: 'issue', align: 'center' },
+  { name: 'issue_full', label: 'Xuất Nguyên', field: 'issue_full', align: 'center' },
+  { name: 'issue_partial', label: 'Xuất Lẻ', field: 'issue_partial', align: 'center' },
   { name: 'equivalent', label: 'Quy Đổi', field: 'issued_equivalent', align: 'center' },
   { name: 'actions', label: '', field: 'actions', align: 'center' },
 ]
@@ -1380,33 +1381,33 @@ onUnmounted(() => {
                   </q-td>
                 </template>
 
-                <template #body-cell-issue="props">
+                <template #body-cell-issue_full="props">
                   <q-td :props="props">
-                    <div class="row q-gutter-xs items-center no-wrap">
-                      <AppInput
-                        :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.full ?? 0"
-                        type="number"
-                        dense
-                        class="col"
-                        style="min-width: 60px; max-width: 80px"
-                        :min="0"
-                        :max="props.row.stock_available_full"
-                        placeholder="Nguyên"
-                        @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'full', Number(v) || 0, props.row.stock_available_full, props.row.thread_color_id)"
-                      />
-                      <span>+</span>
-                      <AppInput
-                        :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.partial ?? 0"
-                        type="number"
-                        dense
-                        class="col"
-                        style="min-width: 60px; max-width: 80px"
-                        :min="0"
-                        :max="props.row.stock_available_partial"
-                        placeholder="Lẻ"
-                        @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'partial', Number(v) || 0, props.row.stock_available_partial, props.row.thread_color_id)"
-                      />
-                    </div>
+                    <AppInput
+                      :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.full ?? 0"
+                      type="number"
+                      dense
+                      :min="0"
+                      :max="props.row.stock_available_full"
+                      style="width: 90px"
+                      hide-bottom-space
+                      @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'full', Number(v) || 0, props.row.stock_available_full, props.row.thread_color_id)"
+                    />
+                  </q-td>
+                </template>
+
+                <template #body-cell-issue_partial="props">
+                  <q-td :props="props">
+                    <AppInput
+                      :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.partial ?? 0"
+                      type="number"
+                      dense
+                      :min="0"
+                      :max="props.row.stock_available_partial"
+                      style="width: 90px"
+                      hide-bottom-space
+                      @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'partial', Number(v) || 0, props.row.stock_available_partial, props.row.thread_color_id)"
+                    />
                     <div
                       v-if="getUnderQuotaAmount(props.row) > 0 && (lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.full || lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.partial)"
                       class="q-mt-xs"
