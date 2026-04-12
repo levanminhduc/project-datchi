@@ -28,7 +28,7 @@ export function useTransferHistory() {
   const pagination = ref({
     page: 1,
     rowsPerPage: 25,
-    sortBy: 'performed_at' as string | null,
+    sortBy: 'performed_at' as string | undefined,
     descending: true,
     rowsNumber: 0,
   })
