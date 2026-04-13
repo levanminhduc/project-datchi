@@ -193,3 +193,12 @@ export interface TransferHistorySummaryResponse {
   data: TransferHistorySummary | null
   error: string | null
 }
+
+export interface ConeSummaryItem {
+  thread_type_id: number
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  color_hex: string | null
+  cone_count: number
+}
