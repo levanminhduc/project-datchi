@@ -531,10 +531,37 @@ const handleUpdateQuotaCones = async (threadTypeId: number, value: number) => {
 }
 
 const handleCalculate = async () => {
+  const snapshot = new Map<string, { additional_order: number; quota_cones: number; delivery_date: string | null }>(
+    aggregatedResults.value
+      .filter((r) => r.additional_order || r.quota_cones)
+      .map((r) => [
+        `${r.thread_type_id}_${r.thread_color ?? ''}`,
+        {
+          additional_order: r.additional_order ?? 0,
+          quota_cones: r.quota_cones ?? 0,
+          delivery_date: r.delivery_date ?? null,
+        },
+      ])
+  )
+
   resultsSaved.value = false
   manualDeliveryDateEdits.value.clear()
   await calculateAll(selectedWeek.value?.id)
   applyDeliveryDateToResults()
+
+  for (const row of aggregatedResults.value) {
+    const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+    const saved = snapshot.get(key)
+    if (!saved) continue
+
+    row.additional_order = saved.additional_order
+    row.total_final = (row.sl_can_dat || 0) + saved.additional_order
+    if (saved.quota_cones) row.quota_cones = saved.quota_cones
+    if (saved.delivery_date) {
+      row.delivery_date = saved.delivery_date
+      manualDeliveryDateEdits.value.add(key)
+    }
+  }
 }
 
 function applyDeliveryDateToResults() {
