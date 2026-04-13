@@ -24,11 +24,13 @@
       />
     </div>
 
-    <div class="row q-col-gutter-md q-mb-lg">
+    <div class="row q-col-gutter-md q-mb-lg items-stretch">
       <div class="col-12 col-sm-6 col-md-3">
         <AppCard
           flat
           bordered
+          class="full-height"
+          :class="highlightCard === 'transfers' ? 'stat-card--highlight' : ''"
         >
           <q-card-section class="row items-center no-wrap">
             <q-icon
@@ -52,6 +54,8 @@
         <AppCard
           flat
           bordered
+          class="full-height"
+          :class="highlightCard === 'cones' ? 'stat-card--highlight' : ''"
         >
           <q-card-section class="row items-center no-wrap">
             <q-icon
@@ -75,6 +79,8 @@
         <AppCard
           flat
           bordered
+          class="full-height"
+          :class="highlightCard === 'source' ? 'stat-card--highlight' : ''"
         >
           <q-card-section class="row items-center no-wrap">
             <q-icon
@@ -104,6 +110,8 @@
         <AppCard
           flat
           bordered
+          class="full-height"
+          :class="highlightCard === 'destination' ? 'stat-card--highlight' : ''"
         >
           <q-card-section class="row items-center no-wrap">
             <q-icon
@@ -443,7 +451,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useTransferHistory } from '@/composables/useTransferHistory'
 import { useWarehouses } from '@/composables'
@@ -491,6 +499,17 @@ const selected = ref<TransferHistoryItem | null>(null)
 const coneSummary = ref<ConeSummaryItem[]>([])
 const coneSummaryLoading = ref(false)
 
+const highlightCard = computed(() => {
+  const vals = [
+    { key: 'transfers', val: summary.value.total_transfers },
+    { key: 'cones', val: summary.value.total_cones },
+    { key: 'source', val: summary.value.top_source?.count ?? 0 },
+    { key: 'destination', val: summary.value.top_destination?.count ?? 0 },
+  ]
+  const max = vals.reduce((a, b) => (b.val > a.val ? b : a))
+  return max.val > 0 ? max.key : ''
+})
+
 const columns: QTableColumn[] = [
   { name: 'id', label: 'ID', field: 'id', align: 'left', sortable: true },
   { name: 'warehouses', label: 'Kho nguồn → Kho đích', field: 'warehouses', align: 'left' },
@@ -533,6 +552,11 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.stat-card--highlight {
+  border-color: var(--q-primary) !important;
+  box-shadow: 0 0 0 2px rgba(var(--q-primary-rgb, 25, 118, 210), 0.15);
+}
+
 .cone-summary-list {
   max-height: 300px;
   overflow-y: auto;

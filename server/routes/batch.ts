@@ -925,11 +925,12 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
       .from('thread_inventory')
       .select(`
         thread_type_id,
+        color_id,
         thread_types(
           tex_number,
-          suppliers(name),
-          colors(name, hex_code)
-        )
+          suppliers(name)
+        ),
+        colors(name, hex_code)
       `)
       .in('id', coneIds)
 
@@ -938,7 +939,7 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
       return c.json({ data: null, error: 'Lỗi khi tải thông tin cuộn chỉ' }, 500)
     }
 
-    const groupMap = new Map<number, {
+    const groupMap = new Map<string, {
       thread_type_id: number
       supplier_name: string
       tex_number: string
@@ -951,19 +952,22 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
       const tt = cone.thread_types as unknown as {
         tex_number: string
         suppliers: { name: string } | null
-        colors: { name: string; hex_code: string | null } | null
       } | null
-      const key = cone.thread_type_id
+      const color = cone.colors as unknown as {
+        name: string
+        hex_code: string | null
+      } | null
+      const key = `${cone.thread_type_id}_${cone.color_id ?? 0}`
       const existing = groupMap.get(key)
       if (existing) {
         existing.cone_count++
       } else {
         groupMap.set(key, {
-          thread_type_id: key,
+          thread_type_id: cone.thread_type_id,
           supplier_name: tt?.suppliers?.name ?? 'Không xác định',
           tex_number: tt?.tex_number ?? '?',
-          color_name: tt?.colors?.name ?? 'Không xác định',
-          color_hex: tt?.colors?.hex_code ?? null,
+          color_name: color?.name ?? 'Không xác định',
+          color_hex: color?.hex_code ?? null,
           cone_count: 1,
         })
       }

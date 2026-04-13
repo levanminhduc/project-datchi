@@ -308,6 +308,7 @@ import {
   useWeeklyOrderCalculation,
   usePurchaseOrders,
   useSnackbar,
+  useConfirm,
 } from '@/composables'
 import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
@@ -329,6 +330,7 @@ definePage({
 // Composables
 const $q = useQuasar()
 const snackbar = useSnackbar()
+const confirm = useConfirm()
 const {
   weeks,
   selectedWeek,
@@ -465,15 +467,37 @@ const handleAddPO = async () => {
 }
 
 const handleRemovePO = async (poId: number) => {
+  const po = loadedPOs.value.find((p) => p.id === poId)
+  const poName = po?.po_number || `#${poId}`
+
   if (selectedWeek.value?.id) {
+    const isConfirmed = selectedWeek.value.status === 'CONFIRMED'
+
+    const message = isConfirmed
+      ? `Xóa <b>${poName}</b> khỏi tuần đã xác nhận?<br>Hệ thống sẽ tự động cập nhật tính toán và đặt trước chỉ lại.`
+      : `Xóa <b>${poName}</b> khỏi đơn đặt hàng?`
+
+    const confirmed = await confirm.confirm({
+      title: 'Xác nhận xóa PO',
+      message,
+      type: isConfirmed ? 'warning' : 'info',
+      confirmText: 'Xóa',
+      color: 'negative',
+      html: true,
+    })
+
+    if (!confirmed) return
+
+    $q.loading.show({ message: 'Đang xóa PO và cập nhật dữ liệu...' })
+
     try {
       await weeklyOrderService.removePOFromWeek(selectedWeek.value.id, poId)
 
-      if (selectedWeek.value?.status === 'CONFIRMED') {
+      if (isConfirmed) {
         await handleLoadWeek(selectedWeek.value.id)
         snackbar.success('Đã xóa PO. Dữ liệu đã được cập nhật tự động.')
       } else {
-        loadedPOs.value = loadedPOs.value.filter((po) => po.id !== poId)
+        loadedPOs.value = loadedPOs.value.filter((p) => p.id !== poId)
         removePO(poId)
         perStyleResults.value = perStyleResults.value.filter(
           (r) => orderEntries.value.some((e) => e.style_id === r.style_id),
@@ -482,10 +506,16 @@ const handleRemovePO = async (poId: number) => {
         snackbar.success('Đã xóa PO và loại chỉ liên quan. Vui lòng tính toán lại.')
       }
     } catch (err) {
-      snackbar.error(err instanceof Error ? err.message : 'Không thể xóa PO')
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        snackbar.error('Quá thời gian xử lý. Vui lòng kiểm tra lại dữ liệu.')
+      } else {
+        snackbar.error(err instanceof Error ? err.message : 'Không thể xóa PO')
+      }
+    } finally {
+      $q.loading.hide()
     }
   } else {
-    loadedPOs.value = loadedPOs.value.filter((po) => po.id !== poId)
+    loadedPOs.value = loadedPOs.value.filter((p) => p.id !== poId)
     removePO(poId)
   }
 }

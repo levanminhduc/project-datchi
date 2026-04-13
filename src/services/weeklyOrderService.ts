@@ -191,7 +191,7 @@ export const weeklyOrderService = {
     const response = await fetchApi<ApiResponse<{ removed_count: number }>>(`${BASE}/${weekId}/remove-po`, {
       method: 'POST',
       body: JSON.stringify({ po_id: poId }),
-    })
+    }, { timeout: 60000 })
 
     if (response.error) {
       throw new Error(response.error)
