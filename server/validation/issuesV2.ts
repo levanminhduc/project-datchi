@@ -75,6 +75,7 @@ export type BatchAddLinesDTO = z.infer<typeof BatchAddLinesSchema>
 
 export const ValidateIssueLineV2Schema = z.object({
   thread_type_id: z.number().int().positive('thread_type_id phai la so nguyen duong'),
+  thread_color_id: z.number().int().positive().optional().nullable(),
   issued_full: z.number().int().min(0, 'So cuon nguyen phai >= 0').default(0),
   issued_partial: z.number().int().min(0, 'So cuon le phai >= 0').default(0),
   po_id: z.number().int().positive().optional().nullable(),

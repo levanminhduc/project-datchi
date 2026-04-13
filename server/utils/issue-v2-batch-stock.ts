@@ -1,5 +1,6 @@
 import { supabaseAdmin as supabase } from '../db/supabase'
 import type { InventoryData } from './issue-v2-batch-lookups'
+import { compositeKey, type ThreadColorItem } from './issue-v2-batch-quota'
 
 const roundToTwoDecimals = (value: number): number =>
   Math.round((value + Number.EPSILON) * 100) / 100
@@ -132,18 +133,19 @@ export async function batchGetStockBreakdownByWarehouse(
 }
 
 export async function batchGetConfirmedIssuedGross(
-  threadTypeIds: number[],
+  items: ThreadColorItem[],
   poId: number,
   styleId: number,
   colorId: number,
   ratio: number
-): Promise<Map<number, number>> {
-  const result = new Map<number, number>()
-  if (threadTypeIds.length === 0) return result
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>()
+  if (items.length === 0) return result
 
+  const threadTypeIds = [...new Set(items.map((i) => i.threadTypeId))]
   const { data, error } = await supabase
     .from('thread_issue_lines')
-    .select('thread_type_id, issued_full, issued_partial, thread_issues!inner(status)')
+    .select('thread_type_id, thread_color_id, issued_full, issued_partial, thread_issues!inner(status)')
     .eq('po_id', poId)
     .eq('style_id', styleId)
     .eq('style_color_id', colorId)
@@ -153,16 +155,17 @@ export async function batchGetConfirmedIssuedGross(
 
   if (error || !data) return result
 
-  const rawSums = new Map<number, number>()
+  const rawSums = new Map<string, number>()
   for (const line of data) {
-    const prev = rawSums.get(line.thread_type_id) || 0
+    const key = compositeKey(line.thread_type_id, (line as any).thread_color_id ?? null)
+    const prev = rawSums.get(key) || 0
     rawSums.set(
-      line.thread_type_id,
+      key,
       prev + calculateIssuedEquivalent(line.issued_full || 0, line.issued_partial || 0, ratio)
     )
   }
-  for (const [ttId, sum] of rawSums) {
-    result.set(ttId, roundToTwoDecimals(sum))
+  for (const [key, sum] of rawSums) {
+    result.set(key, roundToTwoDecimals(sum))
   }
   return result
 }

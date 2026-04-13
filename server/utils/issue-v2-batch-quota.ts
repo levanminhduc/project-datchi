@@ -1,44 +1,65 @@
 import { supabaseAdmin as supabase } from '../db/supabase'
 
+export type ThreadColorItem = { threadTypeId: number; threadColorId: number | null }
+
+export function compositeKey(threadTypeId: number, threadColorId: number | null | undefined): string {
+  return `${threadTypeId}:${threadColorId ?? 'null'}`
+}
+
 const roundToTwoDecimals = (value: number): number =>
   Math.round((value + Number.EPSILON) * 100) / 100
 
 const calcIssued = (full: number, partial: number, ratio: number): number =>
   full + partial * ratio
 
-function computeQuotaPerType(
-  threadTypeIds: number[],
+function computeQuotaPerItem(
+  items: ThreadColorItem[],
   totalQty: number,
   specs: any[],
   types: any[],
   styleId: number,
-  issuedByType: Map<number, number>
-): Map<number, number | null> {
-  const result = new Map<number, number | null>()
-  for (const ttId of threadTypeIds) {
-    const spec = specs.find(
-      (s: any) => s.thread_type_id === ttId && s.style_thread_specs?.style_id === styleId
+  issuedByKey: Map<string, number>
+): Map<string, number | null> {
+  const result = new Map<string, number | null>()
+
+  for (const item of items) {
+    const key = compositeKey(item.threadTypeId, item.threadColorId)
+    if (result.has(key)) continue
+
+    const matchingSpecs = specs.filter(
+      (s: any) =>
+        s.thread_type_id === item.threadTypeId &&
+        (s.thread_color_id ?? null) === item.threadColorId &&
+        s.style_thread_specs?.style_id === styleId
     )
-    const tt = types.find((t: any) => t.id === ttId)
-    if (!spec?.style_thread_specs?.meters_per_unit || !tt?.meters_per_cone) {
-      result.set(ttId, null)
+    const tt = types.find((t: any) => t.id === item.threadTypeId)
+
+    if (matchingSpecs.length === 0 || !tt?.meters_per_cone) {
+      result.set(key, null)
       continue
     }
-    const totalMeters = totalQty * (spec.style_thread_specs.meters_per_unit as number)
+
+    const totalMetersPerUnit = matchingSpecs.reduce(
+      (sum: number, s: any) => sum + (s.style_thread_specs.meters_per_unit as number),
+      0
+    )
+    const totalMeters = totalQty * totalMetersPerUnit
     const baseQuota = Math.ceil(totalMeters / tt.meters_per_cone)
-    const issuedNet = issuedByType.get(ttId) || 0
-    result.set(ttId, roundToTwoDecimals(Math.max(0, baseQuota - issuedNet)))
+    const issuedNet = issuedByKey.get(key) || 0
+    result.set(key, roundToTwoDecimals(Math.max(0, baseQuota - issuedNet)))
   }
+
   return result
 }
 
-function buildIssuedMap(data: any[], ratio: number, withReturns: boolean): Map<number, number> {
-  const map = new Map<number, number>()
+function buildIssuedMap(data: any[], ratio: number, withReturns: boolean): Map<string, number> {
+  const map = new Map<string, number>()
   for (const line of data) {
-    const prev = map.get(line.thread_type_id) || 0
+    const key = compositeKey(line.thread_type_id, line.thread_color_id ?? null)
+    const prev = map.get(key) || 0
     const issued = calcIssued(line.issued_full || 0, line.issued_partial || 0, ratio)
     const returned = withReturns ? calcIssued(line.returned_full || 0, line.returned_partial || 0, ratio) : 0
-    map.set(line.thread_type_id, prev + Math.max(0, issued - returned))
+    map.set(key, prev + Math.max(0, issued - returned))
   }
   return map
 }
@@ -47,7 +68,7 @@ async function fetchSpecsAndTypes(threadTypeIds: number[], colorId: number) {
   const [specsResult, typesResult] = await Promise.all([
     supabase
       .from('style_color_thread_specs')
-      .select('thread_type_id, style_thread_specs:style_thread_spec_id(style_id, meters_per_unit)')
+      .select('thread_type_id, thread_color_id, style_thread_specs:style_thread_spec_id(style_id, meters_per_unit)')
       .eq('style_color_id', colorId)
       .in('thread_type_id', threadTypeIds)
       .limit(10000),
@@ -61,13 +82,14 @@ async function fetchSpecsAndTypes(threadTypeIds: number[], colorId: number) {
 }
 
 export async function batchGetBaseQuotaCones(
-  threadTypeIds: number[],
+  items: ThreadColorItem[],
   poId: number,
   styleId: number,
   colorId: number
-): Promise<Map<number, number | null>> {
-  if (threadTypeIds.length === 0) return new Map()
+): Promise<Map<string, number | null>> {
+  if (items.length === 0) return new Map()
 
+  const threadTypeIds = [...new Set(items.map((i) => i.threadTypeId))]
   const [orderResult, { specs, types }] = await Promise.all([
     supabase
       .from('thread_order_items')
@@ -79,23 +101,25 @@ export async function batchGetBaseQuotaCones(
 
   const totalQty = (orderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
   if (totalQty <= 0) {
-    const r = new Map<number, number | null>()
-    for (const id of threadTypeIds) r.set(id, null)
+    const r = new Map<string, number | null>()
+    for (const item of items) r.set(compositeKey(item.threadTypeId, item.threadColorId), null)
     return r
   }
 
-  return computeQuotaPerType(threadTypeIds, totalQty, specs, types, styleId, new Map())
+  return computeQuotaPerItem(items, totalQty, specs, types, styleId, new Map())
 }
 
 export async function batchGetQuotaCones(
-  threadTypeIds: number[],
+  items: ThreadColorItem[],
   poId: number,
   styleId: number,
   colorId: number,
   ratio: number,
   department?: string
-): Promise<Map<number, number | null>> {
-  if (threadTypeIds.length === 0) return new Map()
+): Promise<Map<string, number | null>> {
+  if (items.length === 0) return new Map()
+
+  const threadTypeIds = [...new Set(items.map((i) => i.threadTypeId))]
 
   if (department) {
     const { data: allocation } = await supabase
@@ -109,14 +133,14 @@ export async function batchGetQuotaCones(
         fetchSpecsAndTypes(threadTypeIds, colorId),
         supabase
           .from('thread_issue_lines')
-          .select('thread_type_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status, department)')
+          .select('thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status, department)')
           .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
           .in('thread_type_id', threadTypeIds)
           .eq('thread_issues.status', 'CONFIRMED').eq('thread_issues.department', department)
           .limit(10000),
       ])
-      const issuedByType = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
-      return computeQuotaPerType(threadTypeIds, allocation.product_quantity, specs, types, styleId, issuedByType)
+      const issuedByKey = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
+      return computeQuotaPerItem(items, allocation.product_quantity, specs, types, styleId, issuedByKey)
     }
   }
 
@@ -129,7 +153,7 @@ export async function batchGetQuotaCones(
     fetchSpecsAndTypes(threadTypeIds, colorId),
     supabase
       .from('thread_issue_lines')
-      .select('thread_type_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status)')
+      .select('thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status)')
       .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
       .in('thread_type_id', threadTypeIds)
       .eq('thread_issues.status', 'CONFIRMED').limit(10000),
@@ -137,11 +161,11 @@ export async function batchGetQuotaCones(
 
   const totalQty = (orderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
   if (totalQty <= 0) {
-    const r = new Map<number, number | null>()
-    for (const id of threadTypeIds) r.set(id, null)
+    const r = new Map<string, number | null>()
+    for (const item of items) r.set(compositeKey(item.threadTypeId, item.threadColorId), null)
     return r
   }
 
-  const issuedByType = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
-  return computeQuotaPerType(threadTypeIds, totalQty, specs, types, styleId, issuedByType)
+  const issuedByKey = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
+  return computeQuotaPerItem(items, totalQty, specs, types, styleId, issuedByKey)
 }

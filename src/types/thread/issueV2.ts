@@ -153,6 +153,7 @@ export interface BatchAddLinesDTO {
  */
 export interface ValidateIssueLineV2DTO {
   thread_type_id: number
+  thread_color_id?: number | null
   issued_full?: number
   issued_partial?: number
   po_id?: number | null

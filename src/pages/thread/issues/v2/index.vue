@@ -478,6 +478,7 @@ const debouncedValidate = useDebounceFn(async (colorId: number, threadTypeId: nu
 
   const result = await validateLine({
     thread_type_id: threadTypeId,
+    thread_color_id: threadColorId ?? undefined,
     issued_full: input.full,
     issued_partial: input.partial,
     po_id: selectedPoId.value,
