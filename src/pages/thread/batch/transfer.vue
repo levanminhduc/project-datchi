@@ -16,6 +16,15 @@
           Chuyển nhiều cuộn giữa các kho
         </div>
       </div>
+      <q-space />
+      <q-btn
+        flat
+        color="primary"
+        icon="history"
+        label="Lịch sử"
+        no-caps
+        @click="$router.push('/thread/batch/transfer-history')"
+      />
     </div>
 
     <q-stepper

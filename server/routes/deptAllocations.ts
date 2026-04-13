@@ -13,7 +13,7 @@ import {
 
 const router = new Hono()
 
-router.use('*', requirePermission('thread.issues.manage'))
+router.use('*', requirePermission('thread.dept-allocation.manage'))
 
 function formatZodError(err: ZodError): string {
   return err.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')
