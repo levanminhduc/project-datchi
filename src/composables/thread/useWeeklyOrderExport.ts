@@ -45,9 +45,8 @@ export async function exportOrderResults(data: AggregatedRow[], weekName: string
       { header: 'Tex', key: 'tex_number', width: 10 },
       { header: 'Màu chỉ', key: 'thread_color', width: 15 },
       { header: 'Tổng mét', key: 'total_meters', width: 15 },
-      { header: 'Tổng cuộn', key: 'total_cones', width: 12 },
-      { header: 'Định mức (cuộn)', key: 'quota_cones', width: 15 },
       { header: 'Mét/cuộn', key: 'meters_per_cone', width: 12 },
+      { header: 'Nhu Cầu', key: 'total_cones', width: 12 },
       { header: 'Tồn kho KD', key: 'inventory_cones', width: 12 },
       { header: 'Cuộn nguyên', key: 'full_cones', width: 12 },
       { header: 'Cuộn lẻ', key: 'partial_cones', width: 12 },
@@ -55,9 +54,23 @@ export async function exportOrderResults(data: AggregatedRow[], weekName: string
       { header: 'SL cần đặt', key: 'sl_can_dat', width: 12 },
       { header: 'Đặt thêm', key: 'additional_order', width: 12 },
       { header: 'Tổng chốt', key: 'total_final', width: 12 },
+      { header: 'Ngày giao', key: 'delivery_date', width: 14 },
     ]
 
     styleHeaderRow(worksheet)
+
+    const numFmt = '#,##0'
+    const numFmt2 = '#,##0.00'
+    worksheet.getColumn('total_meters').numFmt = numFmt2
+    worksheet.getColumn('meters_per_cone').numFmt = numFmt
+    worksheet.getColumn('total_cones').numFmt = numFmt
+    worksheet.getColumn('inventory_cones').numFmt = numFmt
+    worksheet.getColumn('full_cones').numFmt = numFmt
+    worksheet.getColumn('partial_cones').numFmt = numFmt
+    worksheet.getColumn('equivalent_cones').numFmt = numFmt
+    worksheet.getColumn('sl_can_dat').numFmt = numFmt
+    worksheet.getColumn('additional_order').numFmt = numFmt
+    worksheet.getColumn('total_final').numFmt = numFmt
 
     data.forEach((r) => {
       worksheet.addRow({
@@ -66,9 +79,8 @@ export async function exportOrderResults(data: AggregatedRow[], weekName: string
         tex_number: r.tex_number,
         thread_color: r.thread_color || '',
         total_meters: Number(r.total_meters.toFixed(2)),
-        total_cones: r.total_cones,
-        quota_cones: r.quota_cones || r.total_cones || '',
         meters_per_cone: r.meters_per_cone || '',
+        total_cones: r.total_cones > 0 ? r.total_cones : '',
         inventory_cones: r.inventory_cones || '',
         full_cones: r.full_cones ?? '',
         partial_cones: r.partial_cones ?? '',
@@ -76,6 +88,7 @@ export async function exportOrderResults(data: AggregatedRow[], weekName: string
         sl_can_dat: r.sl_can_dat || '',
         additional_order: r.additional_order || '',
         total_final: r.total_final || '',
+        delivery_date: r.total_final ? (r.delivery_date || '') : '',
       })
     })
 
