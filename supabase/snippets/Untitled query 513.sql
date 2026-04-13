@@ -1,40 +1,76 @@
--- Thêm quyền Phân Bổ Sản Phẩm (dept product allocation)
--- Fix bug: backend route deptAllocations.ts dùng 'thread.issues.manage' nhưng permission này không tồn tại
+BEGIN;
 
-INSERT INTO permissions (code, name, description, module, resource, action, route_path, is_page_access, sort_order)
-VALUES (
-  'thread.dept-allocation.manage',
-  'Phân Bổ Sản Phẩm',
-  'Quyền phân bổ sản phẩm theo bộ phận (dept product allocation)',
-  'thread',
-  'dept-allocation',
-  'MANAGE',
-  NULL,
-  false,
-  145
-)
-ON CONFLICT (code) DO NOTHING;
+CREATE OR REPLACE FUNCTION fn_re_reserve_after_remove_po(p_week_id INTEGER)
+RETURNS JSON AS $$
+DECLARE
+  v_week RECORD;
+  v_summary RECORD;
+  v_reserve_result JSON;
+  v_all_summaries JSON[] := '{}';
+  v_total_released INTEGER := 0;
+  v_total_reserved INTEGER := 0;
+  v_total_shortage INTEGER := 0;
+BEGIN
+  SELECT * INTO v_week
+  FROM thread_order_weeks
+  WHERE id = p_week_id
+  FOR UPDATE;
 
--- Gán cho Quản lý Kho
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r, permissions p
-WHERE r.code = 'warehouse_manager'
-  AND p.code = 'thread.dept-allocation.manage'
-ON CONFLICT (role_id, permission_id) DO NOTHING;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Không tìm thấy tuần đơn hàng với id %', p_week_id;
+  END IF;
 
--- Gán cho Nhân viên Kho
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r, permissions p
-WHERE r.code = 'warehouse_staff'
-  AND p.code = 'thread.dept-allocation.manage'
-ON CONFLICT (role_id, permission_id) DO NOTHING;
+  IF v_week.status <> 'CONFIRMED' THEN
+    RAISE EXCEPTION 'Chỉ có thể re-reserve cho tuần đang CONFIRMED. Trạng thái hiện tại: %', v_week.status;
+  END IF;
 
--- Gán cho Admin
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r, permissions p
-WHERE r.code = 'admin'
-  AND p.code = 'thread.dept-allocation.manage'
-ON CONFLICT (role_id, permission_id) DO NOTHING;
+  SELECT COUNT(*) INTO v_total_released
+  FROM thread_inventory
+  WHERE reserved_week_id = p_week_id
+    AND status = 'RESERVED_FOR_ORDER';
+
+  UPDATE thread_inventory
+  SET status = 'AVAILABLE',
+      reserved_week_id = NULL,
+      updated_at = NOW()
+  WHERE reserved_week_id = p_week_id
+    AND status = 'RESERVED_FOR_ORDER';
+
+  FOR v_summary IN
+    SELECT * FROM fn_parse_calculation_cones(p_week_id)
+  LOOP
+    v_reserve_result := fn_reserve_for_week(
+      p_week_id,
+      v_summary.thread_type_id,
+      v_summary.needed_cones,
+      v_summary.color_id
+    );
+
+    v_all_summaries := array_append(v_all_summaries, json_build_object(
+      'thread_type_id', v_summary.thread_type_id,
+      'color_id', v_summary.color_id,
+      'needed', v_summary.needed_cones,
+      'reserved', (v_reserve_result->>'reserved')::INTEGER,
+      'shortage', (v_reserve_result->>'shortage')::INTEGER
+    ));
+
+    v_total_reserved := v_total_reserved + (v_reserve_result->>'reserved')::INTEGER;
+    v_total_shortage := v_total_shortage + (v_reserve_result->>'shortage')::INTEGER;
+  END LOOP;
+
+  RETURN json_build_object(
+    'success', true,
+    'week_id', p_week_id,
+    'released', v_total_released,
+    'total_reserved', v_total_reserved,
+    'total_shortage', v_total_shortage,
+    'reservation_summary', to_json(v_all_summaries)
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION fn_re_reserve_after_remove_po IS 'Release all reservations then re-reserve based on current calculation_data. Used after removing a PO from CONFIRMED week.';
+
+NOTIFY pgrst, 'reload schema';
+
+COMMIT;

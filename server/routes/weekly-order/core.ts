@@ -22,6 +22,8 @@ import {
   validatePOQuantityLimits,
 } from './helpers'
 import { syncDeliveries } from './save-results-helpers'
+import { enrichWithInventory } from './enrich-helper'
+import { reaggregateSummary, adjustCalcDataForRemainingItems } from './reaggregate-helper'
 
 const core = new Hono<AppEnv>()
 
@@ -824,17 +826,16 @@ core.post('/:id/remove-po', requirePermission('thread.allocations.manage'), asyn
     const removedCount = removedItems?.length ?? 0
     console.info(`[remove-po] Removed ${removedCount} items from week=${id} po=${validated.po_id}`)
 
-    let deliveriesRemoved = 0
+    let deliveriesSynced = false
     let reservationsReleased = 0
+    let reservationsReserved = 0
 
     if (week.status === 'CONFIRMED' && removedCount > 0) {
       const { data: remainingItems } = await supabase
         .from('thread_order_items')
-        .select('style_id')
+        .select('style_id, style_color_id, color_id, quantity')
         .eq('week_id', id)
         .limit(10000)
-
-      const remainingStyleIds = new Set((remainingItems || []).map((i: { style_id: number }) => i.style_id))
 
       const { data: resultsRow } = await supabase
         .from('thread_order_results')
@@ -843,86 +844,72 @@ core.post('/:id/remove-po', requirePermission('thread.allocations.manage'), asyn
         .maybeSingle()
 
       if (resultsRow?.calculation_data && Array.isArray(resultsRow.calculation_data)) {
-        type CalcResult = { style_id: number; calculations: Array<{ color_breakdown?: Array<{ thread_type_id: number }> }> }
+        const itemsForAdjust = (remainingItems || []).map((i: { style_id: number; style_color_id: number | null; color_id: number | null; quantity: number }) => ({
+          style_id: i.style_id,
+          color_key: i.style_color_id ?? i.color_id ?? 0,
+          quantity: i.quantity,
+        }))
 
-        const oldThreadTypeIds = new Set<number>()
-        for (const r of resultsRow.calculation_data as CalcResult[]) {
-          for (const calc of r.calculations) {
-            if (calc.color_breakdown) {
-              for (const cb of calc.color_breakdown) {
-                oldThreadTypeIds.add(cb.thread_type_id)
-              }
-            }
-          }
-        }
+        const filteredCalcData = adjustCalcDataForRemainingItems(
+          resultsRow.calculation_data as Parameters<typeof adjustCalcDataForRemainingItems>[0],
+          itemsForAdjust,
+        )
 
-        const filteredCalcData = (resultsRow.calculation_data as CalcResult[])
-          .filter((r) => remainingStyleIds.has(r.style_id))
+        const reaggregated = reaggregateSummary(
+          filteredCalcData,
+          Array.isArray(resultsRow.summary_data) ? resultsRow.summary_data as Array<{ thread_type_id: number; thread_color?: string | null; [key: string]: unknown }> : [],
+        )
 
-        const remainingThreadTypeIds = new Set<number>()
-        for (const r of filteredCalcData) {
-          for (const calc of r.calculations) {
-            if (calc.color_breakdown) {
-              for (const cb of calc.color_breakdown) {
-                remainingThreadTypeIds.add(cb.thread_type_id)
-              }
-            }
-          }
-        }
-
-        let filteredSummaryData = resultsRow.summary_data
-        if (Array.isArray(resultsRow.summary_data)) {
-          filteredSummaryData = (resultsRow.summary_data as Array<{ thread_type_id: number }>)
-            .filter((row) => remainingThreadTypeIds.has(row.thread_type_id))
+        let enrichedSummary = reaggregated
+        try {
+          enrichedSummary = await enrichWithInventory(
+            reaggregated as Array<{ thread_type_id: number; total_cones: number; [key: string]: unknown }>,
+            id,
+            { preserveAdditionalOrder: false },
+          )
+        } catch (enrichErr) {
+          console.warn('[remove-po] enrichWithInventory failed, using unenriched:', enrichErr)
         }
 
         await supabase
           .from('thread_order_results')
           .update({
             calculation_data: filteredCalcData,
-            summary_data: filteredSummaryData,
+            summary_data: enrichedSummary,
             calculated_at: new Date().toISOString(),
           })
           .eq('id', resultsRow.id)
 
-        console.info(`[remove-po] Updated results: calc ${resultsRow.calculation_data.length} -> ${filteredCalcData.length}, summary ${Array.isArray(resultsRow.summary_data) ? resultsRow.summary_data.length : '?'} -> ${Array.isArray(filteredSummaryData) ? filteredSummaryData.length : '?'}`)
+        console.info(`[remove-po] Updated results: calc ${(resultsRow.calculation_data as unknown[]).length} -> ${filteredCalcData.length}, summary reaggregated ${enrichedSummary.length} rows`)
 
-        try {
-          const summaryForSync = Array.isArray(filteredSummaryData) ? filteredSummaryData : []
-          await syncDeliveries(supabase, id, summaryForSync as any)
+        const { data: rpcResult, error: rpcError } = await supabase.rpc('fn_re_reserve_after_remove_po', {
+          p_week_id: id,
+        })
 
-          const { data: remainingDeliveries } = await supabase
-            .from('thread_order_deliveries')
-            .select('id')
-            .eq('week_id', id)
-            .limit(1)
-
-          deliveriesRemoved = remainingDeliveries ? 0 : 1
-        } catch (syncErr) {
-          console.warn('[remove-po] syncDeliveries failed:', syncErr)
+        if (rpcError) {
+          console.error('[remove-po] fn_re_reserve_after_remove_po error:', rpcError)
+        } else if (rpcResult) {
+          reservationsReleased = rpcResult.released ?? 0
+          reservationsReserved = rpcResult.total_reserved ?? 0
+          console.info(`[remove-po] Re-reserve: released=${reservationsReleased}, reserved=${reservationsReserved}, shortage=${rpcResult.total_shortage ?? 0}`)
         }
 
-        const removedThreadTypeIds = [...oldThreadTypeIds].filter((ttId) => !remainingThreadTypeIds.has(ttId))
-
-        if (removedThreadTypeIds.length > 0) {
-          const { data: releasedCones } = await supabase
-            .from('thread_inventory')
-            .update({ status: 'AVAILABLE', reserved_week_id: null })
-            .eq('reserved_week_id', id)
-            .in('thread_type_id', removedThreadTypeIds)
-            .eq('status', 'RESERVED_FOR_ORDER')
-            .select('id')
-
-          reservationsReleased = releasedCones?.length ?? 0
-          if (reservationsReleased > 0) {
-            console.info(`[remove-po] Đã giải phóng ${reservationsReleased} cone cho ${removedThreadTypeIds.length} loại chỉ bị xóa khỏi tuần ${id}`)
-          }
+        try {
+          await syncDeliveries(supabase, id, enrichedSummary as any)
+          deliveriesSynced = true
+        } catch (syncErr) {
+          console.warn('[remove-po] syncDeliveries failed:', syncErr)
         }
       }
     }
 
     return c.json({
-      data: { removed_count: removedCount, deliveries_cleaned: deliveriesRemoved > 0, reservations_released: reservationsReleased },
+      data: {
+        removed_count: removedCount,
+        deliveries_synced: deliveriesSynced,
+        reservations_released: reservationsReleased,
+        reservations_reserved: reservationsReserved,
+      },
       error: null,
       message: 'Đã xóa PO khỏi đơn đặt hàng',
     })

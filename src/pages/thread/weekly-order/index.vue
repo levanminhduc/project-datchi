@@ -468,13 +468,19 @@ const handleRemovePO = async (poId: number) => {
   if (selectedWeek.value?.id) {
     try {
       await weeklyOrderService.removePOFromWeek(selectedWeek.value.id, poId)
-      loadedPOs.value = loadedPOs.value.filter((po) => po.id !== poId)
-      removePO(poId)
-      perStyleResults.value = perStyleResults.value.filter(
-        (r) => orderEntries.value.some((e) => e.style_id === r.style_id),
-      )
-      aggregatedResults.value = []
-      snackbar.success('Đã xóa PO và loại chỉ liên quan. Vui lòng tính toán lại.')
+
+      if (selectedWeek.value?.status === 'CONFIRMED') {
+        await handleLoadWeek(selectedWeek.value.id)
+        snackbar.success('Đã xóa PO. Dữ liệu đã được cập nhật tự động.')
+      } else {
+        loadedPOs.value = loadedPOs.value.filter((po) => po.id !== poId)
+        removePO(poId)
+        perStyleResults.value = perStyleResults.value.filter(
+          (r) => orderEntries.value.some((e) => e.style_id === r.style_id),
+        )
+        aggregatedResults.value = []
+        snackbar.success('Đã xóa PO và loại chỉ liên quan. Vui lòng tính toán lại.')
+      }
     } catch (err) {
       snackbar.error(err instanceof Error ? err.message : 'Không thể xóa PO')
     }

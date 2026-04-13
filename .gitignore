@@ -60,3 +60,10 @@ docs/
 playwright.config.ts
 tests/e2e/auth-session-expired.spec.ts
 .gitnexus
+.mcp.json
+weekly-order-check.png
+weekly-order-colors-fixed.png
+server-debug.log
+server.log
+summary.md
+mockup-subart-styles.png
