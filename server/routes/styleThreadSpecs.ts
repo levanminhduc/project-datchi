@@ -8,7 +8,12 @@ const styleThreadSpecs = new Hono<AppEnv>()
 
 styleThreadSpecs.use('*', requirePermission('thread.types.view'))
 
-async function ensureColorSpecs(specId: number, styleId: number, threadTypeId: number | null) {
+async function ensureColorSpecs(
+  specId: number,
+  styleId: number,
+  threadTypeId: number | null,
+  oldThreadTypeId?: number | null,
+) {
   if (!threadTypeId) return
 
   const { data: styleColors } = await supabase
@@ -20,21 +25,34 @@ async function ensureColorSpecs(specId: number, styleId: number, threadTypeId: n
 
   const { data: existing } = await supabase
     .from('style_color_thread_specs')
-    .select('style_color_id')
+    .select('id, style_color_id, thread_type_id')
     .eq('style_thread_spec_id', specId)
 
   const existingColorIds = new Set((existing || []).map(e => e.style_color_id))
   const missing = styleColors.filter(sc => !existingColorIds.has(sc.id))
 
-  if (missing.length === 0) return
+  if (missing.length > 0) {
+    await supabase
+      .from('style_color_thread_specs')
+      .insert(missing.map(sc => ({
+        style_thread_spec_id: specId,
+        style_color_id: sc.id,
+        thread_type_id: threadTypeId,
+      })))
+  }
 
-  await supabase
-    .from('style_color_thread_specs')
-    .insert(missing.map(sc => ({
-      style_thread_spec_id: specId,
-      style_color_id: sc.id,
-      thread_type_id: threadTypeId,
-    })))
+  if (oldThreadTypeId && oldThreadTypeId !== threadTypeId && existing && existing.length > 0) {
+    const staleIds = existing
+      .filter(e => e.thread_type_id === oldThreadTypeId)
+      .map(e => e.id)
+
+    if (staleIds.length > 0) {
+      await supabase
+        .from('style_color_thread_specs')
+        .update({ thread_type_id: threadTypeId, updated_at: new Date().toISOString() })
+        .in('id', staleIds)
+    }
+  }
 }
 
 /**
@@ -226,6 +244,16 @@ styleThreadSpecs.put('/:id', async (c) => {
       updatedBy = emp?.full_name || null
     }
 
+    let oldThreadTypeId: number | null = null
+    if (body.thread_type_id) {
+      const { data: oldSpec } = await supabase
+        .from('style_thread_specs')
+        .select('thread_type_id')
+        .eq('id', id)
+        .single()
+      oldThreadTypeId = oldSpec?.thread_type_id ?? null
+    }
+
     const { data, error } = await supabase
       .from('style_thread_specs')
       .update({
@@ -255,7 +283,7 @@ styleThreadSpecs.put('/:id', async (c) => {
 
     if (body.thread_type_id) {
       const styleId = body.style_id || data.style_id
-      await ensureColorSpecs(id, styleId, body.thread_type_id)
+      await ensureColorSpecs(id, styleId, body.thread_type_id, oldThreadTypeId)
     }
 
     return c.json({ data, error: null, message: 'Cập nhật định mức chỉ thành công' })

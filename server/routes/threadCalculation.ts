@@ -459,6 +459,7 @@ threadCalculation.post('/calculate', async (c) => {
       .from('style_thread_specs')
       .select(SPEC_SELECT)
       .eq('style_id', body.style_id)
+      .limit(500000)
 
     if (specsError) throw specsError
 
@@ -479,6 +480,7 @@ threadCalculation.post('/calculate', async (c) => {
         .select(COLOR_SPEC_SELECT)
         .in('style_thread_spec_id', specIds)
         .in('style_color_id', colorIds)
+        .limit(500000)
 
       if (csError) throw csError
       colorSpecs = (cs || []) as unknown as ColorSpecRow[]
@@ -557,6 +559,7 @@ threadCalculation.post('/calculate-batch', async (c) => {
       .from('styles')
       .select('id, style_code, style_name')
       .in('id', styleIds)
+      .limit(500000)
 
     if (stylesError) throw stylesError
 
@@ -568,6 +571,7 @@ threadCalculation.post('/calculate-batch', async (c) => {
       .from('style_thread_specs')
       .select(SPEC_SELECT)
       .in('style_id', styleIds)
+      .limit(500000)
 
     if (specsError) throw specsError
 
@@ -600,6 +604,7 @@ threadCalculation.post('/calculate-batch', async (c) => {
         .select(COLOR_SPEC_SELECT)
         .in('style_thread_spec_id', allSpecIds)
         .in('style_color_id', [...allColorIds])
+        .limit(500000)
 
       if (csError) throw csError
       allColorSpecs = (cs || []) as unknown as ColorSpecRow[]
@@ -755,6 +760,7 @@ threadCalculation.post('/calculate-by-po', async (c) => {
         .select(COLOR_SPEC_SELECT)
         .in('style_thread_spec_id', allSpecIds)
         .in('style_color_id', allColorIds)
+        .limit(500000)
 
       if (csError) throw csError
       allColorSpecs = (cs || []) as unknown as ColorSpecRow[]
