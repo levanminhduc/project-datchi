@@ -896,6 +896,89 @@ batch.get('/transfer-history/summary', requirePermission('thread.inventory.view'
   }
 })
 
+batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.inventory.view'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data: tx, error: txError } = await supabase
+      .from('batch_transactions')
+      .select('cone_ids, operation_type')
+      .eq('id', id)
+      .single()
+
+    if (txError || !tx) {
+      return c.json({ data: null, error: 'Không tìm thấy phiếu chuyển kho' }, 404)
+    }
+    if (tx.operation_type !== 'TRANSFER') {
+      return c.json({ data: null, error: 'Thao tác không phải chuyển kho' }, 400)
+    }
+
+    const coneIds: number[] = tx.cone_ids || []
+    if (coneIds.length === 0) {
+      return c.json({ data: [], error: null })
+    }
+
+    const { data: cones, error: coneError } = await supabase
+      .from('thread_inventory')
+      .select(`
+        thread_type_id,
+        thread_types(
+          tex_number,
+          suppliers(name),
+          colors(name, hex_code)
+        )
+      `)
+      .in('id', coneIds)
+
+    if (coneError) {
+      console.error('[cone-summary] query error:', coneError)
+      return c.json({ data: null, error: 'Lỗi khi tải thông tin cuộn chỉ' }, 500)
+    }
+
+    const groupMap = new Map<number, {
+      thread_type_id: number
+      supplier_name: string
+      tex_number: string
+      color_name: string
+      color_hex: string | null
+      cone_count: number
+    }>()
+
+    for (const cone of (cones || [])) {
+      const tt = cone.thread_types as unknown as {
+        tex_number: string
+        suppliers: { name: string } | null
+        colors: { name: string; hex_code: string | null } | null
+      } | null
+      const key = cone.thread_type_id
+      const existing = groupMap.get(key)
+      if (existing) {
+        existing.cone_count++
+      } else {
+        groupMap.set(key, {
+          thread_type_id: key,
+          supplier_name: tt?.suppliers?.name ?? 'Không xác định',
+          tex_number: tt?.tex_number ?? '?',
+          color_name: tt?.colors?.name ?? 'Không xác định',
+          color_hex: tt?.colors?.hex_code ?? null,
+          cone_count: 1,
+        })
+      }
+    }
+
+    const summary = Array.from(groupMap.values())
+      .sort((a, b) => b.cone_count - a.cone_count)
+
+    return c.json({ data: summary, error: null })
+  } catch (err) {
+    console.error('[cone-summary] server error:', err)
+    return c.json({ data: null, error: 'Lỗi hệ thống' }, 500)
+  }
+})
+
 /**
  * GET /api/batch/transactions - List all batch transactions
  */
