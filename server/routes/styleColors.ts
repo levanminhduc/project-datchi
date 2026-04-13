@@ -76,20 +76,39 @@ styleColors.post('/:styleId/clone', async (c) => {
       throw insertErr
     }
 
-    const { data: sourceSpecs } = await supabase
-      .from('style_color_thread_specs')
-      .select('style_thread_spec_id, thread_type_id, thread_color_id, notes')
-      .eq('style_color_id', source_color_id)
+    const { data: parentSpecs, error: parentErr } = await supabase
+      .from('style_thread_specs')
+      .select('id, thread_type_id')
+      .eq('style_id', styleId)
       .limit(500)
 
-    if (sourceSpecs && sourceSpecs.length > 0) {
-      const clonedRows = sourceSpecs.map(s => ({
-        style_thread_spec_id: s.style_thread_spec_id,
-        style_color_id: newColor.id,
-        thread_type_id: s.thread_type_id,
-        thread_color_id: s.thread_color_id,
-        notes: s.notes,
-      }))
+    if (parentErr) throw parentErr
+
+    if (parentSpecs && parentSpecs.length > 0) {
+      const { data: sourceSpecs, error: sourceSpecsErr } = await supabase
+        .from('style_color_thread_specs')
+        .select('style_thread_spec_id, thread_color_id, notes')
+        .eq('style_color_id', source_color_id)
+        .limit(500)
+
+      if (sourceSpecsErr) throw sourceSpecsErr
+
+      const sourceMap = new Map(
+        (sourceSpecs || []).map(s => [s.style_thread_spec_id, s])
+      )
+
+      const clonedRows = parentSpecs
+        .filter(parent => parent.thread_type_id !== null)
+        .map(parent => {
+        const source = sourceMap.get(parent.id)
+        return {
+          style_thread_spec_id: parent.id,
+          style_color_id: newColor.id,
+          thread_type_id: parent.thread_type_id,
+          thread_color_id: source?.thread_color_id ?? null,
+          notes: source?.notes ?? null,
+        }
+      })
 
       const { error: cloneErr } = await supabase
         .from('style_color_thread_specs')
