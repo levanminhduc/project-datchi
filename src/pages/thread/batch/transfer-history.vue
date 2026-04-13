@@ -390,25 +390,43 @@
 
         <q-separator class="q-my-md" />
         <div class="text-subtitle2 q-mb-sm">
-          Mã cuộn ({{ selected.cone_ids?.length || 0 }})
+          Loại chỉ ({{ coneSummary.length }} loại — {{ selected.cone_count }} cuộn)
         </div>
-        <div class="cone-id-grid">
-          <AppChip
-            v-for="coneId in (selected.cone_ids || []).slice(0, 50)"
-            :key="coneId"
-            dense
-            size="sm"
-            color="grey-3"
-            :label="String(coneId)"
-          />
-          <AppChip
-            v-if="(selected.cone_ids?.length || 0) > 50"
-            dense
-            size="sm"
-            color="primary"
-            text-color="white"
-            :label="`+${selected.cone_ids!.length - 50} khác`"
-          />
+        <q-spinner
+          v-if="coneSummaryLoading"
+          color="primary"
+          size="24px"
+          class="q-my-sm"
+        />
+        <div
+          v-else
+          class="cone-summary-list"
+        >
+          <div
+            v-for="item in coneSummary"
+            :key="item.thread_type_id"
+            class="cone-summary-row"
+          >
+            <q-avatar
+              size="20px"
+              class="q-mr-sm"
+              :style="item.color_hex
+                ? { backgroundColor: item.color_hex }
+                : { backgroundColor: '#ccc' }"
+            />
+            <span class="cone-summary-label">
+              {{ item.supplier_name }} - TEX{{ item.tex_number }} - {{ item.color_name }}
+            </span>
+            <q-space />
+            <span class="text-weight-bold">{{ item.cone_count }}</span>
+            <span class="text-grey-6 q-ml-xs">cuộn</span>
+          </div>
+          <div
+            v-if="coneSummary.length === 0 && !coneSummaryLoading"
+            class="text-grey-5 text-body2"
+          >
+            Không có dữ liệu
+          </div>
         </div>
       </template>
 
@@ -429,18 +447,19 @@ import { ref, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useTransferHistory } from '@/composables/useTransferHistory'
 import { useWarehouses } from '@/composables'
+import { useSnackbar } from '@/composables/useSnackbar'
 import AppWarehouseSelect from '@/components/ui/inputs/AppWarehouseSelect.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import IconButton from '@/components/ui/buttons/IconButton.vue'
 import AppCard from '@/components/ui/cards/AppCard.vue'
-import AppChip from '@/components/ui/cards/AppChip.vue'
 import AppDialog from '@/components/ui/dialogs/AppDialog.vue'
 import AppTooltip from '@/components/ui/dialogs/AppTooltip.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
+import { batchService } from '@/services/batchService'
 import { dateRules } from '@/utils'
-import type { TransferHistoryItem } from '@/types/thread/batch'
+import type { TransferHistoryItem, ConeSummaryItem } from '@/types/thread/batch'
 import type { QTableColumn } from 'quasar'
 
 definePage({
@@ -451,6 +470,7 @@ definePage({
 })
 
 const $q = useQuasar()
+const snackbar = useSnackbar()
 const { fetchWarehouses } = useWarehouses()
 const {
   items,
@@ -468,6 +488,8 @@ const {
 
 const showDetail = ref(false)
 const selected = ref<TransferHistoryItem | null>(null)
+const coneSummary = ref<ConeSummaryItem[]>([])
+const coneSummaryLoading = ref(false)
 
 const columns: QTableColumn[] = [
   { name: 'id', label: 'ID', field: 'id', align: 'left', sortable: true },
@@ -489,9 +511,19 @@ function truncate(text: string | null, max: number): string {
   return text.length > max ? text.slice(0, max) + '...' : text
 }
 
-function viewDetail(row: TransferHistoryItem) {
+async function viewDetail(row: TransferHistoryItem) {
   selected.value = row
+  coneSummary.value = []
   showDetail.value = true
+  coneSummaryLoading.value = true
+  try {
+    coneSummary.value = await batchService.getTransferConeSummary(row.id)
+  } catch {
+    coneSummary.value = []
+    snackbar.error('Không tải được tổng hợp cuộn chỉ')
+  } finally {
+    coneSummaryLoading.value = false
+  }
 }
 
 onMounted(async () => {
@@ -501,12 +533,26 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.cone-id-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  max-height: 200px;
+.cone-summary-list {
+  max-height: 300px;
   overflow-y: auto;
+}
+
+.cone-summary-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.cone-summary-row:last-child {
+  border-bottom: none;
+}
+
+.cone-summary-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .transfer-history-table {
