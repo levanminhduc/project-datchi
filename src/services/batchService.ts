@@ -16,7 +16,8 @@ import type {
   TransferableSummaryItem,
   TransferHistoryFilters,
   TransferHistoryResponse,
-  TransferHistorySummaryResponse
+  TransferHistorySummaryResponse,
+  ConeSummaryItem,
 } from '@/types/thread/batch'
 
 interface ApiResponse<T> {
@@ -153,5 +154,13 @@ export const batchService = {
     const response = await fetchApi<TransferHistorySummaryResponse>(`/api/batch/transfer-history/summary${qs ? '?' + qs : ''}`)
     if (response.error) throw new Error(response.error)
     return response
+  },
+
+  async getTransferConeSummary(transferId: number): Promise<ConeSummaryItem[]> {
+    const response = await fetchApi<ApiResponse<ConeSummaryItem[]>>(
+      `/api/batch/transfer-history/${transferId}/cone-summary`
+    )
+    if (response.error) throw new Error(response.error)
+    return response.data || []
   }
 }
