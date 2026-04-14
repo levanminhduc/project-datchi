@@ -984,7 +984,13 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.delivery-tracking-table :deep(.group-first-row td) {
+.delivery-tracking-table :deep(.summary-row td) {
   border-top: 2px solid #90a4ae;
+}
+.delivery-tracking-table :deep(.summary-row:hover td) {
+  background-color: #e3f2fd !important;
+}
+.delivery-tracking-table :deep(.detail-row td:first-child) {
+  padding-left: 40px;
 }
 </style>
