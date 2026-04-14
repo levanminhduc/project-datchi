@@ -31,6 +31,7 @@ declare module 'vue' {
     AppImage: typeof import('./components/ui/media/AppImage.vue')['default']
     AppInput: typeof import('./components/ui/inputs/AppInput.vue')['default']
     AppList: typeof import('./components/ui/lists/AppList.vue')['default']
+    AppLoading: typeof import('./components/ui/AppLoading.vue')['default']
     AppMenu: typeof import('./components/ui/dialogs/AppMenu.vue')['default']
     AppPagination: typeof import('./components/ui/navigation/AppPagination.vue')['default']
     AppParallax: typeof import('./components/ui/media/AppParallax.vue')['default']

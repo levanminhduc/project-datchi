@@ -1,4 +1,4 @@
-<script lang="ts" setup>
+﻿<script lang="ts" setup>
 import { onMounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DarkModeToggle from "./components/DarkModeToggle.vue";
@@ -10,6 +10,7 @@ import { useAuth } from "./composables/useAuth";
 import { useVersionCheck } from "./composables/useVersionCheck";
 import AnnouncementPopup from './components/ui/AnnouncementPopup.vue'
 import NetworkStatusBanner from './components/ui/feedback/NetworkStatusBanner.vue'
+import AppLoading from './components/ui/AppLoading.vue'
 import { useAnnouncements } from './composables/use-announcements'
 import { initNetworkStatus } from './composables/useNetworkStatus'
 
@@ -18,7 +19,7 @@ const router = useRouter();
 const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
 const { startPolling, stopPolling } = useNotifications();
-const { isAuthenticated, tempPassword } = useAuth();
+const { isAuthenticated, tempPassword, isLoading } = useAuth();
 const { startVersionCheck, stopVersionCheck } = useVersionCheck();
 const {
   currentAnnouncement,
@@ -71,7 +72,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <q-layout
+  <AppLoading v-if="isLoading" />
+  <q-layout v-else
     view="hHh Lpr fFf"
   >
     <q-header
@@ -148,3 +150,4 @@ onMounted(() => {
     />
   </q-layout>
 </template>
+
