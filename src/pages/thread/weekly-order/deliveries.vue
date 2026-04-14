@@ -70,53 +70,107 @@
 
         <!-- Tracking Table -->
         <q-table
-          :rows="groupedRows"
+          :rows="trackingRows"
           :columns="trackingColumns"
-          row-key="row.id"
+          row-key="id"
           :loading="loading"
           flat
           bordered
           dense
           class="delivery-tracking-table"
-          :rows-per-page-options="[20, 50, 0]"
-          :pagination="{ rowsPerPage: 50 }"
+          :rows-per-page-options="[0]"
+          :pagination="{ rowsPerPage: 0 }"
+          hide-pagination
         >
           <template #body="props">
-            <tr :class="[props.row.row.is_overdue ? 'bg-red-1' : '', props.row.isFirstInGroup ? 'group-first-row' : '']">
-              <td class="text-left text-weight-medium">
-                {{ props.row.isFirstInGroup ? (props.row.row.week_name || '—') : '' }}
-              </td>
+            <tr
+              v-if="props.row.type === 'summary'"
+              class="cursor-pointer bg-grey-2 text-weight-bold summary-row"
+              @click="toggleWeek(props.row.summary.week_id)"
+            >
               <td class="text-left">
-                {{ props.row.row.supplier_name || '—' }}
+                <div class="row items-center no-wrap q-gutter-x-sm">
+                  <q-icon
+                    :name="expandedWeeks.has(props.row.summary.week_id) ? 'expand_more' : 'chevron_right'"
+                    size="sm"
+                  />
+                  <div>
+                    <div>{{ props.row.summary.week_name }}</div>
+                    <div class="text-caption text-grey-7 text-weight-regular">
+                      {{ props.row.summary.supplier_count }} NCC · {{ props.row.summary.thread_type_count }} loại chỉ
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td />
+              <td />
+              <td />
+              <td class="text-center">
+                {{ props.row.summary.total_ordered }}
               </td>
               <td class="text-center">
-                {{ props.row.row.tex_number || '—' }}
+                {{ props.row.summary.total_received }}
+              </td>
+              <td class="text-center">
+                {{ props.row.summary.total_pending }}
+              </td>
+              <template v-if="hasAnyLoans">
+                <td />
+                <td />
+              </template>
+              <td />
+              <td />
+              <td />
+              <td class="text-center">
+                <span class="text-body2">
+                  {{ props.row.summary.total_received }}/{{ props.row.summary.total_ordered }} đã nhận
+                </span>
+                <q-badge
+                  :color="props.row.summary.percent_received >= 100 ? 'green' : props.row.summary.percent_received >= 50 ? 'orange' : 'red'"
+                  :label="`${props.row.summary.percent_received}%`"
+                  class="q-ml-xs"
+                />
+              </td>
+              <td />
+            </tr>
+
+            <tr
+              v-else
+              :class="props.row.delivery.is_overdue ? 'bg-red-1' : ''"
+              class="detail-row"
+            >
+              <td class="text-left" />
+              <td class="text-left">
+                {{ props.row.delivery.supplier_name || '—' }}
+              </td>
+              <td class="text-center">
+                {{ props.row.delivery.tex_number || '—' }}
               </td>
               <td class="text-left">
                 <div class="row items-center q-gutter-x-xs no-wrap">
                   <div
-                    v-if="props.row.row.color_hex"
+                    v-if="props.row.delivery.color_hex"
                     style="width: 12px; height: 12px; border-radius: 50%; border: 1px solid #ccc"
-                    :style="{ backgroundColor: props.row.row.color_hex }"
+                    :style="{ backgroundColor: props.row.delivery.color_hex }"
                   />
-                  <span>{{ props.row.row.color_name || '—' }}</span>
+                  <span>{{ props.row.delivery.color_name || '—' }}</span>
                 </div>
               </td>
               <td class="text-center">
-                {{ props.row.row.quantity_cones }}
+                {{ props.row.delivery.quantity_cones }}
               </td>
               <td class="text-center">
-                {{ props.row.row.received_quantity }}
+                {{ props.row.delivery.received_quantity }}
               </td>
               <td class="text-center">
-                {{ (props.row.row.quantity_cones || 0) - (props.row.row.received_quantity || 0) }}
+                {{ (props.row.delivery.quantity_cones || 0) - (props.row.delivery.received_quantity || 0) }}
               </td>
               <template v-if="hasAnyLoans">
                 <td class="text-center">
                   <span
-                    v-if="props.row.row.borrowed_in > 0"
+                    v-if="props.row.delivery.borrowed_in > 0"
                     class="text-info text-weight-medium"
-                  >{{ props.row.row.borrowed_in }} cuộn</span>
+                  >{{ props.row.delivery.borrowed_in }} cuộn</span>
                   <span
                     v-else
                     class="text-grey-5"
@@ -124,9 +178,9 @@
                 </td>
                 <td class="text-center">
                   <span
-                    v-if="props.row.row.lent_out > 0"
+                    v-if="props.row.delivery.lent_out > 0"
                     class="text-warning text-weight-medium"
-                  >{{ props.row.row.lent_out }} cuộn</span>
+                  >{{ props.row.delivery.lent_out }} cuộn</span>
                   <span
                     v-else
                     class="text-grey-5"
@@ -135,43 +189,43 @@
               </template>
               <td class="text-center">
                 <span class="cursor-pointer text-primary">
-                  {{ formatDate(props.row.row.delivery_date) }}
+                  {{ formatDate(props.row.delivery.delivery_date) }}
                   <q-popup-proxy>
                     <DatePicker
-                      :model-value="toDatePickerFormat(props.row.row.delivery_date)"
-                      @update:model-value="(val: string | null) => handleDeliveryDateChange(props.row.row.id, val)"
+                      :model-value="toDatePickerFormat(props.row.delivery.delivery_date)"
+                      @update:model-value="(val: string | null) => handleDeliveryDateChange(props.row.delivery.id, val)"
                     />
                   </q-popup-proxy>
                 </span>
               </td>
               <td class="text-center">
                 <q-badge
-                  :color="getDaysColor(props.row.row.days_remaining, props.row.row.status)"
-                  :label="props.row.row.status === DeliveryStatus.DELIVERED ? '✓' : `${props.row.row.days_remaining} ngày`"
+                  :color="getDaysColor(props.row.delivery.days_remaining, props.row.delivery.status)"
+                  :label="props.row.delivery.status === DeliveryStatus.DELIVERED ? '✓' : `${props.row.delivery.days_remaining} ngày`"
                 />
               </td>
               <td class="text-center">
                 <q-badge
-                  :color="props.row.row.status === DeliveryStatus.DELIVERED ? 'green' : 'orange'"
-                  :label="props.row.row.status === DeliveryStatus.DELIVERED ? 'Đã giao' : 'Chờ giao'"
+                  :color="props.row.delivery.status === DeliveryStatus.DELIVERED ? 'green' : 'orange'"
+                  :label="props.row.delivery.status === DeliveryStatus.DELIVERED ? 'Đã giao' : 'Chờ giao'"
                 />
               </td>
               <td class="text-center">
-                <template v-if="props.row.row.status === DeliveryStatus.DELIVERED">
+                <template v-if="props.row.delivery.status === DeliveryStatus.DELIVERED">
                   <q-badge
-                    v-if="props.row.row.inventory_status === InventoryReceiptStatus.RECEIVED"
+                    v-if="props.row.delivery.inventory_status === InventoryReceiptStatus.RECEIVED"
                     color="green"
                     label="Đã nhập đủ"
                   />
                   <q-badge
-                    v-else-if="props.row.row.inventory_status === InventoryReceiptStatus.PARTIAL"
+                    v-else-if="props.row.delivery.inventory_status === InventoryReceiptStatus.PARTIAL"
                     color="orange"
-                    :label="`Chờ nhập (${getPendingQuantity(props.row.row)}/${props.row.row.quantity_cones || 0})`"
+                    :label="`Chờ nhập (${getPendingQuantity(props.row.delivery)}/${props.row.delivery.quantity_cones || 0})`"
                   />
                   <q-badge
                     v-else
                     color="grey"
-                    :label="`Chờ nhập (${props.row.row.quantity_cones || 0})`"
+                    :label="`Chờ nhập (${props.row.delivery.quantity_cones || 0})`"
                   />
                 </template>
                 <span
@@ -181,13 +235,13 @@
               </td>
               <td class="text-center">
                 <q-btn
-                  v-if="props.row.row.status === DeliveryStatus.PENDING"
+                  v-if="props.row.delivery.status === DeliveryStatus.PENDING"
                   size="sm"
                   color="green"
                   label="Đã giao"
                   dense
                   flat
-                  @click="openDeliveredDialog(props.row.row)"
+                  @click="openDeliveredDialog(props.row.delivery)"
                 />
               </td>
             </tr>
