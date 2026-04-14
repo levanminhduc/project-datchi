@@ -574,39 +574,99 @@ const hasAnyLoans = computed(() => {
   return filteredDeliveries.value.some((d: DeliveryRecord) => (d.borrowed_in || 0) > 0 || (d.lent_out || 0) > 0)
 })
 
-interface GroupedRow {
-  row: DeliveryRecord
-  isFirstInGroup: boolean
-  groupSize: number
+interface WeekSummary {
+  week_id: number
+  week_name: string
+  supplier_count: number
+  thread_type_count: number
+  total_ordered: number
+  total_received: number
+  total_pending: number
+  percent_received: number
 }
 
-const groupedRows = computed<GroupedRow[]>(() => {
-  const sorted = [...filteredDeliveries.value].sort((a, b) => {
-    const weekCmp = (a.week_name || '').localeCompare(b.week_name || '')
-    if (weekCmp !== 0) return weekCmp
-    return String(a.delivery_date).localeCompare(String(b.delivery_date))
-  })
-  const groups = new Map<string, DeliveryRecord[]>()
-  for (const row of sorted) {
-    const key = row.week_name || `__${row.week_id}`
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(row)
+type TrackingRow =
+  | { type: 'summary'; id: string; summary: WeekSummary }
+  | { type: 'detail'; id: string; delivery: DeliveryRecord }
+
+const expandedWeeks = ref(new Set<number>())
+
+function toggleWeek(weekId: number) {
+  const next = new Set(expandedWeeks.value)
+  if (next.has(weekId)) {
+    next.delete(weekId)
+  } else {
+    next.add(weekId)
   }
-  const result: GroupedRow[] = []
-  for (const rows of groups.values()) {
-    rows.forEach((row, idx) => {
-      result.push({ row, isFirstInGroup: idx === 0, groupSize: rows.length })
+  expandedWeeks.value = next
+}
+
+const weekGroups = computed(() => {
+  const groups = new Map<number, DeliveryRecord[]>()
+  for (const d of filteredDeliveries.value) {
+    const key = d.week_id
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(d)
+  }
+
+  const result: Array<{ summary: WeekSummary; deliveries: DeliveryRecord[] }> = []
+  for (const [weekId, deliveries] of groups) {
+    const sorted = [...deliveries].sort((a, b) =>
+      String(a.delivery_date).localeCompare(String(b.delivery_date)),
+    )
+    const supplierIds = new Set(sorted.map(d => d.supplier_id))
+    const threadTypeIds = new Set(sorted.map(d => d.thread_type_id))
+    const totalOrdered = sorted.reduce((sum, d) => sum + (d.quantity_cones || 0), 0)
+    const totalReceived = sorted.reduce((sum, d) => sum + (d.received_quantity || 0), 0)
+    const totalPending = totalOrdered - totalReceived
+    const percent = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0
+
+    result.push({
+      summary: {
+        week_id: weekId,
+        week_name: sorted[0]?.week_name || `Tuần #${weekId}`,
+        supplier_count: supplierIds.size,
+        thread_type_count: threadTypeIds.size,
+        total_ordered: totalOrdered,
+        total_received: totalReceived,
+        total_pending: totalPending,
+        percent_received: percent,
+      },
+      deliveries: sorted,
     })
   }
+
+  result.sort((a, b) => a.summary.week_name.localeCompare(b.summary.week_name))
   return result
+})
+
+const trackingRows = computed<TrackingRow[]>(() => {
+  const rows: TrackingRow[] = []
+  for (const group of weekGroups.value) {
+    rows.push({
+      type: 'summary',
+      id: `week_${group.summary.week_id}`,
+      summary: group.summary,
+    })
+    if (expandedWeeks.value.has(group.summary.week_id)) {
+      for (const d of group.deliveries) {
+        rows.push({
+          type: 'detail',
+          id: `detail_${d.id}`,
+          delivery: d,
+        })
+      }
+    }
+  }
+  return rows
 })
 
 const trackingColumns = computed<QTableColumn[]>(() => {
   const cols: QTableColumn[] = [
-    { name: 'week_name', label: 'Đơn Hàng', field: 'week_name', align: 'left', sortable: true },
+    { name: 'week_name', label: 'Đơn Hàng', field: 'week_name', align: 'left' },
     { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
     { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'center' },
-    { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left', sortable: true },
+    { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left' },
     { name: 'quantity_cones', label: 'Đặt NCC', field: 'quantity_cones', align: 'center' },
     { name: 'received_quantity', label: 'Đã nhận', field: 'received_quantity', align: 'center' },
     { name: 'pending_cones', label: 'Chờ nhận', field: (row: DeliveryRecord) => (row.quantity_cones || 0) - (row.received_quantity || 0), align: 'center' },
@@ -618,8 +678,8 @@ const trackingColumns = computed<QTableColumn[]>(() => {
     )
   }
   cols.push(
-    { name: 'delivery_date', label: 'Ngày giao', field: 'delivery_date', align: 'center', sortable: true },
-    { name: 'days_remaining', label: 'Còn lại', field: 'days_remaining', align: 'center', sortable: true },
+    { name: 'delivery_date', label: 'Ngày giao', field: 'delivery_date', align: 'center' },
+    { name: 'days_remaining', label: 'Còn lại', field: 'days_remaining', align: 'center' },
     { name: 'status', label: 'Giao hàng', field: 'status', align: 'center' },
     { name: 'inventory_status', label: 'Nhập kho', field: 'inventory_status', align: 'center' },
     { name: 'actions', label: '', field: 'actions', align: 'center' },
