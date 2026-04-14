@@ -926,11 +926,8 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
       .select(`
         thread_type_id,
         color_id,
-        thread_types(
-          tex_number,
-          suppliers(name)
-        ),
-        colors(name, hex_code)
+        thread_types!inner(code, name, tex_number, supplier_id, suppliers(name)),
+        colors!color_id(name, hex_code)
       `)
       .in('id', coneIds)
 

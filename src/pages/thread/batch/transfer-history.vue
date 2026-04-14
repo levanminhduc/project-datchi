@@ -400,42 +400,26 @@
         <div class="text-subtitle2 q-mb-sm">
           Loại chỉ ({{ coneSummary.length }} loại — {{ selected.cone_count }} cuộn)
         </div>
-        <q-spinner
-          v-if="coneSummaryLoading"
-          color="primary"
-          size="24px"
-          class="q-my-sm"
-        />
-        <div
-          v-else
-          class="cone-summary-list"
+        <DataTable
+          :rows="coneSummary"
+          :columns="coneSummaryColumns"
+          :loading="coneSummaryLoading"
+          row-key="thread_type_id"
+          dense
+          hide-bottom
+          flat
         >
-          <div
-            v-for="item in coneSummary"
-            :key="item.thread_type_id"
-            class="cone-summary-row"
-          >
-            <q-avatar
-              size="20px"
-              class="q-mr-sm"
-              :style="item.color_hex
-                ? { backgroundColor: item.color_hex }
-                : { backgroundColor: '#ccc' }"
-            />
-            <span class="cone-summary-label">
-              {{ item.supplier_name }} - TEX{{ item.tex_number }} - {{ item.color_name }}
-            </span>
-            <q-space />
-            <span class="text-weight-bold">{{ item.cone_count }}</span>
-            <span class="text-grey-6 q-ml-xs">cuộn</span>
-          </div>
-          <div
-            v-if="coneSummary.length === 0 && !coneSummaryLoading"
-            class="text-grey-5 text-body2"
-          >
-            Không có dữ liệu
-          </div>
-        </div>
+          <template #body-cell-stt="props">
+            <q-td :props="props">
+              {{ props.rowIndex + 1 }}
+            </q-td>
+          </template>
+          <template #body-cell-color_name="props">
+            <q-td :props="props">
+              {{ props.row.color_name }}
+            </q-td>
+          </template>
+        </DataTable>
       </template>
 
       <template #actions>
@@ -520,6 +504,14 @@ const columns: QTableColumn[] = [
   { name: 'actions', label: '', field: 'actions', align: 'right' },
 ]
 
+const coneSummaryColumns: QTableColumn[] = [
+  { name: 'stt', label: '#', field: 'thread_type_id', align: 'center', style: 'width: 50px' },
+  { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
+  { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'center' },
+  { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left' },
+  { name: 'cone_count', label: 'Số cuộn', field: 'cone_count', align: 'center' },
+]
+
 function formatDateTime(dateStr: string): string {
   if (!dateStr) return '-'
   return new Date(dateStr).toLocaleString('vi-VN')
@@ -555,28 +547,6 @@ onMounted(async () => {
 .stat-card--highlight {
   border-color: var(--q-primary) !important;
   box-shadow: 0 0 0 2px rgba(var(--q-primary-rgb, 25, 118, 210), 0.15);
-}
-
-.cone-summary-list {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.cone-summary-row {
-  display: flex;
-  align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.cone-summary-row:last-child {
-  border-bottom: none;
-}
-
-.cone-summary-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .transfer-history-table {
