@@ -506,7 +506,7 @@ const handleRemovePO = async (poId: number) => {
         snackbar.success('Đã xóa PO và loại chỉ liên quan. Vui lòng tính toán lại.')
       }
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (err instanceof Error && err.name === 'AbortError') {
         snackbar.error('Quá thời gian xử lý. Vui lòng kiểm tra lại dữ liệu.')
       } else {
         snackbar.error(err instanceof Error ? err.message : 'Không thể xóa PO')
