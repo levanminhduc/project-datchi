@@ -127,6 +127,7 @@ export interface CreateIssueWithLineDTO {
   style_color_id?: number | null
   sub_art_id?: number | null
   thread_type_id: number
+  thread_color_id?: number | null
   issued_full?: number
   issued_partial?: number
   over_quota_notes?: string | null
@@ -139,6 +140,7 @@ export interface AddIssueLineV2DTO {
   style_color_id?: number | null
   sub_art_id?: number | null
   thread_type_id: number
+  thread_color_id?: number | null
   issued_full?: number
   issued_partial?: number
   over_quota_notes?: string | null

@@ -1737,6 +1737,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       color_id,
       sub_art_id,
       thread_type_id,
+      thread_color_id,
       issued_full,
       issued_partial,
       over_quota_notes,
@@ -1754,7 +1755,7 @@ issuesV2.post('/create-with-lines', async (c) => {
     const ratio = await getPartialConeRatio()
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
-    const createThreadColorId = await lookupThreadColorId(thread_type_id, effectiveColorId)
+    const createThreadColorId = thread_color_id ?? await lookupThreadColorId(thread_type_id, effectiveColorId)
     const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio, department, createThreadColorId)
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
 
@@ -1820,6 +1821,7 @@ issuesV2.post('/create-with-lines', async (c) => {
         color_id: color_id || null,
         sub_art_id: sub_art_id || null,
         thread_type_id,
+        thread_color_id: createThreadColorId || null,
         quota_cones: quotaCones,
         issued_full: issued_full || 0,
         issued_partial: issued_partial || 0,
@@ -2349,7 +2351,7 @@ issuesV2.post('/:id/lines/validate', async (c) => {
       throw err
     }
 
-    const { thread_type_id, issued_full, issued_partial, po_id, style_id, style_color_id: validateStyleColorId, color_id: validateColorId, sub_art_id: validateSubArt, department: validateDepartment, warehouse_id: validateWarehouseId } = validated
+    const { thread_type_id, thread_color_id: validateThreadColorIdInput, issued_full, issued_partial, po_id, style_id, style_color_id: validateStyleColorId, color_id: validateColorId, sub_art_id: validateSubArt, department: validateDepartment, warehouse_id: validateWarehouseId } = validated
     const validateEffectiveColorId = validateStyleColorId || validateColorId
 
     if (await isComboCompletedInAllWeeks(po_id, style_id, validateEffectiveColorId)) {
@@ -2373,7 +2375,7 @@ issuesV2.post('/:id/lines/validate', async (c) => {
     // Calculate issued equivalent
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
-    const validateThreadColorId = await lookupThreadColorId(thread_type_id, validateEffectiveColorId)
+    const validateThreadColorId = validateThreadColorIdInput ?? await lookupThreadColorId(thread_type_id, validateEffectiveColorId)
     const quotaCones = await getQuotaCones(po_id, style_id, validateEffectiveColorId, thread_type_id, ratio, validateDepartment, validateThreadColorId)
 
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
@@ -2490,7 +2492,7 @@ issuesV2.post('/:id/batch-lines', async (c) => {
       const line = validated.lines[i]
       const {
         po_id, style_id, style_color_id, color_id, sub_art_id,
-        thread_type_id, issued_full, issued_partial, over_quota_notes,
+        thread_type_id, thread_color_id, issued_full, issued_partial, over_quota_notes,
       } = line
       const effectiveColorId = style_color_id || color_id
 
@@ -2509,7 +2511,7 @@ issuesV2.post('/:id/batch-lines', async (c) => {
         )
       }
 
-      const batchThreadColorId = await lookupThreadColorId(thread_type_id, effectiveColorId)
+      const batchThreadColorId = thread_color_id ?? await lookupThreadColorId(thread_type_id, effectiveColorId)
       const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio, issue.department, batchThreadColorId)
       const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
       const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
@@ -2547,6 +2549,7 @@ issuesV2.post('/:id/batch-lines', async (c) => {
         color_id: color_id || null,
         sub_art_id: sub_art_id || null,
         thread_type_id,
+        thread_color_id: batchThreadColorId || null,
         quota_cones: quotaCones,
         issued_full: issued_full || 0,
         issued_partial: issued_partial || 0,
@@ -2695,6 +2698,7 @@ issuesV2.post('/:id/lines', async (c) => {
       color_id,
       sub_art_id,
       thread_type_id,
+      thread_color_id,
       issued_full,
       issued_partial,
       over_quota_notes,
@@ -2719,7 +2723,7 @@ issuesV2.post('/:id/lines', async (c) => {
     // Get quota
     // Get partial cone ratio and calculate issued equivalent
     const ratio = await getPartialConeRatio()
-    const addLineThreadColorId = await lookupThreadColorId(thread_type_id, effectiveColorId)
+    const addLineThreadColorId = thread_color_id ?? await lookupThreadColorId(thread_type_id, effectiveColorId)
     const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio, issue.department, addLineThreadColorId)
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
@@ -2764,6 +2768,7 @@ issuesV2.post('/:id/lines', async (c) => {
         color_id: color_id || null,
         sub_art_id: sub_art_id || null,
         thread_type_id,
+        thread_color_id: addLineThreadColorId || null,
         quota_cones: quotaCones,
         issued_full: issued_full || 0,
         issued_partial: issued_partial || 0,
@@ -3427,7 +3432,7 @@ issuesV2.post('/:id/confirm', async (c) => {
       const weekIds = await findConfirmedWeekIds(line.po_id, line.style_id, lineColorId)
       weekIdsMap.set(line.id, weekIds)
 
-      const tcId = await lookupThreadColorId(line.thread_type_id, lineColorId)
+      const tcId = line.thread_color_id ?? await lookupThreadColorId(line.thread_type_id, lineColorId)
       threadColorIdMap.set(line.id, tcId)
     }
 

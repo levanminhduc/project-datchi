@@ -581,6 +581,7 @@ async function handleAddLine(row: ThreadTypeForIssueWithColor) {
     style_color_id: row.color_id,
     sub_art_id: selectedSubArtId.value,
     thread_type_id: row.thread_type_id,
+    thread_color_id: row.thread_color_id ?? null,
     issued_full: input.full,
     issued_partial: input.partial,
     over_quota_notes: input.notes.trim() || null,
@@ -627,6 +628,7 @@ async function handleBatchAddAll() {
       style_color_id: number
       sub_art_id: number | null
       thread_type_id: number
+      thread_color_id: number | null
       issued_full: number
       issued_partial: number
       over_quota_notes: string | null
@@ -658,6 +660,7 @@ async function handleBatchAddAll() {
         style_color_id: row.color_id,
         sub_art_id: selectedSubArtId.value,
         thread_type_id: row.thread_type_id,
+        thread_color_id: row.thread_color_id ?? null,
         issued_full: input.full,
         issued_partial: input.partial,
         over_quota_notes: input.notes.trim() || null,

@@ -1,6 +1,10 @@
 ﻿<template>
   <div class="fullscreen flex flex-center column app-loading-container">
-    <q-spinner color="primary" size="3em" :thickness="5" />
+    <q-spinner
+      color="primary"
+      size="3em"
+      :thickness="5"
+    />
     <div class="text-primary text-subtitle1 q-mt-md text-weight-medium">
       Đang tải hệ thống...
     </div>

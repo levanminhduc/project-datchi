@@ -73,7 +73,8 @@ onMounted(() => {
 
 <template>
   <AppLoading v-if="isLoading" />
-  <q-layout v-else
+  <q-layout
+    v-else
     view="hHh Lpr fFf"
   >
     <q-header

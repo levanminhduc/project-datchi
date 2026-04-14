@@ -68,185 +68,196 @@
           />
         </div>
 
-        <!-- Tracking Table -->
-        <q-table
-          :rows="trackingRows"
-          :columns="trackingColumns"
-          row-key="id"
-          :loading="loading"
-          flat
-          bordered
-          dense
-          class="delivery-tracking-table"
-          :rows-per-page-options="[0]"
-          :pagination="{ rowsPerPage: 0 }"
-          hide-pagination
+        <!-- Tracking: Loading -->
+        <div
+          v-if="loading"
+          class="column items-center q-pa-lg"
         >
-          <template #body="props">
-            <tr
-              v-if="props.row.type === 'summary'"
-              class="cursor-pointer bg-grey-2 text-weight-bold summary-row"
-              @click="toggleWeek(props.row.summary.week_id)"
-            >
-              <td class="text-left">
-                <div class="row items-center no-wrap q-gutter-x-sm">
-                  <q-icon
-                    :name="expandedWeeks.has(props.row.summary.week_id) ? 'expand_more' : 'chevron_right'"
-                    size="sm"
-                  />
-                  <div>
-                    <div>{{ props.row.summary.week_name }}</div>
-                    <div class="text-caption text-grey-7 text-weight-regular">
-                      {{ props.row.summary.supplier_count }} NCC · {{ props.row.summary.thread_type_count }} loại chỉ
-                    </div>
-                  </div>
-                </div>
-              </td>
-              <td />
-              <td />
-              <td />
-              <td class="text-center">
-                {{ props.row.summary.total_ordered }}
-              </td>
-              <td class="text-center">
-                {{ props.row.summary.total_received }}
-              </td>
-              <td class="text-center">
-                {{ props.row.summary.total_pending }}
-              </td>
-              <template v-if="hasAnyLoans">
-                <td />
-                <td />
-              </template>
-              <td />
-              <td />
-              <td />
-              <td class="text-center">
-                <span class="text-body2">
-                  {{ props.row.summary.total_received }}/{{ props.row.summary.total_ordered }} đã nhận
-                </span>
-                <q-badge
-                  :color="props.row.summary.percent_received >= 100 ? 'green' : props.row.summary.percent_received >= 50 ? 'orange' : 'red'"
-                  :label="`${props.row.summary.percent_received}%`"
-                  class="q-ml-xs"
-                />
-              </td>
-              <td />
-            </tr>
+          <q-spinner
+            color="primary"
+            size="40px"
+          />
+          <div class="text-grey q-mt-sm">
+            Đang tải...
+          </div>
+        </div>
 
-            <tr
-              v-else
-              :class="props.row.delivery.is_overdue ? 'bg-red-1' : ''"
-              class="detail-row"
-            >
-              <td class="text-left" />
-              <td class="text-left">
-                {{ props.row.delivery.supplier_name || '—' }}
-              </td>
-              <td class="text-center">
-                {{ props.row.delivery.tex_number || '—' }}
-              </td>
-              <td class="text-left">
-                <div class="row items-center q-gutter-x-xs no-wrap">
-                  <div
-                    v-if="props.row.delivery.color_hex"
-                    style="width: 12px; height: 12px; border-radius: 50%; border: 1px solid #ccc"
-                    :style="{ backgroundColor: props.row.delivery.color_hex }"
-                  />
-                  <span>{{ props.row.delivery.color_name || '—' }}</span>
+        <!-- Tracking: Empty -->
+        <div
+          v-else-if="weekGroups.length === 0"
+          class="column items-center q-pa-lg text-grey"
+        >
+          <q-icon
+            name="local_shipping"
+            size="48px"
+            class="q-mb-md"
+          />
+          <span>Không có dữ liệu giao hàng</span>
+        </div>
+
+        <!-- Tracking: Week groups -->
+        <q-list
+          v-else
+          bordered
+          separator
+        >
+          <q-expansion-item
+            v-for="group in weekGroups"
+            :key="group.summary.week_id"
+            group="weeks"
+            header-class="text-weight-medium"
+          >
+            <template #header>
+              <q-item-section>
+                <q-item-label>{{ group.summary.week_name }}</q-item-label>
+                <q-item-label caption>
+                  {{ group.summary.supplier_count }} NCC · {{ group.summary.thread_type_count }} loại chỉ
+                </q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <div class="row items-center q-gutter-sm">
+                  <q-chip
+                    dense
+                    size="sm"
+                  >
+                    Đặt: {{ group.summary.total_ordered }}
+                  </q-chip>
+                  <q-chip
+                    dense
+                    size="sm"
+                    :color="group.summary.percent_received >= 100 ? 'green' : group.summary.percent_received >= 50 ? 'orange' : 'red'"
+                    text-color="white"
+                  >
+                    {{ group.summary.total_received }}/{{ group.summary.total_ordered }} đã nhận ({{ group.summary.percent_received }}%)
+                  </q-chip>
                 </div>
-              </td>
-              <td class="text-center">
-                {{ props.row.delivery.quantity_cones }}
-              </td>
-              <td class="text-center">
-                {{ props.row.delivery.received_quantity }}
-              </td>
-              <td class="text-center">
-                {{ (props.row.delivery.quantity_cones || 0) - (props.row.delivery.received_quantity || 0) }}
-              </td>
-              <template v-if="hasAnyLoans">
-                <td class="text-center">
-                  <span
-                    v-if="props.row.delivery.borrowed_in > 0"
-                    class="text-info text-weight-medium"
-                  >{{ props.row.delivery.borrowed_in }} cuộn</span>
-                  <span
-                    v-else
-                    class="text-grey-5"
-                  >—</span>
-                </td>
-                <td class="text-center">
-                  <span
-                    v-if="props.row.delivery.lent_out > 0"
-                    class="text-warning text-weight-medium"
-                  >{{ props.row.delivery.lent_out }} cuộn</span>
-                  <span
-                    v-else
-                    class="text-grey-5"
-                  >—</span>
-                </td>
-              </template>
-              <td class="text-center">
-                <span class="cursor-pointer text-primary">
-                  {{ formatDate(props.row.delivery.delivery_date) }}
-                  <q-popup-proxy>
-                    <DatePicker
-                      :model-value="toDatePickerFormat(props.row.delivery.delivery_date)"
-                      @update:model-value="(val: string | null) => handleDeliveryDateChange(props.row.delivery.id, val)"
+              </q-item-section>
+            </template>
+
+            <q-table
+              :rows="group.deliveries"
+              :columns="trackingColumns"
+              :row-key="(row: DeliveryRecord) => row.id"
+              flat
+              bordered
+              dense
+              hide-pagination
+              :rows-per-page-options="[0]"
+              :pagination="{ rowsPerPage: 0 }"
+            >
+              <template #body-cell-color_name="props">
+                <q-td :props="props">
+                  <div class="row items-center q-gutter-x-xs no-wrap">
+                    <div
+                      v-if="props.row.color_hex"
+                      style="width: 12px; height: 12px; border-radius: 50%; border: 1px solid #ccc"
+                      :style="{ backgroundColor: props.row.color_hex }"
                     />
-                  </q-popup-proxy>
-                </span>
-              </td>
-              <td class="text-center">
-                <q-badge
-                  :color="getDaysColor(props.row.delivery.days_remaining, props.row.delivery.status)"
-                  :label="props.row.delivery.status === DeliveryStatus.DELIVERED ? '✓' : `${props.row.delivery.days_remaining} ngày`"
-                />
-              </td>
-              <td class="text-center">
-                <q-badge
-                  :color="props.row.delivery.status === DeliveryStatus.DELIVERED ? 'green' : 'orange'"
-                  :label="props.row.delivery.status === DeliveryStatus.DELIVERED ? 'Đã giao' : 'Chờ giao'"
-                />
-              </td>
-              <td class="text-center">
-                <template v-if="props.row.delivery.status === DeliveryStatus.DELIVERED">
-                  <q-badge
-                    v-if="props.row.delivery.inventory_status === InventoryReceiptStatus.RECEIVED"
-                    color="green"
-                    label="Đã nhập đủ"
-                  />
-                  <q-badge
-                    v-else-if="props.row.delivery.inventory_status === InventoryReceiptStatus.PARTIAL"
-                    color="orange"
-                    :label="`Chờ nhập (${getPendingQuantity(props.row.delivery)}/${props.row.delivery.quantity_cones || 0})`"
-                  />
-                  <q-badge
+                    <span>{{ props.row.color_name || '—' }}</span>
+                  </div>
+                </q-td>
+              </template>
+
+              <template #body-cell-borrowed_in="props">
+                <q-td :props="props">
+                  <span
+                    v-if="props.row.borrowed_in > 0"
+                    class="text-info text-weight-medium"
+                  >{{ props.row.borrowed_in }} cuộn</span>
+                  <span
                     v-else
-                    color="grey"
-                    :label="`Chờ nhập (${props.row.delivery.quantity_cones || 0})`"
+                    class="text-grey-5"
+                  >—</span>
+                </q-td>
+              </template>
+
+              <template #body-cell-lent_out="props">
+                <q-td :props="props">
+                  <span
+                    v-if="props.row.lent_out > 0"
+                    class="text-warning text-weight-medium"
+                  >{{ props.row.lent_out }} cuộn</span>
+                  <span
+                    v-else
+                    class="text-grey-5"
+                  >—</span>
+                </q-td>
+              </template>
+
+              <template #body-cell-delivery_date="props">
+                <q-td :props="props">
+                  <span class="cursor-pointer text-primary">
+                    {{ formatDate(props.row.delivery_date) }}
+                    <q-popup-proxy>
+                      <DatePicker
+                        :model-value="toDatePickerFormat(props.row.delivery_date)"
+                        @update:model-value="(val: string | null) => handleDeliveryDateChange(props.row.id, val)"
+                      />
+                    </q-popup-proxy>
+                  </span>
+                </q-td>
+              </template>
+
+              <template #body-cell-days_remaining="props">
+                <q-td :props="props">
+                  <q-badge
+                    :color="getDaysColor(props.row.days_remaining, props.row.status)"
+                    :label="props.row.status === DeliveryStatus.DELIVERED ? '✓' : `${props.row.days_remaining} ngày`"
                   />
-                </template>
-                <span
-                  v-else
-                  class="text-grey-5"
-                >—</span>
-              </td>
-              <td class="text-center">
-                <q-btn
-                  v-if="props.row.delivery.status === DeliveryStatus.PENDING"
-                  size="sm"
-                  color="green"
-                  label="Đã giao"
-                  dense
-                  flat
-                  @click="openDeliveredDialog(props.row.delivery)"
-                />
-              </td>
-            </tr>
-          </template>
-        </q-table>
+                </q-td>
+              </template>
+
+              <template #body-cell-status="props">
+                <q-td :props="props">
+                  <q-badge
+                    :color="props.row.status === DeliveryStatus.DELIVERED ? 'green' : 'orange'"
+                    :label="props.row.status === DeliveryStatus.DELIVERED ? 'Đã giao' : 'Chờ giao'"
+                  />
+                </q-td>
+              </template>
+
+              <template #body-cell-inventory_status="props">
+                <q-td :props="props">
+                  <template v-if="props.row.status === DeliveryStatus.DELIVERED">
+                    <q-badge
+                      v-if="props.row.inventory_status === InventoryReceiptStatus.RECEIVED"
+                      color="green"
+                      label="Đã nhập đủ"
+                    />
+                    <q-badge
+                      v-else-if="props.row.inventory_status === InventoryReceiptStatus.PARTIAL"
+                      color="orange"
+                      :label="`Chờ nhập (${getPendingQuantity(props.row)}/${props.row.quantity_cones || 0})`"
+                    />
+                    <q-badge
+                      v-else
+                      color="grey"
+                      :label="`Chờ nhập (${props.row.quantity_cones || 0})`"
+                    />
+                  </template>
+                  <span
+                    v-else
+                    class="text-grey-5"
+                  >—</span>
+                </q-td>
+              </template>
+
+              <template #body-cell-actions="props">
+                <q-td :props="props">
+                  <q-btn
+                    v-if="props.row.status === DeliveryStatus.PENDING"
+                    size="sm"
+                    color="green"
+                    label="Đã giao"
+                    dense
+                    flat
+                    @click="openDeliveredDialog(props.row)"
+                  />
+                </q-td>
+              </template>
+            </q-table>
+          </q-expansion-item>
+        </q-list>
       </q-tab-panel>
 
       <!-- Tab 2: Receive into Inventory -->
@@ -639,22 +650,6 @@ interface WeekSummary {
   percent_received: number
 }
 
-type TrackingRow =
-  | { type: 'summary'; id: string; summary: WeekSummary }
-  | { type: 'detail'; id: string; delivery: DeliveryRecord }
-
-const expandedWeeks = ref(new Set<number>())
-
-function toggleWeek(weekId: number) {
-  const next = new Set(expandedWeeks.value)
-  if (next.has(weekId)) {
-    next.delete(weekId)
-  } else {
-    next.add(weekId)
-  }
-  expandedWeeks.value = next
-}
-
 const weekGroups = computed(() => {
   const groups = new Map<number, DeliveryRecord[]>()
   for (const d of filteredDeliveries.value) {
@@ -694,30 +689,8 @@ const weekGroups = computed(() => {
   return result
 })
 
-const trackingRows = computed<TrackingRow[]>(() => {
-  const rows: TrackingRow[] = []
-  for (const group of weekGroups.value) {
-    rows.push({
-      type: 'summary',
-      id: `week_${group.summary.week_id}`,
-      summary: group.summary,
-    })
-    if (expandedWeeks.value.has(group.summary.week_id)) {
-      for (const d of group.deliveries) {
-        rows.push({
-          type: 'detail',
-          id: `detail_${d.id}`,
-          delivery: d,
-        })
-      }
-    }
-  }
-  return rows
-})
-
 const trackingColumns = computed<QTableColumn[]>(() => {
   const cols: QTableColumn[] = [
-    { name: 'week_name', label: 'Đơn Hàng', field: 'week_name', align: 'left' },
     { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left' },
     { name: 'tex_number', label: 'Tex', field: 'tex_number', align: 'center' },
     { name: 'color_name', label: 'Màu', field: 'color_name', align: 'left' },
@@ -982,15 +955,3 @@ onMounted(async () => {
   await loadTrackingData()
 })
 </script>
-
-<style scoped>
-.delivery-tracking-table :deep(.summary-row td) {
-  border-top: 2px solid #90a4ae;
-}
-.delivery-tracking-table :deep(.summary-row:hover td) {
-  background-color: #e3f2fd !important;
-}
-.delivery-tracking-table :deep(.detail-row td:first-child) {
-  padding-left: 40px !important;
-}
-</style>
