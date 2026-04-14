@@ -690,7 +690,7 @@ const weekGroups = computed(() => {
     })
   }
 
-  result.sort((a, b) => a.summary.week_name.localeCompare(b.summary.week_name))
+  result.sort((a, b) => a.summary.week_id - b.summary.week_id)
   return result
 })
 
@@ -991,6 +991,6 @@ onMounted(async () => {
   background-color: #e3f2fd !important;
 }
 .delivery-tracking-table :deep(.detail-row td:first-child) {
-  padding-left: 40px;
+  padding-left: 40px !important;
 }
 </style>
