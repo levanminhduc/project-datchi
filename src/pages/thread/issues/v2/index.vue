@@ -467,35 +467,51 @@ function fillRemainingAllocation() {
   allocationAddQty.value = remaining > 0 ? remaining : null
 }
 
+const isValidating = ref(false)
+let validatingCount = 0
+
 const debouncedValidate = useDebounceFn(async (colorId: number, threadTypeId: number, threadColorId?: number | null) => {
   const key = ttKey(colorId, threadTypeId, threadColorId)
   const input = lineInputs.value[key]
-  if (!input) return
+  if (!input) {
+    validatingCount = Math.max(0, validatingCount - 1)
+    if (validatingCount === 0) isValidating.value = false
+    return
+  }
   if (input.full === 0 && input.partial === 0) {
     input.validation = null
+    validatingCount = Math.max(0, validatingCount - 1)
+    if (validatingCount === 0) isValidating.value = false
     return
   }
 
-  const result = await validateLine({
-    thread_type_id: threadTypeId,
-    thread_color_id: threadColorId ?? undefined,
-    issued_full: input.full,
-    issued_partial: input.partial,
-    po_id: selectedPoId.value,
-    style_id: selectedStyleId.value,
-    color_id: colorId,
-    style_color_id: colorId,
-    sub_art_id: selectedSubArtId.value,
-    department: department.value || undefined,
-    warehouse_id: selectedWarehouseId.value || undefined,
-  })
+  try {
+    const result = await validateLine({
+      thread_type_id: threadTypeId,
+      thread_color_id: threadColorId ?? undefined,
+      issued_full: input.full,
+      issued_partial: input.partial,
+      po_id: selectedPoId.value,
+      style_id: selectedStyleId.value,
+      color_id: colorId,
+      style_color_id: colorId,
+      sub_art_id: selectedSubArtId.value,
+      department: department.value || undefined,
+      warehouse_id: selectedWarehouseId.value || undefined,
+    })
 
-  if (result) {
-    input.validation = result
+    if (result) {
+      input.validation = result
+    }
+  } finally {
+    validatingCount = Math.max(0, validatingCount - 1)
+    if (validatingCount === 0) isValidating.value = false
   }
 }, 300)
 
 function handleQuantityChange(colorId: number, threadTypeId: number, threadColorId?: number | null) {
+  validatingCount++
+  isValidating.value = true
   debouncedValidate(colorId, threadTypeId, threadColorId)
 }
 
@@ -542,7 +558,7 @@ function isAddButtonDisabled(colorId: number, threadTypeId: number, threadColorI
   if (input.full === 0 && input.partial === 0) return true
   if (input.validation && !input.validation.stock_sufficient && !input.validation.can_borrow) return true
   if (input.validation?.is_over_quota && !input.notes) return true
-  if (isBatchAdding.value || isConfirming.value) return true
+  if (isBatchAdding.value || isConfirming.value || isValidating.value) return true
   return false
 }
 
@@ -635,19 +651,32 @@ async function handleBatchAddAll() {
     }
   }> = []
 
+  const skippedLines: string[] = []
+
   for (const row of availableThreadTypes.value) {
     const key = ttKey(row.color_id, row.thread_type_id, row.thread_color_id)
     const input = lineInputs.value[key]
     if (!input || (input.full === 0 && input.partial === 0)) continue
 
+    const label = `${row.color_name} - ${row.thread_code}`
+
     if (input.validation && !input.validation.stock_sufficient && !input.validation.can_borrow) {
-      snackbar.error(`${row.color_name} - ${row.thread_code}: Không đủ tồn kho`)
-      return
+      const v = input.validation
+      const shortFull = Math.max(0, input.full - v.stock_available_full)
+      const shortPartial = Math.max(0, input.partial - v.stock_available_partial)
+      const details = [
+        shortFull > 0 ? `thiếu ${shortFull} nguyên` : '',
+        shortPartial > 0 ? `thiếu ${shortPartial} lẻ` : '',
+      ].filter(Boolean).join(', ')
+      skippedLines.push(`${label}: Không đủ tồn kho (${details})`)
+      continue
     }
 
     if (input.validation?.is_over_quota && !input.notes.trim()) {
-      snackbar.warning(`${row.color_name} - ${row.thread_code}: Vượt định mức, cần ghi chú`)
-      return
+      const v = input.validation
+      const overBy = v.issued_equivalent - (v.quota_cones ?? 0)
+      skippedLines.push(`${label}: Vượt định mức ${overBy.toFixed(1)} cuộn, cần ghi chú`)
+      continue
     }
 
     linesToAdd.push({
@@ -669,7 +698,11 @@ async function handleBatchAddAll() {
   }
 
   if (linesToAdd.length === 0) {
-    snackbar.warning('Không có dòng nào để thêm')
+    if (skippedLines.length > 0) {
+      snackbar.warning(`Không có dòng hợp lệ để thêm. Bỏ qua ${skippedLines.length} dòng:\n${skippedLines.join('\n')}`)
+    } else {
+      snackbar.warning('Không có dòng nào để thêm')
+    }
     return
   }
 
@@ -727,6 +760,10 @@ async function handleBatchAddAll() {
           }
         }
       }
+    }
+
+    if (skippedLines.length > 0) {
+      snackbar.warning(`Đã bỏ qua ${skippedLines.length} dòng:\n${skippedLines.join('\n')}`)
     }
   } finally {
     isBatchAdding.value = false
@@ -1507,7 +1544,7 @@ onUnmounted(() => {
                   color="primary"
                   icon="playlist_add"
                   :loading="isBatchAdding"
-                  :disable="isBatchAdding || isConfirming"
+                  :disable="isBatchAdding || isConfirming || isValidating"
                   @click="handleBatchAddAll"
                 />
               </div>
