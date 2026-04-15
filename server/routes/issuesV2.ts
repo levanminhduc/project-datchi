@@ -48,6 +48,7 @@ import {
 import {
   batchGetBaseQuotaCones,
   batchGetQuotaCones,
+  batchGetQuotaConesWithPending,
   compositeKey,
   type ThreadColorItem,
 } from '../utils/issue-v2-batch-quota'
@@ -577,9 +578,10 @@ async function getConfirmedIssuedEquivalent(
   styleId: number,
   colorId: number,
   threadTypeId: number,
-  ratio: number
+  ratio: number,
+  threadColorId?: number | null
 ): Promise<number> {
-  const { data: issuedLines, error } = await supabase
+  let query = supabase
     .from('thread_issue_lines')
     .select(
       `
@@ -595,6 +597,14 @@ async function getConfirmedIssuedEquivalent(
     .eq('style_color_id', colorId)
     .eq('thread_type_id', threadTypeId)
     .eq('thread_issues.status', 'CONFIRMED')
+
+  if (threadColorId !== undefined) {
+    query = threadColorId === null
+      ? query.is('thread_color_id', null)
+      : query.eq('thread_color_id', threadColorId)
+  }
+
+  const { data: issuedLines, error } = await query.limit(10000)
 
   if (error) {
     console.error('Error fetching confirmed issued lines:', error)
@@ -624,9 +634,10 @@ async function getConfirmedIssuedEquivalentByDept(
   colorId: number,
   threadTypeId: number,
   department: string,
-  ratio: number
+  ratio: number,
+  threadColorId?: number | null
 ): Promise<number> {
-  const { data: issuedLines, error } = await supabase
+  let query = supabase
     .from('thread_issue_lines')
     .select(`
       issued_full,
@@ -641,6 +652,14 @@ async function getConfirmedIssuedEquivalentByDept(
     .eq('thread_type_id', threadTypeId)
     .eq('thread_issues.status', 'CONFIRMED')
     .eq('thread_issues.department', department)
+
+  if (threadColorId !== undefined) {
+    query = threadColorId === null
+      ? query.is('thread_color_id', null)
+      : query.eq('thread_color_id', threadColorId)
+  }
+
+  const { data: issuedLines, error } = await query.limit(10000)
 
   if (error) {
     console.error('Error fetching dept confirmed issued lines:', error)
@@ -684,9 +703,10 @@ async function _getConfirmedIssuedGross(
   styleId: number,
   colorId: number,
   threadTypeId: number,
-  ratio: number
+  ratio: number,
+  threadColorId?: number | null
 ): Promise<number> {
-  const { data: issuedLines, error } = await supabase
+  let query = supabase
     .from('thread_issue_lines')
     .select(
       `
@@ -700,6 +720,14 @@ async function _getConfirmedIssuedGross(
     .eq('style_color_id', colorId)
     .eq('thread_type_id', threadTypeId)
     .eq('thread_issues.status', 'CONFIRMED')
+
+  if (threadColorId !== undefined) {
+    query = threadColorId === null
+      ? query.is('thread_color_id', null)
+      : query.eq('thread_color_id', threadColorId)
+  }
+
+  const { data: issuedLines, error } = await query.limit(10000)
 
   if (error) {
     console.error('Error fetching confirmed issued gross:', error)
@@ -717,7 +745,8 @@ async function _getBaseQuotaCones(
   poId: number,
   styleId: number,
   colorId: number,
-  threadTypeId: number
+  threadTypeId: number,
+  threadColorId?: number | null
 ): Promise<number | null> {
   const { data: orderItems, error } = await supabase
     .from('thread_order_items')
@@ -726,6 +755,7 @@ async function _getBaseQuotaCones(
     .eq('style_id', styleId)
     .eq('style_color_id', colorId)
     .eq('thread_order_weeks.status', 'CONFIRMED')
+    .limit(10000)
 
   if (error) return null
 
@@ -737,12 +767,21 @@ async function _getBaseQuotaCones(
 
   const { data: specs } = await supabase
     .from('style_color_thread_specs')
-    .select(`thread_type_id, style_thread_specs:style_thread_spec_id(style_id, meters_per_unit)`)
+    .select(`thread_type_id, thread_color_id, style_thread_specs:style_thread_spec_id(style_id, meters_per_unit)`)
     .eq('style_color_id', colorId)
     .eq('thread_type_id', threadTypeId)
+    .limit(10000)
 
-  const matchingSpec = (specs || []).find((s: any) => s.style_thread_specs?.style_id === styleId) as any
-  if (!matchingSpec?.style_thread_specs?.meters_per_unit) return null
+  const specFilter = (s: any) =>
+    s.style_thread_specs?.style_id === styleId &&
+    (threadColorId !== undefined ? (s.thread_color_id ?? null) === threadColorId : true)
+
+  const matchingSpecs = (specs || []).filter(specFilter) as any[]
+  if (matchingSpecs.length === 0) return null
+
+  const totalMetersPerUnit = matchingSpecs.reduce(
+    (sum: number, s: any) => sum + (s.style_thread_specs.meters_per_unit as number), 0
+  )
 
   const { data: threadType } = await supabase
     .from('thread_types')
@@ -752,7 +791,7 @@ async function _getBaseQuotaCones(
 
   if (!threadType?.meters_per_cone) return null
 
-  const totalMeters = totalOrderedQuantity * (matchingSpec.style_thread_specs.meters_per_unit as number)
+  const totalMeters = totalOrderedQuantity * totalMetersPerUnit
   return Math.ceil(totalMeters / threadType.meters_per_cone)
 }
 
@@ -777,7 +816,7 @@ async function getQuotaCones(
 
   const specFilter = (s: any) =>
     s.style_thread_specs?.style_id === styleId &&
-    (threadColorId != null ? (s.thread_color_id ?? null) === threadColorId : true)
+    (threadColorId !== undefined ? (s.thread_color_id ?? null) === threadColorId : true)
 
   if (department && poId && styleId && colorId) {
     const allocation = await getDeptAllocation(poId, styleId, colorId, department)
@@ -791,6 +830,7 @@ async function getQuotaCones(
         `)
         .eq('style_color_id', colorId)
         .eq('thread_type_id', threadTypeId)
+        .limit(10000)
 
       const matchingSpecs = (specs || []).filter(specFilter) as any[]
       if (matchingSpecs.length === 0) return null
@@ -810,9 +850,15 @@ async function getQuotaCones(
       const totalMeters = allocation.product_quantity * totalMetersPerUnit
       const baseQuota = Math.ceil(totalMeters / threadType.meters_per_cone)
       const issuedNet = await getConfirmedIssuedEquivalentByDept(
-        poId, styleId, colorId, threadTypeId, department, ratio
+        poId, styleId, colorId, threadTypeId, department, ratio, threadColorId
       )
-      return roundToTwoDecimals(Math.max(0, baseQuota - issuedNet))
+      const deptRemaining = roundToTwoDecimals(Math.max(0, baseQuota - issuedNet))
+
+      const globalBaseQuota = await _getBaseQuotaCones(poId, styleId, colorId, threadTypeId, threadColorId)
+      if (globalBaseQuota === null) return null
+      const globalIssued = await getConfirmedIssuedEquivalent(poId, styleId, colorId, threadTypeId, ratio, threadColorId)
+      const globalRemaining = Math.max(0, globalBaseQuota - globalIssued)
+      return roundToTwoDecimals(Math.min(deptRemaining, globalRemaining))
     }
   }
 
@@ -826,6 +872,7 @@ async function getQuotaCones(
     .eq('style_id', styleId)
     .eq('style_color_id', colorId)
     .eq('thread_order_weeks.status', 'CONFIRMED')
+    .limit(10000)
 
   if (error) {
     console.error('Error fetching confirmed weekly-order items:', error)
@@ -853,6 +900,7 @@ async function getQuotaCones(
     `)
     .eq('style_color_id', colorId)
     .eq('thread_type_id', threadTypeId)
+    .limit(10000)
 
   if (specError) {
     console.error('Error fetching spec:', specError)
@@ -886,7 +934,8 @@ async function getQuotaCones(
     styleId,
     colorId,
     threadTypeId,
-    ratio
+    ratio,
+    threadColorId
   )
 
   const remainingQuotaCones = Math.max(0, baseQuotaCones - confirmedIssuedEquivalent)
@@ -1651,7 +1700,7 @@ issuesV2.post('/validate-line', async (c) => {
 
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
-    const threadColorId = thread_color_id ?? await lookupThreadColorId(thread_type_id, effectiveColorId)
+    const threadColorId = thread_color_id !== undefined ? thread_color_id : await lookupThreadColorId(thread_type_id, effectiveColorId)
     const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio, department, threadColorId)
 
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
@@ -1755,7 +1804,7 @@ issuesV2.post('/create-with-lines', async (c) => {
     const ratio = await getPartialConeRatio()
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
-    const createThreadColorId = thread_color_id ?? await lookupThreadColorId(thread_type_id, effectiveColorId)
+    const createThreadColorId = thread_color_id !== undefined ? thread_color_id : await lookupThreadColorId(thread_type_id, effectiveColorId)
     const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio, department, createThreadColorId)
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
 
@@ -1944,7 +1993,7 @@ issuesV2.post('/stock-refresh', async (c) => {
         .in('thread_type_id', allThreadTypeIds)
         .eq('status', 'RESERVED_FOR_ORDER')
         .in('reserved_week_id', [...allWeekIds])
-        .limit(50000)
+        .limit(1000000)
       reservedRows = (data as typeof reservedRows) || []
     }
 
@@ -1953,7 +2002,7 @@ issuesV2.post('/stock-refresh', async (c) => {
       .select('thread_type_id, color_id, warehouse_id, is_partial')
       .in('thread_type_id', allThreadTypeIds)
       .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-      .limit(50000)
+      .limit(1000000)
     const freeRows = (freeData as typeof reservedRows) || []
 
     const allRows = [...reservedRows, ...freeRows]
@@ -1996,8 +2045,8 @@ issuesV2.post('/stock-refresh', async (c) => {
 
         const [quotaMap, baseQuotaMap, issuedMap] = await Promise.all([
           batchGetQuotaCones(batchItems, po_id, style_id, colorId, ratio, department),
-          batchGetBaseQuotaCones(batchItems, po_id, style_id, colorId, department),
-          batchGetConfirmedIssuedGross(batchItems, po_id, style_id, colorId, ratio, department),
+          batchGetBaseQuotaCones(batchItems, po_id, style_id, colorId),
+          batchGetConfirmedIssuedGross(batchItems, po_id, style_id, colorId, ratio),
         ])
 
         for (const stock of stocks) {
@@ -2106,12 +2155,12 @@ issuesV2.get('/form-data', async (c) => {
 
     const allThreadTypeIds = [...new Set(items.map((i) => i.threadTypeId))]
     const batchItems: ThreadColorItem[] = items.map((i) => ({ threadTypeId: i.threadTypeId, threadColorId: i.threadColorId ?? null }))
-    const inventoryData = await batchLoadInventoryData(allThreadTypeIds, weekIds)
+    const inventoryData = await batchLoadInventoryData(allThreadTypeIds, weekIds, warehouse_id)
 
     const [quotaMap, baseQuotaMap, grossMap, breakdownMap] = await Promise.all([
       batchGetQuotaCones(batchItems, po_id!, style_id!, effectiveColorId!, ratio, department),
-      batchGetBaseQuotaCones(batchItems, po_id!, style_id!, effectiveColorId!, department),
-      batchGetConfirmedIssuedGross(batchItems, po_id!, style_id!, effectiveColorId!, ratio, department),
+      batchGetBaseQuotaCones(batchItems, po_id!, style_id!, effectiveColorId!),
+      batchGetConfirmedIssuedGross(batchItems, po_id!, style_id!, effectiveColorId!, ratio),
       warehouse_id
         ? batchGetStockBreakdownByWarehouse(
             items.map((i) => ({ threadTypeId: i.threadTypeId, colorId: i.threadColorId })),
@@ -2375,7 +2424,7 @@ issuesV2.post('/:id/lines/validate', async (c) => {
     // Calculate issued equivalent
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
-    const validateThreadColorId = validateThreadColorIdInput ?? await lookupThreadColorId(thread_type_id, validateEffectiveColorId)
+    const validateThreadColorId = validateThreadColorIdInput !== undefined ? validateThreadColorIdInput : await lookupThreadColorId(thread_type_id, validateEffectiveColorId)
     const quotaCones = await getQuotaCones(po_id, style_id, validateEffectiveColorId, thread_type_id, ratio, validateDepartment, validateThreadColorId)
 
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
@@ -2487,6 +2536,7 @@ issuesV2.post('/:id/batch-lines', async (c) => {
     const ratio = await getPartialConeRatio()
     const insertRows: Array<Record<string, unknown>> = []
     const lineResults: Array<Record<string, unknown>> = []
+    const batchPending = new Map<string, Map<string, number>>()
 
     for (let i = 0; i < validated.lines.length; i++) {
       const line = validated.lines[i]
@@ -2511,8 +2561,22 @@ issuesV2.post('/:id/batch-lines', async (c) => {
         )
       }
 
-      const batchThreadColorId = thread_color_id ?? await lookupThreadColorId(thread_type_id, effectiveColorId)
-      const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio, issue.department, batchThreadColorId)
+      const batchThreadColorId = thread_color_id !== undefined ? thread_color_id : await lookupThreadColorId(thread_type_id, effectiveColorId)
+
+      let quotaCones: number | null = null
+      if (po_id && style_id && effectiveColorId) {
+        const groupKey = `${po_id}:${style_id}:${effectiveColorId}`
+        if (!batchPending.has(groupKey)) batchPending.set(groupKey, new Map())
+        const groupPending = batchPending.get(groupKey)!
+        const items: ThreadColorItem[] = [{ threadTypeId: thread_type_id, threadColorId: batchThreadColorId ?? null }]
+        const quotaResult = await batchGetQuotaConesWithPending(
+          items, po_id, style_id, effectiveColorId, ratio,
+          issue.department || undefined, groupPending
+        )
+        const cKey = compositeKey(thread_type_id, batchThreadColorId ?? null)
+        quotaCones = quotaResult.get(cKey) ?? null
+      }
+
       const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
       const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
 
@@ -2521,6 +2585,14 @@ issuesV2.post('/:id/batch-lines', async (c) => {
           { data: null, error: `Dong ${i + 1}: Vuot dinh muc, yeu cau ghi chu ly do` },
           400
         )
+      }
+
+      if (po_id && style_id && effectiveColorId) {
+        const groupKey = `${po_id}:${style_id}:${effectiveColorId}`
+        const groupPending = batchPending.get(groupKey)!
+        const cKey = compositeKey(thread_type_id, batchThreadColorId ?? null)
+        const prev = groupPending.get(cKey) || 0
+        groupPending.set(cKey, prev + issuedEquivalent)
       }
 
       const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
@@ -2723,7 +2795,7 @@ issuesV2.post('/:id/lines', async (c) => {
     // Get quota
     // Get partial cone ratio and calculate issued equivalent
     const ratio = await getPartialConeRatio()
-    const addLineThreadColorId = thread_color_id ?? await lookupThreadColorId(thread_type_id, effectiveColorId)
+    const addLineThreadColorId = thread_color_id !== undefined ? thread_color_id : await lookupThreadColorId(thread_type_id, effectiveColorId)
     const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio, issue.department, addLineThreadColorId)
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
@@ -3040,8 +3112,11 @@ issuesV2.get('/:id', async (c) => {
     const allColorIds = new Set<number>()
     for (const line of lines || []) {
       const tcKey = `${(line as any).thread_type_id}-${(line as any).style_color_id || (line as any).color_id}`
-      const tcId = threadColorMap.get(tcKey)
-      if (tcId) allColorIds.add(tcId)
+      const tcIds = threadColorMap.get(tcKey)
+      if (tcIds) {
+        for (const id of tcIds) allColorIds.add(id)
+      }
+      if ((line as any).thread_color_id) allColorIds.add((line as any).thread_color_id)
     }
     const colorNameMap = new Map<number, string>()
     if (allColorIds.size > 0) {
@@ -3065,7 +3140,8 @@ issuesV2.get('/:id', async (c) => {
       const isOverQuota = line.quota_cones !== null && issuedEquivalent > line.quota_cones
       const lineColorId = line.style_color_id || line.color_id
       const tcKey = `${line.thread_type_id}-${lineColorId}`
-      const lineThreadColorId = threadColorMap.get(tcKey)
+      const lookupColors = threadColorMap.get(tcKey)
+      const lineThreadColorId = line.thread_color_id !== undefined ? line.thread_color_id : lookupColors?.[0]
       const wKey = `${line.po_id}-${line.style_id}-${lineColorId}`
       const lineWeekIds = weekIdsMap.get(wKey) ?? []
       const detectedWarehouseId = detectWarehouseFromData(line.thread_type_id, lineWeekIds, lineThreadColorId, inventoryData)
@@ -3432,7 +3508,7 @@ issuesV2.post('/:id/confirm', async (c) => {
       const weekIds = await findConfirmedWeekIds(line.po_id, line.style_id, lineColorId)
       weekIdsMap.set(line.id, weekIds)
 
-      const tcId = line.thread_color_id ?? await lookupThreadColorId(line.thread_type_id, lineColorId)
+      const tcId = line.thread_color_id !== undefined ? line.thread_color_id : await lookupThreadColorId(line.thread_type_id, lineColorId)
       threadColorIdMap.set(line.id, tcId)
     }
 
@@ -3447,17 +3523,51 @@ issuesV2.post('/:id/confirm', async (c) => {
       return whId
     }
 
+    const quotaGroups = new Map<string, typeof lines>()
     for (const line of lines) {
-      const issuedEquivalent = calculateIssuedEquivalent(line.issued_full, line.issued_partial, ratio)
-      const isOverQuota = line.quota_cones !== null && issuedEquivalent > line.quota_cones
+      const groupKey = `${line.po_id}:${line.style_id}:${line.style_color_id || line.color_id}:${issue.department || ''}`
+      const group = quotaGroups.get(groupKey) || []
+      group.push(line)
+      quotaGroups.set(groupKey, group)
+    }
 
-      if (isOverQuota && !line.over_quota_notes?.trim()) {
-        const { data: threadType } = await supabase
-          .from('thread_types')
-          .select('name')
-          .eq('id', line.thread_type_id)
-          .single()
-        errors.push(`${threadType?.name || 'Loai chi'}: Vuot dinh muc nhung chua co ghi chu`)
+    const quotaSnapshotMap = new Map<number, number | null>()
+    for (const [, groupLines] of quotaGroups) {
+      const firstLine = groupLines[0]
+      const groupColorId = firstLine.style_color_id || firstLine.color_id
+      if (!firstLine.po_id || !firstLine.style_id || !groupColorId) {
+        for (const line of groupLines) quotaSnapshotMap.set(line.id, null)
+        continue
+      }
+
+      const pendingConsumption = new Map<string, number>()
+      for (const line of groupLines) {
+        const tcId = threadColorIdMap.get(line.id) ?? null
+        const items: ThreadColorItem[] = [{ threadTypeId: line.thread_type_id, threadColorId: tcId ?? null }]
+        const quotaResult = await batchGetQuotaConesWithPending(
+          items, firstLine.po_id, firstLine.style_id, groupColorId, ratio,
+          issue.department || undefined, pendingConsumption
+        )
+        const key = compositeKey(line.thread_type_id, tcId ?? null)
+        const adjustedQuota = quotaResult.get(key) ?? null
+        quotaSnapshotMap.set(line.id, adjustedQuota)
+
+        const issuedEquivalent = calculateIssuedEquivalent(line.issued_full, line.issued_partial, ratio)
+        const isOverQuota = adjustedQuota !== null && issuedEquivalent > adjustedQuota
+
+        if (isOverQuota && !line.over_quota_notes?.trim()) {
+          const { data: threadType } = await supabase
+            .from('thread_types')
+            .select('name')
+            .eq('id', line.thread_type_id)
+            .single()
+          errors.push(`${threadType?.name || 'Loai chi'}: Vuot dinh muc nhung chua co ghi chu`)
+        }
+
+        if (!isOverQuota || line.over_quota_notes?.trim()) {
+          const prev = pendingConsumption.get(key) || 0
+          pendingConsumption.set(key, prev + issuedEquivalent)
+        }
       }
     }
 
@@ -3559,6 +3669,16 @@ issuesV2.post('/:id/confirm', async (c) => {
           },
           400
         )
+      }
+    }
+
+    for (const line of lines) {
+      const adjustedQuota = quotaSnapshotMap.get(line.id)
+      if (adjustedQuota !== undefined && adjustedQuota !== line.quota_cones) {
+        await supabase
+          .from('thread_issue_lines')
+          .update({ quota_cones: adjustedQuota })
+          .eq('id', line.id)
       }
     }
 

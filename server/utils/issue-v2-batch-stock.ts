@@ -96,14 +96,14 @@ export async function batchGetStockBreakdownByWarehouse(
           .in('thread_type_id', uniqueIds)
           .eq('status', 'RESERVED_FOR_ORDER')
           .in('reserved_week_id', weekIds)
-          .limit(10000)
+          .limit(1000000)
       : Promise.resolve({ data: [] as any[] }),
     supabase
       .from('thread_inventory')
       .select('thread_type_id, color_id, warehouse_id, is_partial, warehouses!inner(name)')
       .in('thread_type_id', uniqueIds)
       .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-      .limit(10000),
+      .limit(1000000),
   ])
 
   const allCones = [...(reservedResult.data || []), ...(freeResult.data || [])]

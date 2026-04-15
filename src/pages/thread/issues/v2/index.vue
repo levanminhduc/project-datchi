@@ -468,20 +468,17 @@ function fillRemainingAllocation() {
 }
 
 const isValidating = ref(false)
-let validatingCount = 0
 
 const debouncedValidate = useDebounceFn(async (colorId: number, threadTypeId: number, threadColorId?: number | null) => {
   const key = ttKey(colorId, threadTypeId, threadColorId)
   const input = lineInputs.value[key]
   if (!input) {
-    validatingCount = Math.max(0, validatingCount - 1)
-    if (validatingCount === 0) isValidating.value = false
+    isValidating.value = false
     return
   }
   if (input.full === 0 && input.partial === 0) {
     input.validation = null
-    validatingCount = Math.max(0, validatingCount - 1)
-    if (validatingCount === 0) isValidating.value = false
+    isValidating.value = false
     return
   }
 
@@ -504,13 +501,11 @@ const debouncedValidate = useDebounceFn(async (colorId: number, threadTypeId: nu
       input.validation = result
     }
   } finally {
-    validatingCount = Math.max(0, validatingCount - 1)
-    if (validatingCount === 0) isValidating.value = false
+    isValidating.value = false
   }
 }, 300)
 
 function handleQuantityChange(colorId: number, threadTypeId: number, threadColorId?: number | null) {
-  validatingCount++
   isValidating.value = true
   debouncedValidate(colorId, threadTypeId, threadColorId)
 }

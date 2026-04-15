@@ -155,6 +155,31 @@ export async function batchGetBaseQuotaCones(
   return computeQuotaPerItem(items, totalQty, specs, types, styleId, new Map())
 }
 
+export async function batchGetQuotaConesWithPending(
+  items: ThreadColorItem[],
+  poId: number,
+  styleId: number,
+  colorId: number,
+  ratio: number,
+  department?: string,
+  pendingConsumption?: Map<string, number>
+): Promise<Map<string, number | null>> {
+  const baseResult = await batchGetQuotaCones(items, poId, styleId, colorId, ratio, department)
+
+  if (!pendingConsumption || pendingConsumption.size === 0) return baseResult
+
+  const adjusted = new Map<string, number | null>()
+  for (const [key, quota] of baseResult) {
+    if (quota === null) {
+      adjusted.set(key, null)
+      continue
+    }
+    const pending = pendingConsumption.get(key) || 0
+    adjusted.set(key, Math.max(0, roundToTwoDecimals(quota - pending)))
+  }
+  return adjusted
+}
+
 export async function batchGetQuotaCones(
   items: ThreadColorItem[],
   poId: number,
@@ -175,7 +200,7 @@ export async function batchGetQuotaCones(
       .eq('department', department).is('deleted_at', null).maybeSingle()
 
     if (allocation) {
-      const [{ specs, types }, issuedResult] = await Promise.all([
+      const [{ specs, types }, issuedResult, globalIssuedResult, globalOrderResult] = await Promise.all([
         fetchSpecsAndTypes(threadTypeIds, colorId),
         supabase
           .from('thread_issue_lines')
@@ -184,12 +209,46 @@ export async function batchGetQuotaCones(
           .in('thread_type_id', threadTypeIds)
           .eq('thread_issues.status', 'CONFIRMED').eq('thread_issues.department', department)
           .limit(10000),
+        supabase
+          .from('thread_issue_lines')
+          .select('thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status)')
+          .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
+          .in('thread_type_id', threadTypeIds)
+          .eq('thread_issues.status', 'CONFIRMED')
+          .limit(10000),
+        supabase
+          .from('thread_order_items')
+          .select('quantity, thread_order_weeks!inner(status)')
+          .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
+          .eq('thread_order_weeks.status', 'CONFIRMED').limit(10000),
       ])
+
       const issuedByKey = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
-      return computeQuotaPerItem(items, allocation.product_quantity, specs, types, styleId, issuedByKey)
+      const deptResult = computeQuotaPerItem(items, allocation.product_quantity, specs, types, styleId, issuedByKey)
+
+      const globalTotalQty = (globalOrderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+      if (globalTotalQty <= 0) {
+        const r = new Map<string, number | null>()
+        for (const item of items) r.set(compositeKey(item.threadTypeId, item.threadColorId), null)
+        return r
+      }
+
+      const globalIssuedByKey = buildIssuedMap((globalIssuedResult.data || []) as any[], ratio, true)
+      const globalResult = computeQuotaPerItem(items, globalTotalQty, specs, types, styleId, globalIssuedByKey)
+
+      const clamped = new Map<string, number | null>()
+      for (const [key, deptQuota] of deptResult) {
+        const globalQuota = globalResult.get(key)
+        if (deptQuota === null || globalQuota === null || globalQuota === undefined) {
+          clamped.set(key, null)
+        } else {
+          clamped.set(key, roundToTwoDecimals(Math.min(deptQuota, globalQuota)))
+        }
+      }
+      return clamped
     }
 
-    const [totalAllocated, orderResult, { specs, types }, issuedResult] = await Promise.all([
+    const [totalAllocated, orderResult, { specs, types }, issuedResult, globalIssuedResult] = await Promise.all([
       getTotalAllocatedQty(poId, styleId, colorId),
       supabase
         .from('thread_order_items')
@@ -204,6 +263,13 @@ export async function batchGetQuotaCones(
         .in('thread_type_id', threadTypeIds)
         .eq('thread_issues.status', 'CONFIRMED').eq('thread_issues.department', department)
         .limit(10000),
+      supabase
+        .from('thread_issue_lines')
+        .select('thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status)')
+        .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
+        .in('thread_type_id', threadTypeIds)
+        .eq('thread_issues.status', 'CONFIRMED')
+        .limit(10000),
     ])
 
     const globalTotal = (orderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
@@ -213,8 +279,23 @@ export async function batchGetQuotaCones(
       for (const item of items) r.set(compositeKey(item.threadTypeId, item.threadColorId), null)
       return r
     }
+
     const issuedByKey = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
-    return computeQuotaPerItem(items, remaining, specs, types, styleId, issuedByKey)
+    const deptResult = computeQuotaPerItem(items, remaining, specs, types, styleId, issuedByKey)
+
+    const globalIssuedByKey = buildIssuedMap((globalIssuedResult.data || []) as any[], ratio, true)
+    const globalResult = computeQuotaPerItem(items, globalTotal, specs, types, styleId, globalIssuedByKey)
+
+    const clamped = new Map<string, number | null>()
+    for (const [key, deptQuota] of deptResult) {
+      const globalQuota = globalResult.get(key)
+      if (deptQuota === null || globalQuota === null || globalQuota === undefined) {
+        clamped.set(key, null)
+      } else {
+        clamped.set(key, roundToTwoDecimals(Math.min(deptQuota, globalQuota)))
+      }
+    }
+    return clamped
   }
 
   const [orderResult, { specs, types }, issuedResult] = await Promise.all([
