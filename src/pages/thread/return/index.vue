@@ -63,8 +63,8 @@ async function handleGroupReturn(
     return
   }
   const confirmed = await confirmWarning(
-    'Xác nhận trả kho',
-    `Trả kho cho nhóm ${selectedGroup.value.po_number} / ${selectedGroup.value.style_code} / ${selectedGroup.value.color_name}?`
+    `Trả kho cho nhóm ${selectedGroup.value.po_number} / ${selectedGroup.value.style_code} / ${selectedGroup.value.color_name}?`,
+    'Xác nhận trả kho'
   )
   if (!confirmed) return
   await submitGroupedReturn(selectedGroup.value, lines)
