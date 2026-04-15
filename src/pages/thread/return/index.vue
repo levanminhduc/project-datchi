@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 import { useRouter } from 'vue-router'
 import { issueV2Service } from '@/services/issueV2Service'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useLoading } from '@/composables/useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
-import type { IssueV2WithSummary, ReturnListFilters } from '@/types/thread/issueV2'
+import type { IssueV2WithSummary, ReturnListFilters, ReturnGroup } from '@/types/thread/issueV2'
 import type { QTableColumn, QTableProps } from 'quasar'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
@@ -14,6 +14,11 @@ import DataTable from '@/components/ui/tables/DataTable.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
 import { dateRules } from '@/utils'
+import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
+import ReturnGroupCard from '@/components/thread/ReturnGroupCard.vue'
+import ReturnGroupDetail from '@/components/thread/ReturnGroupDetail.vue'
+import { useReturnV2 } from '@/composables/thread/useReturnV2'
+import { useConfirm } from '@/composables/useConfirm'
 
 definePage({
   meta: {
@@ -25,6 +30,45 @@ definePage({
 const router = useRouter()
 const snackbar = useSnackbar()
 const loading = useLoading()
+
+const viewMode = ref<'by-issue' | 'by-group'>('by-issue')
+
+const {
+  returnGroups,
+  selectedGroup,
+  isLoading: isGroupLoading,
+  loadReturnGroups,
+  selectGroup,
+  submitGroupedReturn,
+  validateReturnQuantities,
+} = useReturnV2()
+
+const { confirmWarning } = useConfirm()
+
+async function handleSelectGroup(group: ReturnGroup) {
+  selectGroup(group)
+}
+
+function handleCancelGroup() {
+  selectGroup(null)
+}
+
+async function handleGroupReturn(
+  lines: { thread_type_id: number; returned_full: number; returned_partial: number }[]
+) {
+  if (!selectedGroup.value) return
+  const { valid, errors } = validateReturnQuantities(lines, selectedGroup.value.threads)
+  if (!valid) {
+    snackbar.error(errors[0] ?? 'Số lượng trả không hợp lệ')
+    return
+  }
+  const confirmed = await confirmWarning(
+    'Xác nhận trả kho',
+    `Trả kho cho nhóm ${selectedGroup.value.po_number} / ${selectedGroup.value.style_code} / ${selectedGroup.value.color_name}?`
+  )
+  if (!confirmed) return
+  await submitGroupedReturn(selectedGroup.value, lines)
+}
 
 const issues = ref<IssueV2WithSummary[]>([])
 const total = ref(0)
@@ -108,6 +152,13 @@ watchDebounced(
   },
   { debounce: 400, maxWait: 2000, deep: true, immediate: true }
 )
+
+watch(viewMode, (mode) => {
+  if (mode === 'by-group') {
+    selectGroup(null)
+    loadReturnGroups()
+  }
+})
 </script>
 
 <template>
@@ -115,129 +166,194 @@ watchDebounced(
     <PageHeader
       title="Trả Kho"
       subtitle="Chọn phiếu xuất đã xác nhận để trả chỉ về kho"
-    />
-
-    <q-card
-      flat
-      bordered
-      class="q-mb-lg"
     >
-      <q-card-section>
-        <div class="row items-end q-col-gutter-md">
-          <div class="col-12 col-sm-6 col-md-4">
-            <AppInput
-              v-model="localFilters.search"
-              label="Tìm kiếm"
-              placeholder="PO, Style, SubArt, Màu... (≥2 ký tự)"
-              dense
-              clearable
-              hide-bottom-space
-              @keyup.enter="handleSearch"
-            >
-              <template #prepend>
-                <q-icon name="search" />
-              </template>
-            </AppInput>
-          </div>
+      <template #actions>
+        <ButtonToggle
+          v-model="viewMode"
+          :options="[
+            { label: 'Theo phiếu', value: 'by-issue' },
+            { label: 'Theo nhóm', value: 'by-group' },
+          ]"
+          toggle-color="orange"
+          dense
+          size="sm"
+        />
+      </template>
+    </PageHeader>
 
-          <div class="col-12 col-sm-6 col-md-4">
-            <AppInput
-              v-model="localFilters.from"
-              label="Từ ngày"
-              placeholder="DD/MM/YYYY"
-              :rules="[dateRules.date]"
-              dense
-              clearable
-              hide-bottom-space
-            >
-              <template #append>
-                <q-icon
-                  name="event"
-                  class="cursor-pointer"
-                >
-                  <q-popup-proxy
-                    cover
-                    transition-show="scale"
-                    transition-hide="scale"
-                  >
-                    <DatePicker v-model="localFilters.from" />
-                  </q-popup-proxy>
-                </q-icon>
-              </template>
-            </AppInput>
-          </div>
+    <!-- === Tab: Theo phiếu (existing) === -->
+    <template v-if="viewMode === 'by-issue'">
+      <q-card
+        flat
+        bordered
+        class="q-mb-lg"
+      >
+        <q-card-section>
+          <div class="row items-end q-col-gutter-md">
+            <div class="col-12 col-sm-6 col-md-4">
+              <AppInput
+                v-model="localFilters.search"
+                label="Tìm kiếm"
+                placeholder="PO, Style, SubArt, Màu... (≥2 ký tự)"
+                dense
+                clearable
+                hide-bottom-space
+                @keyup.enter="handleSearch"
+              >
+                <template #prepend>
+                  <q-icon name="search" />
+                </template>
+              </AppInput>
+            </div>
 
-          <div class="col-12 col-sm-6 col-md-4">
-            <AppInput
-              v-model="localFilters.to"
-              label="Đến ngày"
-              placeholder="DD/MM/YYYY"
-              :rules="[dateRules.date]"
-              dense
-              clearable
-              hide-bottom-space
-            >
-              <template #append>
-                <q-icon
-                  name="event"
-                  class="cursor-pointer"
-                >
-                  <q-popup-proxy
-                    cover
-                    transition-show="scale"
-                    transition-hide="scale"
+            <div class="col-12 col-sm-6 col-md-4">
+              <AppInput
+                v-model="localFilters.from"
+                label="Từ ngày"
+                placeholder="DD/MM/YYYY"
+                :rules="[dateRules.date]"
+                dense
+                clearable
+                hide-bottom-space
+              >
+                <template #append>
+                  <q-icon
+                    name="event"
+                    class="cursor-pointer"
                   >
-                    <DatePicker v-model="localFilters.to" />
-                  </q-popup-proxy>
-                </q-icon>
-              </template>
-            </AppInput>
+                    <q-popup-proxy
+                      cover
+                      transition-show="scale"
+                      transition-hide="scale"
+                    >
+                      <DatePicker v-model="localFilters.from" />
+                    </q-popup-proxy>
+                  </q-icon>
+                </template>
+              </AppInput>
+            </div>
+
+            <div class="col-12 col-sm-6 col-md-4">
+              <AppInput
+                v-model="localFilters.to"
+                label="Đến ngày"
+                placeholder="DD/MM/YYYY"
+                :rules="[dateRules.date]"
+                dense
+                clearable
+                hide-bottom-space
+              >
+                <template #append>
+                  <q-icon
+                    name="event"
+                    class="cursor-pointer"
+                  >
+                    <q-popup-proxy
+                      cover
+                      transition-show="scale"
+                      transition-hide="scale"
+                    >
+                      <DatePicker v-model="localFilters.to" />
+                    </q-popup-proxy>
+                  </q-icon>
+                </template>
+              </AppInput>
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <DataTable
+        v-model:pagination="pagination"
+        :rows="issues"
+        :columns="columns"
+        :loading="loading.isLoading.value"
+        row-key="id"
+        empty-icon="assignment_return"
+        empty-title="Chưa có phiếu xuất nào đã xác nhận"
+        empty-subtitle="Phiếu xuất cần được xác nhận trước khi trả kho"
+        class="return-table"
+        @request="handleRequest"
+        @row-click="handleRowClick"
+      >
+        <template #body-cell-order_info="props">
+          <q-td :props="props">
+            <span v-if="props.row.po_number">
+              {{ props.row.po_number }} / {{ props.row.style_code || '-' }}
+              <template v-if="props.row.sub_art_code"> / {{ props.row.sub_art_code }}</template>
+            </span>
+            <span v-else>-</span>
+          </q-td>
+        </template>
+
+        <template #body-cell-colors="props">
+          <q-td :props="props">
+            {{ props.row.color_names?.join(', ') || '-' }}
+          </q-td>
+        </template>
+
+        <template #body-cell-status="props">
+          <q-td :props="props">
+            <IssueV2StatusBadge :status="props.row.status" />
+          </q-td>
+        </template>
+
+        <template #body-cell-created_at="props">
+          <q-td :props="props">
+            {{ formatDate(props.row.created_at) }}
+          </q-td>
+        </template>
+      </DataTable>
+    </template>
+
+    <!-- === Tab: Theo nhóm (new) === -->
+    <template v-else>
+      <ReturnGroupDetail
+        v-if="selectedGroup"
+        :group="selectedGroup"
+        :loading="isGroupLoading"
+        @submit="handleGroupReturn"
+        @cancel="handleCancelGroup"
+      />
+
+      <template v-else>
+        <div
+          v-if="isGroupLoading"
+          class="row justify-center q-py-xl"
+        >
+          <q-spinner-dots
+            size="50px"
+            color="primary"
+          />
+        </div>
+
+        <div
+          v-else-if="returnGroups.length === 0"
+          class="text-center q-py-xl"
+        >
+          <q-icon
+            name="check_circle"
+            size="64px"
+            color="positive"
+          />
+          <div class="text-h6 q-mt-md text-grey-7">
+            Không có nhóm nào cần trả
+          </div>
+          <div class="text-body2 text-grey-6">
+            Tất cả phiếu xuất đã được trả đầy đủ
           </div>
         </div>
-      </q-card-section>
-    </q-card>
 
-    <DataTable
-      v-model:pagination="pagination"
-      :rows="issues"
-      :columns="columns"
-      :loading="loading.isLoading.value"
-      row-key="id"
-      empty-icon="assignment_return"
-      empty-title="Chưa có phiếu xuất nào đã xác nhận"
-      empty-subtitle="Phiếu xuất cần được xác nhận trước khi trả kho"
-      class="return-table"
-      @request="handleRequest"
-      @row-click="handleRowClick"
-    >
-      <template #body-cell-order_info="props">
-        <q-td :props="props">
-          <span v-if="props.row.po_number">
-            {{ props.row.po_number }} / {{ props.row.style_code || '-' }}
-            <template v-if="props.row.sub_art_code"> / {{ props.row.sub_art_code }}</template>
-          </span>
-          <span v-else>-</span>
-        </q-td>
+        <div v-else>
+          <ReturnGroupCard
+            v-for="group in returnGroups"
+            :key="group.group_key"
+            :group="group"
+            @select="handleSelectGroup"
+          />
+        </div>
       </template>
-
-      <template #body-cell-colors="props">
-        <q-td :props="props">
-          {{ props.row.color_names?.join(', ') || '-' }}
-        </q-td>
-      </template>
-
-      <template #body-cell-status="props">
-        <q-td :props="props">
-          <IssueV2StatusBadge :status="props.row.status" />
-        </q-td>
-      </template>
-
-      <template #body-cell-created_at="props">
-        <q-td :props="props">
-          {{ formatDate(props.row.created_at) }}
-        </q-td>
-      </template>
-    </DataTable>
+    </template>
   </q-page>
 </template>
 
