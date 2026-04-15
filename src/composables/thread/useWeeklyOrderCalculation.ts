@@ -417,7 +417,7 @@ export function useWeeklyOrderCalculation() {
    * Falls back to N parallel requests if batch fails
    * @param currentWeekId - Optional week ID to exclude from committed cones calculation
    */
-  const calculateAll = async (currentWeekId?: number) => {
+  const calculateAll = async (currentWeekId?: number, warehouseIds?: number[]) => {
     isCalculating.value = true
     calculationErrors.value = []
     calculationWarnings.value = []
@@ -468,7 +468,7 @@ export function useWeeklyOrderCalculation() {
 
     // Enrich with inventory data
     try {
-      const enriched = await weeklyOrderService.enrichInventory(aggregatedResults.value, currentWeekId)
+      const enriched = await weeklyOrderService.enrichInventory(aggregatedResults.value, currentWeekId, warehouseIds)
       aggregatedResults.value = enriched
     } catch (err) {
       console.warn('[weekly-order] enrich inventory failed, using unenriched data:', err)
