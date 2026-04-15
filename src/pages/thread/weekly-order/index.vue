@@ -155,6 +155,35 @@
         Dữ liệu đã thay đổi, cần tính lại
       </span>
       <q-space />
+      <div class="col-12 col-sm-4 col-md-3">
+        <AppSelect
+          v-model="selectedWarehouseIds"
+          :options="warehouseFilterOptions"
+          label="Lọc kho tồn"
+          dense
+          outlined
+          multiple
+          clearable
+          use-chips
+          emit-value
+          map-options
+          use-input
+          fill-input
+          hide-selected
+          hide-bottom-space
+          :loading="warehousesLoading"
+          @update:model-value="handleWarehouseFilterChange"
+        >
+          <template #before-options>
+            <q-item dense>
+              <q-item-section class="text-caption text-grey">
+                Không chọn = tất cả kho
+              </q-item-section>
+            </q-item>
+            <q-separator />
+          </template>
+        </AppSelect>
+      </div>
       <span
         v-if="isCalculating"
         class="text-caption text-grey"
@@ -309,6 +338,7 @@ import {
   usePurchaseOrders,
   useSnackbar,
   useConfirm,
+  useWarehouses,
 } from '@/composables'
 import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
@@ -375,6 +405,7 @@ const {
   mergeDeliveryDateOverrides,
   reorderResults,
   fetchOrderedQuantities,
+  lastModifiedAt,
 } = useWeeklyOrderCalculation()
 
 const {
@@ -382,6 +413,12 @@ const {
   isLoading: posLoading,
   fetchAllPurchaseOrders,
 } = usePurchaseOrders()
+
+const {
+  storageOptions: warehouseFilterOptions,
+  fetchWarehouses,
+  loading: warehousesLoading,
+} = useWarehouses()
 
 // Default delivery date = today + 7 days
 function getDefaultDeliveryDate(): string {
@@ -410,6 +447,7 @@ const confirmSteps = reactive<ConfirmStep[]>([
 ])
 const resultsSaved = ref(false)
 const manualDeliveryDateEdits = ref(new Set<string>())
+const selectedWarehouseIds = ref<number[]>([])
 
 watch(deliveryDate, (newDate) => {
   if (!newDate || !aggregatedResults.value.length) return
@@ -566,6 +604,21 @@ const handleUpdateQuotaCones = async (threadTypeId: number, value: number) => {
   }, 500)
 }
 
+const handleWarehouseFilterChange = async (ids: number[]) => {
+  if (selectedWeek.value?.id && selectedWeek.value.status === 'DRAFT') {
+    try {
+      await weeklyOrderService.saveWarehouseFilter(selectedWeek.value.id, ids || [])
+    } catch (err) {
+      snackbar.error('Lưu bộ lọc kho thất bại')
+      console.warn('Failed to save warehouse filter:', err)
+    }
+  }
+
+  if (hasResults.value) {
+    lastModifiedAt.value = Date.now()
+  }
+}
+
 const handleCalculate = async () => {
   const snapshot = new Map<string, { additional_order: number; quota_cones: number; delivery_date: string | null }>(
     aggregatedResults.value
@@ -582,7 +635,10 @@ const handleCalculate = async () => {
 
   resultsSaved.value = false
   manualDeliveryDateEdits.value.clear()
-  await calculateAll(selectedWeek.value?.id)
+  await calculateAll(
+    selectedWeek.value?.id,
+    selectedWarehouseIds.value.length > 0 ? selectedWarehouseIds.value : undefined,
+  )
   applyDeliveryDateToResults()
 
   for (const row of aggregatedResults.value) {
@@ -702,6 +758,7 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
     resultsSaved.value = false
     manualDeliveryDateEdits.value = new Set()
     selectedWeek.value = null
+    selectedWarehouseIds.value = []
 
     await Promise.all([fetchAllPurchaseOrders(), fetchWeeks()])
 
@@ -719,6 +776,14 @@ const handleLoadWeek = async (weekId: number) => {
   weekName.value = week.week_name
   deliveryDate.value = week.start_date || getDefaultDeliveryDate()
   notes.value = week.notes || ''
+
+  if (selectedWeek.value?.id) {
+    try {
+      selectedWarehouseIds.value = await weeklyOrderService.getWarehouseFilter(selectedWeek.value.id)
+    } catch {
+      selectedWarehouseIds.value = []
+    }
+  }
 
   if (week.items && week.items.length > 0) {
     setFromWeekItems(week.items)
@@ -917,6 +982,7 @@ const handleConfirmWeek = async () => {
   resultsSaved.value = false
   manualDeliveryDateEdits.value = new Set()
   selectedWeek.value = null
+  selectedWarehouseIds.value = []
 
   await fetchAllPurchaseOrders()
 
@@ -929,6 +995,6 @@ const handleExport = () => exportOrderResults(aggregatedResults.value, weekName.
 
 // Lifecycle
 onMounted(async () => {
-  await Promise.all([fetchAllPurchaseOrders(), fetchWeeks()])
+  await Promise.all([fetchAllPurchaseOrders(), fetchWeeks(), fetchWarehouses()])
 })
 </script>
