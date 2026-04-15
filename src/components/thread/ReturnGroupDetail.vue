@@ -30,7 +30,7 @@ function resetInputs() {
   }))
 }
 
-watch(() => props.group.group_key, resetInputs, { immediate: true })
+watch(() => props.group, resetInputs, { immediate: true })
 
 const hasInput = computed(() =>
   inputs.value.some((i) => i.returned_full > 0 || i.returned_partial > 0)
@@ -40,6 +40,7 @@ function fillAll() {
   for (const input of inputs.value) {
     const thread = props.group.threads.find((t) => t.thread_type_id === input.thread_type_id)
     if (!thread) continue
+    if (thread.outstanding_full + thread.outstanding_partial <= 0) continue
     input.returned_full = thread.outstanding_full
     input.returned_partial = thread.outstanding_partial
   }
