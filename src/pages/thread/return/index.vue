@@ -44,6 +44,19 @@ const {
 
 const { confirmWarning } = useConfirm()
 
+const groupSearch = ref('')
+
+const filteredReturnGroups = computed(() => {
+  const q = groupSearch.value.trim().toLowerCase()
+  if (!q) return returnGroups.value
+  return returnGroups.value.filter(
+    (g) =>
+      g.po_number.toLowerCase().includes(q) ||
+      g.style_code.toLowerCase().includes(q) ||
+      g.color_name.toLowerCase().includes(q),
+  )
+})
+
 async function handleSelectGroup(group: ReturnGroup) {
   selectGroup(group)
 }
@@ -350,14 +363,34 @@ watch(viewMode, (mode) => {
           </div>
         </div>
 
-        <div v-else>
+        <template v-else>
+          <div class="row q-mb-md">
+            <div class="col-12 col-sm-6 col-md-4">
+              <AppInput
+                v-model="groupSearch"
+                label="Tìm kiếm theo PO/Style/SubArt/Màu Hàng"
+                dense
+                clearable
+                hide-bottom-space
+              >
+                <template #prepend>
+                  <q-icon name="filter_list" />
+                </template>
+              </AppInput>
+            </div>
+          </div>
+
+          <div v-if="filteredReturnGroups.length === 0" class="text-center q-py-lg text-grey-6">
+            Không tìm thấy nhóm phù hợp
+          </div>
+
           <ReturnGroupCard
-            v-for="group in returnGroups"
+            v-for="group in filteredReturnGroups"
             :key="group.group_key"
             :group="group"
             @select="handleSelectGroup"
           />
-        </div>
+        </template>
       </template>
     </template>
   </q-page>

@@ -12,11 +12,8 @@ defineEmits<{
 
 function formatThreadSummary(t: ReturnGroupThread): string {
   const outstanding = t.outstanding_full + t.outstanding_partial
-  if (outstanding <= 0) return `${t.thread_code} — đã trả hết`
-  const parts: string[] = []
-  if (t.outstanding_full > 0) parts.push(`${t.outstanding_full} ng`)
-  if (t.outstanding_partial > 0) parts.push(`${t.outstanding_partial} lẻ`)
-  return `${t.thread_code} — còn ${parts.join(' + ')}`
+  if (outstanding <= 0) return `${t.thread_name} — đã trả hết`
+  return `${t.thread_name} — ${outstanding} cuộn`
 }
 
 function getTotalOutstanding(group: ReturnGroup): number {
