@@ -137,21 +137,33 @@ export async function batchGetConfirmedIssuedGross(
   poId: number,
   styleId: number,
   colorId: number,
-  ratio: number
+  ratio: number,
+  department?: string
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>()
   if (items.length === 0) return result
 
   const threadTypeIds = [...new Set(items.map((i) => i.threadTypeId))]
-  const { data, error } = await supabase
+
+  let query = supabase
     .from('thread_issue_lines')
-    .select('thread_type_id, thread_color_id, issued_full, issued_partial, thread_issues!inner(status)')
+    .select(
+      department
+        ? 'thread_type_id, thread_color_id, issued_full, issued_partial, thread_issues!inner(status, department)'
+        : 'thread_type_id, thread_color_id, issued_full, issued_partial, thread_issues!inner(status)'
+    )
     .eq('po_id', poId)
     .eq('style_id', styleId)
     .eq('style_color_id', colorId)
     .in('thread_type_id', threadTypeIds)
     .eq('thread_issues.status', 'CONFIRMED')
     .limit(10000)
+
+  if (department) {
+    query = query.eq('thread_issues.department', department)
+  }
+
+  const { data, error } = await query
 
   if (error || !data) return result
 

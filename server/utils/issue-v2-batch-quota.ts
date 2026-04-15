@@ -81,15 +81,61 @@ async function fetchSpecsAndTypes(threadTypeIds: number[], colorId: number) {
   return { specs: specsResult.data || [], types: typesResult.data || [] }
 }
 
+async function getTotalAllocatedQty(
+  poId: number, styleId: number, colorId: number
+): Promise<number> {
+  const { data } = await supabase
+    .from('dept_product_allocations')
+    .select('product_quantity')
+    .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
+    .is('deleted_at', null)
+    .limit(1000)
+  return (data || []).reduce((sum: number, a: any) => sum + (a.product_quantity || 0), 0)
+}
+
 export async function batchGetBaseQuotaCones(
   items: ThreadColorItem[],
   poId: number,
   styleId: number,
-  colorId: number
+  colorId: number,
+  department?: string
 ): Promise<Map<string, number | null>> {
   if (items.length === 0) return new Map()
 
   const threadTypeIds = [...new Set(items.map((i) => i.threadTypeId))]
+
+  if (department) {
+    const { data: allocation } = await supabase
+      .from('dept_product_allocations')
+      .select('id, product_quantity')
+      .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
+      .eq('department', department).is('deleted_at', null).maybeSingle()
+
+    if (allocation) {
+      const { specs, types } = await fetchSpecsAndTypes(threadTypeIds, colorId)
+      return computeQuotaPerItem(items, allocation.product_quantity, specs, types, styleId, new Map())
+    }
+
+    const [totalAllocated, orderResult, { specs, types }] = await Promise.all([
+      getTotalAllocatedQty(poId, styleId, colorId),
+      supabase
+        .from('thread_order_items')
+        .select('quantity, thread_order_weeks!inner(status)')
+        .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
+        .eq('thread_order_weeks.status', 'CONFIRMED').limit(10000),
+      fetchSpecsAndTypes(threadTypeIds, colorId),
+    ])
+
+    const globalTotal = (orderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+    const remaining = Math.max(0, globalTotal - totalAllocated)
+    if (remaining <= 0) {
+      const r = new Map<string, number | null>()
+      for (const item of items) r.set(compositeKey(item.threadTypeId, item.threadColorId), null)
+      return r
+    }
+    return computeQuotaPerItem(items, remaining, specs, types, styleId, new Map())
+  }
+
   const [orderResult, { specs, types }] = await Promise.all([
     supabase
       .from('thread_order_items')
@@ -142,6 +188,33 @@ export async function batchGetQuotaCones(
       const issuedByKey = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
       return computeQuotaPerItem(items, allocation.product_quantity, specs, types, styleId, issuedByKey)
     }
+
+    const [totalAllocated, orderResult, { specs, types }, issuedResult] = await Promise.all([
+      getTotalAllocatedQty(poId, styleId, colorId),
+      supabase
+        .from('thread_order_items')
+        .select('quantity, thread_order_weeks!inner(status)')
+        .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
+        .eq('thread_order_weeks.status', 'CONFIRMED').limit(10000),
+      fetchSpecsAndTypes(threadTypeIds, colorId),
+      supabase
+        .from('thread_issue_lines')
+        .select('thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status, department)')
+        .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
+        .in('thread_type_id', threadTypeIds)
+        .eq('thread_issues.status', 'CONFIRMED').eq('thread_issues.department', department)
+        .limit(10000),
+    ])
+
+    const globalTotal = (orderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+    const remaining = Math.max(0, globalTotal - totalAllocated)
+    if (remaining <= 0) {
+      const r = new Map<string, number | null>()
+      for (const item of items) r.set(compositeKey(item.threadTypeId, item.threadColorId), null)
+      return r
+    }
+    const issuedByKey = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
+    return computeQuotaPerItem(items, remaining, specs, types, styleId, issuedByKey)
   }
 
   const [orderResult, { specs, types }, issuedResult] = await Promise.all([

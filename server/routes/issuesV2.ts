@@ -1996,8 +1996,8 @@ issuesV2.post('/stock-refresh', async (c) => {
 
         const [quotaMap, baseQuotaMap, issuedMap] = await Promise.all([
           batchGetQuotaCones(batchItems, po_id, style_id, colorId, ratio, department),
-          batchGetBaseQuotaCones(batchItems, po_id, style_id, colorId),
-          batchGetConfirmedIssuedGross(batchItems, po_id, style_id, colorId, ratio),
+          batchGetBaseQuotaCones(batchItems, po_id, style_id, colorId, department),
+          batchGetConfirmedIssuedGross(batchItems, po_id, style_id, colorId, ratio, department),
         ])
 
         for (const stock of stocks) {
@@ -2110,8 +2110,8 @@ issuesV2.get('/form-data', async (c) => {
 
     const [quotaMap, baseQuotaMap, grossMap, breakdownMap] = await Promise.all([
       batchGetQuotaCones(batchItems, po_id!, style_id!, effectiveColorId!, ratio, department),
-      batchGetBaseQuotaCones(batchItems, po_id!, style_id!, effectiveColorId!),
-      batchGetConfirmedIssuedGross(batchItems, po_id!, style_id!, effectiveColorId!, ratio),
+      batchGetBaseQuotaCones(batchItems, po_id!, style_id!, effectiveColorId!, department),
+      batchGetConfirmedIssuedGross(batchItems, po_id!, style_id!, effectiveColorId!, ratio, department),
       warehouse_id
         ? batchGetStockBreakdownByWarehouse(
             items.map((i) => ({ threadTypeId: i.threadTypeId, colorId: i.threadColorId })),
