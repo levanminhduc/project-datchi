@@ -335,63 +335,69 @@ watch(viewMode, (mode) => {
         @cancel="handleCancelGroup"
       />
 
-      <template v-else>
-        <div
-          v-if="isGroupLoading"
-          class="row justify-center q-py-xl"
-        >
-          <q-spinner-dots
-            size="50px"
-            color="primary"
-          />
-        </div>
-
-        <div
-          v-else-if="returnGroups.length === 0"
-          class="text-center q-py-xl"
-        >
-          <q-icon
-            name="check_circle"
-            size="64px"
-            color="positive"
-          />
-          <div class="text-h6 q-mt-md text-grey-7">
-            Không có nhóm nào cần trả
+      <q-card
+        v-else
+        flat
+        bordered
+      >
+        <q-card-section>
+          <div
+            v-if="isGroupLoading"
+            class="row justify-center q-py-xl"
+          >
+            <q-spinner-dots
+              size="50px"
+              color="primary"
+            />
           </div>
-          <div class="text-body2 text-grey-6">
-            Tất cả phiếu xuất đã được trả đầy đủ
-          </div>
-        </div>
 
-        <template v-else>
-          <div class="row q-mb-md">
-            <div class="col-12 col-sm-6 col-md-4">
-              <AppInput
-                v-model="groupSearch"
-                label="Tìm kiếm theo PO/Style/SubArt/Màu Hàng"
-                dense
-                clearable
-                hide-bottom-space
-              >
-                <template #prepend>
-                  <q-icon name="filter_list" />
-                </template>
-              </AppInput>
+          <div
+            v-else-if="returnGroups.length === 0"
+            class="text-center q-py-xl"
+          >
+            <q-icon
+              name="check_circle"
+              size="64px"
+              color="positive"
+            />
+            <div class="text-h6 q-mt-md text-grey-7">
+              Không có nhóm nào cần trả
+            </div>
+            <div class="text-body2 text-grey-6">
+              Tất cả phiếu xuất đã được trả đầy đủ
             </div>
           </div>
 
-          <div v-if="filteredReturnGroups.length === 0" class="text-center q-py-lg text-grey-6">
-            Không tìm thấy nhóm phù hợp
-          </div>
+          <template v-else>
+            <div class="row q-mb-md">
+              <div class="col-12 col-sm-6 col-md-4">
+                <AppInput
+                  v-model="groupSearch"
+                  label="Tìm kiếm theo PO/Style/SubArt/Màu Hàng"
+                  dense
+                  clearable
+                  hide-bottom-space
+                >
+                  <template #prepend>
+                    <q-icon name="filter_list" />
+                  </template>
+                </AppInput>
+              </div>
+            </div>
 
-          <ReturnGroupCard
-            v-for="group in filteredReturnGroups"
-            :key="group.group_key"
-            :group="group"
-            @select="handleSelectGroup"
-          />
-        </template>
-      </template>
+            <div v-if="filteredReturnGroups.length === 0" class="text-center q-py-lg text-grey-6">
+              Không tìm thấy nhóm phù hợp
+            </div>
+
+            <ReturnGroupCard
+              v-for="group in filteredReturnGroups"
+              :key="group.group_key"
+              :group="group"
+              @select="handleSelectGroup"
+            />
+          </template>
+        </q-card-section>
+      </q-card>
     </template>
   </q-page>
 </template>
