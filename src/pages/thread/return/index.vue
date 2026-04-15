@@ -30,7 +30,7 @@ const router = useRouter()
 const snackbar = useSnackbar()
 const loading = useLoading()
 
-const viewMode = ref<'by-issue' | 'by-group'>('by-issue')
+const viewMode = ref<'by-issue' | 'by-group'>('by-group')
 
 const {
   returnGroups,
@@ -157,7 +157,7 @@ watch(viewMode, (mode) => {
     selectGroup(null)
     loadReturnGroups()
   }
-})
+}, { immediate: true })
 </script>
 
 <template>
@@ -176,14 +176,14 @@ watch(viewMode, (mode) => {
       align="left"
     >
       <q-tab
-        name="by-issue"
-        label="Theo phiếu"
-        icon="receipt_long"
-      />
-      <q-tab
         name="by-group"
         label="Theo nhóm"
         icon="group_work"
+      />
+      <q-tab
+        name="by-issue"
+        label="Theo phiếu"
+        icon="receipt_long"
       />
     </q-tabs>
 
