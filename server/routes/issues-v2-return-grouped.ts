@@ -265,7 +265,7 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
         color_id: g.color_id,
         color_name: g.color_name || '',
         issue_count: g.issue_ids.size,
-        threads: g.thread_types.filter((t) => t.outstanding_full > 0 || t.outstanding_partial > 0),
+        threads: g.thread_types,
       }))
 
     return c.json({ data: groups, error: null })

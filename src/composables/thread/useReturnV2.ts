@@ -4,7 +4,7 @@ import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
-import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
+import { getCacheEntry, setCacheEntry, invalidateCache } from '@/lib/api-cache'
 import type {
   ReturnGroup,
   ReturnGroupThread,
@@ -91,6 +91,7 @@ export function useReturnV2() {
 
       snackbar.success('Đã nhập lại thành công')
 
+      invalidateCache('/api/issues-v2/returns')
       await loadReturnGroups()
       const updatedGroup = returnGroups.value.find((g) => g.group_key === group.group_key)
       selectedGroup.value = updatedGroup || null
