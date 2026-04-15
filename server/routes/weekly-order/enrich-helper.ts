@@ -20,9 +20,14 @@ type EnrichedRow = SummaryRow & {
 export async function enrichWithInventory(
   summaryRows: SummaryRow[],
   currentWeekId?: number,
-  options?: { preserveAdditionalOrder?: boolean },
+  options?: { preserveAdditionalOrder?: boolean; warehouseIds?: number[] },
 ): Promise<EnrichedRow[]> {
   if (!summaryRows || summaryRows.length === 0) return []
+
+  const warehouseIdsParam =
+    options?.warehouseIds && options.warehouseIds.length > 0
+      ? options.warehouseIds
+      : null
 
   const partialConeRatio = await getPartialConeRatio()
 
@@ -69,10 +74,11 @@ export async function enrichWithInventory(
 
   if (uniqueColoredTypeIds.length > 0 && uniqueColoredColorIds.length > 0) {
     const { data: coloredCounts, error: coloredError } = await supabase.rpc(
-      'fn_count_colored_cones',
+      'fn_count_colored_cones_v2',
       {
         p_thread_type_ids: uniqueColoredTypeIds,
         p_color_ids: uniqueColoredColorIds,
+        p_warehouse_ids: warehouseIdsParam,
       },
     )
 
@@ -99,8 +105,11 @@ export async function enrichWithInventory(
 
   if (uniqueNonColoredTypeIds.length > 0) {
     const { data: inventoryCounts, error: invError } = await supabase.rpc(
-      'fn_count_available_cones',
-      { p_thread_type_ids: uniqueNonColoredTypeIds },
+      'fn_count_available_cones_v2',
+      {
+        p_thread_type_ids: uniqueNonColoredTypeIds,
+        p_warehouse_ids: warehouseIdsParam,
+      },
     )
 
     if (invError) throw invError
