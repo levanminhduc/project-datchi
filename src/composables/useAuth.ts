@@ -442,6 +442,8 @@ export function useAuth() {
         return
       }
 
+      lastResumeReinitAt = now
+
       let session = await getSessionSafe(8000)
 
       if (!session) {
@@ -457,12 +459,6 @@ export function useAuth() {
       }
 
       if (!session) {
-        if (typeof navigator !== 'undefined' && !navigator.onLine) {
-          return
-        }
-        lastResumeReinitAt = now
-        initialized = false
-        void init()
         return
       }
 
@@ -471,16 +467,13 @@ export function useAuth() {
         return
       }
 
-      lastResumeReinitAt = now
       initialized = false
       void init()
     }
 
-    window.addEventListener('focus', revalidateAuthOnResume)
     document.addEventListener('visibilitychange', revalidateAuthOnResume)
 
     sessionResumeListenerCleanup = () => {
-      window.removeEventListener('focus', revalidateAuthOnResume)
       document.removeEventListener('visibilitychange', revalidateAuthOnResume)
     }
   }

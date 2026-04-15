@@ -32,9 +32,11 @@ router.onError((err, to) => {
     if (localStorage.getItem('quasar:dynamic-reload')) {
       console.error('Dynamic import error, reloading page did not fix it', err)
     } else {
-      console.log('Reloading page to fix dynamic import error')
+      console.log('Retrying navigation after dynamic import error')
       localStorage.setItem('quasar:dynamic-reload', 'true')
-      location.assign(to.fullPath)
+      router.replace(to.fullPath).catch(() => {
+        location.assign(to.fullPath)
+      })
     }
   } else {
     console.error(err)
