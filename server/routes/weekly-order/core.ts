@@ -12,6 +12,7 @@ import {
   OrderedQuantitiesQuerySchema,
   HistoryByWeekQuerySchema,
   RemovePOFromWeekSchema,
+  WeekWarehouseFilterSchema,
 } from '../../validation/weeklyOrder'
 import type { WeeklyOrderStatus } from '../../types/weeklyOrder'
 import type { AppEnv } from '../../types/hono-env'
@@ -621,6 +622,109 @@ core.get('/leader-review', requirePermission('thread.leader.sign'), async (c) =>
     return c.json({ data: result, error: null, pagination })
   } catch (err) {
     console.error('Error fetching leader review:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+// ============ WAREHOUSE FILTER PER WEEK ============
+
+core.get('/:id/warehouses', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data: week, error: weekError } = await supabase
+      .from('thread_order_weeks')
+      .select('id')
+      .eq('id', id)
+      .single()
+
+    if (weekError) {
+      if (weekError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
+      }
+      throw weekError
+    }
+
+    const { data, error } = await supabase
+      .from('thread_order_week_warehouses')
+      .select('warehouse_id')
+      .eq('week_id', week.id)
+      .limit(100)
+
+    if (error) throw error
+
+    const warehouseIds = (data || []).map((row) => row.warehouse_id)
+    return c.json({ data: warehouseIds, error: null })
+  } catch (err) {
+    console.error('Error fetching week warehouses:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+core.put('/:id/warehouses', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data: week, error: fetchError } = await supabase
+      .from('thread_order_weeks')
+      .select('id, status')
+      .eq('id', id)
+      .single()
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
+      }
+      throw fetchError
+    }
+
+    if (week.status !== 'DRAFT') {
+      return c.json({ data: null, error: 'Chỉ có thể thay đổi kho cho tuần ở trạng thái nháp' }, 400)
+    }
+
+    const body = await c.req.json()
+    let validated
+    try {
+      validated = WeekWarehouseFilterSchema.parse(body)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+    const { warehouse_ids } = validated
+
+    const { error: deleteError } = await supabase
+      .from('thread_order_week_warehouses')
+      .delete()
+      .eq('week_id', id)
+
+    if (deleteError) throw deleteError
+
+    if (warehouse_ids.length > 0) {
+      const rows = warehouse_ids.map((wid) => ({ week_id: id, warehouse_id: wid }))
+      const { error: insertError } = await supabase
+        .from('thread_order_week_warehouses')
+        .insert(rows)
+
+      if (insertError) throw insertError
+    }
+
+    return c.json({
+      data: warehouse_ids,
+      error: null,
+      message: warehouse_ids.length > 0
+        ? `Đã lưu ${warehouse_ids.length} kho cho tuần`
+        : 'Đã xóa bộ lọc kho (sử dụng tất cả kho)',
+    })
+  } catch (err) {
+    console.error('Error saving week warehouses:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

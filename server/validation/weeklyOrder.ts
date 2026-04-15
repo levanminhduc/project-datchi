@@ -166,3 +166,12 @@ export const ManualReturnSchema = z.object({
     .positive('Số cuộn phải lớn hơn 0'),
   notes: z.string().max(500, 'Ghi chú tối đa 500 ký tự').optional(),
 })
+
+// ============ WAREHOUSE FILTER SCHEMA ============
+
+export const WeekWarehouseFilterSchema = z.object({
+  warehouse_ids: z
+    .array(z.number().int().positive({ message: 'ID kho phải là số dương' }))
+    .max(50, 'Tối đa 50 kho')
+    .transform((ids) => [...new Set(ids)]),
+})
