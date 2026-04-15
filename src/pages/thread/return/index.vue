@@ -14,7 +14,6 @@ import DataTable from '@/components/ui/tables/DataTable.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
 import { dateRules } from '@/utils'
-import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
 import ReturnGroupCard from '@/components/thread/ReturnGroupCard.vue'
 import ReturnGroupDetail from '@/components/thread/ReturnGroupDetail.vue'
 import { useReturnV2 } from '@/composables/thread/useReturnV2'
@@ -166,20 +165,27 @@ watch(viewMode, (mode) => {
     <PageHeader
       title="Trả Kho"
       subtitle="Chọn phiếu xuất đã xác nhận để trả chỉ về kho"
+    />
+
+    <q-tabs
+      v-model="viewMode"
+      class="text-grey q-mb-md"
+      active-color="primary"
+      indicator-color="primary"
+      narrow-indicator
+      align="left"
     >
-      <template #actions>
-        <ButtonToggle
-          v-model="viewMode"
-          :options="[
-            { label: 'Theo phiếu', value: 'by-issue' },
-            { label: 'Theo nhóm', value: 'by-group' },
-          ]"
-          toggle-color="orange"
-          dense
-          size="sm"
-        />
-      </template>
-    </PageHeader>
+      <q-tab
+        name="by-issue"
+        label="Theo phiếu"
+        icon="receipt_long"
+      />
+      <q-tab
+        name="by-group"
+        label="Theo nhóm"
+        icon="group_work"
+      />
+    </q-tabs>
 
     <!-- === Tab: Theo phiếu (existing) === -->
     <template v-if="viewMode === 'by-issue'">

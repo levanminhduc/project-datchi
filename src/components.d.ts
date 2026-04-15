@@ -129,6 +129,8 @@ declare module 'vue' {
     ReserveFromStockDialog: typeof import('./components/thread/weekly-order/ReserveFromStockDialog.vue')['default']
     ResultsDetailView: typeof import('./components/thread/weekly-order/ResultsDetailView.vue')['default']
     ResultsSummaryTable: typeof import('./components/thread/weekly-order/ResultsSummaryTable.vue')['default']
+    ReturnGroupCard: typeof import('./components/thread/ReturnGroupCard.vue')['default']
+    ReturnGroupDetail: typeof import('./components/thread/ReturnGroupDetail.vue')['default']
     ReturnInitiateDialog: typeof import('./components/thread/ReturnInitiateDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
