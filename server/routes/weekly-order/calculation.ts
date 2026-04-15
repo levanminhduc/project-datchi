@@ -29,9 +29,11 @@ calculation.post('/enrich-inventory', requirePermission('thread.allocations.mana
       throw err
     }
 
-    const { summary_rows, current_week_id } = validated
+    const { summary_rows, current_week_id, warehouse_ids } = validated
 
-    const enrichedRows = await enrichWithInventory(summary_rows, current_week_id)
+    const enrichedRows = await enrichWithInventory(summary_rows, current_week_id, {
+      warehouseIds: warehouse_ids,
+    })
 
     return c.json({ data: enrichedRows, error: null })
   } catch (err) {
