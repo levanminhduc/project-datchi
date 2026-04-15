@@ -302,10 +302,18 @@ export const weeklyOrderService = {
     return response.data || []
   },
 
-  async enrichInventory(rows: AggregatedRow[], currentWeekId?: number): Promise<AggregatedRow[]> {
+  async enrichInventory(
+    rows: AggregatedRow[],
+    currentWeekId?: number,
+    warehouseIds?: number[],
+  ): Promise<AggregatedRow[]> {
     const response = await fetchApi<ApiResponse<AggregatedRow[]>>(`${BASE}/enrich-inventory`, {
       method: 'POST',
-      body: JSON.stringify({ summary_rows: rows, current_week_id: currentWeekId }),
+      body: JSON.stringify({
+        summary_rows: rows,
+        current_week_id: currentWeekId,
+        warehouse_ids: warehouseIds?.length ? warehouseIds : undefined,
+      }),
     })
 
     if (response.error) {
@@ -616,5 +624,17 @@ export const weeklyOrderService = {
     if (response.error) throw new Error(response.error)
     if (!response.data) throw new Error('Ký duyệt thất bại')
     return response.data
+  },
+
+  async getWarehouseFilter(weekId: number): Promise<number[]> {
+    const response = await fetchApi<ApiResponse<number[]>>(`${BASE}/${weekId}/warehouses`)
+    return response.data || []
+  },
+
+  async saveWarehouseFilter(weekId: number, warehouseIds: number[]): Promise<void> {
+    await fetchApi<ApiResponse<number[]>>(`${BASE}/${weekId}/warehouses`, {
+      method: 'PUT',
+      body: JSON.stringify({ warehouse_ids: warehouseIds }),
+    })
   },
 }
