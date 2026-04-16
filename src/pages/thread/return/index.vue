@@ -385,7 +385,10 @@ watch(viewMode, (mode) => {
               </div>
             </div>
 
-            <div v-if="filteredReturnGroups.length === 0" class="text-center q-py-lg text-grey-6">
+            <div
+              v-if="filteredReturnGroups.length === 0"
+              class="text-center q-py-lg text-grey-6"
+            >
               Không tìm thấy nhóm phù hợp
             </div>
 

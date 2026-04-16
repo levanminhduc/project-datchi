@@ -18,7 +18,51 @@ import type {
   ChangePasswordData,
 } from '@/types/auth'
 
-const state = ref<AuthState>({
+const AUTH_CACHE_KEY = 'datchi-auth-cache'
+
+interface AuthCache {
+  employee: AuthState['employee']
+  permissions: string[]
+  isRoot: boolean
+}
+
+function saveAuthCache(s: AuthState): void {
+  if (!s.isAuthenticated || !s.employee) return
+  try {
+    localStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({
+      employee: s.employee,
+      permissions: s.permissions,
+      isRoot: s.isRoot,
+    } satisfies AuthCache))
+  } catch { /* quota exceeded */ }
+}
+
+function loadAuthCache(): AuthCache | null {
+  try {
+    const raw = localStorage.getItem(AUTH_CACHE_KEY)
+    if (!raw) return null
+    const cache = JSON.parse(raw) as AuthCache
+    if (!cache.employee) return null
+    return cache
+  } catch {
+    return null
+  }
+}
+
+function clearAuthCache(): void {
+  localStorage.removeItem(AUTH_CACHE_KEY)
+}
+
+const cached = loadAuthCache()
+
+const state = ref<AuthState>(cached ? {
+  employee: cached.employee,
+  permissions: cached.permissions,
+  isAuthenticated: true,
+  isRoot: cached.isRoot,
+  isLoading: false,
+  error: null,
+} : {
   employee: null,
   permissions: [],
   isAuthenticated: false,
@@ -35,7 +79,7 @@ let authListenerUnsubscribe: (() => void) | null = null
 let sessionResumeListenerCleanup: (() => void) | null = null
 let lastResumeReinitAt = 0
 
-let verifiedPermissionsSnapshot: string[] | null = null
+let verifiedPermissionsSnapshot: string[] | null = cached?.permissions ?? null
 
 const tempPassword = ref<string | null>(null)
 
@@ -169,7 +213,10 @@ export function useAuth() {
     setupAuthListener()
     setupSessionResumeListener()
 
-    state.value.isLoading = true
+    const hasCachedState = state.value.isAuthenticated && state.value.employee !== null
+    if (!hasCachedState) {
+      state.value.isLoading = true
+    }
 
     try {
       const { user, errorType: getUserErrorType } = await retryGetUser()
@@ -294,6 +341,7 @@ export function useAuth() {
         isLoading: false,
         error: permsErrorType === 'network' ? 'network' : null,
       }
+      saveAuthCache(state.value)
     } catch {
       resetState()
       state.value.error = 'Không thể khởi tạo phiên đăng nhập'
@@ -411,6 +459,7 @@ export function useAuth() {
         if (state.value.error === 'network') {
           state.value.error = null
         }
+        saveAuthCache(state.value)
       } finally {
         handlingTokenRefresh = false
       }
@@ -479,6 +528,7 @@ export function useAuth() {
   }
 
   function resetState() {
+    clearAuthCache()
     state.value = {
       employee: null,
       permissions: [],
@@ -517,6 +567,7 @@ export function useAuth() {
         isLoading: false,
         error: null,
       }
+      saveAuthCache(state.value)
 
       snackbar.success('Đăng nhập thành công')
 
@@ -554,6 +605,7 @@ export function useAuth() {
       await clearAuthSessionLocal()
       clearAll()
       clearAllCache()
+      clearAuthCache()
       snackbar.success('Đã đăng xuất')
       resetState()
       initialized = false
