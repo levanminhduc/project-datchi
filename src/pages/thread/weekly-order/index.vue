@@ -727,6 +727,8 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
 
     if (!updated) return
 
+    await weeklyOrderService.saveWarehouseFilter(selectedWeek.value.id, selectedWarehouseIds.value)
+
     if (hasResults.value) {
       await saveResults(selectedWeek.value.id, perStyleResults.value, aggregatedResults.value)
     }
@@ -742,6 +744,11 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
     if (!created) return
 
     selectedWeek.value = created
+
+    if (selectedWarehouseIds.value.length > 0) {
+      await weeklyOrderService.saveWarehouseFilter(created.id, selectedWarehouseIds.value)
+    }
+
     if (hasResults.value) {
       await saveResults(created.id, perStyleResults.value, aggregatedResults.value)
     }

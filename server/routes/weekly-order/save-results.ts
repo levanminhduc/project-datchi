@@ -88,10 +88,22 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
         }
       })
 
+      const { data: warehouseRows } = await supabase
+        .from('thread_order_week_warehouses')
+        .select('warehouse_id')
+        .eq('week_id', id)
+        .limit(100)
+
+      const warehouseIds = (warehouseRows || []).map((r: { warehouse_id: number }) => r.warehouse_id)
+      console.info(`[saveResults] week=${id} warehouseIds=${JSON.stringify(warehouseIds)}`)
+
       enrichedSummaryData = await enrichWithInventory(
         enrichedSummaryData as Array<{ thread_type_id: number; total_cones: number; [key: string]: unknown }>,
         id,
-        { preserveAdditionalOrder: true },
+        {
+          preserveAdditionalOrder: true,
+          warehouseIds: warehouseIds.length > 0 ? warehouseIds : undefined,
+        },
       )
     }
 
