@@ -104,8 +104,9 @@
           <q-expansion-item
             v-for="group in weekGroups"
             :key="group.summary.week_id"
-            group="weeks"
+            :model-value="expandedWeekId === group.summary.week_id"
             header-class="text-weight-medium"
+            @update:model-value="(val: boolean) => expandedWeekId = val ? group.summary.week_id : null"
           >
             <template #header>
               <q-item-section>
@@ -580,6 +581,7 @@ const loading = ref(false)
 const deliveries = ref<DeliveryRecord[]>([])
 const statusFilter = ref<string | null>(null)
 const hideFullyReceived = ref(true)
+const expandedWeekId = ref<number | null>(null)
 const statusOptions = [
   { label: 'Tất cả', value: null },
   { label: 'Chờ giao', value: DeliveryStatus.PENDING },
@@ -859,7 +861,11 @@ async function updateDeliveryDate(deliveryId: number, newDate: string) {
   try {
     await deliveryService.update(deliveryId, { delivery_date: newDate })
     snackbar.success('Đã cập nhật ngày giao')
-    await loadTrackingData()
+    const idx = deliveries.value.findIndex(d => d.id === deliveryId)
+    const target = deliveries.value[idx]
+    if (target) {
+      target.delivery_date = newDate
+    }
   } catch (err) {
     snackbar.error('Lỗi: ' + (err instanceof Error ? err.message : 'Không xác định'))
   }
@@ -886,7 +892,12 @@ async function confirmDelivered() {
     })
     snackbar.success('Đã xác nhận giao hàng')
     showDeliveredDialog.value = false
-    await loadTrackingData()
+    const idx = deliveries.value.findIndex(d => d.id === selectedDelivery.value!.id)
+    const target = deliveries.value[idx]
+    if (target) {
+      target.status = DeliveryStatus.DELIVERED
+      target.actual_delivery_date = isoDate
+    }
   } catch (err) {
     snackbar.error('Lỗi: ' + (err instanceof Error ? err.message : 'Không xác định'))
   } finally {

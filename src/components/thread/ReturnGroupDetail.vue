@@ -40,9 +40,10 @@ function fillAll() {
   for (const input of inputs.value) {
     const thread = props.group.threads.find((t) => t.thread_type_id === input.thread_type_id)
     if (!thread) continue
-    if (thread.outstanding_full + thread.outstanding_partial <= 0) continue
+    const totalOutstanding = thread.outstanding_full + thread.outstanding_partial
+    if (totalOutstanding <= 0) continue
     input.returned_full = thread.outstanding_full
-    input.returned_partial = thread.outstanding_partial
+    input.returned_partial = totalOutstanding - thread.outstanding_full
   }
 }
 
@@ -54,6 +55,24 @@ function isFullyReturned(threadTypeId: number): boolean {
   const t = getThread(threadTypeId)
   if (!t) return true
   return t.outstanding_full + t.outstanding_partial <= 0
+}
+
+function getMaxFullReturn(threadTypeId: number): number {
+  const t = getThread(threadTypeId)
+  if (!t) return 0
+  const total = t.outstanding_full + t.outstanding_partial
+  const input = inputs.value.find(i => i.thread_type_id === threadTypeId)
+  const partialInput = input?.returned_partial || 0
+  return Math.min(t.outstanding_full, Math.max(0, total - partialInput))
+}
+
+function getMaxPartialReturn(threadTypeId: number): number {
+  const t = getThread(threadTypeId)
+  if (!t) return 0
+  const total = t.outstanding_full + t.outstanding_partial
+  const input = inputs.value.find(i => i.thread_type_id === threadTypeId)
+  const fullInput = input?.returned_full || 0
+  return Math.max(0, total - fullInput)
 }
 
 function formatIssued(t: ReturnGroupThread): string {
@@ -108,6 +127,10 @@ function handleSubmit() {
             @click="fillAll"
           />
         </div>
+      </div>
+
+      <div class="text-caption text-blue-grey-6 q-mb-sm">
+        Cuộn nguyên có thể trả lẻ nếu sản xuất chưa dùng hết
       </div>
 
       <q-table
@@ -178,7 +201,7 @@ function handleSubmit() {
               type="number"
               dense
               :min="0"
-              :max="row.outstanding_full"
+              :max="getMaxFullReturn(row.thread_type_id)"
               style="width: 80px; display: inline-block"
               hide-bottom-space
               @update:model-value="(v: string | number | null) => {
@@ -201,7 +224,7 @@ function handleSubmit() {
               type="number"
               dense
               :min="0"
-              :max="row.outstanding_partial"
+              :max="getMaxPartialReturn(row.thread_type_id)"
               style="width: 80px; display: inline-block"
               hide-bottom-space
               @update:model-value="(v: string | number | null) => {
