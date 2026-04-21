@@ -34,10 +34,23 @@ async function downloadWorkbook(workbook: Workbook, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-function buildKinhGui(data: AggregatedRow[]): string {
-  const firstWords = data
-    .map((r) => (r.supplier_name || '').trim().split(/\s+/)[0])
+function getSupplierGroup(supplierName: string | null | undefined): string {
+  return (supplierName || '').trim().split(/\s+/)[0] || ''
+}
+
+export function getSupplierGroups(data: AggregatedRow[]): string[] {
+  const groups = data
+    .map((r) => getSupplierGroup(r.supplier_name))
     .filter(Boolean)
+  return [...new Set(groups)]
+}
+
+function sanitizeFilename(name: string): string {
+  return name.replace(/[\/\\:*?"<>|]/g, '_').trim() || 'NCC'
+}
+
+function buildKinhGui(data: AggregatedRow[]): string {
+  const firstWords = data.map((r) => getSupplierGroup(r.supplier_name)).filter(Boolean)
   const unique = [...new Set(firstWords)]
   return unique.length > 0
     ? `Kính gửi: Công ty ${unique.join(' / ')}`
