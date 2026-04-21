@@ -131,6 +131,7 @@ declare module 'vue' {
     ResultsSummaryTable: typeof import('./components/thread/weekly-order/ResultsSummaryTable.vue')['default']
     ReturnGroupCard: typeof import('./components/thread/ReturnGroupCard.vue')['default']
     ReturnGroupDetail: typeof import('./components/thread/ReturnGroupDetail.vue')['default']
+    ReturnHistoryDialog: typeof import('./components/thread/ReturnHistoryDialog.vue')['default']
     ReturnInitiateDialog: typeof import('./components/thread/ReturnInitiateDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

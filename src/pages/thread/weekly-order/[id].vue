@@ -464,6 +464,18 @@
               :rows="calculationResults.summary_data"
               readonly
             />
+
+            <div
+              v-if="calculationView === 'summary'"
+              class="row q-gutter-sm q-mt-md"
+            >
+              <AppButton
+                flat
+                icon="file_download"
+                label="Xuất Excel"
+                @click="handleExportSummary"
+              />
+            </div>
           </template>
 
           <template v-else>
@@ -653,6 +665,7 @@ import AppCheckbox from '@/components/ui/inputs/AppCheckbox.vue'
 import ResultsDetailView from '@/components/thread/weekly-order/ResultsDetailView.vue'
 import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
 import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
+import { exportOrderResults } from '@/composables/thread/useWeeklyOrderExport'
 
 definePage({
   meta: {
@@ -903,6 +916,11 @@ const loadCalculationResults = async () => {
   } finally {
     calculationLoading.value = false
   }
+}
+
+const handleExportSummary = () => {
+  if (!calculationResults.value) return
+  exportOrderResults(calculationResults.value.summary_data, week.value?.week_name || '')
 }
 
 watch(activeTab, (tab) => {

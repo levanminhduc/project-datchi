@@ -1,5 +1,7 @@
-ALTER TABLE thread_issue_lines
-  ADD COLUMN IF NOT EXISTS thread_color_id INTEGER REFERENCES colors(id);
+BEGIN;
 
-CREATE INDEX IF NOT EXISTS idx_thread_issue_lines_thread_color_id
-  ON thread_issue_lines(thread_color_id);
+GRANT ALL ON TABLE public.thread_order_week_warehouses TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.thread_order_week_warehouses TO authenticated;
+GRANT SELECT ON TABLE public.thread_order_week_warehouses TO anon;
+
+COMMIT;

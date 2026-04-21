@@ -94,7 +94,7 @@
         </template>
         <template #body-cell-delivery_date="props">
           <q-td :props="props">
-            <template v-if="props.row.sl_can_dat && props.row.sl_can_dat > 0 && !readonly">
+            <template v-if="props.row.total_final && props.row.total_final > 0 && !readonly">
               <span class="cursor-pointer text-primary">
                 <template v-if="props.row.delivery_date">
                   {{ formatDateDisplay(props.row.delivery_date) }}
@@ -123,7 +123,7 @@
                 </q-popup-proxy>
               </span>
             </template>
-            <template v-else-if="props.row.sl_can_dat && props.row.sl_can_dat > 0 && readonly">
+            <template v-else-if="props.row.total_final && props.row.total_final > 0 && readonly">
               {{ props.row.delivery_date ? formatDateDisplay(props.row.delivery_date) : '—' }}
             </template>
             <template v-else>

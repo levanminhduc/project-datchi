@@ -35,6 +35,7 @@ const viewMode = ref<'by-issue' | 'by-group'>('by-group')
 const {
   returnGroups,
   selectedGroup,
+  returnLogs,
   isLoading: isGroupLoading,
   loadReturnGroups,
   selectGroup,
@@ -331,6 +332,8 @@ watch(viewMode, (mode) => {
         v-if="selectedGroup"
         :group="selectedGroup"
         :loading="isGroupLoading"
+        :return-logs="returnLogs"
+        :logs-loading="isGroupLoading"
         @submit="handleGroupReturn"
         @cancel="handleCancelGroup"
       />

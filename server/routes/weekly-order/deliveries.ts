@@ -12,39 +12,63 @@ import type { AppEnv } from '../../types/hono-env'
 import { formatZodError } from './helpers'
 
 const deliveries = new Hono<AppEnv>()
+const BATCH_SIZE = 1000
 
 deliveries.get('/deliveries/overview', requirePermission('thread.allocations.view'), async (c) => {
   try {
     const status = c.req.query('status')
     const weekId = c.req.query('week_id')
 
-    let query = supabase
-      .from('thread_order_deliveries')
-      .select(`
-        *,
-        supplier:suppliers(id, name),
-        thread_type:thread_types(id, name, tex_number, color_data:colors!color_id(name, hex_code)),
-        week:thread_order_weeks(id, week_name)
-      `)
-      .order('delivery_date', { ascending: true })
+    const allDeliveries: any[] = []
+    let offset = 0
 
-    if (status) {
-      query = query.eq('status', status)
+    while (true) {
+      let query = supabase
+        .from('thread_order_deliveries')
+        .select(`
+          *,
+          supplier:suppliers(id, name),
+          thread_type:thread_types(id, name, tex_number, color_data:colors!color_id(name, hex_code)),
+          week:thread_order_weeks(id, week_name)
+        `)
+        .order('delivery_date', { ascending: true })
+        .range(offset, offset + BATCH_SIZE - 1)
+
+      if (status) {
+        query = query.eq('status', status)
+      }
+      if (weekId) {
+        query = query.eq('week_id', parseInt(weekId))
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+
+      if (!data || data.length === 0) break
+      allDeliveries.push(...data)
+
+      if (data.length < BATCH_SIZE) break
+      offset += BATCH_SIZE
     }
-    if (weekId) {
-      query = query.eq('week_id', parseInt(weekId))
+
+    const weekIds = [...new Set(allDeliveries.map((row: any) => row.week_id))]
+    const resultsData: Array<{ week_id: number; summary_data: unknown[] | null }> = []
+
+    if (weekIds.length > 0) {
+      const WEEK_IDS_BATCH_SIZE = 200
+      for (let i = 0; i < weekIds.length; i += WEEK_IDS_BATCH_SIZE) {
+        const chunk = weekIds.slice(i, i + WEEK_IDS_BATCH_SIZE)
+        const { data: chunkData, error: chunkError } = await supabase
+          .from('thread_order_results')
+          .select('week_id, summary_data')
+          .in('week_id', chunk)
+
+        if (chunkError) throw chunkError
+        if (chunkData && chunkData.length > 0) {
+          resultsData.push(...chunkData)
+        }
+      }
     }
-
-    const { data, error } = await query
-
-    if (error) throw error
-
-    const weekIds = [...new Set((data || []).map((row: any) => row.week_id))]
-
-    const { data: resultsData } = await supabase
-      .from('thread_order_results')
-      .select('week_id, summary_data')
-      .in('week_id', weekIds)
 
     const summaryMap = new Map<number, Map<string, { total_final: number; thread_color?: string; thread_color_code?: string }>>()
     for (const result of resultsData || []) {
@@ -66,7 +90,7 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
 
     const now = new Date()
     now.setHours(0, 0, 0, 0)
-    const enrichedRows = (data || [])
+    const enrichedRows = allDeliveries
       .map((row: any) => {
         const deliveryDate = new Date(row.delivery_date)
         deliveryDate.setHours(0, 0, 0, 0)
@@ -98,10 +122,12 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
         }
       })
       .filter((row: any) => {
-        if (row.total_cones === null) {
-          return row.status === 'DELIVERED' || (row.received_quantity || 0) > 0
-        }
-        return row.total_cones >= 1
+        const quantityCones = Number(row.quantity_cones || 0)
+        const receivedQuantity = Number(row.received_quantity || 0)
+        const hasSupplier = row.supplier_id !== null && row.supplier_id !== undefined
+
+        if (hasSupplier && quantityCones >= 1) return true
+        return row.status === 'DELIVERED' || receivedQuantity > 0
       })
 
     const dedupeMap = new Map<string, any>()
@@ -111,7 +137,7 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
     }
 
     for (const row of enrichedRows) {
-      const key = `${row.week_id}_${row.thread_type_id}_${row.thread_color ?? ''}`
+      const key = `${row.week_id}_${row.thread_type_id}_${row.thread_color ?? ''}_${row.supplier_id ?? ''}`
       const existing = dedupeMap.get(key)
       if (!existing) {
         dedupeMap.set(key, row)

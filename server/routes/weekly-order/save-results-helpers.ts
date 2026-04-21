@@ -48,12 +48,14 @@ export async function syncDeliveries(
   }
 
   const desiredDeliveryMap = new Map<string, DesiredDelivery>()
+  const buildDeliveryKey = (row: { thread_type_id: number; thread_color?: string | null; supplier_id?: number | null }) =>
+    `${row.thread_type_id}_${row.thread_color ?? ''}_${row.supplier_id ?? ''}`
 
   for (const row of summaryRows) {
     const plannedCones = row.total_final ?? row.total_cones ?? 0
     if (!row.supplier_id || plannedCones < 1) continue
 
-    const compositeKey = `${row.thread_type_id}_${row.thread_color ?? ''}`
+    const compositeKey = buildDeliveryKey(row)
 
     if (!desiredDeliveryMap.has(compositeKey)) {
       const leadTime = (row.lead_time_days && row.lead_time_days > 0) ? row.lead_time_days : 7
@@ -82,11 +84,11 @@ export async function syncDeliveries(
   const desiredDeliveryRows = Array.from(desiredDeliveryMap.values())
   const existingCompositeKeys = new Set(
     (existingDeliveries || []).map((d: { thread_type_id: number; thread_color?: string | null }) =>
-      `${d.thread_type_id}_${d.thread_color ?? ''}`)
+      buildDeliveryKey(d))
   )
 
   const newDeliveryRows = desiredDeliveryRows
-    .filter((row) => !existingCompositeKeys.has(`${row.thread_type_id}_${row.thread_color ?? ''}`))
+    .filter((row) => !existingCompositeKeys.has(buildDeliveryKey(row)))
 
   if (newDeliveryRows.length > 0) {
     for (const row of newDeliveryRows) {
@@ -110,11 +112,11 @@ export async function syncDeliveries(
 
   const existingByCompositeKey = new Map(
     (existingDeliveries || []).map((row: ExistingDelivery) =>
-      [`${row.thread_type_id}_${row.thread_color ?? ''}`, row])
+      [buildDeliveryKey(row), row])
   )
 
   const rowsToSync = desiredDeliveryRows.filter((row) => {
-    const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+    const key = buildDeliveryKey(row)
     const existing = existingByCompositeKey.get(key)
     if (!existing) return false
     if (existing.status !== 'PENDING') return false
@@ -128,7 +130,7 @@ export async function syncDeliveries(
   if (rowsToSync.length > 0) {
     const nowIso = new Date().toISOString()
     for (const row of rowsToSync) {
-      const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+      const key = buildDeliveryKey(row)
       const existing = existingByCompositeKey.get(key)
       if (!existing) continue
 
@@ -154,7 +156,7 @@ export async function syncDeliveries(
   const desiredKeys = new Set(desiredDeliveryMap.keys())
   const orphanIds: number[] = []
   for (const delivery of (existingDeliveries || []) as ExistingDelivery[]) {
-    const key = `${delivery.thread_type_id}_${delivery.thread_color ?? ''}`
+    const key = buildDeliveryKey(delivery)
     if (desiredKeys.has(key)) continue
     if (delivery.status !== 'PENDING') continue
     if (delivery.received_quantity != null && delivery.received_quantity > 0) continue

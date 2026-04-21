@@ -46,6 +46,8 @@ threadSummaryLive.get('/:id/thread-summary-live', requirePermission('thread.allo
       supplier_name: string
       tex_number: string
       thread_color?: string
+      sl_can_dat?: number
+      total_final?: number
       total_cones: number
     }>
 
@@ -64,7 +66,7 @@ threadSummaryLive.get('/:id/thread-summary-live', requirePermission('thread.allo
     }
 
     const rows = summaryData.map((row) => {
-      const totalCones = row.total_cones || 0
+      const totalCones = row.total_final ?? row.sl_can_dat ?? row.total_cones ?? 0
       const reservedCones = reservedMap.get(row.thread_type_id) || 0
       const pendingCones = pendingMap.get(row.thread_type_id) || 0
       return {

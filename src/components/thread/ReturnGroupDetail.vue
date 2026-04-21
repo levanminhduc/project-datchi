@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { ReturnGroup, ReturnGroupThread } from '@/types/thread/issueV2'
+import type { ReturnGroup, ReturnGroupThread, GroupedReturnLog } from '@/types/thread/issueV2'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
+import ReturnHistoryDialog from '@/components/thread/ReturnHistoryDialog.vue'
 
 const props = defineProps<{
   group: ReturnGroup
   loading?: boolean
+  returnLogs?: GroupedReturnLog[]
+  logsLoading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -21,7 +24,7 @@ interface ReturnInput {
 }
 
 const inputs = ref<ReturnInput[]>([])
-
+const showHistory = ref(false)
 function resetInputs() {
   inputs.value = props.group.threads.map((t) => ({
     thread_type_id: t.thread_type_id,
@@ -118,6 +121,14 @@ function handleSubmit() {
           </div>
         </div>
         <div class="q-gutter-sm">
+          <AppButton
+            label="Lịch sử"
+            icon="history"
+            color="grey"
+            size="sm"
+            outline
+            @click="showHistory = true"
+          />
           <AppButton
             label="Trả tất cả"
             icon="select_all"
@@ -257,5 +268,12 @@ function handleSubmit() {
         />
       </div>
     </q-card-section>
+
+    <ReturnHistoryDialog
+      v-model="showHistory"
+      :logs="returnLogs || []"
+      :loading="logsLoading"
+      :group-label="`${group.po_number} / ${group.style_code} / ${group.color_name}`"
+    />
   </q-card>
 </template>
