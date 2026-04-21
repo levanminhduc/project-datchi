@@ -185,11 +185,20 @@ function renderSignatureFooter(
 export async function exportOrderResults(
   data: AggregatedRow[],
   week: ExportWeekMeta,
+  supplierGroup?: string,
 ) {
   const snackbar = useSnackbar()
 
-  if (data.length === 0) {
-    snackbar.warning('Chưa có dữ liệu để xuất')
+  const filteredData = supplierGroup
+    ? data.filter((r) => getSupplierGroup(r.supplier_name) === supplierGroup)
+    : data
+
+  if (filteredData.length === 0) {
+    snackbar.warning(
+      supplierGroup
+        ? `Không có dữ liệu cho NCC ${supplierGroup}`
+        : 'Chưa có dữ liệu để xuất',
+    )
     return
   }
 
@@ -200,7 +209,7 @@ export async function exportOrderResults(
 
     worksheet.columns = COLUMN_DEFS.map((c) => ({ key: c.key, width: c.width }))
 
-    renderDocHeader(worksheet, week, data)
+    renderDocHeader(worksheet, week, filteredData)
     renderTableHeader(worksheet)
 
     const numFmt = '#,##0'
@@ -216,7 +225,7 @@ export async function exportOrderResults(
     worksheet.getColumn('additional_order').numFmt = numFmt
     worksheet.getColumn('total_final').numFmt = numFmt
 
-    data.forEach((r) => {
+    filteredData.forEach((r) => {
       worksheet.addRow({
         thread_type_name: r.thread_type_name,
         supplier_name: r.supplier_name,
@@ -239,13 +248,14 @@ export async function exportOrderResults(
       })
     })
 
-    const lastDataRow = TABLE_HEADER_ROW + data.length
+    const lastDataRow = TABLE_HEADER_ROW + filteredData.length
     renderSignatureFooter(worksheet, week, lastDataRow)
 
-    await downloadWorkbook(
-      workbook,
-      `dat-hang-chi-${week.week_name || 'tuan'}.xlsx`,
-    )
+    const baseName = week.week_name || 'tuan'
+    const filename = supplierGroup
+      ? `${sanitizeFilename(supplierGroup)}-${baseName}.xlsx`
+      : `dat-hang-chi-${baseName}.xlsx`
+    await downloadWorkbook(workbook, filename)
     snackbar.success('Đã xuất file Excel')
   } catch (err) {
     console.error('[weekly-order] export error:', err)
