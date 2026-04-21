@@ -1,8 +1,16 @@
+import { format } from 'date-fns'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type { AggregatedRow, WeekHistoryGroup } from '@/types/thread'
 
 type Worksheet = import('exceljs').Worksheet
 type Workbook = import('exceljs').Workbook
+
+export interface ExportWeekMeta {
+  id: number
+  week_name: string
+  created_by?: string | null
+  leader_signed_by_name?: string | null
+}
 
 function styleHeaderRow(worksheet: Worksheet) {
   worksheet.getRow(1).fill = {
@@ -26,7 +34,145 @@ async function downloadWorkbook(workbook: Workbook, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export async function exportOrderResults(data: AggregatedRow[], weekName: string) {
+function buildKinhGui(data: AggregatedRow[]): string {
+  const firstWords = data
+    .map((r) => (r.supplier_name || '').trim().split(/\s+/)[0])
+    .filter(Boolean)
+  const unique = [...new Set(firstWords)]
+  return unique.length > 0
+    ? `Kính gửi: Công ty ${unique.join(' / ')}`
+    : 'Kính gửi: Quý công ty'
+}
+
+const COLUMN_DEFS: Array<{ header: string; key: string; width: number }> = [
+  { header: 'Loại chỉ', key: 'thread_type_name', width: 25 },
+  { header: 'NCC', key: 'supplier_name', width: 20 },
+  { header: 'Tex', key: 'tex_number', width: 10 },
+  { header: 'Màu chỉ', key: 'thread_color', width: 15 },
+  { header: 'Tổng mét', key: 'total_meters', width: 15 },
+  { header: 'Mét/cuộn', key: 'meters_per_cone', width: 12 },
+  { header: 'Nhu Cầu', key: 'total_cones', width: 12 },
+  { header: 'Tồn kho KD', key: 'inventory_cones', width: 12 },
+  { header: 'Cuộn nguyên', key: 'full_cones', width: 12 },
+  { header: 'Cuộn lẻ', key: 'partial_cones', width: 12 },
+  { header: 'Tồn kho QĐ', key: 'equivalent_cones', width: 12 },
+  { header: 'SL cần đặt', key: 'sl_can_dat', width: 12 },
+  { header: 'Đặt thêm', key: 'additional_order', width: 12 },
+  { header: 'Tổng chốt', key: 'total_final', width: 12 },
+  { header: 'Ngày giao', key: 'delivery_date', width: 14 },
+]
+
+const LAST_COL_LETTER = String.fromCharCode(64 + COLUMN_DEFS.length)
+const TABLE_HEADER_ROW = 10
+
+function renderDocHeader(
+  worksheet: Worksheet,
+  week: ExportWeekMeta,
+  data: AggregatedRow[],
+) {
+  const orderNumber = String(week.id).padStart(5, '0')
+  const today = format(new Date(), 'dd/MM/yyyy')
+
+  worksheet.mergeCells(`A1:${LAST_COL_LETTER}1`)
+  const r1 = worksheet.getCell('A1')
+  r1.value = 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'
+  r1.font = { bold: true, size: 12 }
+  r1.alignment = { horizontal: 'center' }
+
+  worksheet.mergeCells(`A2:${LAST_COL_LETTER}2`)
+  const r2 = worksheet.getCell('A2')
+  r2.value = 'Độc lập – Tự do – Hạnh phúc'
+  r2.font = { size: 11 }
+  r2.alignment = { horizontal: 'center' }
+
+  worksheet.mergeCells(`A4:${LAST_COL_LETTER}4`)
+  const r4 = worksheet.getCell('A4')
+  r4.value = 'ĐƠN ĐẶT HÀNG'
+  r4.font = { bold: true, size: 16 }
+  r4.alignment = { horizontal: 'center' }
+
+  worksheet.mergeCells(`A5:${LAST_COL_LETTER}5`)
+  const r5 = worksheet.getCell('A5')
+  r5.value = `Số: ${orderNumber}`
+  r5.font = { italic: true, size: 11 }
+  r5.alignment = { horizontal: 'center' }
+
+  worksheet.mergeCells(`A6:${LAST_COL_LETTER}6`)
+  const r6 = worksheet.getCell('A6')
+  r6.value = buildKinhGui(data)
+  r6.font = { size: 11 }
+  r6.alignment = { horizontal: 'left' }
+
+  worksheet.mergeCells(`A7:${LAST_COL_LETTER}7`)
+  const r7 = worksheet.getCell('A7')
+  r7.value =
+    'Công ty May Hòa Thọ Điện Bàn có nhu cầu đặt hàng tại Quý công ty theo mẫu yêu cầu.'
+  r7.font = { size: 11 }
+  r7.alignment = { horizontal: 'left' }
+
+  const r8a = worksheet.getCell('A8')
+  r8a.value = 'CHI TIẾT ĐƠN HÀNG:'
+  r8a.font = { bold: true, size: 11 }
+  const r8d = worksheet.getCell('D8')
+  r8d.value = 'Ngày đặt hàng:'
+  r8d.font = { size: 11 }
+  const r8e = worksheet.getCell('E8')
+  r8e.value = today
+  r8e.font = { size: 11 }
+}
+
+function renderTableHeader(worksheet: Worksheet) {
+  const row = worksheet.getRow(TABLE_HEADER_ROW)
+  COLUMN_DEFS.forEach((col, idx) => {
+    const cell = row.getCell(idx + 1)
+    cell.value = col.header
+    cell.font = { bold: true }
+    cell.alignment = { horizontal: 'center', vertical: 'middle' }
+    cell.border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' },
+    }
+  })
+  row.commit()
+}
+
+function renderSignatureFooter(
+  worksheet: Worksheet,
+  week: ExportWeekMeta,
+  lastDataRow: number,
+) {
+  const titleRow = lastDataRow + 3
+  const nameRow = lastDataRow + 7
+
+  worksheet.mergeCells(`A${titleRow}:G${titleRow}`)
+  const leftTitle = worksheet.getCell(`A${titleRow}`)
+  leftTitle.value = 'Đại diện Công ty may Hòa Thọ Điện Bàn'
+  leftTitle.font = { bold: true }
+  leftTitle.alignment = { horizontal: 'center' }
+
+  worksheet.mergeCells(`H${titleRow}:${LAST_COL_LETTER}${titleRow}`)
+  const rightTitle = worksheet.getCell(`H${titleRow}`)
+  rightTitle.value = 'Đại Diện Đặt Hàng'
+  rightTitle.font = { bold: true }
+  rightTitle.alignment = { horizontal: 'center' }
+
+  worksheet.mergeCells(`A${nameRow}:G${nameRow}`)
+  const leftName = worksheet.getCell(`A${nameRow}`)
+  leftName.value = week.leader_signed_by_name || ''
+  leftName.alignment = { horizontal: 'center' }
+
+  worksheet.mergeCells(`H${nameRow}:${LAST_COL_LETTER}${nameRow}`)
+  const rightName = worksheet.getCell(`H${nameRow}`)
+  rightName.value = week.created_by || ''
+  rightName.alignment = { horizontal: 'center' }
+}
+
+export async function exportOrderResults(
+  data: AggregatedRow[],
+  week: ExportWeekMeta,
+) {
   const snackbar = useSnackbar()
 
   if (data.length === 0) {
@@ -39,25 +185,10 @@ export async function exportOrderResults(data: AggregatedRow[], weekName: string
     const workbook = new ExcelJS.Workbook()
     const worksheet = workbook.addWorksheet('Đặt Hàng Chỉ')
 
-    worksheet.columns = [
-      { header: 'Loại chỉ', key: 'thread_type_name', width: 25 },
-      { header: 'NCC', key: 'supplier_name', width: 20 },
-      { header: 'Tex', key: 'tex_number', width: 10 },
-      { header: 'Màu chỉ', key: 'thread_color', width: 15 },
-      { header: 'Tổng mét', key: 'total_meters', width: 15 },
-      { header: 'Mét/cuộn', key: 'meters_per_cone', width: 12 },
-      { header: 'Nhu Cầu', key: 'total_cones', width: 12 },
-      { header: 'Tồn kho KD', key: 'inventory_cones', width: 12 },
-      { header: 'Cuộn nguyên', key: 'full_cones', width: 12 },
-      { header: 'Cuộn lẻ', key: 'partial_cones', width: 12 },
-      { header: 'Tồn kho QĐ', key: 'equivalent_cones', width: 12 },
-      { header: 'SL cần đặt', key: 'sl_can_dat', width: 12 },
-      { header: 'Đặt thêm', key: 'additional_order', width: 12 },
-      { header: 'Tổng chốt', key: 'total_final', width: 12 },
-      { header: 'Ngày giao', key: 'delivery_date', width: 14 },
-    ]
+    worksheet.columns = COLUMN_DEFS.map((c) => ({ key: c.key, width: c.width }))
 
-    styleHeaderRow(worksheet)
+    renderDocHeader(worksheet, week, data)
+    renderTableHeader(worksheet)
 
     const numFmt = '#,##0'
     const numFmt2 = '#,##0.00'
@@ -88,11 +219,17 @@ export async function exportOrderResults(data: AggregatedRow[], weekName: string
         sl_can_dat: r.sl_can_dat || '',
         additional_order: r.additional_order || '',
         total_final: r.total_final || '',
-        delivery_date: r.total_final ? (r.delivery_date || '') : '',
+        delivery_date: r.total_final ? r.delivery_date || '' : '',
       })
     })
 
-    await downloadWorkbook(workbook, `dat-hang-chi-${weekName || 'tuan'}.xlsx`)
+    const lastDataRow = TABLE_HEADER_ROW + data.length
+    renderSignatureFooter(worksheet, week, lastDataRow)
+
+    await downloadWorkbook(
+      workbook,
+      `dat-hang-chi-${week.week_name || 'tuan'}.xlsx`,
+    )
     snackbar.success('Đã xuất file Excel')
   } catch (err) {
     console.error('[weekly-order] export error:', err)
