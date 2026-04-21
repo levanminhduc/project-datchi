@@ -46,7 +46,7 @@ export function getSupplierGroups(data: AggregatedRow[]): string[] {
 }
 
 function sanitizeFilename(name: string): string {
-  return name.replace(/[\/\\:*?"<>|]/g, '_').trim() || 'NCC'
+  return name.replace(/[/\\:*?"<>|]/g, '_').trim() || 'NCC'
 }
 
 function buildKinhGui(data: AggregatedRow[]): string {

@@ -522,6 +522,12 @@
       @returned="loadLoans"
     />
 
+    <SupplierExportDialog
+      v-model="showSupplierDialog"
+      :supplier-groups="supplierGroups"
+      @confirm="handleSupplierConfirm"
+    />
+
     <!-- Surplus Preview Dialog -->
     <q-dialog v-model="showSurplusDialog">
       <q-card :style="surplusPreview?.breakdown?.length ? 'min-width: 600px; max-width: 90vw' : 'min-width: 400px'">
@@ -665,7 +671,8 @@ import AppCheckbox from '@/components/ui/inputs/AppCheckbox.vue'
 import ResultsDetailView from '@/components/thread/weekly-order/ResultsDetailView.vue'
 import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
 import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
-import { exportOrderResults } from '@/composables/thread/useWeeklyOrderExport'
+import { exportOrderResults, getSupplierGroups } from '@/composables/thread/useWeeklyOrderExport'
+import SupplierExportDialog from '@/components/thread/weekly-order/SupplierExportDialog.vue'
 
 definePage({
   meta: {
@@ -918,14 +925,45 @@ const loadCalculationResults = async () => {
   }
 }
 
+const showSupplierDialog = ref(false)
+
+const supplierGroups = computed(() => {
+  if (!calculationResults.value) return []
+  return getSupplierGroups(calculationResults.value.summary_data)
+})
+
 const handleExportSummary = () => {
   if (!calculationResults.value || !week.value) return
-  exportOrderResults(calculationResults.value.summary_data, {
+  if (supplierGroups.value.length <= 1) {
+    exportFilteredOrders(supplierGroups.value)
+  } else {
+    showSupplierDialog.value = true
+  }
+}
+
+const handleSupplierConfirm = (selected: string[]) => {
+  exportFilteredOrders(selected)
+}
+
+const exportFilteredOrders = async (groups: string[]) => {
+  if (!calculationResults.value || !week.value) return
+  const weekMeta = {
     id: week.value.id,
     week_name: week.value.week_name,
     created_by: week.value.created_by,
     leader_signed_by_name: week.value.leader_signed_by_name,
-  })
+  }
+  if (groups.length === 0) {
+    await exportOrderResults(calculationResults.value.summary_data, weekMeta)
+    return
+  }
+  for (const group of groups) {
+    await exportOrderResults(
+      calculationResults.value.summary_data,
+      weekMeta,
+      group,
+    )
+  }
 }
 
 watch(activeTab, (tab) => {
