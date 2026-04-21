@@ -207,7 +207,7 @@ async function buildOrderWorkbook(
   worksheet.getColumn('inventory_cones').numFmt = numFmt
   worksheet.getColumn('full_cones').numFmt = numFmt
   worksheet.getColumn('partial_cones').numFmt = numFmt
-  worksheet.getColumn('equivalent_cones').numFmt = '#,##0.##'
+  worksheet.getColumn('equivalent_cones').numFmt = '0.##'
   worksheet.getColumn('sl_can_dat').numFmt = numFmt
   worksheet.getColumn('additional_order').numFmt = numFmt
   worksheet.getColumn('total_final').numFmt = numFmt
