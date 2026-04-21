@@ -186,6 +186,60 @@ function renderSignatureFooter(
   rightName.alignment = { horizontal: 'center' }
 }
 
+async function buildOrderWorkbook(
+  data: AggregatedRow[],
+  week: ExportWeekMeta,
+): Promise<Workbook> {
+  const ExcelJS = await import('exceljs')
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('Đặt Hàng Chỉ')
+
+  worksheet.columns = COLUMN_DEFS.map((c) => ({ key: c.key, width: c.width }))
+
+  renderDocHeader(worksheet, week, data)
+  renderTableHeader(worksheet)
+
+  const numFmt = '#,##0'
+  const numFmt2 = '#,##0.00'
+  worksheet.getColumn('total_meters').numFmt = numFmt2
+  worksheet.getColumn('meters_per_cone').numFmt = numFmt
+  worksheet.getColumn('total_cones').numFmt = numFmt
+  worksheet.getColumn('inventory_cones').numFmt = numFmt
+  worksheet.getColumn('full_cones').numFmt = numFmt
+  worksheet.getColumn('partial_cones').numFmt = numFmt
+  worksheet.getColumn('equivalent_cones').numFmt = '#,##0.##'
+  worksheet.getColumn('sl_can_dat').numFmt = numFmt
+  worksheet.getColumn('additional_order').numFmt = numFmt
+  worksheet.getColumn('total_final').numFmt = numFmt
+
+  data.forEach((r) => {
+    worksheet.addRow({
+      thread_type_name: r.thread_type_name,
+      supplier_name: r.supplier_name,
+      tex_number: r.tex_number,
+      thread_color: r.thread_color || '',
+      total_meters: Number(r.total_meters.toFixed(2)),
+      meters_per_cone: r.meters_per_cone || '',
+      total_cones: r.total_cones > 0 ? r.total_cones : '',
+      inventory_cones: r.inventory_cones || '',
+      full_cones: r.full_cones ?? '',
+      partial_cones: r.partial_cones ?? '',
+      equivalent_cones: r.equivalent_cones ?? '',
+      sl_can_dat: r.sl_can_dat || '',
+      additional_order: r.additional_order || '',
+      total_final: r.total_final || '',
+      delivery_date:
+        r.total_final && r.delivery_date
+          ? format(new Date(r.delivery_date), 'dd/MM/yyyy')
+          : '',
+    })
+  })
+
+  const lastDataRow = TABLE_HEADER_ROW + data.length
+  renderSignatureFooter(worksheet, week, lastDataRow)
+  return workbook
+}
+
 export async function exportOrderResults(
   data: AggregatedRow[],
   week: ExportWeekMeta,
@@ -207,54 +261,7 @@ export async function exportOrderResults(
   }
 
   try {
-    const ExcelJS = await import('exceljs')
-    const workbook = new ExcelJS.Workbook()
-    const worksheet = workbook.addWorksheet('Đặt Hàng Chỉ')
-
-    worksheet.columns = COLUMN_DEFS.map((c) => ({ key: c.key, width: c.width }))
-
-    renderDocHeader(worksheet, week, filteredData)
-    renderTableHeader(worksheet)
-
-    const numFmt = '#,##0'
-    const numFmt2 = '#,##0.00'
-    worksheet.getColumn('total_meters').numFmt = numFmt2
-    worksheet.getColumn('meters_per_cone').numFmt = numFmt
-    worksheet.getColumn('total_cones').numFmt = numFmt
-    worksheet.getColumn('inventory_cones').numFmt = numFmt
-    worksheet.getColumn('full_cones').numFmt = numFmt
-    worksheet.getColumn('partial_cones').numFmt = numFmt
-    worksheet.getColumn('equivalent_cones').numFmt = numFmt
-    worksheet.getColumn('sl_can_dat').numFmt = numFmt
-    worksheet.getColumn('additional_order').numFmt = numFmt
-    worksheet.getColumn('total_final').numFmt = numFmt
-
-    filteredData.forEach((r) => {
-      worksheet.addRow({
-        thread_type_name: r.thread_type_name,
-        supplier_name: r.supplier_name,
-        tex_number: r.tex_number,
-        thread_color: r.thread_color || '',
-        total_meters: Number(r.total_meters.toFixed(2)),
-        meters_per_cone: r.meters_per_cone || '',
-        total_cones: r.total_cones > 0 ? r.total_cones : '',
-        inventory_cones: r.inventory_cones || '',
-        full_cones: r.full_cones ?? '',
-        partial_cones: r.partial_cones ?? '',
-        equivalent_cones: r.equivalent_cones ?? '',
-        sl_can_dat: r.sl_can_dat || '',
-        additional_order: r.additional_order || '',
-        total_final: r.total_final || '',
-        delivery_date:
-          r.total_final && r.delivery_date
-            ? format(new Date(r.delivery_date), 'dd/MM/yyyy')
-            : '',
-      })
-    })
-
-    const lastDataRow = TABLE_HEADER_ROW + filteredData.length
-    renderSignatureFooter(worksheet, week, lastDataRow)
-
+    const workbook = await buildOrderWorkbook(filteredData, week)
     const baseName = week.week_name || 'tuan'
     const filename = supplierGroup
       ? `${sanitizeFilename(supplierGroup)}-${baseName}.xlsx`
@@ -264,6 +271,72 @@ export async function exportOrderResults(
   } catch (err) {
     console.error('[weekly-order] export error:', err)
     snackbar.error('Không thể xuất file Excel')
+  }
+}
+
+export interface ZipProgress {
+  current: number
+  total: number
+  currentName: string
+}
+
+export async function exportOrdersAsZip(
+  data: AggregatedRow[],
+  week: ExportWeekMeta,
+  groups: string[],
+  onProgress?: (p: ZipProgress) => void,
+) {
+  const snackbar = useSnackbar()
+  if (groups.length === 0) {
+    snackbar.warning('Chưa chọn NCC nào')
+    return
+  }
+
+  try {
+    const JSZipModule = await import('jszip')
+    const JSZip = JSZipModule.default
+    const zip = new JSZip()
+    const baseName = week.week_name || 'tuan'
+
+    let processed = 0
+    for (const group of groups) {
+      onProgress?.({
+        current: processed + 1,
+        total: groups.length,
+        currentName: group,
+      })
+
+      const filtered = data.filter(
+        (r) => getSupplierGroup(r.supplier_name) === group,
+      )
+      if (filtered.length === 0) {
+        processed += 1
+        continue
+      }
+
+      const workbook = await buildOrderWorkbook(filtered, week)
+      const buffer = await workbook.xlsx.writeBuffer()
+      const filename = `${sanitizeFilename(group)}-${baseName}.xlsx`
+      zip.file(filename, buffer)
+      processed += 1
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' })
+    const url = URL.createObjectURL(zipBlob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `dat-hang-chi-${baseName}.zip`
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+
+    snackbar.success(`Đã xuất ${groups.length} file vào ZIP`)
+  } catch (err) {
+    console.error('[weekly-order] export zip error:', err)
+    snackbar.error('Không thể xuất file ZIP')
   }
 }
 

@@ -528,6 +528,13 @@
       @confirm="handleSupplierConfirm"
     />
 
+    <ExportProgressDialog
+      :model-value="showProgressDialog"
+      :current="exportProgress.current"
+      :total="exportProgress.total"
+      :current-name="exportProgress.currentName"
+    />
+
     <!-- Surplus Preview Dialog -->
     <q-dialog v-model="showSurplusDialog">
       <q-card :style="surplusPreview?.breakdown?.length ? 'min-width: 600px; max-width: 90vw' : 'min-width: 400px'">
@@ -671,8 +678,9 @@ import AppCheckbox from '@/components/ui/inputs/AppCheckbox.vue'
 import ResultsDetailView from '@/components/thread/weekly-order/ResultsDetailView.vue'
 import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
 import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
-import { exportOrderResults, getSupplierGroups } from '@/composables/thread/useWeeklyOrderExport'
+import { exportOrderResults, exportOrdersAsZip, getSupplierGroups } from '@/composables/thread/useWeeklyOrderExport'
 import SupplierExportDialog from '@/components/thread/weekly-order/SupplierExportDialog.vue'
+import ExportProgressDialog from '@/components/thread/weekly-order/ExportProgressDialog.vue'
 
 definePage({
   meta: {
@@ -926,6 +934,8 @@ const loadCalculationResults = async () => {
 }
 
 const showSupplierDialog = ref(false)
+const showProgressDialog = ref(false)
+const exportProgress = ref({ current: 0, total: 0, currentName: '' })
 
 const supplierGroups = computed(() => {
   if (!calculationResults.value) return []
@@ -957,12 +967,27 @@ const exportFilteredOrders = async (groups: string[]) => {
     await exportOrderResults(calculationResults.value.summary_data, weekMeta)
     return
   }
-  for (const group of groups) {
+  if (groups.length === 1) {
     await exportOrderResults(
       calculationResults.value.summary_data,
       weekMeta,
-      group,
+      groups[0],
     )
+    return
+  }
+  exportProgress.value = { current: 0, total: groups.length, currentName: '' }
+  showProgressDialog.value = true
+  try {
+    await exportOrdersAsZip(
+      calculationResults.value.summary_data,
+      weekMeta,
+      groups,
+      (p) => {
+        exportProgress.value = p
+      },
+    )
+  } finally {
+    showProgressDialog.value = false
   }
 }
 
