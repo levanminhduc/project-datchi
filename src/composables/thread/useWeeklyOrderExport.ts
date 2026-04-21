@@ -9,7 +9,9 @@ export interface ExportWeekMeta {
   id: number
   week_name: string
   created_by?: string | null
+  created_at?: string | null
   leader_signed_by_name?: string | null
+  leader_signed_at?: string | null
 }
 
 function styleHeaderRow(worksheet: Worksheet) {
@@ -177,13 +179,35 @@ function renderSignatureFooter(
 
   worksheet.mergeCells(`A${nameRow}:G${nameRow}`)
   const leftName = worksheet.getCell(`A${nameRow}`)
-  leftName.value = week.leader_signed_by_name || ''
-  leftName.alignment = { horizontal: 'center' }
+  if (week.leader_signed_by_name && week.leader_signed_at) {
+    const signedAt = format(new Date(week.leader_signed_at), 'HH:mm:ss dd/MM/yyyy')
+    leftName.value = {
+      richText: [
+        { text: `Đã ký lúc ${signedAt}\n`, font: { italic: true, size: 10, color: { argb: 'FF666666' } } },
+        { text: week.leader_signed_by_name, font: { bold: true } },
+      ],
+    }
+  } else {
+    leftName.value = week.leader_signed_by_name || ''
+  }
+  leftName.alignment = { horizontal: 'center', wrapText: true }
 
   worksheet.mergeCells(`H${nameRow}:${LAST_COL_LETTER}${nameRow}`)
   const rightName = worksheet.getCell(`H${nameRow}`)
-  rightName.value = week.created_by || ''
-  rightName.alignment = { horizontal: 'center' }
+  if (week.created_by && week.created_at) {
+    const createdAt = format(new Date(week.created_at), 'HH:mm:ss dd/MM/yyyy')
+    rightName.value = {
+      richText: [
+        { text: `Đã ký lúc ${createdAt}\n`, font: { italic: true, size: 10, color: { argb: 'FF666666' } } },
+        { text: week.created_by, font: { bold: true } },
+      ],
+    }
+  } else {
+    rightName.value = week.created_by || ''
+  }
+  rightName.alignment = { horizontal: 'center', wrapText: true }
+
+  worksheet.getRow(nameRow).height = 50
 }
 
 async function buildOrderWorkbook(
@@ -207,7 +231,7 @@ async function buildOrderWorkbook(
   worksheet.getColumn('inventory_cones').numFmt = numFmt
   worksheet.getColumn('full_cones').numFmt = numFmt
   worksheet.getColumn('partial_cones').numFmt = numFmt
-  worksheet.getColumn('equivalent_cones').numFmt = '0.##'
+  worksheet.getColumn('equivalent_cones').numFmt = 'General'
   worksheet.getColumn('sl_can_dat').numFmt = numFmt
   worksheet.getColumn('additional_order').numFmt = numFmt
   worksheet.getColumn('total_final').numFmt = numFmt

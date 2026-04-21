@@ -961,7 +961,9 @@ const exportFilteredOrders = async (groups: string[]) => {
     id: week.value.id,
     week_name: week.value.week_name,
     created_by: week.value.created_by,
+    created_at: week.value.created_at,
     leader_signed_by_name: week.value.leader_signed_by_name,
+    leader_signed_at: week.value.leader_signed_at,
   }
   if (groups.length === 0) {
     await exportOrderResults(calculationResults.value.summary_data, weekMeta)

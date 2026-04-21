@@ -1007,7 +1007,9 @@ const handleExport = () => {
     id: selectedWeek.value.id,
     week_name: selectedWeek.value.week_name,
     created_by: selectedWeek.value.created_by,
+    created_at: selectedWeek.value.created_at,
     leader_signed_by_name: selectedWeek.value.leader_signed_by_name,
+    leader_signed_at: selectedWeek.value.leader_signed_at,
   })
 }
 
