@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { supabaseAdmin } from '../../db/supabase'
 import { requirePermission } from '../../middleware/auth'
 import type { AppEnv } from '../../types/hono-env'
+import { transferReservedBodySchema } from '../../validation/transferReservedSchema'
 
 const router = new Hono<AppEnv>()
 
@@ -235,6 +236,53 @@ router.get(
         unassigned: { thread_lines: unassignedLines },
       },
       error: null,
+    })
+  }
+)
+
+router.post(
+  '/:weekId/transfer-reserved-cones',
+  requirePermission('thread.batch.transfer'),
+  async (c) => {
+    const weekId = Number(c.req.param('weekId'))
+    if (!Number.isFinite(weekId)) {
+      return c.json({ data: null, error: 'Tuần không hợp lệ' }, 400)
+    }
+
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ data: null, error: 'Body JSON không hợp lệ' }, 400)
+    }
+
+    const parsed = transferReservedBodySchema.safeParse(body)
+    if (!parsed.success) {
+      return c.json(
+        { data: null, error: parsed.error.issues[0]?.message || 'Dữ liệu không hợp lệ' },
+        400
+      )
+    }
+
+    const employeeCode = c.get('employee_code') || 'SYSTEM'
+
+    const { data, error } = await supabaseAdmin.rpc('fn_transfer_reserved_cones', {
+      p_week_id: weekId,
+      p_from_warehouse_id: parsed.data.from_warehouse_id,
+      p_to_warehouse_id: parsed.data.to_warehouse_id,
+      p_items: parsed.data.items,
+      p_performed_by: employeeCode,
+    })
+
+    if (error) {
+      return c.json({ data: null, error: error.message }, 400)
+    }
+
+    const result = data as { transaction_id: number; total_cones: number; per_item: any[] }
+    return c.json({
+      data: result,
+      error: null,
+      message: `Đã chuyển ${result.total_cones} cuộn`,
     })
   }
 )
