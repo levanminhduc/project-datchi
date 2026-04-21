@@ -998,7 +998,18 @@ const handleConfirmWeek = async () => {
   })
 }
 
-const handleExport = () => exportOrderResults(aggregatedResults.value, weekName.value)
+const handleExport = () => {
+  if (!selectedWeek.value) {
+    snackbar.warning('Vui lòng lưu đơn hàng trước khi xuất Excel')
+    return
+  }
+  exportOrderResults(aggregatedResults.value, {
+    id: selectedWeek.value.id,
+    week_name: selectedWeek.value.week_name,
+    created_by: selectedWeek.value.created_by,
+    leader_signed_by_name: selectedWeek.value.leader_signed_by_name,
+  })
+}
 
 // Lifecycle
 onMounted(async () => {
