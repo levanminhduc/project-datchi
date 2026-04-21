@@ -5,15 +5,21 @@ import type {
   TransferReservedResult,
 } from '@/types/transferReserved'
 
+interface ApiResponse<T> {
+  data: T | null
+  error: string | null
+  message?: string
+}
+
 export const transferReservedService = {
   async getReservedByPo(weekId: number, warehouseId: number) {
-    return fetchApi<ReservedByPoResponse>(
+    return fetchApi<ApiResponse<ReservedByPoResponse>>(
       `/api/weekly-orders/${weekId}/reserved-by-po?warehouse_id=${warehouseId}`,
     )
   },
 
   async submit(weekId: number, body: TransferReservedBody) {
-    return fetchApi<TransferReservedResult>(
+    return fetchApi<ApiResponse<TransferReservedResult>>(
       `/api/weekly-orders/${weekId}/transfer-reserved-cones`,
       { method: 'POST', body: JSON.stringify(body) },
     )
