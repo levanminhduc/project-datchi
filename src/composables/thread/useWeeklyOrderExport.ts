@@ -219,7 +219,10 @@ export async function exportOrderResults(
         sl_can_dat: r.sl_can_dat || '',
         additional_order: r.additional_order || '',
         total_final: r.total_final || '',
-        delivery_date: r.total_final ? r.delivery_date || '' : '',
+        delivery_date:
+          r.total_final && r.delivery_date
+            ? format(new Date(r.delivery_date), 'dd/MM/yyyy')
+            : '',
       })
     })
 
