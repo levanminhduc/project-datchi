@@ -30,8 +30,12 @@ async function downloadWorkbook(workbook: Workbook, filename: string) {
   const link = document.createElement('a')
   link.href = url
   link.download = filename
+  link.style.display = 'none'
+  document.body.appendChild(link)
   link.click()
-  URL.revokeObjectURL(url)
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  await new Promise((resolve) => setTimeout(resolve, 350))
 }
 
 function getSupplierGroup(supplierName: string | null | undefined): string {
