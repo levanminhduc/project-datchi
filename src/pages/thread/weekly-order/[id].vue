@@ -919,8 +919,13 @@ const loadCalculationResults = async () => {
 }
 
 const handleExportSummary = () => {
-  if (!calculationResults.value) return
-  exportOrderResults(calculationResults.value.summary_data, week.value?.week_name || '')
+  if (!calculationResults.value || !week.value) return
+  exportOrderResults(calculationResults.value.summary_data, {
+    id: week.value.id,
+    week_name: week.value.week_name,
+    created_by: week.value.created_by,
+    leader_signed_by_name: week.value.leader_signed_by_name,
+  })
 }
 
 watch(activeTab, (tab) => {
