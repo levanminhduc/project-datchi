@@ -3,7 +3,7 @@
     :model-value="modelValue"
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <q-card class="breakdown-dialog-card column">
+    <q-card class="breakdown-dialog-card">
       <!-- Header -->
       <q-card-section class="row items-center q-pb-none">
         <div class="column">
@@ -103,7 +103,7 @@
       </q-card-section>
 
       <!-- Warehouse breakdown table -->
-      <q-card-section class="col q-pt-none">
+      <q-card-section class="q-pt-none">
         <q-table
           :rows="breakdown"
           :columns="columns"
@@ -114,7 +114,6 @@
           dense
           :pagination="{ rowsPerPage: 0 }"
           hide-pagination
-          class="full-height"
         >
           <!-- Warehouse name with icon -->
           <template #body-cell-warehouse_name="props">
@@ -430,5 +429,7 @@ const formatNumber = (num: number): string => {
   width: 90vw;
   max-width: 800px;
   max-height: 90vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 </style>
