@@ -465,11 +465,20 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
     const threadTypeId = parseInt(c.req.param('threadTypeId'))
     const colorIdParam = c.req.query('color_id')
     const colorId = colorIdParam ? parseInt(colorIdParam) : null
+    const warehouseIdParam = c.req.query('warehouse_id')
+    const warehouseId = warehouseIdParam ? parseInt(warehouseIdParam) : null
 
     if (isNaN(threadTypeId)) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'ID loại chỉ không hợp lệ'
+      }, 400)
+    }
+
+    if (warehouseIdParam && (warehouseId == null || isNaN(warehouseId))) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'ID kho không hợp lệ'
       }, 400)
     }
 
@@ -482,36 +491,169 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
       'RESERVED_FOR_ORDER'
     ]
 
-    const [warehouseResult, supplierResult] = await Promise.all([
-      supabase.rpc('fn_warehouse_breakdown', {
-        p_thread_type_id: threadTypeId,
-        p_statuses: usableStatuses,
-        p_color_id: colorId,
-      }),
-      supabase.rpc('fn_supplier_breakdown', {
-        p_thread_type_id: threadTypeId,
-        p_statuses: usableStatuses,
-        p_color_id: colorId,
-      }),
-    ])
+    // Path A: no warehouse filter -> giữ nguyên flow cũ với 2 RPC.
+    // Path B: có warehouse_id -> filter warehouse breakdown rows (lossless),
+    // và re-derive supplier_breakdown từ thread_inventory MIRROR semantics
+    // fn_supplier_breakdown (cùng usableStatuses, cùng COALESCE supplier from
+    // lot/thread_type, cùng metrics) để tránh cross-warehouse leak.
+    if (warehouseId == null) {
+      const [warehouseResult, supplierResult] = await Promise.all([
+        supabase.rpc('fn_warehouse_breakdown', {
+          p_thread_type_id: threadTypeId,
+          p_statuses: usableStatuses,
+          p_color_id: colorId,
+        }),
+        supabase.rpc('fn_supplier_breakdown', {
+          p_thread_type_id: threadTypeId,
+          p_statuses: usableStatuses,
+          p_color_id: colorId,
+        }),
+      ])
 
-    if (warehouseResult.error || supplierResult.error) {
-      console.error('RPC error:', warehouseResult.error || supplierResult.error)
+      if (warehouseResult.error || supplierResult.error) {
+        console.error('RPC error:', warehouseResult.error || supplierResult.error)
+        return c.json<ThreadApiResponse<null>>({
+          data: null,
+          error: 'Lỗi khi tải chi tiết kho'
+        }, 500)
+      }
+
+      const breakdownList: ConeWarehouseBreakdown[] = (warehouseResult.data || []).map(
+        (row: { warehouse_id: number; warehouse_code: string; warehouse_name: string; locations: string | null; full_cones: number; partial_cones: number; partial_meters: number }) => ({
+          ...row,
+          location: row.locations,
+          locations: undefined,
+        })
+      )
+
+      const supplierBreakdown: SupplierBreakdown[] = supplierResult.data || []
+
+      return c.json<ThreadApiResponse<ConeWarehouseBreakdown[]> & { supplier_breakdown: SupplierBreakdown[] }>({
+        data: breakdownList,
+        supplier_breakdown: supplierBreakdown,
+        error: null,
+        message: `Tìm thấy ${breakdownList.length} kho chứa loại chỉ này`
+      })
+    }
+
+    // Path B: warehouse_id present
+    const warehouseResult = await supabase.rpc('fn_warehouse_breakdown', {
+      p_thread_type_id: threadTypeId,
+      p_statuses: usableStatuses,
+      p_color_id: colorId,
+    })
+
+    if (warehouseResult.error) {
+      console.error('RPC error:', warehouseResult.error)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải chi tiết kho'
       }, 500)
     }
 
-    const breakdownList: ConeWarehouseBreakdown[] = (warehouseResult.data || []).map(
-      (row: { warehouse_id: number; warehouse_code: string; warehouse_name: string; locations: string | null; full_cones: number; partial_cones: number; partial_meters: number }) => ({
-        ...row,
-        location: row.locations,
-        locations: undefined,
-      })
-    )
+    const breakdownList: ConeWarehouseBreakdown[] = (warehouseResult.data || [])
+      .filter((row: { warehouse_id: number }) => row.warehouse_id === warehouseId)
+      .map(
+        (row: { warehouse_id: number; warehouse_code: string; warehouse_name: string; locations: string | null; full_cones: number; partial_cones: number; partial_meters: number }) => ({
+          ...row,
+          location: row.locations,
+          locations: undefined,
+        })
+      )
 
-    const supplierBreakdown: SupplierBreakdown[] = supplierResult.data || []
+    // Query thread_inventory cho warehouse được chọn để re-derive supplier breakdown
+    let coneQuery = supabase
+      .from('thread_inventory')
+      .select('is_partial, quantity_meters, lot_id, thread_type_id, color_id')
+      .eq('thread_type_id', threadTypeId)
+      .eq('warehouse_id', warehouseId)
+      .in('status', usableStatuses)
+    if (colorId != null) {
+      coneQuery = coneQuery.eq('color_id', colorId)
+    }
+    const { data: coneRows, error: coneErr } = await coneQuery
+
+    if (coneErr) {
+      console.error('thread_inventory supplier re-derive error:', coneErr)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi tải chi tiết nhà cung cấp'
+      }, 500)
+    }
+
+    const cones = coneRows || []
+    const lotIds = Array.from(new Set(cones.map((r) => r.lot_id).filter((v): v is number => v != null)))
+
+    const [lotsResp, threadTypeResp] = await Promise.all([
+      lotIds.length > 0
+        ? supabase.from('lots').select('id, supplier_id').in('id', lotIds)
+        : Promise.resolve({ data: [], error: null }),
+      supabase.from('thread_types').select('id, supplier_id').eq('id', threadTypeId).maybeSingle(),
+    ])
+
+    if (lotsResp.error || threadTypeResp.error) {
+      console.error('lots/thread_type fetch error:', lotsResp.error || threadTypeResp.error)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi tải chi tiết nhà cung cấp'
+      }, 500)
+    }
+
+    const lotSupplierMap = new Map<number, number | null>()
+    for (const lot of lotsResp.data || []) {
+      lotSupplierMap.set(lot.id, lot.supplier_id ?? null)
+    }
+    const threadTypeSupplierId = threadTypeResp.data?.supplier_id ?? null
+
+    const supplierAggMap = new Map<number | null, { full_cones: number; partial_cones: number; partial_meters: number }>()
+    for (const row of cones) {
+      const lotSupplier = row.lot_id != null ? lotSupplierMap.get(row.lot_id) ?? null : null
+      const supplierId = lotSupplier != null ? lotSupplier : threadTypeSupplierId
+      const key = supplierId
+      let agg = supplierAggMap.get(key)
+      if (!agg) {
+        agg = { full_cones: 0, partial_cones: 0, partial_meters: 0 }
+        supplierAggMap.set(key, agg)
+      }
+      if (row.is_partial) {
+        agg.partial_cones += 1
+        agg.partial_meters += Number(row.quantity_meters) || 0
+      } else {
+        agg.full_cones += 1
+      }
+    }
+
+    const supplierIdsForLookup = Array.from(supplierAggMap.keys()).filter((v): v is number => v != null)
+    const suppliersResp = supplierIdsForLookup.length > 0
+      ? await supabase.from('suppliers').select('id, code, name').in('id', supplierIdsForLookup)
+      : { data: [], error: null }
+
+    if (suppliersResp.error) {
+      console.error('suppliers fetch error:', suppliersResp.error)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi tải chi tiết nhà cung cấp'
+      }, 500)
+    }
+
+    const supplierInfoMap = new Map<number, { code: string; name: string }>()
+    for (const s of suppliersResp.data || []) {
+      supplierInfoMap.set(s.id, { code: s.code, name: s.name })
+    }
+
+    const supplierBreakdown: SupplierBreakdown[] = []
+    for (const [supplierId, agg] of supplierAggMap.entries()) {
+      const info = supplierId != null ? supplierInfoMap.get(supplierId) : undefined
+      supplierBreakdown.push({
+        supplier_id: supplierId,
+        supplier_code: info?.code ?? null,
+        supplier_name: info?.name ?? 'Không xác định',
+        full_cones: agg.full_cones,
+        partial_cones: agg.partial_cones,
+        partial_meters: agg.partial_meters,
+      })
+    }
+    supplierBreakdown.sort((a, b) => (a.supplier_name || '').localeCompare(b.supplier_name || '', 'vi'))
 
     return c.json<ThreadApiResponse<ConeWarehouseBreakdown[]> & { supplier_breakdown: SupplierBreakdown[] }>({
       data: breakdownList,

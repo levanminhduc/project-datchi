@@ -44,6 +44,7 @@ import guidesRouter, { guideImages } from './routes/guides'
 import publicGuidesRouter from './routes/public-guides'
 import announcementsRouter from './routes/announcements'
 import overQuotaRouter from './routes/over-quota'
+import threadConeSummaryRouter from './routes/thread/cone-summary'
 import { authMiddleware } from './middleware/auth'
 import { supabaseAdmin } from './db/supabase'
 
@@ -170,6 +171,7 @@ app.route('/api/dept-allocations', deptAllocationsRouter)
 app.route('/api/guides', guidesRouter)
 app.route('/api/announcements', announcementsRouter)
 app.route('/api/over-quota', overQuotaRouter)
+app.route('/api/thread/cone-summary', threadConeSummaryRouter)
 
 const HAS_DIST = existsSync('dist/index.html')
 if (HAS_DIST) {

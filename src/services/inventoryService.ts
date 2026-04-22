@@ -6,7 +6,7 @@
  */
 
 import { fetchApi } from './api'
-import type { Cone, InventoryFilters, ReceiveStockDTO, ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters } from '@/types/thread'
+import type { Cone, InventoryFilters, ReceiveStockDTO, ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters, ConeReservedByWeekResponse } from '@/types/thread'
 import type { UnassignedThreadGroup } from '@/types/thread/lot'
 
 interface ApiResponse<T> {
@@ -253,10 +253,13 @@ export const inventoryService = {
    * @param threadTypeId - Thread type ID
    * @returns Array of ConeWarehouseBreakdown
    */
-  async getWarehouseBreakdown(threadTypeId: number, colorId?: number | null): Promise<{ data: ConeWarehouseBreakdown[]; supplier_breakdown: SupplierBreakdown[] }> {
-    const params = colorId != null ? `?color_id=${colorId}` : ''
+  async getWarehouseBreakdown(threadTypeId: number, colorId?: number | null, warehouseId?: number | null): Promise<{ data: ConeWarehouseBreakdown[]; supplier_breakdown: SupplierBreakdown[] }> {
+    const params = new URLSearchParams()
+    if (colorId != null) params.append('color_id', String(colorId))
+    if (warehouseId != null) params.append('warehouse_id', String(warehouseId))
+    const qs = params.toString() ? `?${params.toString()}` : ''
     const response = await fetchApi<ApiResponse<ConeWarehouseBreakdown[]> & { supplier_breakdown: SupplierBreakdown[] }>(
-      `/api/inventory/summary/by-cone/${threadTypeId}/warehouses${params}`
+      `/api/inventory/summary/by-cone/${threadTypeId}/warehouses${qs}`
     )
 
     if (response.error) {
@@ -267,6 +270,31 @@ export const inventoryService = {
       data: response.data || [],
       supplier_breakdown: response.supplier_breakdown || []
     }
+  },
+
+  /**
+   * Lấy breakdown cone reserve theo Kho × Tuần (CONFIRMED)
+   * Endpoint: GET /api/thread/cone-summary/by-warehouse-week
+   */
+  async getConeReservedByWeek(params: {
+    threadTypeId: number
+    colorId?: number | null
+    warehouseId?: number | null
+  }): Promise<ConeReservedByWeekResponse> {
+    const qs = new URLSearchParams()
+    qs.append('thread_type_id', String(params.threadTypeId))
+    if (params.colorId != null) qs.append('color_id', String(params.colorId))
+    if (params.warehouseId != null) qs.append('warehouse_id', String(params.warehouseId))
+
+    const response = await fetchApi<ApiResponse<ConeReservedByWeekResponse>>(
+      `/api/thread/cone-summary/by-warehouse-week?${qs.toString()}`
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data || { warehouses: [] }
   },
 
   async getUnassignedByThreadType(warehouseId: number): Promise<UnassignedThreadGroup[]> {

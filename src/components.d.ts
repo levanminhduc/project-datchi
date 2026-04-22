@@ -62,6 +62,7 @@ declare module 'vue' {
     ColorSelector: typeof import('./components/ui/inputs/ColorSelector.vue')['default']
     ComponentCard: typeof import('./components/showcase/ComponentCard.vue')['default']
     ConeQrCode: typeof import('./components/qr/ConeQrCode.vue')['default']
+    ConeReservedByWeekTable: typeof import('./components/thread/ConeReservedByWeekTable.vue')['default']
     ConeSummaryTable: typeof import('./components/thread/ConeSummaryTable.vue')['default']
     ConeWarehouseBreakdownDialog: typeof import('./components/thread/ConeWarehouseBreakdownDialog.vue')['default']
     ConfirmDialog: typeof import('./components/ui/dialogs/ConfirmDialog.vue')['default']

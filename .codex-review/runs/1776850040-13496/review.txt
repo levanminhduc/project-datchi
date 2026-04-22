@@ -1,0 +1,38 @@
+### ISSUE-1: Legacy warehouse filter plan can produce incorrect `supplier_breakdown`
+- Category: correctness
+- Severity: high
+- Problem: The plan says the modified legacy endpoint will call `fn_warehouse_breakdown` and `fn_supplier_breakdown` as-is, then app-layer filter `supplier_breakdown` to suppliers “có cone thuộc warehouse đó”. That is only safe if supplier rows already carry warehouse-scoped totals. If `fn_supplier_breakdown` is aggregated across all warehouses, post-filtering suppliers by presence will still leave wrong totals for the selected warehouse.
+- Why it matters: This directly violates the stated goal of keeping both dialog tables consistent when `filters.warehouse_id` is active. Users could see warehouse-scoped rows in one section and cross-warehouse supplier totals in another response payload.
+- Suggested fix: Update the plan to explicitly prove that `supplier_breakdown` can be filtered losslessly after the RPC, or change the plan so warehouse scoping is applied at the data-source level for every returned aggregate that survives in the response.
+
+### ISSUE-2: Deleted/non-CONFIRMED week handling is underspecified
+- Category: correctness
+- Severity: high
+- Problem: The new endpoint plans to fetch `RESERVED_FOR_ORDER` cones first, then drop week groups that are not `CONFIRMED`. The plan does not define what should happen when cones still point to a deleted week, a missing week row, or a non-CONFIRMED week. It also does not define whether a warehouse with only such reservations should still appear or disappear.
+- Why it matters: This can silently undercount reserved inventory and create confusing mismatches between physical stock and the new table. The user explicitly asked for edge-case attention here.
+- Suggested fix: Add an explicit requirement and QA case for orphaned/non-CONFIRMED `reserved_week_id` values, including whether those cones are excluded entirely, surfaced as an anomaly, or cause the warehouse row to remain with zero visible weeks.
+
+### ISSUE-3: Warehouse-move semantics for reserved cones are not defined
+- Category: correctness
+- Severity: medium
+- Problem: The plan groups reserved data by `thread_inventory.warehouse_id`, but it never states whether the breakdown should reflect the cone’s current warehouse at fetch time or some historical reservation warehouse. This is especially important for the “cone moved between warehouses during RESERVED” edge case called out in the review brief.
+- Why it matters: Without a stated rule, implementers and reviewers may assume different behavior, and the resulting UI can look “wrong” even if it matches the query.
+- Suggested fix: Add a design note and test case that explicitly defines the source of truth for warehouse grouping when a reserved cone has been moved after reservation.
+
+### ISSUE-4: UI error-state planning is incomplete for an in-dialog data block
+- Category: risk
+- Severity: medium
+- Problem: The plan covers loading and empty states and mentions snackbar errors, but it does not require an inline error state for `ConeReservedByWeekTable` itself. If the fetch fails or returns 403/500, the dialog may show a blank or stale section with only a transient toast.
+- Why it matters: This is a nested informational component inside an existing dialog. Users need persistent, local feedback about why the section is missing, especially when the legacy table above still renders successfully.
+- Suggested fix: Extend the plan/spec/tasks to require a component-level Vietnamese error state for the new table, including how it behaves alongside the existing warehouse breakdown when only one request fails.
+
+### ISSUE-5: Edge-case verification coverage is too thin for incremental rollout
+- Category: sequencing
+- Severity: medium
+- Problem: The task list has basic manual checks, but it does not require explicit verification for several critical scenarios: selected warehouse with no matching rows, no CONFIRMED weeks but available cones exist, zero available cones but reserved cones exist, deleted/missing week references, and moved reserved cones. It also delays most validation until after full FE integration.
+- Why it matters: This feature has two endpoints and one shared filter contract. Missing these cases increases the chance of shipping a “mostly works” implementation with subtle data inconsistencies.
+- Suggested fix: Strengthen the plan’s sequencing so backend contract/edge-case validation happens before frontend integration, and add a concrete QA matrix covering the requested edge cases and filter-sync scenarios.
+
+### VERDICT
+- Status: REVISE
+- Reason: The plan is close, but it still leaves correctness gaps around warehouse-scoped consistency, orphaned/non-CONFIRMED week handling, and verification depth.

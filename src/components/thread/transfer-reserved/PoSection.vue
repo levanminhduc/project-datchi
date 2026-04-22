@@ -154,13 +154,6 @@ const columns = [
     field: 'reserved_partial_cones_at_source',
     align: 'right' as const,
   },
-  {
-    name: 'meters',
-    label: 'Mét',
-    field: 'reserved_meters_at_source',
-    align: 'right' as const,
-    format: (v: number) => v.toLocaleString('vi-VN'),
-  },
   { name: 'full_qty', label: 'Cuộn nguyên chuyển', field: 'full_qty', align: 'right' as const },
   { name: 'partial_qty', label: 'Cuộn lẻ chuyển', field: 'partial_qty', align: 'right' as const },
 ]

@@ -750,6 +750,8 @@
       :breakdown="warehouseBreakdown"
       :supplier-breakdown="supplierBreakdown"
       :loading="breakdownLoading"
+      :warehouse-id="filters.warehouse_id ?? null"
+      :warehouse-name="selectedWarehouseName"
     />
 
     <!-- Manual Entry History Dialog -->
@@ -837,6 +839,12 @@ const {
 // Local State
 const activeTab = ref<'detail' | 'summary'>('summary')
 const showBreakdownDialog = ref(false)
+const selectedWarehouseName = computed<string | null>(() => {
+  const id = filters.warehouse_id
+  if (id == null) return null
+  const wh = warehouses.value.find(w => w.id === id)
+  return wh?.name ?? null
+})
 const searchQuery = ref('')
 const filters = reactive({
   thread_type_id: undefined as number | undefined,
@@ -1358,7 +1366,7 @@ const handleSummaryRefresh = async () => {
 }
 
 const handleShowBreakdown = async (row: ConeSummaryRow) => {
-  await selectThreadType(row)
+  await selectThreadType(row, filters.warehouse_id ?? null)
   showBreakdownDialog.value = true
 }
 

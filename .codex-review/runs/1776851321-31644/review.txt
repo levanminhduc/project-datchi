@@ -1,0 +1,17 @@
+### ISSUE-1: Modified legacy spec is internally contradictory for `warehouse_id` requests
+- Category: correctness
+- Severity: high
+- Problem: `specs/warehouse-breakdown-rpc/spec.md` still says the route “SHALL call both RPC functions in parallel” for the warehouse breakdown endpoint, but the updated `warehouse_id` scenario correctly says `supplier_breakdown` must **not** reuse `fn_supplier_breakdown` and must be re-derived from `thread_inventory`. Those two rules conflict for the filtered path.
+- Why it matters: This leaves the implementation contract ambiguous. One implementer could keep calling both RPCs for all cases to satisfy the parallel-execution requirement, while another could skip `fn_supplier_breakdown` when `warehouse_id` is present. That ambiguity weakens reviewability and can reintroduce the exact bug you just fixed.
+- Suggested fix: Narrow the “parallel RPC” requirement to the **no-`warehouse_id` path only**, and explicitly state that the filtered path uses `fn_warehouse_breakdown` plus warehouse-scoped supplier re-derivation instead of `fn_supplier_breakdown`.
+
+### ISSUE-2: Re-derived `supplier_breakdown` parity with the legacy RPC is still underspecified
+- Category: correctness
+- Severity: medium
+- Problem: The plan now correctly re-derives `supplier_breakdown` when `warehouse_id` is present, but it still does not explicitly define that this re-derived result must preserve the **same aggregation semantics** as the legacy `fn_supplier_breakdown` output aside from warehouse scoping. Task 2.4 says `status enum` but does not pin down the exact status set/metrics to mirror.
+- Why it matters: Even with the cross-warehouse leak fixed, the filtered response can still drift from the unfiltered endpoint’s meaning if the re-derivation counts different inventory states or totals differently. That would create a subtler inconsistency and a quasi-breaking behavior on the filtered path.
+- Suggested fix: Add a plan/spec note that the warehouse-scoped re-derivation must match the legacy `fn_supplier_breakdown` semantics exactly except for the warehouse filter, and add a verification step that compares the filtered-path totals against an equivalent warehouse-scoped raw SQL built with the same business rules.
+
+### VERDICT
+- Status: REVISE
+- Reason: The main prior issues are addressed, but one spec contradiction remains and the supplier re-derivation contract still needs tighter semantic definition to avoid a new consistency bug.

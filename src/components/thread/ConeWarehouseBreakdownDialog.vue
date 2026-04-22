@@ -19,6 +19,15 @@
               • {{ threadType?.tex_label || threadType?.tex_number }}
             </template>
           </div>
+          <q-chip
+            v-if="warehouseId != null"
+            dense
+            color="primary"
+            text-color="white"
+            icon="filter_alt"
+            class="q-mt-xs"
+            :label="`Đang lọc theo kho: ${warehouseName || ''}`"
+          />
         </div>
         <q-space />
         <q-btn
@@ -280,6 +289,18 @@
         </q-table>
       </q-card-section>
 
+      <!-- Reserved by week table (CONFIRMED week orders) -->
+      <q-card-section
+        v-if="threadType?.thread_type_id != null"
+        class="q-pt-none"
+      >
+        <ConeReservedByWeekTable
+          :thread-type-id="threadType.thread_type_id"
+          :color-id="threadType.color_id ?? null"
+          :warehouse-id="warehouseId ?? null"
+        />
+      </q-card-section>
+
       <!-- Actions -->
       <q-card-actions
         align="right"
@@ -300,6 +321,7 @@
 import { computed } from 'vue'
 import type { QTableColumn } from 'quasar'
 import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown } from '@/types/thread'
+import ConeReservedByWeekTable from './ConeReservedByWeekTable.vue'
 
 interface Props {
   modelValue: boolean
@@ -307,11 +329,15 @@ interface Props {
   breakdown: ConeWarehouseBreakdown[]
   supplierBreakdown?: SupplierBreakdown[]
   loading?: boolean
+  warehouseId?: number | null
+  warehouseName?: string | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   supplierBreakdown: () => [],
+  warehouseId: null,
+  warehouseName: null,
 })
 
 // Emits

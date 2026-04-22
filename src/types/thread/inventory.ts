@@ -133,3 +133,32 @@ export interface ConeSummaryFilters {
   material?: string
   search?: string
 }
+
+/**
+ * Cone reservation breakdown by warehouse and CONFIRMED week
+ * Returned by GET /api/thread/cone-summary/by-warehouse-week
+ */
+export interface ConeReservedAggregate {
+  full_cones: number
+  partial_cones: number
+  partial_meters: number
+}
+
+export interface ConeReservedWeekEntry extends ConeReservedAggregate {
+  week_id: number
+  week_name: string
+  status: string
+}
+
+export interface ConeReservedWarehouseEntry {
+  warehouse_id: number
+  warehouse_code: string
+  warehouse_name: string
+  available: ConeReservedAggregate
+  weeks: ConeReservedWeekEntry[]
+  other_reserved: ConeReservedAggregate
+}
+
+export interface ConeReservedByWeekResponse {
+  warehouses: ConeReservedWarehouseEntry[]
+}

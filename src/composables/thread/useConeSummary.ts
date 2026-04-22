@@ -12,11 +12,12 @@ import { useLoading } from '../useLoading'
 import { useRealtime } from '../useRealtime'
 import { getErrorMessage } from '@/utils/errorMessages'
 import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
-import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters } from '@/types/thread'
+import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters, ConeReservedByWeekResponse } from '@/types/thread'
 
 const MESSAGES = {
   FETCH_ERROR: 'Không thể tải dữ liệu tổng hợp',
   BREAKDOWN_ERROR: 'Không thể tải chi tiết theo kho',
+  RESERVED_BY_WEEK_ERROR: 'Không tải được dữ liệu reserve',
 }
 
 const CACHE_TTL = 10_000
@@ -30,6 +31,9 @@ export function useConeSummary() {
   const filters = ref<ConeSummaryFilters>({})
   const error = ref<string | null>(null)
   const breakdownLoading = ref(false)
+  const reservedByWeekData = ref<ConeReservedByWeekResponse | null>(null)
+  const reservedByWeekLoading = ref(false)
+  const reservedByWeekError = ref<string | null>(null)
   // Realtime state
   const realtimeEnabled = ref(false)
   const realtimeChannelName = ref<string | null>(null)
@@ -97,12 +101,12 @@ export function useConeSummary() {
    * Fetch warehouse breakdown for a specific thread type
    * @param threadTypeId - Thread type ID
    */
-  const fetchWarehouseBreakdown = async (threadTypeId: number, colorId?: number | null): Promise<void> => {
+  const fetchWarehouseBreakdown = async (threadTypeId: number, colorId?: number | null, warehouseId?: number | null): Promise<void> => {
     clearError()
     breakdownLoading.value = true
 
     try {
-      const response = await inventoryService.getWarehouseBreakdown(threadTypeId, colorId)
+      const response = await inventoryService.getWarehouseBreakdown(threadTypeId, colorId, warehouseId)
       warehouseBreakdown.value = response.data
       supplierBreakdown.value = response.supplier_breakdown
     } catch (err) {
@@ -119,8 +123,9 @@ export function useConeSummary() {
    * Select a thread type row for drill-down
    * Automatically fetches warehouse breakdown
    * @param row - ConeSummaryRow to select, or null to deselect
+   * @param warehouseId - Optional warehouse filter
    */
-  const selectThreadType = async (row: ConeSummaryRow | null): Promise<void> => {
+  const selectThreadType = async (row: ConeSummaryRow | null, warehouseId?: number | null): Promise<void> => {
     selectedThreadType.value = row
 
     // Clear any pending debounced refresh to avoid race condition
@@ -130,10 +135,38 @@ export function useConeSummary() {
     }
 
     if (row) {
-      await fetchWarehouseBreakdown(row.thread_type_id, row.color_id)
+      await fetchWarehouseBreakdown(row.thread_type_id, row.color_id, warehouseId)
     } else {
       warehouseBreakdown.value = []
       supplierBreakdown.value = []
+    }
+  }
+
+  /**
+   * Fetch cone reservation breakdown grouped by warehouse × CONFIRMED week
+   */
+  const fetchReservedByWeek = async (
+    threadTypeId: number,
+    colorId?: number | null,
+    warehouseId?: number | null
+  ): Promise<void> => {
+    reservedByWeekError.value = null
+    reservedByWeekLoading.value = true
+    try {
+      const data = await inventoryService.getConeReservedByWeek({
+        threadTypeId,
+        colorId,
+        warehouseId,
+      })
+      reservedByWeekData.value = data
+    } catch (err) {
+      const errorMessage = getErrorMessage(err)
+      reservedByWeekError.value = errorMessage || MESSAGES.RESERVED_BY_WEEK_ERROR
+      snackbar.error(MESSAGES.RESERVED_BY_WEEK_ERROR)
+      reservedByWeekData.value = null
+      console.error('[useConeSummary] fetchReservedByWeek error:', err)
+    } finally {
+      reservedByWeekLoading.value = false
     }
   }
 
@@ -259,6 +292,9 @@ export function useConeSummary() {
     filters.value = {}
     error.value = null
     breakdownLoading.value = false
+    reservedByWeekData.value = null
+    reservedByWeekError.value = null
+    reservedByWeekLoading.value = false
     disableRealtime()
     loading.reset()
   }
@@ -271,10 +307,13 @@ export function useConeSummary() {
     selectedThreadType,
     filters,
     error,
+    reservedByWeekData,
+    reservedByWeekError,
 
     // Loading states
     isLoading,
     breakdownLoading: breakdownLoading as Ref<boolean>,
+    reservedByWeekLoading: reservedByWeekLoading as Ref<boolean>,
 
     // Computed
     hasSummary,
@@ -286,6 +325,7 @@ export function useConeSummary() {
     // Methods
     fetchSummary,
     fetchWarehouseBreakdown,
+    fetchReservedByWeek,
     selectThreadType,
     setFilters,
     clearFilters,
