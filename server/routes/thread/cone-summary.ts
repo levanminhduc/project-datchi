@@ -67,6 +67,52 @@ coneSummary.get(
 
       const { thread_type_id, color_id, warehouse_id } = parsed.data
 
+      let warehouseIdFilter: number[] | null = null
+      if (warehouse_id != null) {
+        const { data: whRow, error: whErr } = await supabase
+          .from('warehouses')
+          .select('id, type')
+          .eq('id', warehouse_id)
+          .is('deleted_at', null)
+          .maybeSingle()
+
+        if (whErr) {
+          console.error('[cone-summary/by-warehouse-week] warehouse lookup error:', whErr)
+          return c.json<ThreadApiResponse<null>>(
+            { data: null, error: 'Lỗi khi tải thông tin kho' },
+            500
+          )
+        }
+
+        if (!whRow) {
+          return c.json<ThreadApiResponse<{ warehouses: WarehouseEntry[] }>>({
+            data: { warehouses: [] },
+            error: null,
+          })
+        }
+
+        if (whRow.type === 'LOCATION') {
+          const { data: children, error: childErr } = await supabase
+            .from('warehouses')
+            .select('id')
+            .eq('parent_id', warehouse_id)
+            .is('deleted_at', null)
+            .limit(1000)
+
+          if (childErr) {
+            console.error('[cone-summary/by-warehouse-week] child warehouse lookup error:', childErr)
+            return c.json<ThreadApiResponse<null>>(
+              { data: null, error: 'Lỗi khi tải kho con' },
+              500
+            )
+          }
+
+          warehouseIdFilter = [warehouse_id, ...(children || []).map((c) => c.id as number)]
+        } else {
+          warehouseIdFilter = [warehouse_id]
+        }
+      }
+
       let query = supabase
         .from('thread_inventory')
         .select('warehouse_id, status, reserved_week_id, is_partial, quantity_meters, color_id')
@@ -76,8 +122,8 @@ coneSummary.get(
       if (color_id != null) {
         query = query.eq('color_id', color_id)
       }
-      if (warehouse_id != null) {
-        query = query.eq('warehouse_id', warehouse_id)
+      if (warehouseIdFilter != null) {
+        query = query.in('warehouse_id', warehouseIdFilter)
       }
 
       const { data: cones, error: conesError } = await query
