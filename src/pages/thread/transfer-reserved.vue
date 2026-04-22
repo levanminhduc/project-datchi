@@ -1,8 +1,14 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="text-h5 q-mb-md">Chuyển kho cho chỉ đã gán theo Tuần</div>
+    <div class="text-h5 q-mb-md">
+      Chuyển kho cho chỉ đã gán theo Tuần
+    </div>
 
-    <q-card flat bordered class="q-pa-md q-mb-md">
+    <q-card
+      flat
+      bordered
+      class="q-pa-md q-mb-md"
+    >
       <div class="row q-col-gutter-md items-end">
         <div class="col-12 col-md-3">
           <AppSelect
@@ -44,7 +50,12 @@
       </div>
     </q-card>
 
-    <q-card v-if="data" flat bordered class="q-mb-md q-pa-sm">
+    <q-card
+      v-if="data"
+      flat
+      bordered
+      class="q-mb-md q-pa-sm"
+    >
       Tổng quan: {{ data.pos.length }} PO ·
       {{ totalLines }} loại chỉ ·
       {{ totalAvailableCones }} cuộn ở {{ data.source_warehouse.name }}
@@ -58,7 +69,8 @@
       :is-selected="isSelected"
       :get-selection="getSelection"
       @toggle="toggle"
-      @set-quantity="setQuantity"
+      @set-full-quantity="setFullQuantity"
+      @set-partial-quantity="setPartialQuantity"
     />
     <PoSection
       v-if="data && data.unassigned.thread_lines.length"
@@ -67,7 +79,8 @@
       :is-selected="isSelected"
       :get-selection="getSelection"
       @toggle="toggle"
-      @set-quantity="setQuantity"
+      @set-full-quantity="setFullQuantity"
+      @set-partial-quantity="setPartialQuantity"
     />
 
     <q-card
@@ -81,7 +94,11 @@
         <b>{{ totalSelectedCones }}</b> cuộn
       </div>
       <div class="q-gutter-sm">
-        <AppButton flat label="Hủy" @click="clearSelection" />
+        <AppButton
+          flat
+          label="Hủy"
+          @click="clearSelection"
+        />
         <AppButton
           color="primary"
           :loading="submitting"
@@ -117,7 +134,8 @@ const {
   canSubmit,
   fetchData,
   toggle,
-  setQuantity,
+  setFullQuantity,
+  setPartialQuantity,
   submit,
   isSelected,
   getSelection,
@@ -142,7 +160,9 @@ async function loadWeeks() {
 async function loadWarehouses() {
   try {
     const warehouses = await warehouseService.getAll()
-    warehouseOptions.value = warehouses.map((w) => ({ label: w.name, value: w.id }))
+    warehouseOptions.value = warehouses
+      .filter((w) => w.type === 'STORAGE' && w.is_active)
+      .map((w) => ({ label: w.name, value: w.id }))
   } catch (e: unknown) {
     snackbar.error(e instanceof Error ? e.message : 'Lỗi tải danh sách kho')
   }

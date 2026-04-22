@@ -6,6 +6,8 @@ export interface ReservedThreadLine {
   color_name: string
   reserved_cones_at_source: number
   reserved_meters_at_source: number
+  reserved_full_cones_at_source: number
+  reserved_partial_cones_at_source: number
 }
 
 export interface ReservedPoGroup {
@@ -24,7 +26,8 @@ export interface ReservedByPoResponse {
 export interface TransferReservedItem {
   thread_type_id: number
   color_id: number
-  quantity: number
+  full_quantity: number
+  partial_quantity: number
 }
 
 export interface TransferReservedBody {
@@ -37,5 +40,11 @@ export interface TransferReservedBody {
 export interface TransferReservedResult {
   transaction_id: number
   total_cones: number
-  per_item: Array<{ thread_type_id: number; color_id: number; moved: number }>
+  per_item: Array<{
+    thread_type_id: number
+    color_id: number
+    moved_full: number
+    moved_partial: number
+    moved: number
+  }>
 }

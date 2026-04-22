@@ -416,6 +416,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/thread/transfer-reserved': RouteRecordInfo<
+      '/thread/transfer-reserved',
+      '/thread/transfer-reserved',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/thread/weekly-order/': RouteRecordInfo<
       '/thread/weekly-order/',
       '/thread/weekly-order',
@@ -800,6 +807,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/suppliers/import-tex.vue': {
       routes:
         | '/thread/suppliers/import-tex'
+      views:
+        | never
+    }
+    'src/pages/thread/transfer-reserved.vue': {
+      routes:
+        | '/thread/transfer-reserved'
       views:
         | never
     }

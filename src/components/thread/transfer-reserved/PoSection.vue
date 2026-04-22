@@ -5,7 +5,10 @@
     :label="`${title} (${lines.length} loại chỉ)`"
     class="q-mb-sm bordered"
   >
-    <q-card flat bordered>
+    <q-card
+      flat
+      bordered
+    >
       <q-table
         :rows="lines"
         :columns="columns"
@@ -23,7 +26,8 @@
                   'toggle',
                   props.row.thread_type_id,
                   props.row.color_id,
-                  props.row.reserved_cones_at_source,
+                  props.row.reserved_full_cones_at_source,
+                  props.row.reserved_partial_cones_at_source,
                   rowLabel(props.row)
                 )
               "
@@ -35,24 +39,64 @@
             {{ rowLabel(props.row) }}
           </q-td>
         </template>
-        <template #body-cell-quantity="props">
+        <template #body-cell-full_qty="props">
           <q-td :props="props">
             <AppInput
               v-if="isSelected(props.row.thread_type_id, props.row.color_id)"
-              :model-value="getSelection(props.row.thread_type_id, props.row.color_id)?.quantity"
+              :model-value="
+                getSelection(props.row.thread_type_id, props.row.color_id)?.full_quantity
+              "
               type="number"
               dense
               :error="
                 isInvalid(
-                  getSelection(props.row.thread_type_id, props.row.color_id)?.quantity,
-                  props.row.reserved_cones_at_source
+                  getSelection(props.row.thread_type_id, props.row.color_id)?.full_quantity,
+                  props.row.reserved_full_cones_at_source
                 )
               "
               @update:model-value="
-                emit('set-quantity', props.row.thread_type_id, props.row.color_id, Number($event) || 0)
+                emit(
+                  'set-full-quantity',
+                  props.row.thread_type_id,
+                  props.row.color_id,
+                  Number($event) || 0
+                )
               "
             />
-            <span v-else class="text-grey">—</span>
+            <span
+              v-else
+              class="text-grey"
+            >—</span>
+          </q-td>
+        </template>
+        <template #body-cell-partial_qty="props">
+          <q-td :props="props">
+            <AppInput
+              v-if="isSelected(props.row.thread_type_id, props.row.color_id)"
+              :model-value="
+                getSelection(props.row.thread_type_id, props.row.color_id)?.partial_quantity
+              "
+              type="number"
+              dense
+              :error="
+                isInvalid(
+                  getSelection(props.row.thread_type_id, props.row.color_id)?.partial_quantity,
+                  props.row.reserved_partial_cones_at_source
+                )
+              "
+              @update:model-value="
+                emit(
+                  'set-partial-quantity',
+                  props.row.thread_type_id,
+                  props.row.color_id,
+                  Number($event) || 0
+                )
+              "
+            />
+            <span
+              v-else
+              class="text-grey"
+            >—</span>
           </q-td>
         </template>
       </q-table>
@@ -68,14 +112,25 @@ const props = defineProps<{
   title: string
   lines: ReservedThreadLine[]
   isSelected: (tt: number, c: number) => boolean
-  getSelection: (tt: number, c: number) => { quantity: number } | undefined
+  getSelection: (
+    tt: number,
+    c: number
+  ) => { full_quantity: number; partial_quantity: number } | undefined
 }>()
 
 void props
 
 const emit = defineEmits<{
-  (e: 'toggle', tt: number, c: number, available: number, label: string): void
-  (e: 'set-quantity', tt: number, c: number, q: number): void
+  (
+    e: 'toggle',
+    tt: number,
+    c: number,
+    availableFull: number,
+    availablePartial: number,
+    label: string
+  ): void
+  (e: 'set-full-quantity', tt: number, c: number, q: number): void
+  (e: 'set-partial-quantity', tt: number, c: number, q: number): void
 }>()
 
 const columns = [
@@ -83,8 +138,20 @@ const columns = [
   { name: 'thread', label: 'Loại chỉ (NCC - Tex - Màu)', field: 'thread', align: 'left' as const },
   {
     name: 'available',
-    label: 'Có sẵn',
+    label: 'Tổng cuộn',
     field: 'reserved_cones_at_source',
+    align: 'right' as const,
+  },
+  {
+    name: 'full',
+    label: 'Có sẵn (nguyên)',
+    field: 'reserved_full_cones_at_source',
+    align: 'right' as const,
+  },
+  {
+    name: 'partial',
+    label: 'Có sẵn (lẻ)',
+    field: 'reserved_partial_cones_at_source',
     align: 'right' as const,
   },
   {
@@ -94,7 +161,8 @@ const columns = [
     align: 'right' as const,
     format: (v: number) => v.toLocaleString('vi-VN'),
   },
-  { name: 'quantity', label: 'Số cuộn chuyển', field: 'quantity', align: 'right' as const },
+  { name: 'full_qty', label: 'Cuộn nguyên chuyển', field: 'full_qty', align: 'right' as const },
+  { name: 'partial_qty', label: 'Cuộn lẻ chuyển', field: 'partial_qty', align: 'right' as const },
 ]
 
 function rowLabel(row: ReservedThreadLine) {
@@ -103,6 +171,7 @@ function rowLabel(row: ReservedThreadLine) {
 
 function isInvalid(q: number | undefined, max: number) {
   if (q === undefined || q === null) return false
-  return !Number.isFinite(q) || q <= 0 || q > max
+  if (!Number.isFinite(q) || q < 0 || q > max) return true
+  return false
 }
 </script>

@@ -1,10 +1,16 @@
 import { z } from 'zod'
 
-export const transferReservedItemSchema = z.object({
-  thread_type_id: z.number().int().positive(),
-  color_id: z.number().int().positive(),
-  quantity: z.number().int().positive(),
-})
+export const transferReservedItemSchema = z
+  .object({
+    thread_type_id: z.number().int().positive(),
+    color_id: z.number().int().positive(),
+    full_quantity: z.number().int().min(0),
+    partial_quantity: z.number().int().min(0),
+  })
+  .refine((d) => d.full_quantity + d.partial_quantity > 0, {
+    message: 'Phải nhập số cuộn nguyên hoặc cuộn lẻ > 0',
+    path: ['full_quantity'],
+  })
 
 export const transferReservedBodySchema = z
   .object({

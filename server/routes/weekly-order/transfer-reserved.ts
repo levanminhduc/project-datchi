@@ -35,20 +35,25 @@ router.get(
 
     const { data: cones, error: coneErr } = await supabaseAdmin
       .from('thread_inventory')
-      .select('thread_type_id, color_id, quantity_meters')
+      .select('thread_type_id, color_id, quantity_meters, is_partial')
       .eq('reserved_week_id', weekId)
       .eq('warehouse_id', warehouseId)
       .eq('status', 'RESERVED_FOR_ORDER')
       .limit(50000)
     if (coneErr) return c.json({ data: null, error: coneErr.message }, 500)
 
-    const poolMap = new Map<string, { cones: number; meters: number }>()
+    const poolMap = new Map<
+      string,
+      { cones: number; meters: number; full_cones: number; partial_cones: number }
+    >()
     for (const row of cones || []) {
       if (!row.thread_type_id || !row.color_id) continue
       const key = `${row.thread_type_id}-${row.color_id}`
-      const cur = poolMap.get(key) || { cones: 0, meters: 0 }
+      const cur = poolMap.get(key) || { cones: 0, meters: 0, full_cones: 0, partial_cones: 0 }
       cur.cones += 1
       cur.meters += Number(row.quantity_meters || 0)
+      if (row.is_partial) cur.partial_cones += 1
+      else cur.full_cones += 1
       poolMap.set(key, cur)
     }
 
@@ -159,6 +164,8 @@ router.get(
       color_name: string
       reserved_cones_at_source: number
       reserved_meters_at_source: number
+      reserved_full_cones_at_source: number
+      reserved_partial_cones_at_source: number
     }
     const poBuckets = new Map<
       number,
@@ -198,6 +205,8 @@ router.get(
           color_name: colorMap.get(spec.color_id) || '',
           reserved_cones_at_source: pool.cones,
           reserved_meters_at_source: pool.meters,
+          reserved_full_cones_at_source: pool.full_cones,
+          reserved_partial_cones_at_source: pool.partial_cones,
         })
       }
     }
@@ -225,6 +234,8 @@ router.get(
         color_name: colorMap.get(coId) || '',
         reserved_cones_at_source: pool.cones,
         reserved_meters_at_source: pool.meters,
+        reserved_full_cones_at_source: pool.full_cones,
+        reserved_partial_cones_at_source: pool.partial_cones,
       })
     }
 

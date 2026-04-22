@@ -9,8 +9,10 @@ import type {
 interface SelectionEntry {
   thread_type_id: number
   color_id: number
-  available: number
-  quantity: number
+  available_full: number
+  available_partial: number
+  full_quantity: number
+  partial_quantity: number
   label: string
 }
 
@@ -49,7 +51,13 @@ export function useTransferReserved() {
     }
   }
 
-  function toggle(tt: number, c: number, available: number, label: string) {
+  function toggle(
+    tt: number,
+    c: number,
+    availableFull: number,
+    availablePartial: number,
+    label: string
+  ) {
     const k = keyOf(tt, c)
     if (selected.value.has(k)) {
       selected.value.delete(k)
@@ -57,30 +65,47 @@ export function useTransferReserved() {
       selected.value.set(k, {
         thread_type_id: tt,
         color_id: c,
-        available,
-        quantity: available,
+        available_full: availableFull,
+        available_partial: availablePartial,
+        full_quantity: availableFull,
+        partial_quantity: availablePartial,
         label,
       })
     }
     selected.value = new Map(selected.value)
   }
 
-  function setQuantity(tt: number, c: number, q: number) {
-    const k = keyOf(tt, c)
-    const entry = selected.value.get(k)
+  function setFullQuantity(tt: number, c: number, q: number) {
+    const entry = selected.value.get(keyOf(tt, c))
     if (!entry) return
-    entry.quantity = q
+    entry.full_quantity = q
+    selected.value = new Map(selected.value)
+  }
+
+  function setPartialQuantity(tt: number, c: number, q: number) {
+    const entry = selected.value.get(keyOf(tt, c))
+    if (!entry) return
+    entry.partial_quantity = q
     selected.value = new Map(selected.value)
   }
 
   const selectedArray = computed(() => Array.from(selected.value.values()))
   const totalSelectedCones = computed(() =>
-    selectedArray.value.reduce((s, x) => s + (Number(x.quantity) || 0), 0)
+    selectedArray.value.reduce(
+      (s, x) => s + (Number(x.full_quantity) || 0) + (Number(x.partial_quantity) || 0),
+      0
+    )
   )
   const hasInvalid = computed(() =>
-    selectedArray.value.some(
-      (x) => !Number.isFinite(x.quantity) || x.quantity <= 0 || x.quantity > x.available
-    )
+    selectedArray.value.some((x) => {
+      const f = Number(x.full_quantity)
+      const p = Number(x.partial_quantity)
+      if (!Number.isFinite(f) || !Number.isFinite(p)) return true
+      if (f < 0 || p < 0) return true
+      if (f > x.available_full || p > x.available_partial) return true
+      if (f + p === 0) return true
+      return false
+    })
   )
   const canSubmit = computed(
     () =>
@@ -100,7 +125,8 @@ export function useTransferReserved() {
       const items: TransferReservedItem[] = selectedArray.value.map((x) => ({
         thread_type_id: x.thread_type_id,
         color_id: x.color_id,
-        quantity: x.quantity,
+        full_quantity: Number(x.full_quantity) || 0,
+        partial_quantity: Number(x.partial_quantity) || 0,
       }))
       const res = await transferReservedService.submit(weekId.value, {
         from_warehouse_id: fromWarehouseId.value!,
@@ -144,7 +170,8 @@ export function useTransferReserved() {
     hasInvalid,
     fetchData,
     toggle,
-    setQuantity,
+    setFullQuantity,
+    setPartialQuantity,
     submit,
     isSelected,
     getSelection,
