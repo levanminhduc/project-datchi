@@ -118,6 +118,7 @@ declare module 'vue' {
     POItemHistoryDialog: typeof import('./components/thread/POItemHistoryDialog.vue')['default']
     POOrderCard: typeof import('./components/thread/weekly-order/POOrderCard.vue')['default']
     PopupEdit: typeof import('./components/ui/dialogs/PopupEdit.vue')['default']
+    PoSection: typeof import('./components/thread/transfer-reserved/PoSection.vue')['default']
     PullToRefresh: typeof import('./components/ui/scroll/PullToRefresh.vue')['default']
     QrLabelGrid: typeof import('./components/qr/QrLabelGrid.vue')['default']
     QrLabelSingle: typeof import('./components/qr/QrLabelSingle.vue')['default']

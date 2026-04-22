@@ -72,8 +72,8 @@ const COLUMN_DEFS: Array<{ header: string; key: string; width: number }> = [
   { header: 'Mét/cuộn', key: 'meters_per_cone', width: 12 },
   { header: 'Nhu Cầu', key: 'total_cones', width: 12 },
   { header: 'Tồn kho KD', key: 'inventory_cones', width: 12 },
-  { header: 'Cuộn nguyên', key: 'full_cones', width: 12 },
-  { header: 'Cuộn lẻ', key: 'partial_cones', width: 12 },
+  { header: 'Cuộn Nguyên TT', key: 'full_cones', width: 14 },
+  { header: 'Cuộn Lẻ TT', key: 'partial_cones', width: 14 },
   { header: 'Tồn kho QĐ', key: 'equivalent_cones', width: 12 },
   { header: 'SL cần đặt', key: 'sl_can_dat', width: 12 },
   { header: 'Đặt thêm', key: 'additional_order', width: 12 },
@@ -260,6 +260,19 @@ async function buildOrderWorkbook(
   })
 
   const lastDataRow = TABLE_HEADER_ROW + data.length
+  for (let rowIdx = TABLE_HEADER_ROW + 1; rowIdx <= lastDataRow; rowIdx++) {
+    const row = worksheet.getRow(rowIdx)
+    for (let colIdx = 1; colIdx <= COLUMN_DEFS.length; colIdx++) {
+      row.getCell(colIdx).border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      }
+    }
+    row.commit()
+  }
+
   renderSignatureFooter(worksheet, week, lastDataRow)
   return workbook
 }

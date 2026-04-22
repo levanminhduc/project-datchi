@@ -207,14 +207,14 @@ const columns: QTableColumn[] = [
   },
   {
     name: 'full_cones',
-    label: 'Cuộn nguyên',
+    label: 'Cuộn Nguyên TT',
     field: 'full_cones',
     align: 'right',
     format: (val: number | undefined) => (val != null && val > 0) ? val.toLocaleString('vi-VN') : '—',
   },
   {
     name: 'partial_cones',
-    label: 'Cuộn lẻ',
+    label: 'Cuộn Lẻ TT',
     field: 'partial_cones',
     align: 'right',
     format: (val: number | undefined) => (val != null && val > 0) ? val.toLocaleString('vi-VN') : '—',
