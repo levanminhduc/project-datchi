@@ -85,12 +85,16 @@
         </div>
 
         <template v-else>
-          <div class="column q-gutter-md">
+          <div
+            class="column q-gutter-md"
+            style="min-width: 0;"
+          >
             <q-card
               v-for="order in orders"
               :key="order.id"
               flat
               bordered
+              style="overflow: hidden; max-width: 100%; min-width: 0;"
             >
               <q-card-section>
                 <div class="row items-center">
@@ -148,10 +152,12 @@
                 header-class="text-weight-medium"
               >
                 <q-card-section class="q-pt-none">
-                  <ResultsSummaryTable
-                    :rows="order.summary_preview"
-                    readonly
-                  />
+                  <div style="overflow-x: auto; max-width: 100%;">
+                    <ResultsSummaryTable
+                      :rows="order.summary_preview"
+                      readonly
+                    />
+                  </div>
                 </q-card-section>
               </q-expansion-item>
             </q-card>
@@ -205,12 +211,16 @@
         </div>
 
         <template v-else>
-          <div class="column q-gutter-md">
+          <div
+            class="column q-gutter-md"
+            style="min-width: 0;"
+          >
             <q-card
               v-for="order in signedOrders"
               :key="order.id"
               flat
               bordered
+              style="overflow: hidden; max-width: 100%; min-width: 0;"
             >
               <q-card-section>
                 <div class="row items-center">
@@ -265,10 +275,12 @@
                 header-class="text-weight-medium"
               >
                 <q-card-section class="q-pt-none">
-                  <ResultsSummaryTable
-                    :rows="order.summary_preview"
-                    readonly
-                  />
+                  <div style="overflow-x: auto; max-width: 100%;">
+                    <ResultsSummaryTable
+                      :rows="order.summary_preview"
+                      readonly
+                    />
+                  </div>
                 </q-card-section>
               </q-expansion-item>
             </q-card>
