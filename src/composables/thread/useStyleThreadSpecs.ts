@@ -9,7 +9,7 @@ import { styleThreadSpecService } from '@/services'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
-import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
+import { getCacheEntry, setCacheEntry, invalidateCache } from '@/lib/api-cache'
 import type {
   StyleThreadSpec,
   StyleColorThreadSpec,
@@ -109,6 +109,7 @@ export function useStyleThreadSpecs() {
       })
 
       snackbar.success('Tạo định mức chỉ thành công')
+      invalidateCache('/api/style-thread-specs')
       await fetchStyleThreadSpecs()
       return result
     } catch (err) {
@@ -133,6 +134,7 @@ export function useStyleThreadSpecs() {
       })
 
       snackbar.success('Cập nhật định mức chỉ thành công')
+      invalidateCache('/api/style-thread-specs')
       await fetchStyleThreadSpecs()
       return result
     } catch (err) {
@@ -156,6 +158,7 @@ export function useStyleThreadSpecs() {
       })
 
       snackbar.success('Xóa định mức chỉ thành công')
+      invalidateCache('/api/style-thread-specs')
       await fetchStyleThreadSpecs()
       return true
     } catch (err) {

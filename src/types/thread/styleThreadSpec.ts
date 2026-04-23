@@ -71,9 +71,9 @@ export interface CreateStyleThreadSpecDTO {
 
 export interface UpdateStyleThreadSpecDTO {
   style_id?: number
-  supplier_id?: number
+  supplier_id?: number | null
   process_name?: string
-  thread_type_id?: number
+  thread_type_id?: number | null
   meters_per_unit?: number
   notes?: string
 }

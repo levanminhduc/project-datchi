@@ -1,0 +1,30 @@
+<h2>Vấn đề hiện tại: Bảng "Reserve theo tuần đặt hàng" tràn ngang</h2>
+<p class="subtitle">Dialog có <code>max-height: 90vh</code> nhưng không có <code>overflow-y: auto</code> → khi nội dung cao hơn 90vh, các section bị đẩy tràn ngang thay vì cho cuộn dọc. Đồng thời bảng Reserve có nested expand rows nên dễ cao đột biến khi expand nhiều kho.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Hiện trạng (từ screenshot)</div>
+  <div class="mockup-body" style="background:#fff;border:1px solid #ddd;padding:0;overflow:hidden;">
+    <div style="display:flex;gap:0;">
+      <div style="flex:1;padding:12px;border-right:2px dashed #e57373;min-width:0;">
+        <div style="font-weight:600;margin-bottom:6px;">Phân bố kho: Chỉ TEX 18 ✕</div>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <div style="flex:1;border:1px solid #ddd;padding:6px;text-align:center;"><div style="color:#21ba45;font-size:18px;">1.182</div><div style="font-size:10px;">Cuộn nguyên</div></div>
+          <div style="flex:1;border:1px solid #ddd;padding:6px;text-align:center;"><div style="color:#f2c037;font-size:18px;">0</div><div style="font-size:10px;">Cuộn lẻ</div></div>
+          <div style="flex:1;border:1px solid #ddd;padding:6px;text-align:center;"><div style="color:#1976d2;font-size:18px;">0</div><div style="font-size:10px;">Mét lẻ</div></div>
+          <div style="flex:1;border:1px solid #ddd;padding:6px;text-align:center;"><div style="color:#9c27b0;font-size:18px;">2</div><div style="font-size:10px;">Kho chứa</div></div>
+        </div>
+        <table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:8px;"><tr style="background:#f5f5f5;"><th style="padding:4px;text-align:left;">Mã</th><th style="padding:4px;text-align:left;">Tên kho</th><th style="padding:4px;">Cuộn nguyên</th></tr><tr><td style="padding:4px;">DB-XT</td><td style="padding:4px;">Kho Xưởng Trước</td><td style="padding:4px;text-align:center;"><span style="background:#21ba45;color:#fff;padding:1px 6px;border-radius:3px;">40</span></td></tr><tr><td style="padding:4px;">PT-01</td><td style="padding:4px;">Kho Phú Tường</td><td style="padding:4px;text-align:center;"><span style="background:#21ba45;color:#fff;padding:1px 6px;border-radius:3px;">1.142</span></td></tr></table>
+        <div style="font-size:11px;font-weight:600;margin-bottom:4px;">Phân bố theo nhà cung cấp</div>
+        <table style="width:100%;font-size:11px;border-collapse:collapse;"><tr style="background:#f5f5f5;"><th style="padding:4px;text-align:left;">NCC</th><th style="padding:4px;">Cuộn nguyên</th></tr><tr><td style="padding:4px;">Coats Gramax</td><td style="padding:4px;text-align:center;"><span style="background:#21ba45;color:#fff;padding:1px 6px;border-radius:3px;">1.182</span></td></tr></table>
+      </div>
+      <div style="width:280px;padding:12px;background:#fffbe6;border-left:3px solid #e57373;min-width:0;">
+        <div style="font-size:11px;color:#d32f2f;font-weight:600;margin-bottom:6px;">⚠ Tràn ra ngoài dialog</div>
+        <div style="font-weight:600;font-size:12px;margin-bottom:6px;">📅 Reserve theo tuần đặt h...</div>
+        <table style="width:100%;font-size:11px;border-collapse:collapse;"><tr style="background:#f5f5f5;"><th style="padding:4px;text-align:left;">Kho</th></tr><tr><td style="padding:4px;">+ Kho Xưởng Trước</td></tr><tr><td style="padding:4px;">− Kho Phú Tường</td></tr><tr style="background:#f9f9f9;"><td style="padding:4px 4px 4px 16px;">9013332 (1)</td></tr><tr style="background:#f9f9f9;"><td style="padding:4px 4px 4px 16px;">cqr1 112</td></tr><tr style="background:#f9f9f9;"><td style="padding:4px 4px 4px 16px;">đức122f1</td></tr><tr style="background:#f9f9f9;"><td style="padding:4px 4px 4px 16px;">ec1ecê1c1</td></tr><tr style="background:#f9f9f9;"><td style="padding:4px 4px 4px 16px;">fr12d1d12</td></tr><tr style="background:#f9f9f9;"><td style="padding:4px 4px 4px 16px;">Test9</td></tr></table>
+      </div>
+    </div>
+    <div style="background:#ffebee;padding:4px 10px;font-size:11px;color:#d32f2f;border-top:1px solid #e57373;">◄━━━━━━━━━━━ scrollbar ngang (không mong muốn) ━━━━━━━━━━━►</div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Mục tiêu: bảng Reserve xuống dưới + cho cuộn dọc bình thường khi danh sách dài.</p>

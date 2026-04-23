@@ -475,7 +475,11 @@ const handleInlineEdit = async (
   inlineEditLoading.value[cellKey] = true
 
   try {
-    const result = await styleThreadSpecService.update(specId, { [field]: newValue })
+    const updatePayload: Record<string, unknown> = { [field]: newValue }
+    if (field === 'supplier_id') {
+      updatePayload.thread_type_id = null
+    }
+    const result = await styleThreadSpecService.update(specId, updatePayload)
 
     const idx = styleThreadSpecs.value.findIndex(s => s.id === specId)
     const existing = idx !== -1 ? styleThreadSpecs.value[idx] : undefined
@@ -488,13 +492,18 @@ const handleInlineEdit = async (
         const full = await styleThreadSpecService.getById(specId)
         Object.assign(existing, full)
       }
+      if (field === 'supplier_id') {
+        existing.thread_type_id = null
+        existing.thread_types = undefined
+      }
     }
 
     if (field === 'supplier_id' && typeof newValue === 'number') {
       await fetchTexOptions(newValue)
+      snackbar.info('Đã cập nhật NCC. Vui lòng chọn lại Tex.')
+    } else {
+      snackbar.success('Cập nhật định mức chỉ thành công')
     }
-
-    snackbar.success('Cập nhật định mức chỉ thành công')
   } catch {
     const spec = styleThreadSpecs.value.find(s => s.id === specId)
     if (spec) {
