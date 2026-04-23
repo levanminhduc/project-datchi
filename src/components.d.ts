@@ -161,6 +161,7 @@ declare module 'vue' {
     Timeline: typeof import('./components/ui/scroll/Timeline.vue')['default']
     TimelineEntry: typeof import('./components/ui/scroll/TimelineEntry.vue')['default']
     TimePicker: typeof import('./components/ui/pickers/TimePicker.vue')['default']
+    TransferHistoryDialog: typeof import('./components/thread/transfer-reserved/TransferHistoryDialog.vue')['default']
     UserMenu: typeof import('./components/UserMenu.vue')['default']
     VirtualScroll: typeof import('./components/ui/scroll/VirtualScroll.vue')['default']
     WaitlistWidget: typeof import('./components/thread/WaitlistWidget.vue')['default']

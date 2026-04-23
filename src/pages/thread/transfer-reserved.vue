@@ -39,7 +39,15 @@
             map-options
           />
         </div>
-        <div class="col-12 col-md-3 text-right">
+        <div class="col-12 col-md-3 text-right q-gutter-sm">
+          <AppButton
+            flat
+            color="primary"
+            icon="history"
+            :disable="!weekId"
+            label="Xem lịch sử"
+            @click="openHistory"
+          />
           <AppButton
             :loading="loading"
             :disable="!weekId || !fromWarehouseId"
@@ -49,6 +57,13 @@
         </div>
       </div>
     </q-card>
+
+    <TransferHistoryDialog
+      ref="historyDialogRef"
+      v-model="showHistory"
+      :week-id="weekId"
+      :week-label="selectedWeekLabel"
+    />
 
     <q-card
       v-if="data"
@@ -121,6 +136,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { warehouseService } from '@/services/warehouseService'
 import PoSection from '@/components/thread/transfer-reserved/PoSection.vue'
+import TransferHistoryDialog from '@/components/thread/transfer-reserved/TransferHistoryDialog.vue'
 
 const {
   weekId,
@@ -147,6 +163,20 @@ const snackbar = useSnackbar()
 
 const weekOptions = ref<Array<{ label: string; value: number }>>([])
 const warehouseOptions = ref<Array<{ label: string; value: number }>>([])
+
+const showHistory = ref(false)
+const historyDialogRef = ref<InstanceType<typeof TransferHistoryDialog> | null>(null)
+const selectedWeekLabel = computed(
+  () => weekOptions.value.find((w) => w.value === weekId.value)?.label || ''
+)
+
+function openHistory() {
+  if (!weekId.value) {
+    snackbar.error('Vui lòng chọn tuần đặt hàng trước')
+    return
+  }
+  showHistory.value = true
+}
 
 async function loadWeeks() {
   try {
@@ -212,7 +242,10 @@ async function onSubmit() {
     cancelText: 'Hủy',
   })
   if (!ok) return
-  await submit()
+  const success = await submit()
+  if (success && showHistory.value) {
+    await historyDialogRef.value?.refresh()
+  }
 }
 
 onMounted(() => {
