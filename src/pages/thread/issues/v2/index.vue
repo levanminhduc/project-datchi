@@ -514,13 +514,19 @@ function handleQuantityChange(colorId: number, threadTypeId: number, threadColor
   debouncedValidate(colorId, threadTypeId, threadColorId)
 }
 
-function handleInputChange(colorId: number, threadTypeId: number, field: 'full' | 'partial', value: number, max: number, threadColorId?: number | null) {
+function handleInputChange(
+  colorId: number,
+  threadTypeId: number,
+  field: 'full' | 'partial',
+  max: number,
+  threadColorId?: number | null,
+) {
   const key = ttKey(colorId, threadTypeId, threadColorId)
   const input = lineInputs.value[key]
   if (!input) return
 
-  const clampedValue = Math.min(Math.max(0, value), max)
-  input[field] = clampedValue
+  const raw = Math.floor(Number(input[field]) || 0)
+  input[field] = between(raw, 0, max)
 
   handleQuantityChange(colorId, threadTypeId, threadColorId)
 }
@@ -1427,14 +1433,14 @@ onUnmounted(() => {
                 <template #body-cell-issue_full="props">
                   <q-td :props="props">
                     <AppInput
-                      :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.full || null"
+                      v-model.number="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]!.full"
                       type="number"
                       dense
                       :min="0"
                       :max="props.row.stock_available_full"
+                      :step="1"
                       style="width: 90px"
-                      :rules="[(v: any) => !v || Number(v) <= props.row.stock_available_full || `Tối đa ${props.row.stock_available_full}`]"
-                      @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'full', Number(v) || 0, props.row.stock_available_full, props.row.thread_color_id)"
+                      @update:model-value="() => handleInputChange(props.row.color_id, props.row.thread_type_id, 'full', props.row.stock_available_full, props.row.thread_color_id)"
                     />
                   </q-td>
                 </template>
@@ -1442,14 +1448,14 @@ onUnmounted(() => {
                 <template #body-cell-issue_partial="props">
                   <q-td :props="props">
                     <AppInput
-                      :model-value="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]?.partial || null"
+                      v-model.number="lineInputs[ttKey(props.row.color_id, props.row.thread_type_id, props.row.thread_color_id)]!.partial"
                       type="number"
                       dense
                       :min="0"
                       :max="props.row.stock_available_partial"
+                      :step="1"
                       style="width: 90px"
-                      :rules="[(v: any) => !v || Number(v) <= props.row.stock_available_partial || `Tối đa ${props.row.stock_available_partial}`]"
-                      @update:model-value="(v) => handleInputChange(props.row.color_id, props.row.thread_type_id, 'partial', Number(v) || 0, props.row.stock_available_partial, props.row.thread_color_id)"
+                      @update:model-value="() => handleInputChange(props.row.color_id, props.row.thread_type_id, 'partial', props.row.stock_available_partial, props.row.thread_color_id)"
                     />
                   </q-td>
                 </template>
