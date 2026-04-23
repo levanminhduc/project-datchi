@@ -23,6 +23,10 @@ import { dateRules } from '@/utils'
 import { formatStyleDisplay } from '@/utils/thread-format'
 import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
 import type { QTableColumn, QTableProps } from 'quasar'
+import { format as quasarFormat } from 'quasar'
+
+const { between } = quasarFormat
+
 import type {
   IssueV2Filters,
   ThreadTypeForIssueWithColor,
