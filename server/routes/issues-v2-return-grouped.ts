@@ -362,7 +362,7 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
 
     const succeededLineIds: number[] = []
     const returnLogRows: Array<{ issue_id: number; line_id: number; returned_full: number; returned_partial: number }> = []
-    const distribution: Array<{ thread_type_id: number; line_id: number; returned_full: number; returned_partial: number }> = []
+    const distribution: Array<{ thread_type_id: number; thread_color_id: number | null; line_id: number; returned_full: number; returned_partial: number }> = []
 
     const allMatchingLineIds = matchingLines.map(l => l.id)
 
@@ -414,12 +414,14 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
     }
 
     for (const requestLine of requestLines) {
-      const { thread_type_id, returned_full: reqFull, returned_partial: reqPartial } = requestLine
+      const { thread_type_id, thread_color_id, returned_full: reqFull, returned_partial: reqPartial } = requestLine
       if (reqFull <= 0 && reqPartial <= 0) continue
 
+      const lineTcId: number | null = thread_color_id ?? null
       const candidateLines = matchingLines.filter(
         (l) =>
           l.thread_type_id === thread_type_id &&
+          ((l as any).thread_color_id ?? null) === lineTcId &&
           (l.issued_full - l.returned_full > 0 || l.issued_partial - l.returned_partial > 0)
       )
 
@@ -480,7 +482,7 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
 
         const issueId = candidate.issue_id
         returnLogRows.push({ issue_id: issueId, line_id: candidate.id, returned_full: result.returned_full, returned_partial: result.returned_partial })
-        distribution.push({ thread_type_id, line_id: candidate.id, returned_full: result.returned_full, returned_partial: result.returned_partial })
+        distribution.push({ thread_type_id, thread_color_id: lineTcId, line_id: candidate.id, returned_full: result.returned_full, returned_partial: result.returned_partial })
       }
     }
 

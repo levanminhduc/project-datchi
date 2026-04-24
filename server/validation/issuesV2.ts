@@ -163,6 +163,7 @@ export type ReturnIssueV2DTO = z.infer<typeof ReturnIssueV2Schema>
 
 export const ReturnGroupedLineSchema = z.object({
   thread_type_id: z.number().int().positive('thread_type_id phai la so nguyen duong'),
+  thread_color_id: z.number().int().positive().nullable().optional(),
   returned_full: z.number().int().min(0, 'So cuon nguyen tra phai >= 0').default(0),
   returned_partial: z.number().int().min(0, 'So cuon le tra phai >= 0').default(0),
 })
@@ -182,7 +183,7 @@ export const ReturnGroupedSchema = z
   )
   .refine(
     (data) => {
-      const ids = data.lines.map((l) => l.thread_type_id)
+      const ids = data.lines.map((l) => `${l.thread_type_id}:${l.thread_color_id ?? 'null'}`)
       return new Set(ids).size === ids.length
     },
     { message: 'Khong duoc co thread_type_id trung lap', path: ['lines'] }
