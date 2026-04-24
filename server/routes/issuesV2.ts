@@ -473,7 +473,7 @@ async function getStockAvailability(
       reservedQuery = reservedQuery.eq('color_id', colorId)
     }
 
-    const { data: reserved } = await reservedQuery.limit(10000)
+    const { data: reserved } = await reservedQuery.limit(1000000)
 
     if (reserved) {
       fullCount += reserved.filter((r) => !r.is_partial).length
@@ -495,7 +495,7 @@ async function getStockAvailability(
     freeQuery = freeQuery.eq('color_id', colorId)
   }
 
-  const { data: free } = await freeQuery.limit(10000)
+  const { data: free } = await freeQuery.limit(1000000)
 
   if (free) {
     fullCount += free.filter((r) => !r.is_partial).length
