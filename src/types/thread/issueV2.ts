@@ -196,6 +196,7 @@ export interface ReturnIssueV2DTO {
 
 export interface ReturnGroupThread {
   thread_type_id: number
+  thread_color_id: number | null
   thread_code: string
   thread_name: string
   total_issued_full: number
@@ -227,6 +228,7 @@ export interface ReturnGroupedDTO {
   idempotency_key: string
   lines: {
     thread_type_id: number
+    thread_color_id?: number | null
     returned_full: number
     returned_partial: number
   }[]
@@ -249,6 +251,7 @@ export interface ReturnGroupedResponse {
   distribution: {
     issue_code: string
     thread_type_id: number
+    thread_color_id?: number | null
     returned_full: number
     returned_partial: number
   }[]
@@ -259,6 +262,7 @@ export interface GroupedReturnLog {
   id: number
   line_id: number
   issue_code: string
+  thread_color_id: number | null
   thread_code: string
   thread_name: string
   returned_full: number
