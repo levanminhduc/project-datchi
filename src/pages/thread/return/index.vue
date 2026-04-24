@@ -67,7 +67,7 @@ function handleCancelGroup() {
 }
 
 async function handleGroupReturn(
-  lines: { thread_type_id: number; returned_full: number; returned_partial: number }[]
+  lines: { thread_type_id: number; thread_color_id: number | null; returned_full: number; returned_partial: number }[]
 ) {
   if (!selectedGroup.value) return
   const { valid, errors } = validateReturnQuantities(lines, selectedGroup.value.threads)

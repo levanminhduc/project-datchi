@@ -67,7 +67,7 @@ export function useReturnV2() {
 
   const submitGroupedReturn = async (
     group: ReturnGroup,
-    lines: { thread_type_id: number; returned_full: number; returned_partial: number }[]
+    lines: { thread_type_id: number; thread_color_id: number | null; returned_full: number; returned_partial: number }[]
   ): Promise<ReturnGroupedResponse | null> => {
     clearError()
     clearCompletionInfo()
@@ -139,12 +139,16 @@ export function useReturnV2() {
   }
 
   const validateReturnQuantities = (
-    lines: { thread_type_id: number; returned_full: number; returned_partial: number }[],
+    lines: { thread_type_id: number; thread_color_id: number | null; returned_full: number; returned_partial: number }[],
     threads: ReturnGroupThread[]
   ): { valid: boolean; errors: string[] } => {
     const errors: string[] = []
     for (const line of lines) {
-      const thread = threads.find((t) => t.thread_type_id === line.thread_type_id)
+      const thread = threads.find(
+        (t) =>
+          t.thread_type_id === line.thread_type_id &&
+          (t.thread_color_id ?? null) === (line.thread_color_id ?? null)
+      )
       if (!thread) continue
       if (line.returned_full > thread.outstanding_full) {
         errors.push(
