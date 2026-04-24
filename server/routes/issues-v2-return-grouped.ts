@@ -70,6 +70,7 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
         style_color_id,
         color_id,
         thread_type_id,
+        thread_color_id,
         issued_full,
         issued_partial,
         returned_full,
@@ -90,30 +91,26 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
     const colorIds = new Set<number>()
     const styleIds = new Set<number>()
     const supplierIds = new Set<number>()
-    const threadTypeIds = new Set<number>()
+    const threadColorIds = new Set<number>()
 
     for (const l of lines || []) {
       if (l.po_id) poIds.add(l.po_id)
       if (l.style_color_id) styleColorIds.add(l.style_color_id)
       if (l.color_id) colorIds.add(l.color_id)
       if (l.style_id) styleIds.add(l.style_id)
-      threadTypeIds.add(l.thread_type_id)
+      const cid = (l as any).thread_color_id
+      if (cid) threadColorIds.add(cid)
       const tt = l.thread_types as any
       if (tt?.supplier_id) supplierIds.add(tt.supplier_id)
     }
 
-    const [poResult, scResult, cResult, sResult, supplierResult, threadColorResult] = await Promise.all([
+    const [poResult, scResult, cResult, sResult, supplierResult, threadColorNameResult] = await Promise.all([
       poIds.size > 0 ? supabase.from('purchase_orders').select('id, po_number').in('id', [...poIds]) : null,
       styleColorIds.size > 0 ? supabase.from('style_colors').select('id, color_name, hex_code').in('id', [...styleColorIds]) : null,
       colorIds.size > 0 ? supabase.from('colors').select('id, name').in('id', [...colorIds]) : null,
       styleIds.size > 0 ? supabase.from('styles').select('id, style_code, style_name').in('id', [...styleIds]) : null,
       supplierIds.size > 0 ? supabase.from('suppliers').select('id, name').in('id', [...supplierIds]) : null,
-      threadTypeIds.size > 0
-        ? supabase
-            .from('thread_inventory')
-            .select('thread_type_id, color_id, colors(name)')
-            .in('thread_type_id', [...threadTypeIds])
-        : null,
+      threadColorIds.size > 0 ? supabase.from('colors').select('id, name').in('id', [...threadColorIds]) : null,
     ])
 
     const poMap = new Map((poResult?.data || []).map((p) => [p.id, p.po_number]))
@@ -122,13 +119,9 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
     const sMap = new Map((sResult?.data || []).map((s) => [s.id, s.style_code]))
     const supplierMap = new Map((supplierResult?.data || []).map((s) => [s.id, s.name]))
 
-    const ttColorMap = new Map<number, string>()
-    for (const inv of threadColorResult?.data || []) {
-      const i = inv as any
-      if (i.thread_type_id && !ttColorMap.has(i.thread_type_id)) {
-        ttColorMap.set(i.thread_type_id, (i.colors as any)?.name || '')
-      }
-    }
+    const threadColorNameMap = new Map<number, string>(
+      (threadColorNameResult?.data || []).map((c) => [c.id, c.name])
+    )
 
     const groupMap = new Map<
       string,
@@ -143,6 +136,7 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
         issue_ids: Set<number>
         thread_types: Array<{
           thread_type_id: number
+          thread_color_id: number | null
           thread_name: string
           thread_code: string
           outstanding_full: number
@@ -190,7 +184,10 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
       const group = groupMap.get(groupKey)!
       const tt = l.thread_types as { id: number; name: string; code: string; supplier_id: number | null; tex_number: string | null; tex_label: string | null }
 
-      const existingTT = group.thread_types.find((t) => t.thread_type_id === l.thread_type_id)
+      const lineThreadColorId: number | null = (l as any).thread_color_id ?? null
+      const existingTT = group.thread_types.find(
+        (t) => t.thread_type_id === l.thread_type_id && t.thread_color_id === lineThreadColorId
+      )
       if (existingTT) {
         existingTT.outstanding_full += outstandingFull
         existingTT.outstanding_partial += outstandingPartial
@@ -202,11 +199,12 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
       } else {
         const supplierName = tt?.supplier_id ? supplierMap.get(tt.supplier_id) || '' : ''
         const texPart = tt?.tex_label || (tt?.tex_number ? `TEX ${tt.tex_number}` : '')
-        const threadColorName = ttColorMap.get(l.thread_type_id) || ''
+        const threadColorName = lineThreadColorId ? threadColorNameMap.get(lineThreadColorId) || '' : ''
         const displayName = [supplierName, texPart, threadColorName].filter(Boolean).join(' - ') || tt?.name || ''
 
         group.thread_types.push({
           thread_type_id: l.thread_type_id,
+          thread_color_id: lineThreadColorId,
           thread_name: displayName,
           thread_code: tt?.code || '',
           outstanding_full: outstandingFull,
