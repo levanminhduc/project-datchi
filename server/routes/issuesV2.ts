@@ -120,6 +120,7 @@ interface ReturnValidationResult {
 interface IssueLine {
   id: number
   thread_type_id: number
+  thread_color_id: number | null
   issued_full: number
   issued_partial: number
   returned_full: number
@@ -1012,7 +1013,7 @@ async function detectWarehouseForThread(
     .select('warehouse_id')
     .eq('thread_type_id', threadTypeId)
     .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-    .limit(100)
+    .limit(1000000)
 
   if (colorId) {
     freeQuery = freeQuery.eq('color_id', colorId)

@@ -98,7 +98,7 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
       if (l.style_color_id) styleColorIds.add(l.style_color_id)
       if (l.color_id) colorIds.add(l.color_id)
       if (l.style_id) styleIds.add(l.style_id)
-      const cid = (l as any).thread_color_id
+      const cid = l.thread_color_id
       if (cid) threadColorIds.add(cid)
       const tt = l.thread_types as any
       if (tt?.supplier_id) supplierIds.add(tt.supplier_id)
@@ -184,7 +184,7 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
       const group = groupMap.get(groupKey)!
       const tt = l.thread_types as { id: number; name: string; code: string; supplier_id: number | null; tex_number: string | null; tex_label: string | null }
 
-      const lineThreadColorId: number | null = (l as any).thread_color_id ?? null
+      const lineThreadColorId: number | null = l.thread_color_id ?? null
       const existingTT = group.thread_types.find(
         (t) => t.thread_type_id === l.thread_type_id && t.thread_color_id === lineThreadColorId
       )
@@ -421,7 +421,7 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
       const candidateLines = matchingLines.filter(
         (l) =>
           l.thread_type_id === thread_type_id &&
-          ((l as any).thread_color_id ?? null) === lineTcId &&
+          (l.thread_color_id ?? null) === lineTcId &&
           (l.issued_full - l.returned_full > 0 || l.issued_partial - l.returned_partial > 0)
       )
 
