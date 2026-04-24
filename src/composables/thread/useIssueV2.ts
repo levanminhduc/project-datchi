@@ -13,7 +13,6 @@ import { issueV2Service } from '@/services/issueV2Service'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
-import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
 import type {
   IssueV2WithSummary,
   IssueV2WithLines,
@@ -28,8 +27,6 @@ import type {
   IssueV2Filters,
   IssueInsufficientStockResponse,
 } from '@/types/thread/issueV2'
-
-const CACHE_TTL = 10_000
 
 export function useIssueV2() {
   // State
@@ -140,14 +137,6 @@ export function useIssueV2() {
       filters.value = { ...filters.value, ...newFilters }
     }
 
-    const cacheKey = `/api/issues-v2:${JSON.stringify(filters.value)}`
-    const cached = getCacheEntry<{ data: IssueV2WithSummary[]; total: number }>(cacheKey)
-    if (cached && !cached.isStale) {
-      issues.value = cached.data.data
-      total.value = cached.data.total
-      return
-    }
-
     try {
       const result = await loading.withLoading(async () => {
         return await issueV2Service.list(filters.value)
@@ -155,9 +144,7 @@ export function useIssueV2() {
 
       issues.value = result.data
       total.value = result.total
-      setCacheEntry(cacheKey, result, CACHE_TTL)
     } catch (err) {
-      if (cached) { issues.value = cached.data.data; total.value = cached.data.total; return }
       const errorMessage = getErrorMessage(err, 'Không thể tải danh sách phiếu xuất')
       error.value = errorMessage
       snackbar.error(errorMessage)
