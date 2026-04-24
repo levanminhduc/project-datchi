@@ -569,7 +569,7 @@ returnGroupedRoutes.get('/return-groups/logs', async (c) => {
 
     let lineQuery = supabase
       .from('thread_issue_lines')
-      .select('id, thread_type_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(id, issue_code, status, created_at)')
+      .select('id, thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(id, issue_code, status, created_at)')
       .eq('po_id', po_id)
       .eq('style_id', style_id)
       .in('thread_issues.status', ['CONFIRMED', 'RETURNED'])
@@ -619,26 +619,26 @@ returnGroupedRoutes.get('/return-groups/logs', async (c) => {
       if (t.supplier_id) logSupplierIds.add(t.supplier_id)
     }
 
+    const logThreadColorIds = new Set<number>()
+    for (const l of issueLines || []) {
+      const tcId = (l as any).thread_color_id
+      if (tcId) logThreadColorIds.add(tcId)
+    }
+
     const [logSupplierResult, logThreadColorResult] = await Promise.all([
       logSupplierIds.size > 0 ? supabase.from('suppliers').select('id, name').in('id', [...logSupplierIds]) : null,
-      threadTypeIds.length > 0
-        ? supabase.from('thread_inventory').select('thread_type_id, color_id, colors(name)').in('thread_type_id', threadTypeIds)
-        : null,
+      logThreadColorIds.size > 0 ? supabase.from('colors').select('id, name').in('id', [...logThreadColorIds]) : null,
     ])
 
     const logSupplierMap = new Map((logSupplierResult?.data || []).map((s) => [s.id, s.name]))
-    const logTtColorMap = new Map<number, string>()
-    for (const inv of logThreadColorResult?.data || []) {
-      const i = inv as any
-      if (i.thread_type_id && !logTtColorMap.has(i.thread_type_id)) {
-        logTtColorMap.set(i.thread_type_id, (i.colors as any)?.name || '')
-      }
-    }
+    const logColorNameMap = new Map<number, string>(
+      (logThreadColorResult?.data || []).map((c) => [c.id, c.name])
+    )
 
-    function buildThreadDisplayName(tt: any): string {
+    function buildThreadDisplayName(tt: any, tcId: number | null | undefined): string {
       const supplierName = tt?.supplier_id ? logSupplierMap.get(tt.supplier_id) || '' : ''
       const texPart = tt?.tex_label || (tt?.tex_number ? `TEX ${tt.tex_number}` : '')
-      const threadColor = tt?.id ? logTtColorMap.get(tt.id) || '' : ''
+      const threadColor = tcId ? logColorNameMap.get(tcId) || '' : ''
       return [supplierName, texPart, threadColor].filter(Boolean).join(' - ') || tt?.name || ''
     }
 
@@ -646,13 +646,15 @@ returnGroupedRoutes.get('/return-groups/logs', async (c) => {
       const issueLine = lineMap.get(log.line_id)
       const issue = issueLine?.thread_issues as any
       const tt = issueLine ? ttMap.get(issueLine.thread_type_id) : null
+      const lineTcId: number | null = issueLine?.thread_color_id ?? null
       return {
         id: log.id,
         issue_id: log.issue_id,
         issue_code: issue?.issue_code || null,
         line_id: log.line_id,
         thread_type_id: issueLine?.thread_type_id || null,
-        thread_name: buildThreadDisplayName(tt),
+        thread_color_id: lineTcId,
+        thread_name: buildThreadDisplayName(tt, lineTcId),
         thread_code: tt?.code || null,
         returned_full: log.returned_full,
         returned_partial: log.returned_partial,
