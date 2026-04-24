@@ -1788,6 +1788,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       sub_art_id,
       thread_type_id,
       thread_color_id,
+      warehouse_id,
       issued_full,
       issued_partial,
       over_quota_notes,
@@ -1820,8 +1821,8 @@ issuesV2.post('/create-with-lines', async (c) => {
     }
 
     const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
-    const detectedWarehouseId = await detectWarehouseForThread(thread_type_id, weekIds, createThreadColorId)
-    const stock = await getStockAvailability(thread_type_id, detectedWarehouseId, weekIds, createThreadColorId)
+    const effectiveWarehouseId = warehouse_id || await detectWarehouseForThread(thread_type_id, weekIds, createThreadColorId)
+    const stock = await getStockAvailability(thread_type_id, effectiveWarehouseId, weekIds, createThreadColorId)
     const stockSufficient =
       (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
 
@@ -2543,7 +2544,7 @@ issuesV2.post('/:id/batch-lines', async (c) => {
       const line = validated.lines[i]
       const {
         po_id, style_id, style_color_id, color_id, sub_art_id,
-        thread_type_id, thread_color_id, issued_full, issued_partial, over_quota_notes,
+        thread_type_id, thread_color_id, warehouse_id, issued_full, issued_partial, over_quota_notes,
       } = line
       const effectiveColorId = style_color_id || color_id
 
@@ -2597,8 +2598,8 @@ issuesV2.post('/:id/batch-lines', async (c) => {
       }
 
       const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
-      const detectedWarehouseId = await detectWarehouseForThread(thread_type_id, weekIds, batchThreadColorId)
-      const stock = await getStockAvailability(thread_type_id, detectedWarehouseId, weekIds, batchThreadColorId)
+      const effectiveWarehouseId = warehouse_id || await detectWarehouseForThread(thread_type_id, weekIds, batchThreadColorId)
+      const stock = await getStockAvailability(thread_type_id, effectiveWarehouseId, weekIds, batchThreadColorId)
       const stockSufficient =
         (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
 
@@ -2772,6 +2773,7 @@ issuesV2.post('/:id/lines', async (c) => {
       sub_art_id,
       thread_type_id,
       thread_color_id,
+      warehouse_id,
       issued_full,
       issued_partial,
       over_quota_notes,
@@ -2813,8 +2815,8 @@ issuesV2.post('/:id/lines', async (c) => {
     }
 
     const weekIds = await findConfirmedWeekIds(po_id, style_id, effectiveColorId)
-    const detectedWarehouseId = await detectWarehouseForThread(thread_type_id, weekIds, addLineThreadColorId)
-    const stock = await getStockAvailability(thread_type_id, detectedWarehouseId, weekIds, addLineThreadColorId)
+    const effectiveWarehouseId = warehouse_id || await detectWarehouseForThread(thread_type_id, weekIds, addLineThreadColorId)
+    const stock = await getStockAvailability(thread_type_id, effectiveWarehouseId, weekIds, addLineThreadColorId)
     const stockSufficient =
       (issued_full || 0) <= stock.full_cones && (issued_partial || 0) <= stock.partial_cones
 

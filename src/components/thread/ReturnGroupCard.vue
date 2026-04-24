@@ -10,10 +10,15 @@ defineEmits<{
   select: [group: ReturnGroup]
 }>()
 
-function formatThreadSummary(t: ReturnGroupThread): string {
-  const outstanding = t.outstanding_full + t.outstanding_partial
-  if (outstanding <= 0) return `${t.thread_name} — đã trả hết`
-  return `${t.thread_name} — ${outstanding} cuộn`
+function rowKey(t: ReturnGroupThread): string {
+  return `${t.thread_type_id}_${t.thread_color_id ?? 'null'}`
+}
+
+function formatOutstandingSummary(t: ReturnGroupThread): string {
+  const parts: string[] = []
+  if (t.outstanding_full > 0) parts.push(`${t.outstanding_full} ng`)
+  if (t.outstanding_partial > 0) parts.push(`${t.outstanding_partial} lẻ`)
+  return parts.join(' + ') || 'Đã trả hết'
 }
 
 function getTotalOutstanding(group: ReturnGroup): number {
@@ -49,11 +54,14 @@ function getTotalOutstanding(group: ReturnGroup): number {
       <div class="q-mt-sm">
         <div
           v-for="t in group.threads"
-          :key="t.thread_type_id"
+          :key="rowKey(t)"
           class="text-body2"
           :class="{ 'text-grey-5': t.outstanding_full + t.outstanding_partial <= 0 }"
         >
-          {{ formatThreadSummary(t) }}
+          <div>{{ t.thread_name }}</div>
+          <div class="text-caption">
+            {{ formatOutstandingSummary(t) }}
+          </div>
         </div>
       </div>
 
