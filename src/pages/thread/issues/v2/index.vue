@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useDebounceFn, useLocalStorage } from '@vueuse/core'
+import { useDebounceFn, useLocalStorage, StorageSerializers } from '@vueuse/core'
 import { useIssueV2 } from '@/composables/thread/useIssueV2'
 import { useDeptAllocation } from '@/composables/thread/useDeptAllocation'
 import { issueV2Service } from '@/services/issueV2Service'
@@ -113,7 +113,7 @@ function ttKey(colorId: number | null | undefined, threadTypeId: number, threadC
   return `${colorId}-${threadTypeId}-${threadColorId ?? 'null'}`
 }
 
-const selectedWarehouseId = useLocalStorage<number | null>('issue-v2-warehouse', null)
+const selectedWarehouseId = useLocalStorage<number | null>('issue-v2-warehouse', null, { serializer: StorageSerializers.number })
 const shortageData = ref<IssueShortageDetail[] | null>(null)
 const showBorrowDialog = ref(false)
 const selectedStyleHasSubArts = computed(() => {
