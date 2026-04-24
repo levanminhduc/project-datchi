@@ -55,13 +55,13 @@ function getTotalOutstanding(group: ReturnGroup): number {
         <div
           v-for="t in group.threads"
           :key="rowKey(t)"
-          class="text-body2"
+          class="return-thread-row text-body2"
           :class="{ 'text-grey-5': t.outstanding_full + t.outstanding_partial <= 0 }"
         >
-          <div>{{ t.thread_name }}</div>
-          <div class="text-caption">
-            {{ formatOutstandingSummary(t) }}
-          </div>
+          <span>{{ t.thread_name }}</span>
+          <span class="return-thread-summary text-caption">
+            : {{ formatOutstandingSummary(t) }}
+          </span>
         </div>
       </div>
 
@@ -89,5 +89,16 @@ function getTotalOutstanding(group: ReturnGroup): number {
 <style scoped>
 .return-group-card:hover {
   background: rgba(0, 0, 0, 0.02);
+}
+
+.return-thread-row {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.return-thread-summary {
+  font-variant-numeric: tabular-nums;
 }
 </style>
