@@ -13,21 +13,36 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  submit: [lines: { thread_type_id: number; returned_full: number; returned_partial: number }[]]
+  submit: [lines: { thread_type_id: number; thread_color_id: number | null; returned_full: number; returned_partial: number }[]]
   cancel: []
 }>()
 
 interface ReturnInput {
   thread_type_id: number
+  thread_color_id: number | null
   returned_full: number
   returned_partial: number
 }
 
 const inputs = ref<ReturnInput[]>([])
 const showHistory = ref(false)
+
+function rowKey(threadTypeId: number, threadColorId: number | null | undefined): string {
+  return `${threadTypeId}_${threadColorId ?? 'null'}`
+}
+
+function matchesRow(
+  item: { thread_type_id: number; thread_color_id: number | null },
+  threadTypeId: number,
+  threadColorId: number | null | undefined
+): boolean {
+  return item.thread_type_id === threadTypeId && (item.thread_color_id ?? null) === (threadColorId ?? null)
+}
+
 function resetInputs() {
   inputs.value = props.group.threads.map((t) => ({
     thread_type_id: t.thread_type_id,
+    thread_color_id: t.thread_color_id,
     returned_full: 0,
     returned_partial: 0,
   }))
@@ -41,7 +56,7 @@ const hasInput = computed(() =>
 
 function fillAll() {
   for (const input of inputs.value) {
-    const thread = props.group.threads.find((t) => t.thread_type_id === input.thread_type_id)
+    const thread = props.group.threads.find((t) => matchesRow(t, input.thread_type_id, input.thread_color_id))
     if (!thread) continue
     const totalOutstanding = thread.outstanding_full + thread.outstanding_partial
     if (totalOutstanding <= 0) continue
@@ -50,30 +65,30 @@ function fillAll() {
   }
 }
 
-function getThread(threadTypeId: number): ReturnGroupThread | undefined {
-  return props.group.threads.find((t) => t.thread_type_id === threadTypeId)
+function getThread(threadTypeId: number, threadColorId: number | null | undefined): ReturnGroupThread | undefined {
+  return props.group.threads.find((t) => matchesRow(t, threadTypeId, threadColorId))
 }
 
-function isFullyReturned(threadTypeId: number): boolean {
-  const t = getThread(threadTypeId)
+function isFullyReturned(threadTypeId: number, threadColorId: number | null | undefined): boolean {
+  const t = getThread(threadTypeId, threadColorId)
   if (!t) return true
   return t.outstanding_full + t.outstanding_partial <= 0
 }
 
-function getMaxFullReturn(threadTypeId: number): number {
-  const t = getThread(threadTypeId)
+function getMaxFullReturn(threadTypeId: number, threadColorId: number | null | undefined): number {
+  const t = getThread(threadTypeId, threadColorId)
   if (!t) return 0
   const total = t.outstanding_full + t.outstanding_partial
-  const input = inputs.value.find(i => i.thread_type_id === threadTypeId)
+  const input = inputs.value.find((i) => matchesRow(i, threadTypeId, threadColorId))
   const partialInput = input?.returned_partial || 0
   return Math.min(t.outstanding_full, Math.max(0, total - partialInput))
 }
 
-function getMaxPartialReturn(threadTypeId: number): number {
-  const t = getThread(threadTypeId)
+function getMaxPartialReturn(threadTypeId: number, threadColorId: number | null | undefined): number {
+  const t = getThread(threadTypeId, threadColorId)
   if (!t) return 0
   const total = t.outstanding_full + t.outstanding_partial
-  const input = inputs.value.find(i => i.thread_type_id === threadTypeId)
+  const input = inputs.value.find((i) => matchesRow(i, threadTypeId, threadColorId))
   const fullInput = input?.returned_full || 0
   return Math.max(0, total - fullInput)
 }
@@ -100,7 +115,14 @@ function formatOutstanding(t: ReturnGroupThread): string {
 }
 
 function handleSubmit() {
-  const lines = inputs.value.filter((i) => i.returned_full > 0 || i.returned_partial > 0)
+  const lines = inputs.value
+    .filter((i) => i.returned_full > 0 || i.returned_partial > 0)
+    .map((i) => ({
+      thread_type_id: i.thread_type_id,
+      thread_color_id: i.thread_color_id,
+      returned_full: i.returned_full,
+      returned_partial: i.returned_partial,
+    }))
   emit('submit', lines)
 }
 </script>
@@ -154,14 +176,14 @@ function handleSubmit() {
           { name: 'return_full', label: 'Trả nguyên', field: 'thread_type_id', align: 'center' },
           { name: 'return_partial', label: 'Trả lẻ', field: 'thread_type_id', align: 'center' },
         ]"
-        row-key="thread_type_id"
+        :row-key="(row: ReturnGroupThread) => rowKey(row.thread_type_id, row.thread_color_id)"
         flat
         bordered
         :pagination="{ rowsPerPage: 0 }"
         hide-bottom
       >
         <template #body-cell-thread_name="{ row }">
-          <q-td :class="{ 'text-grey-5': isFullyReturned(row.thread_type_id) }">
+          <q-td :class="{ 'text-grey-5': isFullyReturned(row.thread_type_id, row.thread_color_id) }">
             <div class="text-weight-medium">
               {{ row.thread_code }}
             </div>
@@ -177,7 +199,7 @@ function handleSubmit() {
         <template #body-cell-issued="{ row }">
           <q-td
             class="text-center"
-            :class="{ 'text-grey-5': isFullyReturned(row.thread_type_id) }"
+            :class="{ 'text-grey-5': isFullyReturned(row.thread_type_id, row.thread_color_id) }"
           >
             {{ formatIssued(row) }}
           </q-td>
@@ -186,7 +208,7 @@ function handleSubmit() {
         <template #body-cell-returned="{ row }">
           <q-td
             class="text-center"
-            :class="{ 'text-grey-5': isFullyReturned(row.thread_type_id) }"
+            :class="{ 'text-grey-5': isFullyReturned(row.thread_type_id, row.thread_color_id) }"
           >
             {{ formatReturned(row) }}
           </q-td>
@@ -196,8 +218,8 @@ function handleSubmit() {
           <q-td
             class="text-center"
             :class="{
-              'text-grey-5': isFullyReturned(row.thread_type_id),
-              'text-weight-bold text-orange': !isFullyReturned(row.thread_type_id),
+              'text-grey-5': isFullyReturned(row.thread_type_id, row.thread_color_id),
+              'text-weight-bold text-orange': !isFullyReturned(row.thread_type_id, row.thread_color_id),
             }"
           >
             {{ formatOutstanding(row) }}
@@ -205,18 +227,21 @@ function handleSubmit() {
         </template>
 
         <template #body-cell-return_full="{ row }">
-          <q-td class="text-center">
+          <q-td
+            :key="rowKey(row.thread_type_id, row.thread_color_id)"
+            class="text-center"
+          >
             <AppInput
-              v-if="!isFullyReturned(row.thread_type_id)"
-              :model-value="inputs.find(i => i.thread_type_id === row.thread_type_id)?.returned_full || null"
+              v-if="!isFullyReturned(row.thread_type_id, row.thread_color_id)"
+              :model-value="inputs.find(i => matchesRow(i, row.thread_type_id, row.thread_color_id))?.returned_full || null"
               type="number"
               dense
               :min="0"
-              :max="getMaxFullReturn(row.thread_type_id)"
+              :max="getMaxFullReturn(row.thread_type_id, row.thread_color_id)"
               style="width: 80px; display: inline-block"
               hide-bottom-space
               @update:model-value="(v: string | number | null) => {
-                const input = inputs.find(i => i.thread_type_id === row.thread_type_id)
+                const input = inputs.find(i => matchesRow(i, row.thread_type_id, row.thread_color_id))
                 if (input) input.returned_full = Number(v) || 0
               }"
             />
@@ -228,18 +253,21 @@ function handleSubmit() {
         </template>
 
         <template #body-cell-return_partial="{ row }">
-          <q-td class="text-center">
+          <q-td
+            :key="rowKey(row.thread_type_id, row.thread_color_id)"
+            class="text-center"
+          >
             <AppInput
-              v-if="!isFullyReturned(row.thread_type_id)"
-              :model-value="inputs.find(i => i.thread_type_id === row.thread_type_id)?.returned_partial || null"
+              v-if="!isFullyReturned(row.thread_type_id, row.thread_color_id)"
+              :model-value="inputs.find(i => matchesRow(i, row.thread_type_id, row.thread_color_id))?.returned_partial || null"
               type="number"
               dense
               :min="0"
-              :max="getMaxPartialReturn(row.thread_type_id)"
+              :max="getMaxPartialReturn(row.thread_type_id, row.thread_color_id)"
               style="width: 80px; display: inline-block"
               hide-bottom-space
               @update:model-value="(v: string | number | null) => {
-                const input = inputs.find(i => i.thread_type_id === row.thread_type_id)
+                const input = inputs.find(i => matchesRow(i, row.thread_type_id, row.thread_color_id))
                 if (input) input.returned_partial = Number(v) || 0
               }"
             />
