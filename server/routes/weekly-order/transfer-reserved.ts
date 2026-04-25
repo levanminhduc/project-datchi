@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../db/supabase'
 import { requirePermission } from '../../middleware/auth'
 import type { AppEnv } from '../../types/hono-env'
 import { transferReservedBodySchema } from '../../validation/transferReservedSchema'
+import { getPerformerName } from './helpers'
 
 const router = new Hono<AppEnv>()
 
@@ -275,14 +276,14 @@ router.post(
       )
     }
 
-    const employeeCode = c.get('employee_code') || 'SYSTEM'
+    const performedBy = await getPerformerName(c)
 
     const { data, error } = await supabaseAdmin.rpc('fn_transfer_reserved_cones', {
       p_week_id: weekId,
       p_from_warehouse_id: parsed.data.from_warehouse_id,
       p_to_warehouse_id: parsed.data.to_warehouse_id,
       p_items: parsed.data.items,
-      p_performed_by: employeeCode,
+      p_performed_by: performedBy,
     })
 
     if (error) {

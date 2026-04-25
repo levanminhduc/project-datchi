@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"019dc247-5ad9-7141-8917-8892f387a1bd"}
+{"type":"turn.started"}
+{"type":"error","message":"You've hit your usage limit. To get more access now, send a request to your admin or try again at 11:22 AM."}
+{"type":"turn.failed","error":{"message":"You've hit your usage limit. To get more access now, send a request to your admin or try again at 11:22 AM."}}

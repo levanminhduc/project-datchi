@@ -1,0 +1,1 @@
+POLL:failed:24s:3:Codex turn failed: You've hit your usage limit. To get more access now, send a request to your admin or try again at 11:22 AM.
