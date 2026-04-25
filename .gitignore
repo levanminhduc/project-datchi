@@ -49,6 +49,7 @@ opencode.json
 
 # Claude Code
 .claude/
+.worktrees/
 
 # Playwright
 *.png
