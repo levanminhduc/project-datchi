@@ -15,7 +15,7 @@ export default [
     },
   },
   {
-    ignores: ['node_modules', 'dist', '*.d.ts', '.claude', 'backend-esbuild-example'],
+    ignores: ['node_modules', 'dist', '*.d.ts', '.claude', 'backend-esbuild-example', '.worktrees'],
   },
   {
     languageOptions: {
