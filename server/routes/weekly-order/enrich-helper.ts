@@ -4,6 +4,7 @@ import { getPartialConeRatio } from '../../utils/settings-helper'
 type SummaryRow = {
   thread_type_id: number
   total_cones: number
+  thread_color_id?: number | null
   [key: string]: unknown
 }
 
@@ -31,37 +32,16 @@ export async function enrichWithInventory(
 
   const partialConeRatio = await getPartialConeRatio()
 
-  const colorNames = [
-    ...new Set(
-      summaryRows
-        .map((r) => r.thread_color as string | null | undefined)
-        .filter((c): c is string => !!c && c.trim() !== ''),
-    ),
-  ]
-
-  const colorNameToId = new Map<string, number>()
-  if (colorNames.length > 0) {
-    const { data: colorRows } = await supabase
-      .from('colors')
-      .select('id, name')
-      .in('name', colorNames)
-      .limit(colorNames.length)
-
-    for (const c of colorRows || []) {
-      colorNameToId.set(c.name, c.id)
-    }
-  }
-
   const coloredTypeIds: number[] = []
   const coloredColorIds: number[] = []
   const nonColoredTypeIds: number[] = []
 
   for (const row of summaryRows) {
-    const tc = row.thread_color as string | null | undefined
-    if (tc && tc.trim() !== '' && colorNameToId.has(tc)) {
+    const colorId = row.thread_color_id as number | null | undefined
+    if (colorId != null) {
       coloredTypeIds.push(row.thread_type_id)
-      coloredColorIds.push(colorNameToId.get(tc)!)
-    } else if (!tc || tc.trim() === '') {
+      coloredColorIds.push(colorId)
+    } else {
       nonColoredTypeIds.push(row.thread_type_id)
     }
   }
@@ -84,15 +64,8 @@ export async function enrichWithInventory(
 
     if (coloredError) throw coloredError
 
-    const colorIdToName = new Map<number, string>()
-    for (const [name, id] of colorNameToId) {
-      colorIdToName.set(id, name)
-    }
-
     for (const inv of coloredCounts || []) {
-      const cName = colorIdToName.get(inv.color_id)
-      if (!cName) continue
-      const key = `${inv.thread_type_id}_${cName}`
+      const key = `${inv.thread_type_id}_${inv.color_id}`
       const entry = inventoryMap.get(key) || { full: 0, partial: 0 }
       if (inv.is_partial) {
         entry.partial += Number(inv.cone_count)
@@ -129,8 +102,8 @@ export async function enrichWithInventory(
   const preserveAdditional = options?.preserveAdditionalOrder === true
 
   return summaryRows.map((row) => {
-    const tc = row.thread_color as string | null | undefined
-    const key = `${row.thread_type_id}_${tc && tc.trim() !== '' ? tc : ''}`
+    const colorId = row.thread_color_id as number | null | undefined
+    const key = `${row.thread_type_id}_${colorId != null ? colorId : ''}`
     const inv = inventoryMap.get(key) || { full: 0, partial: 0 }
     const full_cones = inv.full
     const partial_cones = inv.partial
