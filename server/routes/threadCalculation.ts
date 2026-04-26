@@ -834,6 +834,7 @@ threadCalculation.post('/calculate-by-po', async (c) => {
             thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
             thread_color: colorSpec?.thread_color?.name || colorSpec?.thread_types?.color_data?.name || spec.thread_types?.color_data?.name || null,
             thread_color_code: colorSpec?.thread_color?.hex_code || colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
+            thread_color_id: colorSpec?.thread_color_id ?? colorSpec?.thread_types?.color_id ?? spec.thread_types?.color_id ?? null,
             total_meters: spec.meters_per_unit * sku.quantity,
             process_name: spec.process_name,
             supplier_name: resolvedSupplierName,
