@@ -131,6 +131,7 @@ interface CalculationResult {
       thread_type_name: string
       thread_color: string | null
       thread_color_code: string | null
+      thread_color_id: number | null
       total_meters: number
       process_name: string
       supplier_name: string
@@ -405,6 +406,7 @@ function buildCalculation(
         thread_type_name: colorSpec?.thread_types?.name || spec.thread_types?.name || '',
         thread_color: colorSpec?.thread_color?.name || colorSpec?.thread_types?.color_data?.name || spec.thread_types?.color_data?.name || null,
         thread_color_code: colorSpec?.thread_color?.hex_code || colorSpec?.thread_types?.color_data?.hex_code || spec.thread_types?.color_data?.hex_code || null,
+        thread_color_id: colorSpec?.thread_color_id ?? colorSpec?.thread_types?.color_id ?? spec.thread_types?.color_id ?? null,
         total_meters: spec.meters_per_unit * cb.quantity,
         process_name: spec.process_name,
         supplier_name: resolvedSupplierName,
