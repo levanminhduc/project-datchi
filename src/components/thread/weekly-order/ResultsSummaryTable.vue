@@ -75,7 +75,7 @@
                 buttons
                 label-set="Lưu"
                 label-cancel="Hủy"
-                @save="(val: number) => emit('update:additional-order', props.row.thread_type_id, val, props.row.thread_color)"
+                @save="(val: number) => emit('update:additional-order', props.row.thread_type_id, val, props.row.thread_color_id ?? null)"
               >
                 <q-input
                   v-model.number="scope.value"
@@ -152,7 +152,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'update:additional-order': [threadTypeId: number, value: number, threadColor: string | null]
+  'update:additional-order': [threadTypeId: number, value: number, threadColorId: number | null]
   'update:delivery-date': [threadTypeId: number, date: string, threadColor: string | null]
 }>()
 
