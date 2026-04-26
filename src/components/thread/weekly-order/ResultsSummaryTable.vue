@@ -11,7 +11,7 @@
       <q-table
         :rows="rows"
         :columns="columns"
-        :row-key="(row: AggregatedRow) => `${row.thread_type_id}_${row.thread_color ?? ''}`"
+        :row-key="(row: AggregatedRow) => `${row.thread_type_id}_${row.thread_color_id ?? ''}`"
         flat
         bordered
         dense
@@ -117,7 +117,7 @@
                     @update:model-value="(val: string | null) => {
                       if (!val) return
                       const isoDate = toIso(val)
-                      emit('update:delivery-date', props.row.thread_type_id, isoDate, props.row.thread_color ?? null)
+                      emit('update:delivery-date', props.row.thread_type_id, isoDate, props.row.thread_color_id ?? null)
                     }"
                   />
                 </q-popup-proxy>
@@ -153,7 +153,7 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:additional-order': [threadTypeId: number, value: number, threadColorId: number | null]
-  'update:delivery-date': [threadTypeId: number, date: string, threadColor: string | null]
+  'update:delivery-date': [threadTypeId: number, date: string, threadColorId: number | null]
 }>()
 
 function formatDateDisplay(isoDate: string): string {

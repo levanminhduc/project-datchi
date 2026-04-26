@@ -453,7 +453,7 @@ watch(deliveryDate, (newDate) => {
   if (!newDate || !aggregatedResults.value.length) return
   let changed = false
   for (const row of aggregatedResults.value) {
-    const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+    const key = `${row.thread_type_id}_${row.thread_color_id ?? ''}`
     if (row.sl_can_dat && row.sl_can_dat > 0 && !manualDeliveryDateEdits.value.has(key)) {
       row.delivery_date = newDate
       changed = true
@@ -624,7 +624,7 @@ const handleCalculate = async () => {
     aggregatedResults.value
       .filter((r) => r.additional_order || r.quota_cones)
       .map((r) => [
-        `${r.thread_type_id}_${r.thread_color ?? ''}`,
+        `${r.thread_type_id}_${r.thread_color_id ?? ''}`,
         {
           additional_order: r.additional_order ?? 0,
           quota_cones: r.quota_cones ?? 0,
@@ -642,7 +642,7 @@ const handleCalculate = async () => {
   applyDeliveryDateToResults()
 
   for (const row of aggregatedResults.value) {
-    const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+    const key = `${row.thread_type_id}_${row.thread_color_id ?? ''}`
     const saved = snapshot.get(key)
     if (!saved) continue
 
@@ -681,11 +681,11 @@ const handleUpdateDeliveryDate = (specId: number, date: string) => {
   }
 }
 
-const handleUpdateSummaryDeliveryDate = (threadTypeId: number, date: string, threadColor: string | null) => {
-  const key = `${threadTypeId}_${threadColor ?? ''}`
+const handleUpdateSummaryDeliveryDate = (threadTypeId: number, date: string, threadColorId: number | null) => {
+  const key = `${threadTypeId}_${threadColorId ?? ''}`
   manualDeliveryDateEdits.value.add(key)
   const row = aggregatedResults.value.find(
-    (r) => r.thread_type_id === threadTypeId && (r.thread_color ?? null) === threadColor
+    (r) => r.thread_type_id === threadTypeId && (r.thread_color_id ?? null) === threadColorId
   )
   if (row) {
     row.delivery_date = date
@@ -829,7 +829,7 @@ const handleLoadWeek = async (weekId: number) => {
     if (savedResults?.summary_data?.length) {
       const savedMap = new Map<string, { additional_order: number; delivery_date: string | null; total_final: number }>(
         savedResults.summary_data.map((s) => [
-          `${s.thread_type_id}_${s.thread_color ?? ''}`,
+          `${s.thread_type_id}_${s.thread_color_id ?? ''}`,
           {
             additional_order: s.additional_order ?? 0,
             delivery_date: s.delivery_date ?? null,
@@ -839,7 +839,7 @@ const handleLoadWeek = async (weekId: number) => {
       )
 
       for (const row of aggregatedResults.value) {
-        const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
+        const key = `${row.thread_type_id}_${row.thread_color_id ?? ''}`
         const saved = savedMap.get(key)
         if (!saved) continue
 
