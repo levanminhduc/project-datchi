@@ -118,25 +118,25 @@ router.get(
 
     const styleColorSpecsMap = new Map<
       number,
-      Array<{ thread_type_id: number; color_id: number }>
+      Array<{ thread_type_id: number; thread_color_id: number }>
     >()
     if (styleColorIds.length) {
       const { data: specs, error: specErr } = await supabaseAdmin
         .from('style_color_thread_specs')
-        .select('style_color_id, thread_type_id, color_id')
+        .select('style_color_id, thread_type_id, thread_color_id')
         .in('style_color_id', styleColorIds)
         .not('thread_type_id', 'is', null)
-        .not('color_id', 'is', null)
+        .not('thread_color_id', 'is', null)
         .limit(50000)
       if (specErr) return c.json({ data: null, error: specErr.message }, 500)
 
       for (const s of (specs || []) as Array<{
         style_color_id: number
         thread_type_id: number
-        color_id: number
+        thread_color_id: number
       }>) {
         const arr = styleColorSpecsMap.get(s.style_color_id) || []
-        arr.push({ thread_type_id: s.thread_type_id, color_id: s.color_id })
+        arr.push({ thread_type_id: s.thread_type_id, thread_color_id: s.thread_color_id })
         styleColorSpecsMap.set(s.style_color_id, arr)
       }
     }
@@ -180,7 +180,7 @@ router.get(
     }>) {
       const specs = styleColorSpecsMap.get(oi.style_color_id) || []
       for (const spec of specs) {
-        const key = `${spec.thread_type_id}-${spec.color_id}`
+        const key = `${spec.thread_type_id}-${spec.thread_color_id}`
         const pool = poolMap.get(key)
         if (!pool) continue
 
@@ -200,10 +200,10 @@ router.get(
         const tt = ttMap.get(spec.thread_type_id)
         bucket.thread_lines.push({
           thread_type_id: spec.thread_type_id,
-          color_id: spec.color_id,
+          color_id: spec.thread_color_id,
           supplier_name: tt?.supplier_name || '',
           tex_number: tt?.tex_number || '',
-          color_name: colorMap.get(spec.color_id) || '',
+          color_name: colorMap.get(spec.thread_color_id) || '',
           reserved_cones_at_source: pool.cones,
           reserved_meters_at_source: pool.meters,
           reserved_full_cones_at_source: pool.full_cones,
