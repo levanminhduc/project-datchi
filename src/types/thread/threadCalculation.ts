@@ -50,6 +50,7 @@ export interface ColorCalculationResult {
   thread_type_name: string
   thread_color: string | null
   thread_color_code: string | null
+  thread_color_id: number | null
   total_meters: number
   process_name: string
   supplier_name: string

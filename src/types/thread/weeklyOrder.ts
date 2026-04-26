@@ -82,6 +82,7 @@ export interface AggregatedRow {
   meters_per_cone: number | null
   thread_color: string | null
   thread_color_code: string | null
+  thread_color_id?: number | null
   supplier_id?: number | null
   delivery_date?: string | null
   lead_time_days?: number | null
