@@ -7,12 +7,113 @@ import { getPerformerName } from './helpers'
 
 const router = new Hono<AppEnv>()
 
+// IMPORTANT: search-po MUST be registered BEFORE /:weekId routes to avoid Hono matching 'search-po' as a weekId param
+router.get(
+  '/search-po',
+  requirePermission('thread.batch.transfer'),
+  async (c) => {
+    const q = c.req.query('q')
+    if (!q || q.trim() === '') {
+      return c.json({ data: null, error: 'Tham số tìm kiếm không hợp lệ' }, 400)
+    }
+
+    const { data: matchedPos, error: poErr } = await supabaseAdmin
+      .from('purchase_orders')
+      .select('id, po_number')
+      .ilike('po_number', `%${q.trim()}%`)
+      .limit(20)
+    if (poErr) return c.json({ data: null, error: poErr.message }, 500)
+    if (!matchedPos || matchedPos.length === 0) {
+      return c.json({ data: [], error: null })
+    }
+
+    const poIds = matchedPos.map((p) => p.id)
+    const { data: orderItems, error: oiErr } = await supabaseAdmin
+      .from('thread_order_items')
+      .select('po_id, week_id')
+      .in('po_id', poIds)
+      .not('week_id', 'is', null)
+      .limit(50000)
+    if (oiErr) return c.json({ data: null, error: oiErr.message }, 500)
+
+    const weekIdSet = new Set<number>()
+    const poWeekPairs = new Set<string>()
+    for (const oi of (orderItems || []) as Array<{ po_id: number; week_id: number }>) {
+      weekIdSet.add(oi.week_id)
+      poWeekPairs.add(`${oi.po_id}-${oi.week_id}`)
+    }
+    const weekIds = Array.from(weekIdSet)
+
+    if (weekIds.length === 0) {
+      return c.json({ data: [], error: null })
+    }
+
+    const [weeksRes, coneCountsRes] = await Promise.all([
+      supabaseAdmin
+        .from('thread_order_weeks')
+        .select('id, week_name')
+        .in('id', weekIds)
+        .eq('status', 'CONFIRMED')
+        .limit(weekIds.length),
+      supabaseAdmin
+        .from('thread_inventory')
+        .select('reserved_week_id')
+        .in('reserved_week_id', weekIds)
+        .eq('status', 'RESERVED_FOR_ORDER')
+        .limit(500000),
+    ])
+    if (weeksRes.error) return c.json({ data: null, error: weeksRes.error.message }, 500)
+    if (coneCountsRes.error) return c.json({ data: null, error: coneCountsRes.error.message }, 500)
+
+    const weekNameMap = new Map<number, string>()
+    for (const w of (weeksRes.data || []) as Array<{ id: number; week_name: string }>) {
+      weekNameMap.set(w.id, w.week_name)
+    }
+
+    const coneCountByWeek = new Map<number, number>()
+    for (const cone of (coneCountsRes.data || []) as Array<{ reserved_week_id: number }>) {
+      if (!cone.reserved_week_id) continue
+      coneCountByWeek.set(cone.reserved_week_id, (coneCountByWeek.get(cone.reserved_week_id) ?? 0) + 1)
+    }
+
+    const poMap = new Map<number, string>()
+    for (const p of matchedPos as Array<{ id: number; po_number: string }>) {
+      poMap.set(p.id, p.po_number)
+    }
+
+    const poWeekMap = new Map<number, Set<number>>()
+    for (const oi of (orderItems || []) as Array<{ po_id: number; week_id: number }>) {
+      const set = poWeekMap.get(oi.po_id) || new Set<number>()
+      set.add(oi.week_id)
+      poWeekMap.set(oi.po_id, set)
+    }
+
+    const result = Array.from(poWeekMap.entries())
+      .map(([po_id, weekSet]) => ({
+        po_id,
+        po_number: poMap.get(po_id) || '',
+        weeks: Array.from(weekSet)
+          .map((week_id) => ({
+            week_id,
+            week_name: weekNameMap.get(week_id) || '',
+            total_cones: coneCountByWeek.get(week_id) ?? 0,
+          }))
+          .sort((a, b) => a.week_id - b.week_id),
+      }))
+      .sort((a, b) => a.po_number.localeCompare(b.po_number))
+
+    return c.json({ data: result, error: null })
+  }
+)
+
 router.get(
   '/:weekId/reserved-by-po',
   requirePermission('thread.batch.transfer'),
   async (c) => {
     const weekId = Number(c.req.param('weekId'))
     const warehouseId = Number(c.req.query('warehouse_id'))
+    const toWarehouseIdParam = c.req.query('to_warehouse_id')
+    const toWarehouseId = toWarehouseIdParam ? Number(toWarehouseIdParam) : null
 
     if (!Number.isFinite(weekId) || !Number.isFinite(warehouseId)) {
       return c.json({ data: null, error: 'Tham số không hợp lệ' }, 400)
@@ -157,6 +258,46 @@ router.get(
       }
     }
 
+    // Build totalReservedMap: count RESERVED_FOR_ORDER cones across ALL warehouses for this week
+    const { data: allReservedCones, error: allReservedErr } = await supabaseAdmin
+      .from('thread_inventory')
+      .select('thread_type_id, color_id')
+      .eq('reserved_week_id', weekId)
+      .eq('status', 'RESERVED_FOR_ORDER')
+      .limit(500000)
+    if (allReservedErr) return c.json({ data: null, error: allReservedErr.message }, 500)
+
+    const totalReservedMap = new Map<string, number>()
+    for (const row of (allReservedCones || []) as Array<{
+      thread_type_id: number | null
+      color_id: number | null
+    }>) {
+      if (!row.thread_type_id || !row.color_id) continue
+      const key = `${row.thread_type_id}-${row.color_id}`
+      totalReservedMap.set(key, (totalReservedMap.get(key) ?? 0) + 1)
+    }
+
+    // Build atDestMap: count cones already at destination warehouse
+    const atDestMap = new Map<string, number>()
+    if (toWarehouseId !== null && Number.isFinite(toWarehouseId)) {
+      const { data: destCones, error: destErr } = await supabaseAdmin
+        .from('thread_inventory')
+        .select('thread_type_id, color_id')
+        .eq('reserved_week_id', weekId)
+        .eq('warehouse_id', toWarehouseId)
+        .eq('status', 'RESERVED_FOR_ORDER')
+        .limit(500000)
+      if (destErr) return c.json({ data: null, error: destErr.message }, 500)
+      for (const row of (destCones || []) as Array<{
+        thread_type_id: number | null
+        color_id: number | null
+      }>) {
+        if (!row.thread_type_id || !row.color_id) continue
+        const key = `${row.thread_type_id}-${row.color_id}`
+        atDestMap.set(key, (atDestMap.get(key) ?? 0) + 1)
+      }
+    }
+
     type Line = {
       thread_type_id: number
       color_id: number
@@ -167,6 +308,8 @@ router.get(
       reserved_meters_at_source: number
       reserved_full_cones_at_source: number
       reserved_partial_cones_at_source: number
+      total_reserved_for_week: number
+      already_at_destination: number
     }
     const poBuckets = new Map<
       number,
@@ -208,6 +351,8 @@ router.get(
           reserved_meters_at_source: pool.meters,
           reserved_full_cones_at_source: pool.full_cones,
           reserved_partial_cones_at_source: pool.partial_cones,
+          total_reserved_for_week: totalReservedMap.get(key) ?? 0,
+          already_at_destination: atDestMap.get(key) ?? 0,
         })
       }
     }
@@ -237,6 +382,8 @@ router.get(
         reserved_meters_at_source: pool.meters,
         reserved_full_cones_at_source: pool.full_cones,
         reserved_partial_cones_at_source: pool.partial_cones,
+        total_reserved_for_week: totalReservedMap.get(key) ?? 0,
+        already_at_destination: atDestMap.get(key) ?? 0,
       })
     }
 

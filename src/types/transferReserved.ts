@@ -8,6 +8,20 @@ export interface ReservedThreadLine {
   reserved_meters_at_source: number
   reserved_full_cones_at_source: number
   reserved_partial_cones_at_source: number
+  total_reserved_for_week: number
+  already_at_destination: number
+}
+
+export interface PoSearchWeek {
+  week_id: number
+  week_name: string
+  total_cones: number
+}
+
+export interface PoSearchResult {
+  po_id: number
+  po_number: string
+  weeks: PoSearchWeek[]
 }
 
 export interface ReservedPoGroup {

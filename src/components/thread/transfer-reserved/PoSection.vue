@@ -99,6 +99,20 @@
             >—</span>
           </q-td>
         </template>
+        <template #body-cell-summary="props">
+          <q-td :props="props">
+            <span
+              v-if="toWarehouseId != null"
+              class="text-caption text-grey-8"
+            >
+              Gán: {{ props.row.total_reserved_for_week }} | Đã chuyển: {{ props.row.already_at_destination }} | Còn: {{ props.row.reserved_cones_at_source }}
+            </span>
+            <span
+              v-else
+              class="text-grey"
+            >—</span>
+          </q-td>
+        </template>
       </q-table>
     </q-card>
   </q-expansion-item>
@@ -111,6 +125,7 @@ import type { ReservedThreadLine } from '@/types/transferReserved'
 const props = defineProps<{
   title: string
   lines: ReservedThreadLine[]
+  toWarehouseId?: number | null
   isSelected: (tt: number, c: number) => boolean
   getSelection: (
     tt: number,
@@ -156,6 +171,7 @@ const columns = [
   },
   { name: 'full_qty', label: 'Cuộn nguyên chuyển', field: 'full_qty', align: 'right' as const },
   { name: 'partial_qty', label: 'Cuộn lẻ chuyển', field: 'partial_qty', align: 'right' as const },
+  { name: 'summary', label: 'Tóm tắt', field: 'summary', align: 'left' as const },
 ]
 
 function rowLabel(row: ReservedThreadLine) {

@@ -35,7 +35,8 @@ export function useTransferReserved() {
     try {
       const res = await transferReservedService.getReservedByPo(
         weekId.value,
-        fromWarehouseId.value
+        fromWarehouseId.value,
+        toWarehouseId.value
       )
       if (res.error) {
         snackbar.error(res.error)

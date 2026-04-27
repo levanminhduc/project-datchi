@@ -9,7 +9,7 @@
       bordered
       class="q-pa-md q-mb-md"
     >
-      <div class="row q-col-gutter-md items-end">
+      <div class="row q-col-gutter-md items-center">
         <div class="col-12 col-md-3">
           <AppSelect
             v-model="weekId"
@@ -17,8 +17,12 @@
             label="Tuần đặt hàng"
             emit-value
             map-options
+            clearable
             @update:model-value="onWeekChange"
           />
+        </div>
+        <div class="col-12 col-md-3">
+          <PoSearchPopup @select-week="onPoSearchSelect" />
         </div>
         <div class="col-12 col-md-3">
           <AppSelect
@@ -78,9 +82,11 @@
 
     <PoSection
       v-for="po in data?.pos || []"
+      :ref="(el) => collectPoRef(el, po.po_number)"
       :key="po.po_id"
       :title="po.po_number"
       :lines="po.thread_lines"
+      :to-warehouse-id="toWarehouseId"
       :is-selected="isSelected"
       :get-selection="getSelection"
       @toggle="toggle"
@@ -91,6 +97,7 @@
       v-if="data && data.unassigned.thread_lines.length"
       title="Không thuộc PO nào"
       :lines="data.unassigned.thread_lines"
+      :to-warehouse-id="toWarehouseId"
       :is-selected="isSelected"
       :get-selection="getSelection"
       @toggle="toggle"
@@ -127,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import { useTransferReserved } from '@/composables/thread/useTransferReserved'
@@ -137,6 +144,7 @@ import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { warehouseService } from '@/services/warehouseService'
 import PoSection from '@/components/thread/transfer-reserved/PoSection.vue'
 import TransferHistoryDialog from '@/components/thread/transfer-reserved/TransferHistoryDialog.vue'
+import PoSearchPopup from '@/components/thread/transfer-reserved/PoSearchPopup.vue'
 
 const {
   weekId,
@@ -170,6 +178,32 @@ const selectedWeekLabel = computed(
   () => weekOptions.value.find((w) => w.value === weekId.value)?.label || ''
 )
 
+const searchedPoNumber = ref<string | null>(null)
+const poSectionRefsMap = ref<Map<string, InstanceType<typeof PoSection>>>(new Map())
+
+function collectPoRef(el: unknown, poNumber: string) {
+  if (el) {
+    poSectionRefsMap.value.set(poNumber, el as InstanceType<typeof PoSection>)
+  } else {
+    poSectionRefsMap.value.delete(poNumber)
+  }
+}
+
+async function onPoSearchSelect(payload: { weekId: number; poNumber: string }) {
+  weekId.value = payload.weekId
+  searchedPoNumber.value = payload.poNumber
+  selected.value = new Map()
+  if (fromWarehouseId.value) {
+    await fetchData()
+    await nextTick()
+    const section = poSectionRefsMap.value.get(payload.poNumber)
+    if (section?.$el) {
+      ;(section.$el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    searchedPoNumber.value = null
+  }
+}
+
 function openHistory() {
   if (!weekId.value) {
     snackbar.error('Vui lòng chọn tuần đặt hàng trước')
@@ -180,7 +214,7 @@ function openHistory() {
 
 async function loadWeeks() {
   try {
-    const weeks = await weeklyOrderService.getAll()
+    const weeks = await weeklyOrderService.getAll({ status: 'CONFIRMED' })
     weekOptions.value = weeks.map((w) => ({ label: w.week_name, value: w.id }))
   } catch (e: unknown) {
     snackbar.error(e instanceof Error ? e.message : 'Lỗi tải danh sách tuần')
