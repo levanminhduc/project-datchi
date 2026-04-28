@@ -921,21 +921,66 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
       return c.json({ data: [], error: null })
     }
 
+    // Query 1: Get cones basic info
     const { data: cones, error: coneError } = await supabase
       .from('thread_inventory')
-      .select(`
-        thread_type_id,
-        color_id,
-        thread_types!inner(code, name, tex_number, supplier_id, suppliers(name)),
-        colors!color_id(name, hex_code)
-      `)
+      .select('thread_type_id, color_id')
       .in('id', coneIds)
 
     if (coneError) {
-      console.error('[cone-summary] query error:', coneError)
-      return c.json({ data: null, error: 'Lỗi khi tải thông tin cuộn chỉ' }, 500)
+      console.error('[cone-summary] cones query error:', coneError)
+      return c.json({ data: null, error: `Lỗi khi tải thông tin cuộn chỉ: ${coneError.message}` }, 500)
     }
 
+    if (!cones || cones.length === 0) {
+      return c.json({ data: [], error: null })
+    }
+
+    // Collect unique IDs
+    const threadTypeIds = [...new Set(cones.map((c) => c.thread_type_id).filter(Boolean))] as number[]
+    const colorIds = [...new Set(cones.map((c) => c.color_id).filter(Boolean))] as number[]
+
+    // Query 2: Get thread types with suppliers
+    const ttMap = new Map<number, { tex_number: string; supplier_name: string }>()
+    if (threadTypeIds.length > 0) {
+      const { data: threadTypes, error: ttError } = await supabase
+        .from('thread_types')
+        .select('id, tex_number, supplier_id, suppliers(name)')
+        .in('id', threadTypeIds)
+
+      if (ttError) {
+        console.error('[cone-summary] thread_types query error:', ttError)
+        return c.json({ data: null, error: `Lỗi khi tải loại chỉ: ${ttError.message}` }, 500)
+      }
+
+      for (const tt of threadTypes || []) {
+        const sup = Array.isArray(tt.suppliers) ? tt.suppliers[0] : tt.suppliers
+        ttMap.set(tt.id, {
+          tex_number: tt.tex_number || '?',
+          supplier_name: (sup as { name: string } | null)?.name || 'Không xác định',
+        })
+      }
+    }
+
+    // Query 3: Get colors
+    const colorMap = new Map<number, { name: string; hex_code: string | null }>()
+    if (colorIds.length > 0) {
+      const { data: colors, error: colorError } = await supabase
+        .from('colors')
+        .select('id, name, hex_code')
+        .in('id', colorIds)
+
+      if (colorError) {
+        console.error('[cone-summary] colors query error:', colorError)
+        return c.json({ data: null, error: `Lỗi khi tải màu: ${colorError.message}` }, 500)
+      }
+
+      for (const color of colors || []) {
+        colorMap.set(color.id, { name: color.name, hex_code: color.hex_code })
+      }
+    }
+
+    // Aggregate
     const groupMap = new Map<string, {
       thread_type_id: number
       supplier_name: string
@@ -945,23 +990,17 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
       cone_count: number
     }>()
 
-    for (const cone of (cones || [])) {
-      const tt = cone.thread_types as unknown as {
-        tex_number: string
-        suppliers: { name: string } | null
-      } | null
-      const color = cone.colors as unknown as {
-        name: string
-        hex_code: string | null
-      } | null
+    for (const cone of cones) {
       const key = `${cone.thread_type_id}_${cone.color_id ?? 0}`
       const existing = groupMap.get(key)
       if (existing) {
         existing.cone_count++
       } else {
+        const tt = ttMap.get(cone.thread_type_id)
+        const color = cone.color_id ? colorMap.get(cone.color_id) : null
         groupMap.set(key, {
           thread_type_id: cone.thread_type_id,
-          supplier_name: tt?.suppliers?.name ?? 'Không xác định',
+          supplier_name: tt?.supplier_name ?? 'Không xác định',
           tex_number: tt?.tex_number ?? '?',
           color_name: color?.name ?? 'Không xác định',
           color_hex: color?.hex_code ?? null,
