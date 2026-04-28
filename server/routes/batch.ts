@@ -921,18 +921,25 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
       return c.json({ data: [], error: null })
     }
 
-    // Query 1: Get cones basic info
-    const { data: cones, error: coneError } = await supabase
-      .from('thread_inventory')
-      .select('thread_type_id, color_id')
-      .in('id', coneIds)
+    // Query 1: Get cones basic info (batch to avoid URI too long)
+    const BATCH_SIZE = 500
+    const cones: { thread_type_id: number; color_id: number | null }[] = []
 
-    if (coneError) {
-      console.error('[cone-summary] cones query error:', coneError)
-      return c.json({ data: null, error: `Lỗi khi tải thông tin cuộn chỉ: ${coneError.message}` }, 500)
+    for (let i = 0; i < coneIds.length; i += BATCH_SIZE) {
+      const batch = coneIds.slice(i, i + BATCH_SIZE)
+      const { data, error } = await supabase
+        .from('thread_inventory')
+        .select('thread_type_id, color_id')
+        .in('id', batch)
+
+      if (error) {
+        console.error('[cone-summary] cones query error:', error)
+        return c.json({ data: null, error: `Lỗi khi tải thông tin cuộn chỉ: ${error.message}` }, 500)
+      }
+      if (data) cones.push(...data)
     }
 
-    if (!cones || cones.length === 0) {
+    if (cones.length === 0) {
       return c.json({ data: [], error: null })
     }
 

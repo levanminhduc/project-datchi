@@ -4,7 +4,9 @@
     class="week-history-dialog"
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <template #header> Lịch sử tuần đặt hàng </template>
+    <template #header>
+      Lịch sử tuần đặt hàng
+    </template>
 
     <AppInput
       v-model="search"
@@ -69,7 +71,11 @@
     </q-table>
 
     <template #actions>
-      <AppButton v-close-popup flat label="Đóng" />
+      <AppButton
+        v-close-popup
+        flat
+        label="Đóng"
+      />
     </template>
   </AppDialog>
 </template>
