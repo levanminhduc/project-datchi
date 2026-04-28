@@ -1,14 +1,25 @@
 <template>
   <AppDialog
     :model-value="modelValue"
+    class="week-history-dialog"
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <template #header>
-      Lịch sử tuần đặt hàng
-    </template>
+    <template #header> Lịch sử tuần đặt hàng </template>
+
+    <AppInput
+      v-model="search"
+      placeholder="Nhập thông tin đơn hàng, người tạo..."
+      dense
+      clearable
+      class="q-mb-sm"
+    >
+      <template #prepend>
+        <q-icon name="search" />
+      </template>
+    </AppInput>
 
     <q-table
-      :rows="weeks"
+      :rows="filteredWeeks"
       :columns="columns"
       row-key="id"
       flat
@@ -16,6 +27,7 @@
       dense
       :loading="loading"
       :rows-per-page-options="[10, 20]"
+      style="min-height: 400px"
     >
       <template #body-cell-status="props">
         <q-td :props="props">
@@ -43,7 +55,7 @@
             icon="open_in_new"
             color="grey"
             size="sm"
-            @click="router.push(`/thread/weekly-order/${props.row.id}`)"
+            @click="openDetail(props.row.id)"
           >
             <AppTooltip>Xem chi tiết</AppTooltip>
           </AppButton>
@@ -57,81 +69,131 @@
     </q-table>
 
     <template #actions>
-      <AppButton
-        v-close-popup
-        flat
-        label="Đóng"
-      />
+      <AppButton v-close-popup flat label="Đóng" />
     </template>
   </AppDialog>
 </template>
 
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
-import type { QTableColumn } from 'quasar'
-import type { ThreadOrderWeek } from '@/types/thread'
+import { ref, computed, watch, nextTick } from "vue";
+import type { QTableColumn } from "quasar";
+import type { ThreadOrderWeek } from "@/types/thread";
+import AppInput from "@/components/ui/inputs/AppInput.vue";
 
-defineProps<{
-  modelValue: boolean
-  weeks: ThreadOrderWeek[]
-  loading: boolean
-}>()
+const props = defineProps<{
+  modelValue: boolean;
+  weeks: ThreadOrderWeek[];
+  loading: boolean;
+}>();
 
 defineEmits<{
-  'update:modelValue': [value: boolean]
-  load: [weekId: number]
-}>()
+  "update:modelValue": [value: boolean];
+  load: [weekId: number];
+}>();
 
-const router = useRouter()
+const search = ref("");
+const dialogMinWidth = ref<number | null>(null);
+
+const filteredWeeks = computed(() => {
+  if (!search.value.trim()) return props.weeks;
+  const q = search.value.toLowerCase();
+  return props.weeks.filter(
+    (w) =>
+      w.week_name?.toLowerCase().includes(q) ||
+      w.created_by?.toLowerCase().includes(q),
+  );
+});
+
+watch(
+  () => props.modelValue,
+  async (isOpen) => {
+    if (isOpen && dialogMinWidth.value === null) {
+      await nextTick();
+      setTimeout(() => {
+        const card = document.querySelector(
+          ".week-history-dialog .q-card",
+        ) as HTMLElement;
+        if (card) {
+          dialogMinWidth.value = card.offsetWidth;
+          card.style.minWidth = `${dialogMinWidth.value}px`;
+        }
+      }, 50);
+    }
+    if (!isOpen) {
+      dialogMinWidth.value = null;
+    }
+  },
+);
+
+function openDetail(weekId: number) {
+  window.open(`/thread/weekly-order/${weekId}`, "_blank");
+}
 
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
-    draft: 'Nháp',
-    confirmed: 'Đã xác nhận',
-    cancelled: 'Đã hủy',
-  }
-  return map[status.toLowerCase()] || status
+    draft: "Nháp",
+    confirmed: "Đã xác nhận",
+    cancelled: "Đã hủy",
+  };
+  return map[status.toLowerCase()] || status;
 }
 
 function statusColor(status: string): string {
   const map: Record<string, string> = {
-    draft: 'grey',
-    confirmed: 'positive',
-    cancelled: 'negative',
-  }
-  return map[status.toLowerCase()] || 'grey'
+    draft: "grey",
+    confirmed: "positive",
+    cancelled: "negative",
+  };
+  return map[status.toLowerCase()] || "grey";
 }
 
 function formatDate(val: string | null): string {
-  if (!val) return '—'
-  const [y, m, d] = val.split('-')
-  return `${d}/${m}/${y}`
+  if (!val) return "—";
+  const [y, m, d] = val.split("-");
+  return `${d}/${m}/${y}`;
 }
 
 const columns: QTableColumn[] = [
-  { name: 'week_name', label: 'Tên tuần', field: 'week_name', align: 'left', sortable: true },
   {
-    name: 'start_date',
-    label: 'Ngày Giao',
-    field: 'start_date',
-    align: 'left',
+    name: "week_name",
+    label: "Đơn hàng",
+    field: "week_name",
+    align: "left",
+    sortable: true,
+  },
+  {
+    name: "start_date",
+    label: "Ngày Giao",
+    field: "start_date",
+    align: "left",
     format: (val: string | null) => formatDate(val),
   },
   {
-    name: 'created_by',
-    label: 'Người tạo',
-    field: 'created_by',
-    align: 'left',
-    format: (val: string | null) => val || '—',
+    name: "created_by",
+    label: "Người tạo",
+    field: "created_by",
+    align: "left",
+    format: (val: string | null) => val || "—",
   },
-  { name: 'status', label: 'Trạng thái', field: 'status', align: 'center' },
+  { name: "status", label: "Trạng thái", field: "status", align: "center" },
   {
-    name: 'item_count',
-    label: 'Số items',
-    field: 'item_count',
-    align: 'right',
-    format: (val: number | undefined) => val?.toString() || '0',
+    name: "item_count",
+    label: "Số items",
+    field: "item_count",
+    align: "right",
+    format: (val: number | undefined) => val?.toString() || "0",
   },
-  { name: 'actions', label: '', field: 'id', align: 'center' },
-]
+  { name: "actions", label: "", field: "id", align: "center" },
+];
 </script>
+
+<style>
+.week-history-dialog .q-card {
+  max-width: 95vw !important;
+}
+
+.week-history-dialog .q-table th,
+.week-history-dialog .q-table td {
+  white-space: nowrap;
+}
+</style>
