@@ -857,104 +857,106 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: deliveries, error: deliveryError } = await supabase
-      .from('thread_order_deliveries')
-      .select('thread_type_id, quantity_cones, thread_type:thread_types(id, name)')
-      .eq('week_id', id)
+    const { data: bomData, error: bomError } = await supabase.rpc('fn_parse_calculation_cones', {
+      p_week_id: id,
+    })
 
-    if (deliveryError) throw deliveryError
+    if (bomError) throw bomError
 
-    const deliveryMap = new Map<number, number>()
-    const threadTypeNameMap = new Map<number, string>()
-    for (const d of deliveries || []) {
-      deliveryMap.set(d.thread_type_id, d.quantity_cones || 0)
-      if (d.thread_type && typeof d.thread_type === 'object' && 'name' in d.thread_type) {
-        threadTypeNameMap.set(d.thread_type_id, (d.thread_type as unknown as { id: number; name: string }).name)
-      }
-    }
+    type BomRow = { thread_type_id: number; color_id: number | null; needed_cones: number }
+    const bomRows = (bomData || []) as BomRow[]
 
-    const { data: resultsData, error: resultsError } = await supabase
-      .from('thread_order_results')
-      .select('summary_data')
-      .eq('week_id', id)
-      .single()
-
-    if (resultsError && resultsError.code !== 'PGRST116') throw resultsError
-
-    type SummaryRow = { thread_type_id?: number; thread_type_name?: string; total_final?: number }
-    const summaryData: SummaryRow[] = resultsData?.summary_data || []
-    const summaryMapLocal = new Map<number, { name: string; totalFinal: number }>()
-    for (const row of summaryData) {
-      if (row.thread_type_id && row.total_final != null) {
-        summaryMapLocal.set(row.thread_type_id, {
-          name: row.thread_type_name || '',
-          totalFinal: row.total_final,
-        })
-        if (!threadTypeNameMap.has(row.thread_type_id) && row.thread_type_name) {
-          threadTypeNameMap.set(row.thread_type_id, row.thread_type_name)
-        }
-      }
-    }
-
-    const allThreadTypeIds = new Set<number>([...deliveryMap.keys(), ...summaryMapLocal.keys()])
-
-    if (allThreadTypeIds.size === 0) {
+    if (bomRows.length === 0) {
       return c.json({ data: [], error: null })
     }
 
-    const threadTypeIds = Array.from(allThreadTypeIds)
+    const threadTypeIds = Array.from(new Set(bomRows.map((r) => r.thread_type_id)))
+    const colorIds = Array.from(new Set(bomRows.map((r) => r.color_id).filter((c): c is number => c !== null)))
 
-    const { data: reservedCounts, error: reservedError } = await supabase
+    const { data: threadTypes, error: ttError } = await supabase
+      .from('thread_types')
+      .select('id, name')
+      .in('id', threadTypeIds)
+      .limit(threadTypeIds.length)
+    if (ttError) throw ttError
+
+    const ttNameMap = new Map<number, string>()
+    for (const tt of threadTypes || []) {
+      ttNameMap.set(tt.id, tt.name || '')
+    }
+
+    const colorNameMap = new Map<number, string>()
+    if (colorIds.length > 0) {
+      const { data: colors, error: colorError } = await supabase
+        .from('colors')
+        .select('id, name')
+        .in('id', colorIds)
+        .limit(colorIds.length)
+      if (colorError) throw colorError
+
+      for (const color of colors || []) {
+        colorNameMap.set(color.id, color.name || '')
+      }
+    }
+
+    const { data: reservedCones, error: reservedError } = await supabase
       .from('thread_inventory')
-      .select('thread_type_id')
+      .select('thread_type_id, color_id')
       .eq('reserved_week_id', id)
       .eq('status', 'RESERVED_FOR_ORDER')
       .in('thread_type_id', threadTypeIds)
-
+      .limit(100000)
     if (reservedError) throw reservedError
 
-    const reservedMap = new Map<number, number>()
-    for (const r of reservedCounts || []) {
-      const count = reservedMap.get(r.thread_type_id) || 0
-      reservedMap.set(r.thread_type_id, count + 1)
+    const reservedMap = new Map<string, number>()
+    for (const r of reservedCones || []) {
+      const key = `${r.thread_type_id}-${r.color_id ?? ''}`
+      reservedMap.set(key, (reservedMap.get(key) || 0) + 1)
     }
 
-    const { data: availableCounts, error: availableError } = await supabase
+    const { data: availableCones, error: availableError } = await supabase
       .from('thread_inventory')
-      .select('thread_type_id')
+      .select('thread_type_id, color_id')
       .eq('status', 'AVAILABLE')
       .is('reserved_week_id', null)
       .in('thread_type_id', threadTypeIds)
-
+      .limit(100000)
     if (availableError) throw availableError
 
-    const availableMap = new Map<number, number>()
-    for (const a of availableCounts || []) {
-      const count = availableMap.get(a.thread_type_id) || 0
-      availableMap.set(a.thread_type_id, count + 1)
+    const availableMap = new Map<string, number>()
+    for (const a of availableCones || []) {
+      const key = `${a.thread_type_id}-${a.color_id ?? ''}`
+      availableMap.set(key, (availableMap.get(key) || 0) + 1)
     }
 
-    const summary = threadTypeIds.map((threadTypeId) => {
-      const hasDeliveryRow = deliveryMap.has(threadTypeId)
-      const needed = hasDeliveryRow
-        ? (deliveryMap.get(threadTypeId) || 0)
-        : (summaryMapLocal.get(threadTypeId)?.totalFinal || 0)
-      const reserved = reservedMap.get(threadTypeId) || 0
-      const availableStock = availableMap.get(threadTypeId) || 0
-      const shortage = Math.max(0, needed)
-      const canReserve = hasDeliveryRow
-      const cannotReserveReason = hasDeliveryRow ? undefined : 'Không có dữ liệu giao hàng cho loại chỉ này'
-      const threadTypeName = threadTypeNameMap.get(threadTypeId) || ''
+    const { data: deliveries, error: deliveryError } = await supabase
+      .from('thread_order_deliveries')
+      .select('thread_type_id')
+      .eq('week_id', id)
+      .in('thread_type_id', threadTypeIds)
+      .limit(threadTypeIds.length)
+    if (deliveryError) throw deliveryError
+
+    const deliverySet = new Set((deliveries || []).map((d) => d.thread_type_id))
+
+    const summary = bomRows.map((row) => {
+      const key = `${row.thread_type_id}-${row.color_id ?? ''}`
+      const reserved = reservedMap.get(key) || 0
+      const availableStock = availableMap.get(key) || 0
+      const shortage = Math.max(0, row.needed_cones - reserved)
+      const hasDelivery = deliverySet.has(row.thread_type_id)
 
       return {
-        thread_type_id: threadTypeId,
-        thread_type_name: threadTypeName,
-        needed,
+        thread_type_id: row.thread_type_id,
+        color_id: row.color_id || 0,
+        color_name: row.color_id ? (colorNameMap.get(row.color_id) || '') : '',
+        thread_type_name: ttNameMap.get(row.thread_type_id) || '',
+        needed: row.needed_cones,
         reserved,
         shortage,
         available_stock: availableStock,
-        can_reserve: canReserve,
-        cannot_reserve_reason: cannotReserveReason,
+        can_reserve: hasDelivery,
+        cannot_reserve_reason: hasDelivery ? undefined : 'Không có dữ liệu giao hàng cho loại chỉ này',
       }
     })
 
