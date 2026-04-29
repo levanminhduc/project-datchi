@@ -146,6 +146,10 @@ export const ReserveFromStockSchema = z.object({
     .number({ error:'thread_type_id là bắt buộc' })
     .int()
     .positive('thread_type_id phải là số nguyên dương'),
+  color_id: z
+    .number({ error:'color_id là bắt buộc' })
+    .int()
+    .positive('color_id phải là số nguyên dương'),
   quantity: z
     .number({ error:'Số lượng là bắt buộc' })
     .int()
