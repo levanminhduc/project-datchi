@@ -1009,6 +1009,7 @@ loansReservations.post('/:id/reserve-from-stock', requirePermission('thread.allo
       p_quantity: validated.quantity,
       p_reason: validated.reason || null,
       p_user: createdBy,
+      p_color_id: validated.color_id,
     })
 
     if (rpcError) {
