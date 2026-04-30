@@ -914,13 +914,26 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
       reservedMap.set(key, (reservedMap.get(key) || 0) + 1)
     }
 
-    const { data: availableCones, error: availableError } = await supabase
+    const { data: warehouseRows, error: warehouseError } = await supabase
+      .from('thread_order_week_warehouses')
+      .select('warehouse_id')
+      .eq('week_id', id)
+      .limit(100)
+    if (warehouseError) throw warehouseError
+
+    const warehouseIds = (warehouseRows || []).map((row) => row.warehouse_id)
+
+    let availableQuery = supabase
       .from('thread_inventory')
       .select('thread_type_id, color_id')
       .eq('status', 'AVAILABLE')
       .is('reserved_week_id', null)
       .in('thread_type_id', threadTypeIds)
-      .limit(100000)
+    if (warehouseIds.length > 0) {
+      availableQuery = availableQuery.in('warehouse_id', warehouseIds)
+    }
+
+    const { data: availableCones, error: availableError } = await availableQuery.limit(100000)
     if (availableError) throw availableError
 
     const availableMap = new Map<string, number>()
