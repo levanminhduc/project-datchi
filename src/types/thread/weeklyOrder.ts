@@ -70,6 +70,7 @@ export interface WeeklyOrderResults {
   calculation_data: CalculationResult[]
   summary_data: AggregatedRow[]
   calculated_at: string
+  warehouse_ids?: number[] | null
 }
 
 export interface AggregatedRow {

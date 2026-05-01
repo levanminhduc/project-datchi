@@ -47,6 +47,7 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
     }
 
     let enrichedSummaryData = validated.summary_data || null
+    let warehouseIds: number[] = []
     if (validated.summary_data && Array.isArray(validated.summary_data)) {
       const summaryRows = validated.summary_data as Array<{
         thread_type_id: number
@@ -94,7 +95,7 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
         .eq('week_id', id)
         .limit(100)
 
-      const warehouseIds = (warehouseRows || []).map((r: { warehouse_id: number }) => r.warehouse_id)
+      warehouseIds = (warehouseRows || []).map((r: { warehouse_id: number }) => r.warehouse_id)
       console.info(`[saveResults] week=${id} warehouseIds=${JSON.stringify(warehouseIds)}`)
 
       enrichedSummaryData = await enrichWithInventory(
@@ -115,6 +116,7 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
           calculation_data: validated.calculation_data,
           summary_data: enrichedSummaryData,
           calculated_at: new Date().toISOString(),
+          warehouse_ids: warehouseIds,
         },
         { onConflict: 'week_id' },
       )

@@ -159,7 +159,7 @@
         <AppSelect
           v-model="selectedWarehouseIds"
           :options="warehouseFilterOptions"
-          label="Lọc kho tồn"
+          label="Kho rút tồn (áp dụng khi xác nhận)"
           dense
           outlined
           multiple
@@ -177,7 +177,7 @@
           <template #before-options>
             <q-item dense>
               <q-item-section class="text-caption text-grey">
-                Không chọn = tất cả kho
+                Trống = sẽ rút từ tất cả kho khi xác nhận đơn hàng
               </q-item-section>
             </q-item>
             <q-separator />
