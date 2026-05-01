@@ -54,7 +54,7 @@ export interface PaginationConfig {
 }
 
 // Select option (enhanced version with generics)
-export interface UISelectOption<T = any> {
+export interface UISelectOption<T = unknown> {
   label: string
   value: T
   disable?: boolean
@@ -66,7 +66,7 @@ export interface UISelectOption<T = any> {
 export interface UIMenuItem {
   label: string
   icon?: string
-  value?: any
+  value?: unknown
   separator?: boolean
   disable?: boolean
   to?: string

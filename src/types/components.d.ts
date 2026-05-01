@@ -8,10 +8,10 @@ export interface BaseProps {
 export interface DataTableColumn {
     name: string;
     label: string;
-    field: string | ((row: any) => any);
+    field: string | ((row: Record<string, unknown>) => unknown);
     align?: 'left' | 'right' | 'center';
     sortable?: boolean;
-    format?: (val: any) => string;
+    format?: (val: unknown) => string;
     style?: string;
     classes?: string;
 }
@@ -34,12 +34,12 @@ export interface ExpansionItem {
     label: string;
     caption?: string;
     icon?: string;
-    value?: any;
+    value?: unknown;
 }
 export interface MenuItem {
     label: string;
     icon?: string;
-    value?: any;
+    value?: unknown;
     separator?: boolean;
     disable?: boolean;
 }
@@ -56,7 +56,7 @@ export interface ListItem {
     caption?: string;
     icon?: string;
     avatar?: string;
-    value?: any;
+    value?: unknown;
     disable?: boolean;
     to?: string;
     href?: string;
@@ -68,17 +68,17 @@ export interface TabConfig {
     disable?: boolean;
 }
 export interface NavItem {
-    value: any;
+    value: unknown;
     icon: string;
     label: string;
 }
 export interface RadioOption {
     label: string;
-    value: any;
+    value: unknown;
 }
 export interface ChipItem {
     label: string;
-    value?: any;
+    value?: unknown;
     color?: string;
     icon?: string;
     removable?: boolean;

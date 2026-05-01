@@ -7,7 +7,7 @@ import type { Color } from './base'
 export interface DatePickerProps {
   modelValue?: string | null
   mask?: string
-  locale?: Record<string, any>
+  locale?: Record<string, unknown>
   calendar?: 'gregorian' | 'persian'
   landscape?: boolean
   color?: Color
@@ -41,7 +41,7 @@ export interface DatePickerProps {
 export interface TimePickerProps {
   modelValue?: string | null
   mask?: string
-  locale?: Record<string, any>
+  locale?: Record<string, unknown>
   landscape?: boolean
   color?: Color
   textColor?: string
@@ -63,7 +63,7 @@ export interface TimePickerProps {
 
 /** ColorPicker props */
 export interface ColorPickerProps {
-  modelValue?: string | null | Record<string, any>
+  modelValue?: string | null | Record<string, unknown>
   defaultValue?: string
   defaultView?: 'spectrum' | 'tune' | 'palette'
   formatModel?: 'auto' | 'hex' | 'rgb' | 'hexa' | 'rgba'
