@@ -5,6 +5,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import '@/styles/guide-prose.scss'
 import VueEasyLightbox from 'vue-easy-lightbox'
 import { useGuideImageZoom } from '@/composables/use-guide-image-zoom'
+import { sanitizeHtml } from '@/utils/sanitize-html'
 
 definePage({
   meta: { public: true },
@@ -119,11 +120,13 @@ async function copyLink() {
         </div>
       </div>
 
+      <!-- eslint-disable vue/no-v-html -->
       <div
         ref="proseRef"
         class="guide-prose"
-        v-html="guide.content_html"
+        v-html="sanitizeHtml(guide.content_html)"
       />
+      <!-- eslint-enable vue/no-v-html -->
 
       <div class="guide-share-section q-pa-md q-mt-xl rounded-borders bg-grey-2">
         <div class="text-subtitle2 q-mb-sm">
