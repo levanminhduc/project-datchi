@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Announcement } from '@/types/announcement'
+import { sanitizeHtml } from '@/utils/sanitize-html'
 
 interface Props {
   announcement: Announcement
@@ -51,7 +52,8 @@ const counterText = computed(() =>
       </q-card-section>
 
       <q-card-section class="q-pt-md announcement-body">
-        <div v-html="announcement.content" />
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div v-html="sanitizeHtml(announcement.content)" />
       </q-card-section>
 
       <q-card-actions

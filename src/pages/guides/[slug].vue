@@ -8,6 +8,7 @@ import type { Guide } from '@/types/guides'
 import '@/styles/guide-prose.scss'
 import VueEasyLightbox from 'vue-easy-lightbox'
 import { useGuideImageZoom } from '@/composables/use-guide-image-zoom'
+import { sanitizeHtml } from '@/utils/sanitize-html'
 
 definePage({
   meta: { requiresAuth: true },
@@ -106,11 +107,13 @@ async function copyPublicLink() {
         {{ guide.published_at ? new Date(guide.published_at).toLocaleDateString('vi-VN') : '' }}
       </div>
 
+      <!-- eslint-disable vue/no-v-html -->
       <div
         ref="proseRef"
         class="guide-prose"
-        v-html="guide.content_html"
+        v-html="sanitizeHtml(guide.content_html)"
       />
+      <!-- eslint-enable vue/no-v-html -->
 
       <template v-if="guide.status === 'PUBLISHED'">
         <div class="guide-share-section q-pa-md q-mt-xl rounded-borders bg-grey-2">

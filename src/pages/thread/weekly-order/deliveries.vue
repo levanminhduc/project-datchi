@@ -468,10 +468,8 @@
 
           <AppSelect
             v-model="receiveForm.warehouse_id"
-            :options="warehouseOptions"
+            :options="receiveWarehouseOptions"
             label="Kho nhập *"
-            option-value="id"
-            option-label="name"
             use-input
             fill-input
             hide-selected
@@ -558,10 +556,10 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import type { QTableColumn } from 'quasar'
 import { deliveryService } from '@/services/deliveryService'
-import { warehouseService, type Warehouse } from '@/services/warehouseService'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useAuth } from '@/composables/useAuth'
+import { useWarehouses } from '@/composables/useWarehouses'
 import type { DeliveryRecord, DeliveryReceiveLog } from '@/types/thread'
 import { DeliveryStatus, InventoryReceiptStatus } from '@/types/thread/enums'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
@@ -602,11 +600,19 @@ const pendingReceiveItems = ref<DeliveryRecord[]>([])
 const showReceiveDialog = ref(false)
 const selectedReceiveDelivery = ref<DeliveryRecord | null>(null)
 const receiving = ref(false)
-const warehouses = ref<Warehouse[]>([])
+const { storageOptions: warehouseOptions, fetchWarehouses } = useWarehouses()
 const receiveForm = ref({
   warehouse_id: null as number | null,
   quantity: 0,
   expiry_date: '' as string,
+})
+const warehouseFilterCache = new Map<number, number[]>()
+const allowedWarehouseIds = ref<number[] | null>(null)
+const receiveWarehouseOptions = computed(() => {
+  const ids = allowedWarehouseIds.value
+  if (!ids || ids.length === 0) return warehouseOptions.value
+  const allowed = new Set(ids)
+  return warehouseOptions.value.filter(opt => allowed.has(opt.value as number))
 })
 
 const showResultDialog = ref(false)
@@ -626,10 +632,6 @@ const weekFilterOptions = computed(() => {
 
 const currentUser = computed(() => {
   return employee.value?.fullName || 'Chưa đăng nhập'
-})
-
-const warehouseOptions = computed(() => {
-  return warehouses.value.map(w => ({ id: w.id, name: `${w.name} (${w.code})` }))
 })
 
 const filteredDeliveries = computed(() => {
@@ -827,14 +829,6 @@ async function loadReceiveData() {
   }
 }
 
-async function loadWarehouses() {
-  try {
-    warehouses.value = await warehouseService.getStorageOnly()
-  } catch (err) {
-    console.error('Error loading warehouses:', err)
-  }
-}
-
 async function loadWeekOptions() {
   try {
     const weeks = await weeklyOrderService.getAll()
@@ -905,7 +899,7 @@ async function confirmDelivered() {
   }
 }
 
-function openReceiveDialog(delivery: DeliveryRecord) {
+async function openReceiveDialog(delivery: DeliveryRecord) {
   selectedReceiveDelivery.value = delivery
   const today = new Date()
   const day = String(today.getDate()).padStart(2, '0')
@@ -915,6 +909,16 @@ function openReceiveDialog(delivery: DeliveryRecord) {
     warehouse_id: null,
     quantity: getPendingQuantity(delivery),
     expiry_date: `${day}/${month}/${year}`,
+  }
+  try {
+    let ids = warehouseFilterCache.get(delivery.week_id)
+    if (!ids) {
+      ids = await weeklyOrderService.getWarehouseFilter(delivery.week_id)
+      warehouseFilterCache.set(delivery.week_id, ids)
+    }
+    allowedWarehouseIds.value = ids
+  } catch {
+    allowedWarehouseIds.value = null
   }
   showReceiveDialog.value = true
 }
@@ -962,7 +966,7 @@ watch(activeTab, (newTab) => {
 })
 
 onMounted(async () => {
-  await Promise.all([loadWarehouses(), loadWeekOptions()])
+  await Promise.all([fetchWarehouses(), loadWeekOptions()])
   await loadTrackingData()
 })
 </script>

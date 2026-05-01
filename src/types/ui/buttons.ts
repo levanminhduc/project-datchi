@@ -69,11 +69,11 @@ export interface ButtonGroupProps extends BaseComponentProps {
 
 export interface ButtonToggleProps extends BaseComponentProps {
   /** v-model value */
-  modelValue?: any
+  modelValue?: unknown
   /** Options array */
   options: Array<{
     label?: string
-    value: any
+    value: unknown
     icon?: string
     slot?: string
     disable?: boolean

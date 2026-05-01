@@ -289,18 +289,20 @@ export interface ManualReturnResult {
 
 export interface ReservationSummary {
   thread_type_id: number
-  thread_type_name?: string // ISSUE-7: Add thread type name for display
+  color_id: number
+  color_name: string
+  thread_type_name?: string
   needed: number
   reserved: number
   shortage: number
-  available_stock: number // Task 5.5: Add available_stock
-  can_reserve: boolean // Task 5.5: Add can_reserve
-  cannot_reserve_reason?: string // Task 5.5: Add cannot_reserve_reason
+  available_stock: number
+  can_reserve: boolean
+  cannot_reserve_reason?: string
 }
 
-// Task 5.3: Add ReserveFromStockDTO
 export interface ReserveFromStockDTO {
   thread_type_id: number
+  color_id: number
   quantity: number
   reason?: string
 }

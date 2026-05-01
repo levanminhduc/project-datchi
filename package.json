@@ -41,6 +41,7 @@
     "echarts": "^6.0.0",
     "exceljs": "^4.4.0",
     "hono": "^4.11.5",
+    "isomorphic-dompurify": "^3.11.0",
     "jose": "^6.1.3",
     "jszip": "^3.10.1",
     "pinia": "^3.0.4",

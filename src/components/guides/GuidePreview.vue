@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { sanitizeHtml } from '@/utils/sanitize-html'
+
 interface Props {
   html: string
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
+
+const safeHtml = computed(() => sanitizeHtml(props.html))
 </script>
 
 <template>
@@ -16,10 +21,12 @@ defineProps<Props>()
       <span>Xem trước</span>
     </div>
     <q-separator class="q-mb-md" />
+    <!-- eslint-disable vue/no-v-html -->
     <div
       class="guide-prose"
-      v-html="html"
+      v-html="safeHtml"
     />
+    <!-- eslint-enable vue/no-v-html -->
     <div
       v-if="!html"
       class="text-grey text-center q-pa-lg"

@@ -32,12 +32,41 @@ export async function enrichWithInventory(
 
   const partialConeRatio = await getPartialConeRatio()
 
+  // Resolve thread_color (string name) → color_id for rows where thread_color_id is null
+  const unresolvedColorNames = [
+    ...new Set(
+      summaryRows
+        .filter(
+          (r) =>
+            (r.thread_color_id as number | null | undefined) == null &&
+            typeof r.thread_color === 'string' &&
+            (r.thread_color as string).length > 0,
+        )
+        .map((r) => r.thread_color as string),
+    ),
+  ]
+
+  const colorNameToId = new Map<string, number>()
+  if (unresolvedColorNames.length > 0) {
+    const { data: colorRows } = await supabase
+      .from('colors')
+      .select('id, name')
+      .in('name', unresolvedColorNames)
+      .limit(unresolvedColorNames.length + 10)
+    for (const c of colorRows || []) {
+      colorNameToId.set(c.name, c.id)
+    }
+  }
+
   const coloredTypeIds: number[] = []
   const coloredColorIds: number[] = []
   const nonColoredTypeIds: number[] = []
 
   for (const row of summaryRows) {
-    const colorId = row.thread_color_id as number | null | undefined
+    let colorId = row.thread_color_id as number | null | undefined
+    if (colorId == null && typeof row.thread_color === 'string') {
+      colorId = colorNameToId.get(row.thread_color as string) ?? null
+    }
     if (colorId != null) {
       coloredTypeIds.push(row.thread_type_id)
       coloredColorIds.push(colorId)
@@ -102,7 +131,10 @@ export async function enrichWithInventory(
   const preserveAdditional = options?.preserveAdditionalOrder === true
 
   return summaryRows.map((row) => {
-    const colorId = row.thread_color_id as number | null | undefined
+    let colorId = row.thread_color_id as number | null | undefined
+    if (colorId == null && typeof row.thread_color === 'string') {
+      colorId = colorNameToId.get(row.thread_color as string) ?? null
+    }
     const key = `${row.thread_type_id}_${colorId != null ? colorId : ''}`
     const inv = inventoryMap.get(key) || { full: 0, partial: 0 }
     const full_cones = inv.full

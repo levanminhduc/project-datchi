@@ -26,6 +26,14 @@
           </div>
           <div class="col-6">
             <div class="text-caption text-grey-6">
+              Màu chỉ
+            </div>
+            <div class="text-body2">
+              {{ colorName }}
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="text-caption text-grey-6">
               Thiếu (cuộn)
             </div>
             <div class="text-body2 text-negative text-weight-medium">
@@ -105,6 +113,7 @@ const props = defineProps<{
   weekId: number
   summaryItem: ReservationSummary | null
   threadTypeName: string
+  colorName: string
 }>()
 
 const emit = defineEmits<{
@@ -144,6 +153,7 @@ const handleSubmit = async () => {
   try {
     const result = await weeklyOrderService.reserveFromStock(props.weekId, {
       thread_type_id: props.summaryItem.thread_type_id,
+      color_id: props.summaryItem.color_id,
       quantity: form.value.quantity,
       reason: form.value.reason || undefined,
     })

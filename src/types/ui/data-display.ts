@@ -3,7 +3,7 @@ import type { QTableColumn } from 'quasar'
 
 export interface DataTableProps extends BaseComponentProps {
   /** Table rows data */
-  rows: any[]
+  rows: unknown[]
   /** Column definitions */
   columns: QTableColumn[]
   /** Row key field */
@@ -25,7 +25,7 @@ export interface DataTableProps extends BaseComponentProps {
   /** Selection mode */
   selection?: 'none' | 'single' | 'multiple'
   /** Selected rows */
-  selected?: any[]
+  selected?: unknown[]
   /** Empty state icon */
   emptyIcon?: string
   /** Empty state title */
@@ -71,7 +71,7 @@ export interface DataTableProps extends BaseComponentProps {
   /** Column sort order */
   columnSortOrder?: 'ad' | 'da'
   /** Sort method */
-  sortMethod?: (rows: readonly any[], sortBy: string, descending: boolean) => readonly any[]
+  sortMethod?: (rows: readonly unknown[], sortBy: string, descending: boolean) => readonly unknown[]
   /** Title */
   title?: string
   /** Grid mode */

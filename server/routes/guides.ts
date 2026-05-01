@@ -6,6 +6,7 @@ import {
   UpdateGuideSchema,
   ReorderGuideSchema,
 } from '../validation/guide'
+import { sanitizeHtml } from '../utils/sanitize-html'
 import type { AppEnv } from '../types/hono-env'
 
 const guides = new Hono<AppEnv>()
@@ -382,7 +383,7 @@ guides.post('/', requirePermission('guides.create'), async (c) => {
         title: validated.title,
         slug,
         content: validated.content,
-        content_html: validated.content_html,
+        content_html: validated.content_html ? sanitizeHtml(validated.content_html) : validated.content_html,
         cover_image_url: validated.cover_image_url || null,
         status: validated.status,
         sort_order: nextOrder,
@@ -430,6 +431,10 @@ guides.put('/:id', requirePermission('guides.edit'), async (c) => {
     const updateData: Record<string, unknown> = {
       ...validated,
       updated_at: new Date().toISOString(),
+    }
+
+    if (updateData.content_html && typeof updateData.content_html === 'string') {
+      updateData.content_html = sanitizeHtml(updateData.content_html)
     }
 
     if (validated.title && validated.title !== existing.title) {

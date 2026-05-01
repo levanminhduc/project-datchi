@@ -17,8 +17,8 @@ export interface ScrollAreaProps {
 
 /** VirtualScroll props */
 export interface VirtualScrollProps {
-  items?: any[]
-  itemsFn?: (from: number, size: number) => any[]
+  items?: unknown[]
+  itemsFn?: (from: number, size: number) => unknown[]
   itemsSize?: number
   virtualScrollSliceSize?: number | string
   virtualScrollSliceRatioBefore?: number | string

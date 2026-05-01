@@ -503,6 +503,7 @@
       :week-id="weekId"
       :summary-item="selectedReservationSummary"
       :thread-type-name="selectedThreadTypeName"
+      :color-name="selectedReservationSummary?.color_name || ''"
       @reserved="onReserveFromStockComplete"
     />
 

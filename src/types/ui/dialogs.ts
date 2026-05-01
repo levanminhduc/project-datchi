@@ -131,7 +131,7 @@ export interface AppTooltipProps {
  */
 export interface PopupEditProps {
   /** v-model for edited value */
-  modelValue: any
+  modelValue: unknown
   /** Popup title */
   title?: string
   /** Show save/cancel buttons */

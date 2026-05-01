@@ -55,15 +55,15 @@ export interface AppInputProps extends BaseComponentProps, LabeledProps, Validat
 
 export interface AppSelectProps extends BaseComponentProps, LabeledProps, ValidatableProps {
   /** v-model value */
-  modelValue?: any
+  modelValue?: unknown
   /** Options array */
-  options: Array<any>
+  options: unknown[]
   /** Option value field */
-  optionValue?: string | ((option: any) => any)
+  optionValue?: string | ((option: unknown) => unknown)
   /** Option label field */
-  optionLabel?: string | ((option: any) => string)
+  optionLabel?: string | ((option: unknown) => string)
   /** Option disable field */
-  optionDisable?: string | ((option: any) => boolean)
+  optionDisable?: string | ((option: unknown) => boolean)
   /** Multiple selection */
   multiple?: boolean
   /** Outlined style */
@@ -147,7 +147,7 @@ export interface SearchInputProps extends BaseComponentProps {
 
 export interface AppCheckboxProps extends BaseComponentProps, LabeledProps {
   /** v-model value */
-  modelValue?: boolean | any[] | null
+  modelValue?: boolean | unknown[] | null
   /** True value */
   trueValue?: any
   /** False value */
@@ -182,7 +182,7 @@ export interface AppCheckboxProps extends BaseComponentProps, LabeledProps {
 
 export interface AppToggleProps extends BaseComponentProps, LabeledProps {
   /** v-model value */
-  modelValue?: boolean | any
+  modelValue?: boolean | unknown
   /** True value */
   trueValue?: any
   /** False value */
