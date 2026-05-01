@@ -239,6 +239,21 @@
       </ul>
     </q-banner>
 
+    <!-- Warehouse Changed Warning -->
+    <q-banner
+      v-if="isWarehouseChangedSinceCalc"
+      rounded
+      class="bg-warning text-white q-mb-md"
+    >
+      <template #avatar>
+        <q-icon
+          name="warehouse"
+          color="white"
+        />
+      </template>
+      Bạn đã thay đổi lọc kho. Vui lòng nhấn <strong>Tính toán</strong> lại trước khi xác nhận.
+    </q-banner>
+
     <!-- Results Section -->
     <template v-if="hasResults">
       <!-- Result View Toggle -->
@@ -293,11 +308,14 @@
           color="positive"
           icon="check_circle"
           label="Xác Nhận Đặt Hàng"
-          :disable="!hasResults || selectedWeek?.status === OrderWeekStatus.CONFIRMED"
+          :disable="!hasResults || selectedWeek?.status === OrderWeekStatus.CONFIRMED || isWarehouseChangedSinceCalc"
           :loading="showConfirmDialog"
           @click="handleConfirmWeek"
         >
-          <AppTooltip v-if="selectedWeek?.status === OrderWeekStatus.CONFIRMED">
+          <AppTooltip v-if="isWarehouseChangedSinceCalc">
+            Vui lòng tính toán lại sau khi thay đổi kho.
+          </AppTooltip>
+          <AppTooltip v-else-if="selectedWeek?.status === OrderWeekStatus.CONFIRMED">
             Đơn hàng đã được xác nhận
           </AppTooltip>
         </AppButton>
@@ -448,6 +466,7 @@ const confirmSteps = reactive<ConfirmStep[]>([
 const resultsSaved = ref(false)
 const manualDeliveryDateEdits = ref(new Set<string>())
 const selectedWarehouseIds = ref<number[]>([])
+const lastCalculatedWarehouseIds = ref<number[] | null>(null)
 
 watch(deliveryDate, (newDate) => {
   if (!newDate || !aggregatedResults.value.length) return
@@ -476,6 +495,14 @@ const poOptions = computed(() =>
 
 const _canSave = computed(() => {
   return orderEntries.value.length > 0
+})
+
+const isWarehouseChangedSinceCalc = computed(() => {
+  if (lastCalculatedWarehouseIds.value === null) return false
+  if (selectedWeek.value?.status === 'CONFIRMED') return false
+  const a = [...lastCalculatedWarehouseIds.value].sort((x, y) => x - y).join(',')
+  const b = [...selectedWarehouseIds.value].sort((x, y) => x - y).join(',')
+  return a !== b
 })
 
 // Handlers
@@ -604,22 +631,23 @@ const handleUpdateQuotaCones = async (threadTypeId: number, value: number) => {
   }, 500)
 }
 
-const handleWarehouseFilterChange = async (ids: number[]) => {
-  if (selectedWeek.value?.id && selectedWeek.value.status === 'DRAFT') {
-    try {
-      await weeklyOrderService.saveWarehouseFilter(selectedWeek.value.id, ids || [])
-    } catch (err) {
-      snackbar.error('Lưu bộ lọc kho thất bại')
-      console.warn('Failed to save warehouse filter:', err)
-    }
-  }
-
+const handleWarehouseFilterChange = (_ids: number[]) => {
   if (hasResults.value) {
     lastModifiedAt.value = Date.now()
   }
 }
 
 const handleCalculate = async () => {
+  if (selectedWeek.value?.id && selectedWarehouseIds.value.length > 0) {
+    try {
+      await weeklyOrderService.saveWarehouseFilter(selectedWeek.value.id, selectedWarehouseIds.value)
+    } catch (err) {
+      snackbar.error('Lưu bộ lọc kho thất bại')
+      console.warn('Failed to save warehouse filter:', err)
+      throw err
+    }
+  }
+
   const snapshot = new Map<string, { additional_order: number; quota_cones: number; delivery_date: string | null }>(
     aggregatedResults.value
       .filter((r) => r.additional_order || r.quota_cones)
@@ -654,6 +682,8 @@ const handleCalculate = async () => {
       manualDeliveryDateEdits.value.add(key)
     }
   }
+
+  lastCalculatedWarehouseIds.value = [...selectedWarehouseIds.value]
 }
 
 function applyDeliveryDateToResults() {
@@ -727,7 +757,13 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
 
     if (!updated) return
 
-    await weeklyOrderService.saveWarehouseFilter(selectedWeek.value.id, selectedWarehouseIds.value)
+    try {
+      await weeklyOrderService.saveWarehouseFilter(selectedWeek.value.id, selectedWarehouseIds.value)
+    } catch (err) {
+      snackbar.error('Lưu bộ lọc kho thất bại')
+      console.warn('Failed to save warehouse filter:', err)
+      return
+    }
 
     if (hasResults.value) {
       await saveResults(selectedWeek.value.id, perStyleResults.value, aggregatedResults.value)
@@ -745,8 +781,12 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
 
     selectedWeek.value = created
 
-    if (selectedWarehouseIds.value.length > 0) {
+    try {
       await weeklyOrderService.saveWarehouseFilter(created.id, selectedWarehouseIds.value)
+    } catch (err) {
+      snackbar.error('Lưu bộ lọc kho thất bại')
+      console.warn('Failed to save warehouse filter:', err)
+      return
     }
 
     if (hasResults.value) {
@@ -766,6 +806,7 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
     manualDeliveryDateEdits.value = new Set()
     selectedWeek.value = null
     selectedWarehouseIds.value = []
+    lastCalculatedWarehouseIds.value = null
 
     await Promise.all([fetchAllPurchaseOrders(), fetchWeeks()])
 
