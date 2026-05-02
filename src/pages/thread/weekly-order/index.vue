@@ -182,7 +182,34 @@
             </q-item>
             <q-separator />
           </template>
+          <template #option="{ itemProps, opt, selected, toggleOption }">
+            <q-item
+              v-bind="itemProps"
+              @click="toggleOption(opt)"
+            >
+              <q-item-section side>
+                <q-checkbox
+                  :model-value="selected"
+                  @update:model-value="toggleOption(opt)"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ opt.label.split(' (')[0] }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </template>
         </AppSelect>
+        <div
+          v-if="selectedWarehouseIds.length > 0"
+          class="text-caption text-primary q-mt-xs q-px-xs"
+        >
+          <q-icon
+            name="warehouse"
+            size="xs"
+            class="q-mr-xs"
+          />
+          <strong>Đang chọn:</strong> {{ selectedWarehouseNames }}
+        </div>
       </div>
       <span
         v-if="isCalculating"
@@ -436,6 +463,7 @@ const {
   storageOptions: warehouseFilterOptions,
   fetchWarehouses,
   loading: warehousesLoading,
+  getWarehouseLabel,
 } = useWarehouses()
 
 // Default delivery date = today + 7 days
@@ -467,6 +495,19 @@ const resultsSaved = ref(false)
 const manualDeliveryDateEdits = ref(new Set<string>())
 const selectedWarehouseIds = ref<number[]>([])
 const lastCalculatedWarehouseIds = ref<number[] | null>(null)
+
+const selectedWarehouseNames = computed(() => {
+  if (!selectedWarehouseIds.value.length) return ''
+  return selectedWarehouseIds.value
+    .map(id => {
+      const w = warehouseFilterOptions.value.find(opt => opt.value === id)
+      // Display only the name part from the label "Name (CODE)" or from service data if available
+      // Since storageOptions uses `${w.name} (${w.code})`, we split by ' (' to get name
+      return w ? w.label.split(' (')[0].trim() : ''
+    })
+    .filter(Boolean)
+    .join(', ')
+})
 
 watch(deliveryDate, (newDate) => {
   if (!newDate || !aggregatedResults.value.length) return
