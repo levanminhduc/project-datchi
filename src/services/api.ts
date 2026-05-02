@@ -254,6 +254,15 @@ export async function fetchApiRaw(
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
+      const externalSignal = options.signal
+      if (externalSignal) {
+        if (externalSignal.aborted) {
+          controller.abort()
+        } else {
+          externalSignal.addEventListener('abort', () => controller.abort(), { once: true })
+        }
+      }
+
       try {
         const headers = buildRequestHeaders(
           options.headers,

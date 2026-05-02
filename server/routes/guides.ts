@@ -7,6 +7,7 @@ import {
   ReorderGuideSchema,
 } from '../validation/guide'
 import { sanitizeHtml } from '../utils/sanitize-html'
+import { linkImagesToGuide } from '../utils/guide-image-linker'
 import type { AppEnv } from '../types/hono-env'
 
 const guides = new Hono<AppEnv>()
@@ -141,6 +142,14 @@ guides.post('/upload-image', requirePermission('guides.create'), async (c) => {
     }
 
     const relativeUrl = `/api/guides/images/${filePath}`
+
+    const { error: trackError } = await supabase
+      .from('guide_images')
+      .insert({ storage_path: filePath, file_size: processed.length, mime_type: 'image/webp', status: 'PENDING' })
+
+    if (trackError) {
+      console.error('Upload: insert guide_images row error:', trackError)
+    }
 
     return c.json({ data: { url: relativeUrl }, error: null })
   } catch (err) {
@@ -398,6 +407,8 @@ guides.post('/', requirePermission('guides.create'), async (c) => {
       return c.json({ data: null, error: 'Lỗi khi tạo hướng dẫn' }, 500)
     }
 
+    await linkImagesToGuide(supabase, data.id, data.content_html)
+
     return c.json({ data, error: null, message: 'Đã tạo hướng dẫn mới' }, 201)
   } catch (err) {
     console.error('Create guide error:', err)
@@ -458,6 +469,8 @@ guides.put('/:id', requirePermission('guides.edit'), async (c) => {
       return c.json({ data: null, error: 'Lỗi khi cập nhật hướng dẫn' }, 500)
     }
 
+    await linkImagesToGuide(supabase, data.id, data.content_html)
+
     return c.json({ data, error: null, message: 'Đã cập nhật hướng dẫn' })
   } catch (err) {
     console.error('Update guide error:', err)
@@ -468,6 +481,22 @@ guides.put('/:id', requirePermission('guides.edit'), async (c) => {
 guides.delete('/:id', requirePermission('guides.edit'), async (c) => {
   try {
     const id = c.req.param('id')
+
+    const { data: imageRows } = await supabase
+      .from('guide_images')
+      .select('storage_path')
+      .eq('guide_id', id)
+      .limit(500)
+
+    if (imageRows && imageRows.length > 0) {
+      const paths = imageRows.map((r: { storage_path: string }) => r.storage_path)
+      const { error: storageError } = await supabase.storage
+        .from('guide-images')
+        .remove(paths)
+      if (storageError) {
+        console.error('Delete guide: storage remove error:', storageError)
+      }
+    }
 
     const { data, error } = await supabase
       .from('guides')

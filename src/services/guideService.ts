@@ -55,13 +55,14 @@ export const guideService = {
     })
   },
 
-  async uploadImage(file: File): Promise<string> {
+  async uploadImage(file: File, signal?: AbortSignal): Promise<string> {
     const formData = new FormData()
     formData.append('file', file)
 
     const response = await fetchApiRaw(`${BASE}/upload-image`, {
       method: 'POST',
       body: formData,
+      signal,
     })
 
     if (!response.ok) {

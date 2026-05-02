@@ -41,6 +41,7 @@ import subArtsRouter from './routes/subArts'
 import styleColorsRouter from './routes/styleColors'
 import deptAllocationsRouter from './routes/deptAllocations'
 import guidesRouter, { guideImages } from './routes/guides'
+import adminGuidesRouter from './routes/admin-guides'
 import publicGuidesRouter from './routes/public-guides'
 import announcementsRouter from './routes/announcements'
 import overQuotaRouter from './routes/over-quota'
@@ -168,6 +169,7 @@ app.route('/api/import', importRouter)
 app.route('/api/sub-arts', subArtsRouter)
 app.route('/api/style-colors', styleColorsRouter)
 app.route('/api/dept-allocations', deptAllocationsRouter)
+app.route('/api/admin/guides', adminGuidesRouter)
 app.route('/api/guides', guidesRouter)
 app.route('/api/announcements', announcementsRouter)
 app.route('/api/over-quota', overQuotaRouter)

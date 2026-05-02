@@ -18,6 +18,10 @@
     "db:backup": "bash scripts/db-backup.sh",
     "db:restore": "bash scripts/db-restore.sh",
     "db:volume-backup": "bash scripts/db-volume-backup.sh",
+    "backup:storage": "bash scripts/storage-volume-backup.sh",
+    "backup:full": "bash scripts/full-backup.sh",
+    "restore:full": "bash scripts/full-restore.sh",
+    "cleanup:orphans": "curl -s -X POST http://localhost:3000/api/admin/guides/cleanup-orphans -H \"Authorization: Bearer $ADMIN_TOKEN\"",
     "db:seed": "psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/seed/master-data-seed.sql",
     "prepare": "husky"
   },

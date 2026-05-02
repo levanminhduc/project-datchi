@@ -25,7 +25,7 @@ const guideId = ref<string | null>(null)
 const loadingPage = ref(true)
 const saving = ref(false)
 
-const { editor, previewHtml, setContent, getContent, handleImageUpload } = useGuideEditor()
+const { editor, previewHtml, isUploading, setContent, getContent, handleImageUpload } = useGuideEditor()
 
 const isEdit = computed(() => !!guideId.value)
 
@@ -108,6 +108,7 @@ async function saveGuide(status: 'DRAFT' | 'PUBLISHED') {
           icon="save"
           :label="$q.screen.gt.xs ? 'Lưu nháp' : undefined"
           :loading="saving"
+          :disable="isUploading || saving"
           :dense="$q.screen.xs"
           @click="saveGuide('DRAFT')"
         />
@@ -116,6 +117,7 @@ async function saveGuide(status: 'DRAFT' | 'PUBLISHED') {
           icon="publish"
           :label="$q.screen.gt.xs ? 'Xuất bản' : undefined"
           :loading="saving"
+          :disable="isUploading || saving"
           :dense="$q.screen.xs"
           @click="saveGuide('PUBLISHED')"
         />

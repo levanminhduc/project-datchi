@@ -27,7 +27,6 @@ PGPASSWORD=postgres pg_dump \
   --no-owner \
   --no-privileges \
   --exclude-schema=auth \
-  --exclude-schema=storage \
   --exclude-schema=supabase_functions \
   --exclude-schema=supabase_migrations \
   --exclude-schema=extensions \
