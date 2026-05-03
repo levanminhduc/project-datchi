@@ -72,7 +72,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <AppLoading v-if="isLoading" />
+  <AppLoading v-if="isLoading && route.path !== '/login'" />
   <q-layout
     v-else
     view="hHh Lpr fFf"

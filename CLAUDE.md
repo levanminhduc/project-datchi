@@ -94,25 +94,36 @@ Only modify the exact lines requested. Do not reformat/refactor adjacent code.
 ### Goal-Driven Execution
 "Fix bug" → "Write failing test → fix code → verify test passes". Do not claim "fixed" without evidence.
 
-## Anti-patterns (NEVER do)
+## Anti-patterns
+
+**Strict (NEVER do):**
 
 | Don't | Do Instead |
 |-------|------------|
 | `<input type="date">` | `<DatePicker>` |
-| `fetch('/api/...')` | `fetchApi()` |
-| `q-input`, `q-select`, `q-table` | `AppInput`, `AppSelect`, `DataTable` |
+| `fetch('/api/...')` | `fetchApi()` (exception: offline queue replay, SSE streaming, version check) |
+| `q-select`, `q-editor` | `AppSelect`, `AppEditor` |
 | `$q.dialog()` | `useConfirm()` |
-| `as any` / `@ts-ignore` | Fix types |
+| `as any` / `@ts-ignore` | Fix types (exception: Web Serial / Supabase internal types) |
 | `createFoo(formData)` reactive | Spread: `createFoo({ ...formData })` |
 | Supabase `.select()` without `.limit()` | Add `.limit(N)` / `.single()` / `.maybeSingle()` |
 | Query N+1 | Batch: `.in('id', ids)` / RPC / view |
 
+**Either acceptable (context-dependent — see `frontend-conventions.md`):**
+
+| Quasar | Wrapper | Use raw when |
+|--------|---------|--------------|
+| `q-input` | `AppInput` | Search field with icon slot |
+| `q-btn` | `AppButton` | Inline actions |
+| `q-table` | `DataTable` | Simple tables, no advanced filtering |
+
 ## Conventions
 
-- **DB:** `snake_case`, soft delete (`deleted_at`). See `db-conventions.md`
-- **API:** `{ data, error, message }`. See `api-conventions.md`
-- **Frontend:** App* wrappers, not raw `q-*`. See `frontend-conventions.md`
-- **Files:** Max 200 lines → modularize. kebab-case.
+- **DB:** `snake_case`, soft delete (`deleted_at` HOẶC `status` enum cho lifecycle tables). See `db-conventions.md`
+- **API:** `{ data, error: string | null, message? }`. See `api-conventions.md`
+- **Frontend:** App* wrappers (strict for `q-select`/`q-editor`/`$q.dialog`/`DatePicker`); `q-input`/`q-btn`/`q-table` either acceptable. See `frontend-conventions.md`
+- **Files:** Composables/services/utils max 200 lines. UI components max 300. Pages/routes max 500 (soft) — >800 cần lý do.
+- **Naming:** kebab-case preferred for new files. Existing camelCase files (`purchaseOrders.ts`, `useInventory.ts`) không rename — chỉ áp dụng cho file mới.
 
 ## Rules & References
 
@@ -125,6 +136,8 @@ Auto-load from `.claude/rules/`:
 - `osf-workflow.md` — OpenSpec workflow
 - `notification-system.md` — Notification architecture
 - `large-dataset-pattern.md` — Pagination patterns
+- `security-rules.md` — RLS, JWT custom claims, permission naming
+- `server-patterns.md` — RPC, idempotency log, file upload patterns
 
 ## Python Scripts
 
