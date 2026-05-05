@@ -34,6 +34,7 @@ import reconciliationRouter from './routes/reconciliation'
 import settingsRouter from './routes/settings'
 import stockRouter from './routes/stock'
 import issuesV2Router from './routes/issuesV2'
+import issueHistoryRouter from './routes/issue-history'
 import notificationsRouter from './routes/notifications'
 import notificationChannelsRouter from './routes/notification-channels'
 import importRouter from './routes/import'
@@ -161,6 +162,7 @@ app.route('/api/thread-calculation', threadCalculationRouter)
 app.route('/api/weekly-orders', weeklyOrderRouter)
 app.route('/api/issues/reconciliation', reconciliationRouter)
 app.route('/api/issues/v2', issuesV2Router)
+app.route('/api/issue-history', issueHistoryRouter)
 app.route('/api/settings', settingsRouter)
 app.route('/api/stock', stockRouter)
 app.route('/api/notifications', notificationsRouter)

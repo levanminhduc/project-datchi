@@ -463,7 +463,6 @@ const {
   storageOptions: warehouseFilterOptions,
   fetchWarehouses,
   loading: warehousesLoading,
-  getWarehouseLabel,
 } = useWarehouses()
 
 // Default delivery date = today + 7 days
@@ -503,7 +502,7 @@ const selectedWarehouseNames = computed(() => {
       const w = warehouseFilterOptions.value.find(opt => opt.value === id)
       // Display only the name part from the label "Name (CODE)" or from service data if available
       // Since storageOptions uses `${w.name} (${w.code})`, we split by ' (' to get name
-      return w ? w.label.split(' (')[0].trim() : ''
+      return w ? (w.label.split(' (')[0]?.trim() ?? '') : ''
     })
     .filter(Boolean)
     .join(', ')

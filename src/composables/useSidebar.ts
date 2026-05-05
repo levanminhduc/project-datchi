@@ -58,7 +58,8 @@ const navItems: NavItem[] = [
       { label: 'Loại Chỉ', icon: 'o_category', to: '/thread' },
       { label: 'Màu Sắc', icon: 'o_palette', to: '/thread/colors' },
       { label: 'Nhà Cung Cấp', icon: 'o_store', to: '/thread/suppliers' },
-      { label: 'Import Sub-Art', icon: 'o_upload_file', to: '/thread/sub-arts' }
+      { label: 'Import Sub-Art', icon: 'o_upload_file', to: '/thread/sub-arts' },
+      { label: 'Lịch Sử Xuất Chỉ', icon: 'o_history', to: '/thread/issues/export-history' }
     ]
   },
   {

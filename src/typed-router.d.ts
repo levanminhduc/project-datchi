@@ -240,6 +240,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/thread/issues/export-history': RouteRecordInfo<
+      '/thread/issues/export-history',
+      '/thread/issues/export-history',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/thread/issues/reconciliation': RouteRecordInfo<
       '/thread/issues/reconciliation',
       '/thread/issues/reconciliation',
@@ -655,6 +662,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/inventory.vue': {
       routes:
         | '/thread/inventory'
+      views:
+        | never
+    }
+    'src/pages/thread/issues/export-history.vue': {
+      routes:
+        | '/thread/issues/export-history'
       views:
         | never
     }

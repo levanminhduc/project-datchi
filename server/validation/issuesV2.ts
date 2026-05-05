@@ -244,3 +244,24 @@ export const StockRefreshSchema = z.object({
 })
 
 export type StockRefreshDTO = z.infer<typeof StockRefreshSchema>
+
+// ============================================================================
+// Export Issue History
+// ============================================================================
+
+export const ExportHistoryQuerySchema = z
+  .object({
+    from_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'from_date phải là YYYY-MM-DD'),
+    to_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'to_date phải là YYYY-MM-DD'),
+    warehouse_id: z.coerce.number().int().positive().optional(),
+  })
+  .refine((d) => d.from_date <= d.to_date, {
+    message: 'from_date phải <= to_date',
+    path: ['to_date'],
+  })
+
+export type ExportHistoryQuery = z.infer<typeof ExportHistoryQuerySchema>
