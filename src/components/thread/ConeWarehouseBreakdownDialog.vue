@@ -8,16 +8,10 @@
       <q-card-section class="row items-center q-pb-none">
         <div class="column">
           <div class="text-h6">
-            Phân bố kho: {{ threadType?.thread_name }}
+            Phân bố kho: {{ getDisplayName(threadType) }}
           </div>
           <div class="text-caption text-grey">
             {{ threadType?.thread_code }}
-            <template v-if="threadType?.color_data?.name">
-              • {{ threadType.color_data.name }}
-            </template>
-            <template v-if="threadType?.tex_label || threadType?.tex_number">
-              • {{ threadType?.tex_label || threadType?.tex_number }}
-            </template>
           </div>
           <q-chip
             v-if="warehouseId != null"
@@ -321,6 +315,17 @@ import { computed } from 'vue'
 import type { QTableColumn } from 'quasar'
 import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown } from '@/types/thread'
 import ConeReservedByWeekTable from './ConeReservedByWeekTable.vue'
+
+const getDisplayName = (row: ConeSummaryRow | null): string => {
+  if (!row) return ''
+  const tex = row.tex_label || row.tex_number
+  const parts = [
+    row.supplier_name || null,
+    tex ? `TEX ${tex}` : null,
+    row.color_data?.name || null,
+  ].filter(Boolean)
+  return parts.join(' - ')
+}
 
 interface Props {
   modelValue: boolean

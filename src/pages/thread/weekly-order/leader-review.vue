@@ -124,10 +124,6 @@
                     </div>
                   </div>
                   <div class="col-auto row q-gutter-sm">
-                    <AppBadge
-                      label="Đã xác nhận"
-                      color="positive"
-                    />
                     <q-btn-dropdown
                       flat
                       dense
