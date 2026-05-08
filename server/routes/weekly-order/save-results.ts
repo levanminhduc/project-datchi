@@ -74,18 +74,21 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
       }
 
       enrichedSummaryData = summaryRows.map((row) => {
-        const totalMeters = row.total_meters || 0
-        const metersPerCone = row.meters_per_cone || metersPerConeMap.get(row.thread_type_id) || 2000
-
-        const quotaCones = totalMeters > 0 ? Math.ceil(totalMeters / metersPerCone) : 0
-
         if (!row.meters_per_cone && !metersPerConeMap.has(row.thread_type_id)) {
           console.warn(`Thread type ${row.thread_type_id} has no meters_per_cone, using default 2000`)
         }
 
+        const incomingQuotaCones = (row.quota_cones as number | null | undefined)
+        const demandNote = (row.demand_note as string | null | undefined) ?? null
+
+        if (incomingQuotaCones != null && incomingQuotaCones > (row.total_cones as number | undefined ?? 0) && !demandNote) {
+          console.warn(`[saveResults] thread_type=${row.thread_type_id} quota_cones=${incomingQuotaCones} > total_cones but demand_note is empty`)
+        }
+
         return {
           ...row,
-          quota_cones: quotaCones,
+          quota_cones: incomingQuotaCones != null ? incomingQuotaCones : null,
+          demand_note: demandNote,
         }
       })
 

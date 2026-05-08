@@ -94,7 +94,8 @@ export interface AggregatedRow {
   sl_can_dat?: number
   additional_order?: number
   total_final?: number
-  quota_cones?: number
+  quota_cones?: number | null
+  demand_note?: string | null
   is_fallback_type?: boolean
 }
 

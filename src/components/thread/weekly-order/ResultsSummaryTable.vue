@@ -58,6 +58,92 @@
             >—</span>
           </q-td>
         </template>
+        <template #body-cell-total_cones="props">
+          <q-td :props="props">
+            <template v-if="!readonly">
+              <span
+                class="cursor-pointer"
+                :class="props.row.quota_cones != null ? 'text-orange' : 'text-primary'"
+              >
+                <template v-if="props.row.quota_cones != null">
+                  {{ props.row.quota_cones.toLocaleString('vi-VN') }}
+                  <span class="text-caption text-grey-7">(gốc: {{ props.row.total_cones.toLocaleString('vi-VN') }})</span>
+                </template>
+                <template v-else>
+                  {{ props.row.total_cones > 0 ? props.row.total_cones.toLocaleString('vi-VN') : '—' }}
+                </template>
+                <q-icon
+                  name="edit"
+                  size="xs"
+                  class="q-ml-xs"
+                />
+              </span>
+              <q-popup-edit
+                v-slot="scope"
+                :model-value="props.row.quota_cones != null ? props.row.quota_cones : props.row.total_cones"
+                auto-save
+                @before-show="onDemandPopupOpen(props.row)"
+                @save="(val: number | null) => saveDemandOverride(props.row, val)"
+              >
+                <div
+                  class="q-pa-xs"
+                  style="min-width: 220px"
+                >
+                  <q-input
+                    v-model.number="scope.value"
+                    type="number"
+                    :min="0"
+                    dense
+                    autofocus
+                    label="Nhu cầu (cuộn)"
+                    hint="Để trống để xóa ghi đè"
+                    @keyup.enter="scope.value !== '' ? scope.set() : scope.cancel()"
+                  />
+                  <div
+                    v-if="Number(scope.value) > props.row.total_cones"
+                    class="q-mt-sm"
+                  >
+                    <q-input
+                      v-model="demandNoteInput"
+                      type="textarea"
+                      rows="2"
+                      dense
+                      label="Ghi chú (bắt buộc khi tăng nhu cầu)"
+                      :rules="[(v: string) => !!v.trim() || 'Vui lòng nhập lý do tăng nhu cầu']"
+                    />
+                  </div>
+                  <div class="row justify-end q-gutter-xs q-mt-sm">
+                    <q-btn
+                      flat
+                      dense
+                      label="Hủy"
+                      @click="scope.cancel()"
+                    />
+                    <q-btn
+                      flat
+                      dense
+                      color="primary"
+                      label="Lưu"
+                      :disable="Number(scope.value) > props.row.total_cones && !demandNoteInput.trim()"
+                      @click="scope.set()"
+                    />
+                  </div>
+                </div>
+              </q-popup-edit>
+            </template>
+            <template v-else>
+              <span :class="props.row.quota_cones != null ? 'text-orange' : ''">
+                <template v-if="props.row.quota_cones != null">
+                  {{ props.row.quota_cones.toLocaleString('vi-VN') }}
+                  <span class="text-caption text-grey-7">(gốc: {{ props.row.total_cones.toLocaleString('vi-VN') }})</span>
+                </template>
+                <template v-else>
+                  {{ props.row.total_cones > 0 ? props.row.total_cones.toLocaleString('vi-VN') : '—' }}
+                </template>
+              </span>
+            </template>
+          </q-td>
+        </template>
         <template #body-cell-additional_order="props">
           <q-td :props="props">
             <template v-if="!readonly">
@@ -90,6 +176,27 @@
             <template v-else>
               <span>{{ (props.row.additional_order && props.row.additional_order > 0) ? props.row.additional_order.toLocaleString('vi-VN') : '—' }}</span>
             </template>
+          </q-td>
+        </template>
+        <template #body-cell-demand_note="props">
+          <q-td :props="props">
+            <span
+              v-if="props.row.demand_note"
+              class="text-caption"
+            >{{ props.row.demand_note }}</span>
+            <span
+              v-else-if="props.row.quota_cones != null && props.row.quota_cones > props.row.total_cones"
+              class="text-negative text-caption"
+            >
+              <q-icon
+                name="warning"
+                size="xs"
+              /> Thiếu ghi chú
+            </span>
+            <span
+              v-else
+              class="text-grey-5"
+            >—</span>
           </q-td>
         </template>
         <template #body-cell-delivery_date="props">
@@ -142,6 +249,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { QTableColumn } from 'quasar'
 import type { AggregatedRow } from '@/types/thread'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
@@ -153,8 +261,22 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:additional-order': [threadTypeId: number, value: number, threadColorId: number | null]
+  'update:quota-cones': [threadTypeId: number, value: number | null, threadColorId: number | null, demandNote: string | null]
   'update:delivery-date': [threadTypeId: number, date: string, threadColorId: number | null]
 }>()
+
+const demandNoteInput = ref('')
+
+function onDemandPopupOpen(row: AggregatedRow) {
+  demandNoteInput.value = row.demand_note ?? ''
+}
+
+function saveDemandOverride(row: AggregatedRow, val: number | null) {
+  const parsed = val === null || val === undefined || String(val).trim() === '' ? null : Number(val)
+  const rawVal = parsed !== null && isNaN(parsed) ? null : parsed
+  const note = demandNoteInput.value.trim() || null
+  emit('update:quota-cones', row.thread_type_id, rawVal, row.thread_color_id ?? null, note)
+}
 
 function formatDateDisplay(isoDate: string): string {
   if (!isoDate) return ''
@@ -195,7 +317,6 @@ const columns: QTableColumn[] = [
     field: 'total_cones',
     align: 'right',
     sortable: true,
-    format: (val: number) => val > 0 ? val.toLocaleString('vi-VN') : '—',
   },
   {
     name: 'inventory_cones',
@@ -249,6 +370,12 @@ const columns: QTableColumn[] = [
     align: 'right',
     sortable: true,
     format: (val: number | undefined) => (val && val > 0) ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
+    name: 'demand_note',
+    label: 'Ghi chú',
+    field: 'demand_note',
+    align: 'left',
   },
   {
     name: 'delivery_date',

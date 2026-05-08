@@ -550,12 +550,16 @@ export function useWeeklyOrderCalculation() {
     row.total_final = (row.sl_can_dat || 0) + value
   }
 
-  const updateQuotaCones = (threadTypeId: number, value: number, threadColorId?: number | null) => {
+  const updateQuotaCones = (threadTypeId: number, value: number | null, threadColorId?: number | null, demandNote?: string | null) => {
     const row = aggregatedResults.value.find((r) =>
       r.thread_type_id === threadTypeId && (r.thread_color_id ?? null) === (threadColorId ?? null)
     )
     if (!row) return
-    row.quota_cones = value
+    row.quota_cones = value != null ? value : null
+    row.demand_note = demandNote ?? null
+    const effectiveCones = row.quota_cones != null ? row.quota_cones : row.total_cones
+    row.sl_can_dat = Math.max(0, Math.ceil(effectiveCones - (row.equivalent_cones || 0)))
+    row.total_final = row.sl_can_dat + (row.additional_order || 0)
   }
 
   /**

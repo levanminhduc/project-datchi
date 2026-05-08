@@ -346,12 +346,6 @@
             Đơn hàng đã được xác nhận
           </AppTooltip>
         </AppButton>
-        <AppButton
-          flat
-          icon="file_download"
-          label="Xuất Excel"
-          @click="handleExport"
-        />
       </div>
     </template>
 
@@ -389,7 +383,6 @@ import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import type { PurchaseOrderWithItems, CalculationResult } from '@/types/thread'
 import { OrderWeekStatus } from '@/types/thread/enums'
-import { exportOrderResults } from '@/composables/thread/useWeeklyOrderExport'
 import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
 import AssignmentControlDialog from '@/components/thread/weekly-order/AssignmentControlDialog.vue'
 import ConfirmProgressDialog from '@/components/thread/weekly-order/ConfirmProgressDialog.vue'
@@ -643,32 +636,8 @@ const handleUpdateAdditionalOrder = (threadTypeId: number, value: number, thread
   updateAdditionalOrder(threadTypeId, value, threadColorId)
 }
 
-// Debounce timer for quota_cones updates
-let quotaConesDebounceTimer: ReturnType<typeof setTimeout> | null = null
-
-const handleUpdateQuotaCones = async (threadTypeId: number, value: number) => {
-  // Update local state immediately
-  updateQuotaCones(threadTypeId, value)
-
-  // Debounce API call
-  if (quotaConesDebounceTimer) {
-    clearTimeout(quotaConesDebounceTimer)
-  }
-
-  quotaConesDebounceTimer = setTimeout(async () => {
-    if (!selectedWeek.value?.id) {
-      snackbar.warning('Vui long luu tuan dat hang truoc khi cap nhat dinh muc')
-      return
-    }
-
-    try {
-      await weeklyOrderService.updateQuotaCones(selectedWeek.value.id, threadTypeId, value)
-      snackbar.success('Da cap nhat dinh muc cuon')
-    } catch (err) {
-      console.error('[weekly-order] update quota_cones error:', err)
-      snackbar.error('Khong the cap nhat dinh muc. Vui long thu lai.')
-    }
-  }, 500)
+const handleUpdateQuotaCones = (threadTypeId: number, value: number | null, threadColorId: number | null, demandNote: string | null) => {
+  updateQuotaCones(threadTypeId, value, threadColorId, demandNote)
 }
 
 const handleWarehouseFilterChange = (_ids: number[]) => {
@@ -688,14 +657,15 @@ const handleCalculate = async () => {
     }
   }
 
-  const snapshot = new Map<string, { additional_order: number; quota_cones: number; delivery_date: string | null }>(
+  const snapshot = new Map<string, { additional_order: number; quota_cones: number | null; demand_note: string | null; delivery_date: string | null }>(
     aggregatedResults.value
-      .filter((r) => r.additional_order || r.quota_cones)
+      .filter((r) => r.additional_order || r.quota_cones != null || r.delivery_date)
       .map((r) => [
         `${r.thread_type_id}_${r.thread_color_id ?? ''}`,
         {
           additional_order: r.additional_order ?? 0,
-          quota_cones: r.quota_cones ?? 0,
+          quota_cones: r.quota_cones != null ? r.quota_cones : null,
+          demand_note: r.demand_note ?? null,
           delivery_date: r.delivery_date ?? null,
         },
       ])
@@ -715,8 +685,13 @@ const handleCalculate = async () => {
     if (!saved) continue
 
     row.additional_order = saved.additional_order
+    if (saved.quota_cones != null) {
+      row.quota_cones = saved.quota_cones
+      row.demand_note = saved.demand_note
+      const effectiveCones = row.quota_cones != null ? row.quota_cones : row.total_cones
+      row.sl_can_dat = Math.max(0, Math.ceil(effectiveCones - (row.equivalent_cones || 0)))
+    }
     row.total_final = (row.sl_can_dat || 0) + saved.additional_order
-    if (saved.quota_cones) row.quota_cones = saved.quota_cones
     if (saved.delivery_date) {
       row.delivery_date = saved.delivery_date
       manualDeliveryDateEdits.value.add(key)
@@ -908,13 +883,15 @@ const handleLoadWeek = async (weekId: number) => {
 
     const savedResults = await loadResults(weekId).catch(() => null)
     if (savedResults?.summary_data?.length) {
-      const savedMap = new Map<string, { additional_order: number; delivery_date: string | null; total_final: number }>(
+      const savedMap = new Map<string, { additional_order: number; delivery_date: string | null; total_final: number; quota_cones: number | null; demand_note: string | null }>(
         savedResults.summary_data.map((s) => [
           `${s.thread_type_id}_${s.thread_color_id ?? ''}`,
           {
             additional_order: s.additional_order ?? 0,
             delivery_date: s.delivery_date ?? null,
             total_final: s.total_final ?? 0,
+            quota_cones: (s.quota_cones as number | null | undefined) ?? null,
+            demand_note: (s.demand_note as string | null | undefined) ?? null,
           },
         ])
       )
@@ -925,7 +902,11 @@ const handleLoadWeek = async (weekId: number) => {
         if (!saved) continue
 
         row.additional_order = saved.additional_order
-        row.total_final = (row.sl_can_dat || 0) + saved.additional_order
+        row.quota_cones = saved.quota_cones
+        row.demand_note = saved.demand_note
+        const effectiveCones = row.quota_cones != null ? row.quota_cones : row.total_cones
+        row.sl_can_dat = Math.max(0, Math.ceil(effectiveCones - (row.equivalent_cones || 0)))
+        row.total_final = row.sl_can_dat + saved.additional_order
         if (saved.delivery_date) {
           row.delivery_date = saved.delivery_date
           manualDeliveryDateEdits.value.add(key)
@@ -1076,21 +1057,6 @@ const handleConfirmWeek = async () => {
 
   nextTick(() => {
     weekInfoCardRef.value?.focusWeekName()
-  })
-}
-
-const handleExport = () => {
-  if (!selectedWeek.value) {
-    snackbar.warning('Vui lòng lưu đơn hàng trước khi xuất Excel')
-    return
-  }
-  exportOrderResults(aggregatedResults.value, {
-    id: selectedWeek.value.id,
-    week_name: selectedWeek.value.week_name,
-    created_by: selectedWeek.value.created_by,
-    created_at: selectedWeek.value.created_at,
-    leader_signed_by_name: selectedWeek.value.leader_signed_by_name,
-    leader_signed_at: selectedWeek.value.leader_signed_at,
   })
 }
 

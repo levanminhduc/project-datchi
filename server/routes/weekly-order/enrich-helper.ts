@@ -142,9 +142,12 @@ export async function enrichWithInventory(
     const inventory_cones = full_cones + partial_cones
     const equivalent_cones =
       Math.round((full_cones + partial_cones * partialConeRatio) * 10) / 10
+    const effectiveCones = (row.quota_cones as number | null | undefined) != null
+      ? (row.quota_cones as number)
+      : row.total_cones
     const sl_can_dat = Math.max(
       0,
-      Math.ceil(row.total_cones - equivalent_cones),
+      Math.ceil(effectiveCones - equivalent_cones),
     )
     const additional_order = preserveAdditional
       ? ((row.additional_order as number) || 0)
