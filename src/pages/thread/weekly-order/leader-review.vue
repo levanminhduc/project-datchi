@@ -49,7 +49,10 @@
 
     <q-separator class="q-mb-md" />
 
-    <div class="q-mb-md" style="max-width: 360px;">
+    <div
+      class="q-mb-md"
+      style="max-width: 360px;"
+    >
       <AppInput
         v-model="searchQuery"
         label="Tìm tên tuần hàng"
