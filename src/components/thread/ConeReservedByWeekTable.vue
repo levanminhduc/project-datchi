@@ -112,76 +112,128 @@
         </q-tr>
 
         <template v-if="isExpanded(props.row.warehouse_id)">
-          <q-tr
-            v-for="week in props.row.weeks"
-            :key="`w-${props.row.warehouse_id}-${week.week_id}`"
-            :props="props"
-            class="bg-grey-2"
-          >
-            <q-td />
-            <q-td>
-              <span class="q-ml-md">{{ week.week_name }}</span>
-            </q-td>
-            <q-td class="text-center">
-              <q-badge
-                color="primary"
-                label="CONFIRMED"
-              />
-            </q-td>
-            <q-td class="text-center">
-              {{ formatNumber(week.full_cones) }}
-            </q-td>
-            <q-td class="text-center">
-              <span v-if="week.partial_cones > 0">{{ formatNumber(week.partial_cones) }}</span>
-              <span
-                v-else
-                class="text-grey"
-              >-</span>
-            </q-td>
-            <q-td class="text-right">
-              <span v-if="week.partial_meters > 0">
-                {{ formatNumber(Math.round(week.partial_meters)) }} m
-              </span>
-              <span
-                v-else
-                class="text-grey"
-              >-</span>
-            </q-td>
-          </q-tr>
+          <template v-if="props.row.weeks.length > 0">
+            <q-tr
+              :key="`title-weeks-${props.row.warehouse_id}`"
+              :props="props"
+              class="bg-blue-2"
+            >
+              <q-td
+                colspan="6"
+                class="text-weight-bold text-blue-10 q-py-xs"
+              >
+                <q-icon
+                  name="event_available"
+                  class="q-mr-xs"
+                />
+                Tuần đã gán (Reserve)
+              </q-td>
+            </q-tr>
+            <q-tr
+              :key="`header-weeks-${props.row.warehouse_id}`"
+              :props="props"
+              class="bg-blue-grey-1 text-weight-medium"
+            >
+              <q-td />
+              <q-td>Tuần</q-td>
+              <q-td class="text-center">
+                Trạng thái
+              </q-td>
+              <q-td class="text-center">
+                Cuộn nguyên gán
+              </q-td>
+              <q-td class="text-center">
+                Cuộn lẻ gán
+              </q-td>
+              <q-td class="text-center">
+                Liên kết
+              </q-td>
+            </q-tr>
+            <q-tr
+              v-for="week in props.row.weeks"
+              :key="`w-${props.row.warehouse_id}-${week.week_id}`"
+              :props="props"
+              class="bg-grey-2"
+            >
+              <q-td />
+              <q-td>
+                <span class="q-ml-md">{{ week.week_name }}</span>
+              </q-td>
+              <q-td class="text-center">
+                <q-badge
+                  color="primary"
+                  label="CONFIRMED"
+                />
+              </q-td>
+              <q-td class="text-center">
+                {{ formatNumber(week.full_cones) }}
+              </q-td>
+              <q-td class="text-center">
+                <span v-if="week.partial_cones > 0">{{ formatNumber(week.partial_cones) }}</span>
+                <span
+                  v-else
+                  class="text-grey"
+                >-</span>
+              </q-td>
+              <q-td class="text-center">
+                <q-btn
+                  flat
+                  dense
+                  round
+                  size="sm"
+                  color="primary"
+                  icon="open_in_new"
+                  @click="openWeekOrder(week.week_id)"
+                >
+                  <q-tooltip>Mở tuần đặt hàng (tab mới)</q-tooltip>
+                </q-btn>
+              </q-td>
+            </q-tr>
+          </template>
 
-          <q-tr
-            v-if="hasOtherReserved(props.row.other_reserved)"
-            :props="props"
-            class="bg-orange-1"
-          >
-            <q-td />
-            <q-td colspan="2">
-              <span class="q-ml-md text-italic text-orange-9">
+          <template v-if="hasOtherReserved(props.row.other_reserved)">
+            <q-tr
+              :key="`title-other-${props.row.warehouse_id}`"
+              :props="props"
+              class="bg-orange-2"
+            >
+              <q-td
+                colspan="6"
+                class="text-weight-bold text-orange-10 q-py-xs"
+              >
+                <q-icon
+                  name="info"
+                  class="q-mr-xs"
+                />
                 Reserve khác (không thuộc tuần CONFIRMED)
-              </span>
-            </q-td>
-            <q-td class="text-center">
-              {{ formatNumber(props.row.other_reserved.full_cones) }}
-            </q-td>
-            <q-td class="text-center">
-              <span v-if="props.row.other_reserved.partial_cones > 0">
-                {{ formatNumber(props.row.other_reserved.partial_cones) }}
-              </span>
-              <span
-                v-else
-                class="text-grey"
-              >-</span>
-            </q-td>
-            <q-td class="text-right">
-              <span v-if="props.row.other_reserved.partial_meters > 0">
-                {{ formatNumber(Math.round(props.row.other_reserved.partial_meters)) }} m
-              </span>
-              <span
-                v-else
-                class="text-grey"
-              >-</span>
-            </q-td>
-          </q-tr>
+              </q-td>
+            </q-tr>
+            <q-tr
+              :key="`other-${props.row.warehouse_id}`"
+              :props="props"
+              class="bg-orange-1"
+            >
+              <q-td />
+              <q-td colspan="2">
+                <span class="q-ml-md text-italic text-grey-8">Tổng reserve khác</span>
+              </q-td>
+              <q-td class="text-center">
+                {{ formatNumber(props.row.other_reserved.full_cones) }}
+              </q-td>
+              <q-td class="text-center">
+                <span v-if="props.row.other_reserved.partial_cones > 0">
+                  {{ formatNumber(props.row.other_reserved.partial_cones) }}
+                </span>
+                <span
+                  v-else
+                  class="text-grey"
+                >-</span>
+              </q-td>
+              <q-td class="text-center text-grey">
+                —
+              </q-td>
+            </q-tr>
+          </template>
         </template>
       </template>
 
@@ -257,6 +309,10 @@ const hasOtherReserved = (a: ConeReservedAggregate): boolean =>
   a.full_cones > 0 || a.partial_cones > 0 || a.partial_meters > 0
 
 const formatNumber = (n: number): string => new Intl.NumberFormat('vi-VN').format(n)
+
+const openWeekOrder = (weekId: number): void => {
+  window.open(`/thread/weekly-order/${weekId}`, '_blank')
+}
 
 const reload = async (): Promise<void> => {
   await fetchReservedByWeek(props.threadTypeId, props.colorId, props.warehouseId)

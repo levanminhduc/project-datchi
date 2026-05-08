@@ -49,6 +49,20 @@
 
     <q-separator class="q-mb-md" />
 
+    <div class="q-mb-md" style="max-width: 360px;">
+      <AppInput
+        v-model="searchQuery"
+        label="Tìm tên tuần hàng"
+        dense
+        clearable
+        @update:model-value="onSearchInput"
+      >
+        <template #prepend>
+          <q-icon name="search" />
+        </template>
+      </AppInput>
+    </div>
+
     <q-tab-panels
       v-model="activeTab"
       animated
@@ -114,6 +128,53 @@
                       label="Đã xác nhận"
                       color="positive"
                     />
+                    <q-btn-dropdown
+                      flat
+                      dense
+                      color="primary"
+                      icon="file_download"
+                      label="Xuất Excel"
+                      no-caps
+                    >
+                      <q-list dense>
+                        <q-item
+                          v-close-popup
+                          clickable
+                          @click="handleExportAll(order)"
+                        >
+                          <q-item-section avatar>
+                            <q-icon
+                              name="o_list_alt"
+                              color="primary"
+                            />
+                          </q-item-section>
+                          <q-item-section>
+                            <q-item-label>Xuất tất cả</q-item-label>
+                            <q-item-label caption>
+                              {{ order.summary_all.length }} loại chỉ
+                            </q-item-label>
+                          </q-item-section>
+                        </q-item>
+                        <q-item
+                          v-close-popup
+                          clickable
+                          @click="handleExportFiltered(order)"
+                        >
+                          <q-item-section avatar>
+                            <q-icon
+                              name="o_filter_alt"
+                              color="positive"
+                            />
+                          </q-item-section>
+                          <q-item-section>
+                            <q-item-label>Xuất chỉ cần đặt</q-item-label>
+                            <q-item-label caption>
+                              {{ order.summary_preview.length }} loại chỉ
+                            </q-item-label>
+                          </q-item-section>
+                        </q-item>
+                      </q-list>
+                    </q-btn-dropdown>
                     <AppButton
                       color="primary"
                       icon="o_approval"
@@ -238,11 +299,58 @@
                       Người ký: {{ order.leader_signed_by_name || '—' }} · {{ formatDate(order.leader_signed_at || '') }}
                     </div>
                   </div>
-                  <div class="col-auto">
+                  <div class="col-auto row q-gutter-sm">
                     <AppBadge
                       label="Đã ký duyệt"
                       color="positive"
                     />
+                    <q-btn-dropdown
+                      flat
+                      dense
+                      color="primary"
+                      icon="file_download"
+                      label="Xuất Excel"
+                      no-caps
+                    >
+                      <q-list dense>
+                        <q-item
+                          v-close-popup
+                          clickable
+                          @click="handleExportAll(order)"
+                        >
+                          <q-item-section avatar>
+                            <q-icon
+                              name="o_list_alt"
+                              color="primary"
+                            />
+                          </q-item-section>
+                          <q-item-section>
+                            <q-item-label>Xuất tất cả</q-item-label>
+                            <q-item-label caption>
+                              {{ order.summary_all.length }} loại chỉ
+                            </q-item-label>
+                          </q-item-section>
+                        </q-item>
+                        <q-item
+                          v-close-popup
+                          clickable
+                          @click="handleExportFiltered(order)"
+                        >
+                          <q-item-section avatar>
+                            <q-icon
+                              name="o_filter_alt"
+                              color="positive"
+                            />
+                          </q-item-section>
+                          <q-item-section>
+                            <q-item-label>Xuất chỉ cần đặt</q-item-label>
+                            <q-item-label caption>
+                              {{ order.summary_preview.length }} loại chỉ
+                            </q-item-label>
+                          </q-item-section>
+                        </q-item>
+                      </q-list>
+                    </q-btn-dropdown>
                   </div>
                 </div>
               </q-card-section>
@@ -336,7 +444,9 @@ import { ref, onMounted, watch } from 'vue'
 import type { QTableColumn } from 'quasar'
 import { weeklyOrderService, type LeaderReviewItem } from '@/services/weeklyOrderService'
 import { useSnackbar } from '@/composables/useSnackbar'
+import AppInput from '@/components/ui/inputs/AppInput.vue'
 import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
+import { exportOrderResults, type ExportWeekMeta } from '@/composables/thread/useWeeklyOrderExport'
 
 definePage({
   meta: {
@@ -362,6 +472,8 @@ const pendingTotalPages = ref(0)
 const signedPage = ref(1)
 const signedTotalPages = ref(0)
 const signedLoaded = ref(false)
+const searchQuery = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const itemColumns: QTableColumn[] = [
   { name: 'po', label: 'PO', field: (row: any) => row.po?.po_number || '—', align: 'left' },
@@ -370,10 +482,42 @@ const itemColumns: QTableColumn[] = [
   { name: 'quantity', label: 'Số lượng', field: 'quantity', align: 'right', format: (v: number) => v?.toLocaleString('vi-VN') || '—' },
 ]
 
+function buildWeekMeta(order: LeaderReviewItem): ExportWeekMeta {
+  return {
+    id: order.id,
+    week_name: order.week_name,
+    created_by: order.created_by,
+    created_at: order.created_at,
+    leader_signed_by_name: order.leader_signed_by_name,
+    leader_signed_at: order.leader_signed_at,
+  }
+}
+
+function handleExportAll(order: LeaderReviewItem) {
+  exportOrderResults(order.summary_all, buildWeekMeta(order))
+}
+
+function handleExportFiltered(order: LeaderReviewItem) {
+  exportOrderResults(order.summary_preview, buildWeekMeta(order))
+}
+
+function onSearchInput() {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    pendingPage.value = 1
+    signedPage.value = 1
+    signedLoaded.value = false
+    fetchData(1)
+    if (activeTab.value === 'signed') {
+      fetchSignedData(1)
+    }
+  }, 300)
+}
+
 async function fetchData(page = pendingPage.value) {
   loading.value = true
   try {
-    const result = await weeklyOrderService.getLeaderReview({ page, limit: PAGE_SIZE })
+    const result = await weeklyOrderService.getLeaderReview({ page, limit: PAGE_SIZE, search: searchQuery.value || undefined })
     orders.value = result.data
     pendingTotalPages.value = result.pagination.totalPages
     pendingPage.value = result.pagination.page
@@ -393,7 +537,7 @@ async function fetchData(page = pendingPage.value) {
 async function fetchSignedData(page = signedPage.value) {
   loadingSigned.value = true
   try {
-    const result = await weeklyOrderService.getLeaderReview({ signed: true, page, limit: PAGE_SIZE })
+    const result = await weeklyOrderService.getLeaderReview({ signed: true, page, limit: PAGE_SIZE, search: searchQuery.value || undefined })
     signedOrders.value = result.data
     signedTotalPages.value = result.pagination.totalPages
     signedPage.value = result.pagination.page

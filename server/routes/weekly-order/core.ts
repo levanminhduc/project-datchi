@@ -532,6 +532,7 @@ core.get('/history-by-week', requirePermission('thread.allocations.view'), async
 core.get('/leader-review', requirePermission('thread.leader.sign'), async (c) => {
   try {
     const signed = c.req.query('signed') === 'true'
+    const search = c.req.query('search')?.trim() || ''
     const page = c.req.query('page') ? Math.max(1, parseInt(c.req.query('page')!)) : 1
     const limit = c.req.query('limit') ? Math.min(Math.max(1, parseInt(c.req.query('limit')!)), 50) : 10
     const from = (page - 1) * limit
@@ -540,6 +541,10 @@ core.get('/leader-review', requirePermission('thread.leader.sign'), async (c) =>
       .from('thread_order_weeks')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'CONFIRMED')
+
+    if (search) {
+      countQuery = countQuery.ilike('week_name', `%${search}%`)
+    }
 
     if (signed) {
       countQuery = countQuery.not('leader_signed_by', 'is', null)
@@ -578,6 +583,10 @@ core.get('/leader-review', requirePermission('thread.leader.sign'), async (c) =>
       .order('created_at', { ascending: false })
       .range(from, from + limit - 1)
 
+    if (search) {
+      weeksQuery = weeksQuery.ilike('week_name', `%${search}%`)
+    }
+
     if (signed) {
       weeksQuery = weeksQuery.not('leader_signed_by', 'is', null)
     } else {
@@ -605,14 +614,17 @@ core.get('/leader-review', requirePermission('thread.leader.sign'), async (c) =>
     if (resultsError) throw resultsError
 
     const summaryMap = new Map<number, unknown[]>()
+    const summaryAllMap = new Map<number, unknown[]>()
     for (const r of resultsData || []) {
       const rows = (r.summary_data as Array<{ total_final?: number }>) || []
+      summaryAllMap.set(r.week_id, rows)
       summaryMap.set(r.week_id, rows.filter((row) => (row.total_final ?? 0) > 0))
     }
 
     const result = weeks.map((w: any) => ({
       ...w,
       item_count: (w.items || []).length,
+      summary_all: summaryAllMap.get(w.id) || [],
       summary_preview: summaryMap.get(w.id) || [],
       ...(signed && w.leader ? {
         leader_signed_by_name: w.leader.full_name,

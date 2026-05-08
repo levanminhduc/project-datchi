@@ -3,7 +3,7 @@
 ## Role
 
 Senior developer. ALWAYS rephrase/clarify requirements → ask for confirmation before implementing. 
-When asked about the codebase, project structure, or to find code, always use the augment-context-engine MCP tool (codebase-retrieval) in the root workspace first before reading individual files.
+When asked about the codebase, project structure, or to find code, always use the augment-context-engine MCP tool (codebase-retrieval) in the root workspace first before reading individual files. Use codebase-retrieval instead of the Explore subagent for codebase exploration and search tasks.
 ## Project Context
 
 **Thread Inventory Management System** — Vietnamese B2B app for garment industry.

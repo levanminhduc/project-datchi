@@ -51,6 +51,7 @@ export interface LeaderReviewItem {
   created_at: string
   status: string
   item_count: number
+  summary_all: AggregatedRow[]
   summary_preview: AggregatedRow[]
   items: ThreadOrderItem[]
   leader_signed_by_name?: string | null
@@ -602,10 +603,11 @@ export const weeklyOrderService = {
   },
 
   async getLeaderReview(
-    params: { signed?: boolean; page?: number; limit?: number } = {},
+    params: { signed?: boolean; page?: number; limit?: number; search?: string } = {},
   ): Promise<{ data: LeaderReviewItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
     const searchParams = new URLSearchParams()
     if (params.signed) searchParams.append('signed', 'true')
+    if (params.search) searchParams.append('search', params.search)
     if (params.page) searchParams.append('page', String(params.page))
     if (params.limit) searchParams.append('limit', String(params.limit))
 

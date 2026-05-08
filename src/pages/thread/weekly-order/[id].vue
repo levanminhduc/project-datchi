@@ -710,7 +710,7 @@ const week = ref<ThreadOrderWeek | null>(null)
 const notFound = ref(false)
 const isLoading = ref(false)
 
-const activeTab = ref('overview')
+const activeTab = ref('calculation')
 const showLoanDialog = ref(false)
 const showReserveFromStockDialog = ref(false)
 const selectedReservationSummary = ref<ReservationSummary | null>(null)
@@ -1014,6 +1014,13 @@ onMounted(async () => {
   const tabParam = route.query.tab as string
   if (tabParam && ['overview', 'reservations', 'loans', 'deliveries', 'calculation'].includes(tabParam)) {
     activeTab.value = tabParam
+  }
+  if (activeTab.value === 'calculation') {
+    loadCalculationResults()
+  } else if (activeTab.value === 'reservations') {
+    loadReservations()
+  } else if (activeTab.value === 'loans') {
+    loadLoans()
   }
 })
 
