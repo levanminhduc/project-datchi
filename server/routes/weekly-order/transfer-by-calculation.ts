@@ -7,6 +7,104 @@ import {
   threadTransferHistoryQuerySchema,
 } from '../../validation/transferByCalculationSchema'
 
+type CalculationDataRow = {
+  style_id: number
+  calculations: Array<{
+    thread_type_id: number
+    tex_number: string
+    supplier_id: number
+    supplier_name: string
+    color_breakdown: Array<{
+      color_id: number
+      color_name: string
+      total_meters: number
+      meters_per_cone: number
+    }>
+  }>
+}
+
+type ThreadOrderItem = {
+  id: number
+  po_id: number | null
+  style_color_id: number
+  style_id: number | null
+}
+
+type SpecRow = {
+  style_color_id: number
+  thread_type_id: number
+  thread_color_id: number
+}
+
+type InventoryAggRow = {
+  thread_type_id: number
+  color_id: number | null
+  count: number
+}
+
+async function fetchCalculationData(weekId: number) {
+  const { data, error } = await supabaseAdmin
+    .from('thread_order_results')
+    .select('calculation_data, summary_data')
+    .eq('week_id', weekId)
+    .maybeSingle()
+  if (error) throw error
+  return {
+    calculation_data: (data?.calculation_data ?? []) as CalculationDataRow[],
+    summary_data: (data?.summary_data ?? []) as Array<{
+      thread_type_id: number
+      thread_color: string | null
+      additional_order: number
+      tex_number: string
+      supplier_name: string
+    }>,
+  }
+}
+
+async function fetchOrderItems(weekId: number) {
+  const { data, error } = await supabaseAdmin
+    .from('thread_order_items')
+    .select('id, po_id, style_color_id, style_id')
+    .eq('week_id', weekId)
+    .order('id', { ascending: true })
+    .limit(10000)
+  if (error) throw error
+  return (data ?? []) as ThreadOrderItem[]
+}
+
+async function fetchSpecsByStyleColors(styleColorIds: number[]) {
+  if (styleColorIds.length === 0) return []
+  const { data, error } = await supabaseAdmin
+    .from('style_color_thread_specs')
+    .select('style_color_id, thread_type_id, thread_color_id')
+    .in('style_color_id', styleColorIds)
+    .limit(10000)
+  if (error) throw error
+  return (data ?? []) as SpecRow[]
+}
+
+async function fetchInventoryAgg(weekId: number, warehouseId: number) {
+  const { data, error } = await supabaseAdmin
+    .from('thread_inventory')
+    .select('thread_type_id, color_id')
+    .eq('reserved_week_id', weekId)
+    .eq('warehouse_id', warehouseId)
+    .eq('status', 'RESERVED_FOR_ORDER')
+    .limit(500000)
+  if (error) throw error
+  const map = new Map<string, InventoryAggRow>()
+  for (const row of (data ?? []) as Array<{ thread_type_id: number; color_id: number | null }>) {
+    const key = `${row.thread_type_id}_${row.color_id ?? ''}`
+    const existing = map.get(key)
+    if (existing) {
+      existing.count++
+    } else {
+      map.set(key, { thread_type_id: row.thread_type_id, color_id: row.color_id, count: 1 })
+    }
+  }
+  return map
+}
+
 const router = new Hono<AppEnv>()
 
 router.get(
