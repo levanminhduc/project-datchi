@@ -105,6 +105,122 @@ async function fetchInventoryAgg(weekId: number, warehouseId: number) {
   return map
 }
 
+type ThreadKey = string
+
+type AggregatedThread = {
+  thread_type_id: number
+  thread_color_id: number
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  quota_cones: number
+}
+
+function buildPoQuotaMap(
+  orderItems: ThreadOrderItem[],
+  specs: SpecRow[],
+  calcData: CalculationDataRow[],
+): {
+  poOrder: Array<{ po_id: number | null; po_number: null; display_order: number }>
+  poStyleMap: Map<number | null, Set<number>>
+  poStyleColorMap: Map<number | null, Set<number>>
+  poQuotaMap: Map<number | null, Map<ThreadKey, AggregatedThread>>
+} {
+  const specByStyleColor = new Map<number, SpecRow[]>()
+  for (const s of specs) {
+    const arr = specByStyleColor.get(s.style_color_id) ?? []
+    arr.push(s)
+    specByStyleColor.set(s.style_color_id, arr)
+  }
+
+  const calcByStyle = new Map<number, CalculationDataRow>()
+  for (const c of calcData) calcByStyle.set(c.style_id, c)
+
+  const poStyleMap = new Map<number | null, Set<number>>()
+  const poStyleColorMap = new Map<number | null, Set<number>>()
+  const poQuotaMap = new Map<number | null, Map<ThreadKey, AggregatedThread>>()
+  const poDisplayOrder = new Map<number | null, number>()
+
+  for (const item of orderItems) {
+    const poId = item.po_id ?? null
+    if (!poDisplayOrder.has(poId)) {
+      poDisplayOrder.set(poId, poDisplayOrder.size + 1)
+    }
+    if (!poStyleMap.has(poId)) poStyleMap.set(poId, new Set())
+    if (!poStyleColorMap.has(poId)) poStyleColorMap.set(poId, new Set())
+    if (!poQuotaMap.has(poId)) poQuotaMap.set(poId, new Map())
+
+    if (item.style_id != null) poStyleMap.get(poId)!.add(item.style_id)
+    poStyleColorMap.get(poId)!.add(item.style_color_id)
+
+    const itemSpecs = specByStyleColor.get(item.style_color_id) ?? []
+    const calcRow = item.style_id != null ? calcByStyle.get(item.style_id) : undefined
+    if (!calcRow) continue
+
+    for (const spec of itemSpecs) {
+      const matchCalc = calcRow.calculations.find(c => c.thread_type_id === spec.thread_type_id)
+      if (!matchCalc) continue
+      const matchColor = matchCalc.color_breakdown.find(cb => cb.color_id === spec.thread_color_id)
+      if (!matchColor) continue
+
+      const conesNeeded = Math.ceil(matchColor.total_meters / matchColor.meters_per_cone)
+      const key: ThreadKey = `${spec.thread_type_id}_${spec.thread_color_id}`
+      const quotaMap = poQuotaMap.get(poId)!
+      const existing = quotaMap.get(key)
+      if (existing) {
+        existing.quota_cones += conesNeeded
+      } else {
+        quotaMap.set(key, {
+          thread_type_id: spec.thread_type_id,
+          thread_color_id: spec.thread_color_id,
+          supplier_name: matchCalc.supplier_name,
+          tex_number: matchCalc.tex_number,
+          color_name: matchColor.color_name,
+          quota_cones: conesNeeded,
+        })
+      }
+    }
+  }
+
+  const poOrder = Array.from(poDisplayOrder.entries())
+    .sort((a, b) => a[1] - b[1])
+    .map(([po_id, display_order]) => ({ po_id, po_number: null, display_order }))
+
+  return { poOrder, poStyleMap, poStyleColorMap, poQuotaMap }
+}
+
+function applySequentialAllocation(
+  poOrder: Array<{ po_id: number | null; display_order: number }>,
+  poQuotaMap: Map<number | null, Map<ThreadKey, AggregatedThread>>,
+  inventoryAtDest: Map<string, InventoryAggRow>,
+): {
+  transferredByPoThread: Map<string, number>
+  overflowByThread: Map<ThreadKey, number>
+} {
+  const transferredByPoThread = new Map<string, number>()
+  const overflowByThread = new Map<ThreadKey, number>()
+
+  const allKeys = new Set<ThreadKey>()
+  for (const map of poQuotaMap.values()) for (const k of map.keys()) allKeys.add(k)
+
+  for (const key of allKeys) {
+    const destEntry = inventoryAtDest.get(key)
+    let remaining = destEntry?.count ?? 0
+    for (const po of poOrder) {
+      const quotaEntry = poQuotaMap.get(po.po_id)?.get(key)
+      if (!quotaEntry || quotaEntry.quota_cones === 0) continue
+      const fulfilled = Math.min(remaining, quotaEntry.quota_cones)
+      transferredByPoThread.set(`${po.po_id ?? 'null'}_${key}`, fulfilled)
+      remaining -= fulfilled
+      if (remaining === 0) break
+    }
+    if (remaining > 0) {
+      overflowByThread.set(key, remaining)
+    }
+  }
+  return { transferredByPoThread, overflowByThread }
+}
+
 const router = new Hono<AppEnv>()
 
 router.get(
