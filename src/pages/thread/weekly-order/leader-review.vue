@@ -50,20 +50,36 @@
     <q-separator class="q-mb-md" />
 
     <div
-      class="q-mb-md"
+      class="q-mb-md leader-review-search"
       style="max-width: 360px;"
     >
       <AppInput
         v-model="searchQuery"
-        label="Tìm tên tuần hàng"
+        aria-label="Tìm kiếm đơn hàng tuần"
         dense
         clearable
+        class="leader-review-search__field"
+        hide-bottom-space
+        @focus="searchFocused = true"
+        @blur="searchFocused = false"
         @update:model-value="onSearchInput"
       >
         <template #prepend>
           <q-icon name="search" />
         </template>
       </AppInput>
+      <Transition
+        name="rotating-placeholder"
+        mode="out-in"
+      >
+        <span
+          v-if="shouldShowSearchPlaceholder"
+          :key="rotatingSearchPlaceholder"
+          class="leader-review-search__placeholder"
+        >
+          {{ rotatingSearchPlaceholder }}
+        </span>
+      </Transition>
     </div>
 
     <q-tab-panels
@@ -439,7 +455,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import type { QTableColumn } from 'quasar'
 import { weeklyOrderService, type LeaderReviewItem } from '@/services/weeklyOrderService'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -472,7 +488,13 @@ const signedPage = ref(1)
 const signedTotalPages = ref(0)
 const signedLoaded = ref(false)
 const searchQuery = ref('')
+const searchFocused = ref(false)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+const searchPlaceholders = ['Nhập thông tin tuần hàng', 'Nhập thông tin đơn hàng']
+const searchPlaceholderIndex = ref(0)
+const rotatingSearchPlaceholder = computed(() => searchPlaceholders[searchPlaceholderIndex.value])
+const shouldShowSearchPlaceholder = computed(() => searchQuery.value.length === 0 && !searchFocused.value)
+let searchPlaceholderTimer: ReturnType<typeof setInterval> | null = null
 
 const itemColumns: QTableColumn[] = [
   { name: 'po', label: 'PO', field: (row: any) => row.po?.po_number || '—', align: 'left' },
@@ -511,6 +533,10 @@ function onSearchInput() {
       fetchSignedData(1)
     }
   }, 300)
+}
+
+function rotateSearchPlaceholder() {
+  searchPlaceholderIndex.value = (searchPlaceholderIndex.value + 1) % searchPlaceholders.length
 }
 
 async function fetchData(page = pendingPage.value) {
@@ -600,5 +626,65 @@ watch(activeTab, (tab) => {
   }
 })
 
-onMounted(() => fetchData(1))
+onMounted(() => {
+  fetchData(1)
+  searchPlaceholderTimer = setInterval(rotateSearchPlaceholder, 2400)
+})
+
+onUnmounted(() => {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+  }
+  if (searchPlaceholderTimer) {
+    clearInterval(searchPlaceholderTimer)
+  }
+})
 </script>
+
+<style scoped>
+.leader-review-search {
+  position: relative;
+}
+
+.leader-review-search__placeholder {
+  color: rgba(0, 0, 0, 0.54);
+  font-size: 14px;
+  left: 44px;
+  line-height: 20px;
+  max-width: calc(100% - 84px);
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  right: 40px;
+  text-overflow: ellipsis;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
+:global(.body--dark) .leader-review-search__placeholder {
+  color: rgba(255, 255, 255, 0.54);
+}
+
+.rotating-placeholder-enter-active,
+.rotating-placeholder-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.rotating-placeholder-enter-from {
+  opacity: 0;
+  transform: translateY(calc(-50% + 6px));
+}
+
+.rotating-placeholder-leave-to {
+  opacity: 0;
+  transform: translateY(calc(-50% - 6px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rotating-placeholder-enter-active,
+  .rotating-placeholder-leave-active {
+    transition: none;
+  }
+}
+</style>

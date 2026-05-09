@@ -18,6 +18,9 @@
             emit-value
             map-options
             clearable
+            use-input
+            fill-input
+            hide-selected
             @update:model-value="onWeekChange"
           />
         </div>

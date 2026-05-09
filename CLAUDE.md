@@ -122,6 +122,7 @@ Only modify the exact lines requested. Do not reformat/refactor adjacent code.
 - **DB:** `snake_case`, soft delete (`deleted_at` HOẶC `status` enum cho lifecycle tables). See `db-conventions.md`
 - **API:** `{ data, error: string | null, message? }`. See `api-conventions.md`
 - **Frontend:** App* wrappers (strict for `q-select`/`q-editor`/`$q.dialog`/`DatePicker`); `q-input`/`q-btn`/`q-table` either acceptable. See `frontend-conventions.md`
+- **Rotating input placeholder:** For AppInput rotating helper text, use `.claude/skills/hieu-ung-nhay-chu-input/SKILL.md` when present. Key rules: render an overlay span after `AppInput`, set `hide-bottom-space`, keep `aria-label`, hide while focused or when value length > 0, center against `.q-field__control`, and verify with browser.
 - **Files:** Composables/services/utils max 200 lines. UI components max 300. Pages/routes max 500 (soft) — >800 cần lý do.
 - **Naming:** kebab-case preferred for new files. Existing camelCase files (`purchaseOrders.ts`, `useInventory.ts`) không rename — chỉ áp dụng cho file mới.
 

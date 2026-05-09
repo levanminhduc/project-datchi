@@ -52,6 +52,8 @@ Use 2-space indentation, UTF-8, final newlines, and no trailing whitespace as de
 
 Follow `docs/code-standards.md`: keep files focused, use Vietnamese for user-facing UI text, use App UI wrappers instead of raw Quasar controls, and call backend APIs through `fetchApi()` from `src/services/api.ts`.
 
+For rotating input helper text, use the Codex skill `hieu-ung-nhay-chu-input` when available. The established pattern is an overlay span after `AppInput`, `hide-bottom-space` for Quasar vertical alignment, an `aria-label` for accessibility, hide-on-focus and hide-when-value-length-is-greater-than-zero behavior, cleanup of the rotation interval on unmount, and browser verification that the placeholder is centered against `.q-field__control`.
+
 ## Testing Guidelines
 
 Playwright is the active test framework. Put e2e specs under `tests/e2e/` and name them `*.spec.ts`, for example `auth-session-expired.spec.ts`. The Playwright config starts `npm run dev:all` automatically unless an existing server can be reused. Run `npm run e2e` before changes that affect routing, auth, forms, or API behavior.
