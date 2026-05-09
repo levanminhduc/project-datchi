@@ -63,9 +63,9 @@
             <template v-if="!readonly">
               <span
                 class="cursor-pointer"
-                :class="props.row.quota_cones != null ? 'text-orange' : 'text-primary'"
+                :class="props.row.quota_cones != null && props.row.quota_cones !== props.row.total_cones ? 'text-orange' : 'text-primary'"
               >
-                <template v-if="props.row.quota_cones != null">
+                <template v-if="props.row.quota_cones != null && props.row.quota_cones !== props.row.total_cones">
                   {{ props.row.quota_cones.toLocaleString('vi-VN') }}
                   <span class="text-caption text-grey-7">(gốc: {{ props.row.total_cones.toLocaleString('vi-VN') }})</span>
                 </template>
@@ -132,8 +132,8 @@
               </q-popup-edit>
             </template>
             <template v-else>
-              <span :class="props.row.quota_cones != null ? 'text-orange' : ''">
-                <template v-if="props.row.quota_cones != null">
+              <span :class="props.row.quota_cones != null && props.row.quota_cones !== props.row.total_cones ? 'text-orange' : ''">
+                <template v-if="props.row.quota_cones != null && props.row.quota_cones !== props.row.total_cones">
                   {{ props.row.quota_cones.toLocaleString('vi-VN') }}
                   <span class="text-caption text-grey-7">(gốc: {{ props.row.total_cones.toLocaleString('vi-VN') }})</span>
                 </template>

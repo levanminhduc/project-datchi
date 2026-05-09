@@ -746,13 +746,14 @@ const orderEntriesFromItems = computed<StyleOrderEntry[]>(() => {
       })
     }
     const entry = map.get(key)!
-    if (!entry.colors.find(c => c.color_id === item.color_id)) {
+    const scId = item.style_color_id ?? 0
+    if (!entry.colors.find(c => c.style_color_id === scId)) {
       entry.colors.push({
-        color_id: item.color_id,
+        color_id: item.color_id ?? scId,
         color_name: item.style_color?.color_name ?? item.color?.name ?? '',
         hex_code: item.style_color?.hex_code ?? item.color?.hex_code ?? '',
         quantity: item.quantity,
-        style_color_id: item.style_color_id ?? 0,
+        style_color_id: scId,
       })
     }
   }
