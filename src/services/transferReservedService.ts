@@ -6,6 +6,7 @@ import type {
   PoSearchResult,
   TransferByCalcResponse,
   ThreadTransferHistoryEntry,
+  PoTransferTransaction,
 } from '@/types/transferReserved'
 
 interface ApiResponse<T> {
@@ -38,6 +39,14 @@ export const transferReservedService = {
     })
     return fetchApi<ApiResponse<ThreadTransferHistoryEntry[]>>(
       `/api/weekly-orders/${weekId}/transfer-history-thread?${params.toString()}`,
+    )
+  },
+
+  async getPoTransferHistory(weekId: number, poId: number, toWarehouseId?: number | null) {
+    const params = new URLSearchParams({ po_id: String(poId) })
+    if (toWarehouseId != null) params.set('to_warehouse_id', String(toWarehouseId))
+    return fetchApi<ApiResponse<PoTransferTransaction[]>>(
+      `/api/weekly-orders/${weekId}/transfer-history-po?${params.toString()}`,
     )
   },
 
