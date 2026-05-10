@@ -2,17 +2,35 @@
   <q-expansion-item
     default-opened
     expand-separator
-    :label="`${title} (${lines.length} loại chỉ)`"
     class="q-mb-sm bordered"
   >
-    <q-card
-      flat
-      bordered
-    >
+    <template #header>
+      <q-item-section>
+        <div class="row items-center q-gutter-sm">
+          <span class="text-weight-medium">{{ headerLabel }}</span>
+          <q-chip
+            dense
+            color="grey-3"
+            text-color="grey-9"
+            :label="`${lines.length} loại chỉ`"
+          />
+        </div>
+        <div
+          v-if="summary"
+          class="text-caption text-grey-8 q-mt-xs"
+        >
+          ĐM tổng: <b>{{ summary.total_needed }}</b> ·
+          Đã chuyển: <b>{{ summary.total_transferred }}</b> ·
+          Còn theo ĐM: <b>{{ summary.total_pending }}</b>
+        </div>
+      </q-item-section>
+    </template>
+
+    <q-card flat bordered>
       <q-table
         :rows="lines"
         :columns="columns"
-        row-key="key"
+        row-key="row_key"
         flat
         hide-pagination
         :rows-per-page-options="[0]"
@@ -20,97 +38,84 @@
         <template #body-cell-pick="props">
           <q-td :props="props">
             <q-checkbox
-              :model-value="isSelected(props.row.thread_type_id, props.row.color_id)"
-              @update:model-value="
-                emit(
-                  'toggle',
-                  props.row.thread_type_id,
-                  props.row.color_id,
-                  props.row.reserved_full_cones_at_source,
-                  props.row.reserved_partial_cones_at_source,
-                  rowLabel(props.row)
-                )
-              "
+              :model-value="isSelected(props.row.thread_type_id, props.row.thread_color_id)"
+              :disable="isDisabledByOther(props.row)"
+              @update:model-value="emit('toggle', poId, props.row)"
             />
           </q-td>
         </template>
         <template #body-cell-thread="props">
           <q-td :props="props">
-            {{ rowLabel(props.row) }}
+            <div>{{ rowLabel(props.row) }}</div>
+            <div
+              v-if="props.row.shared_with_pos.length > 0"
+              class="text-caption text-orange-9"
+            >
+              (share {{ sharedLabel(props.row) }})
+            </div>
+            <div
+              v-if="isDisabledByOther(props.row)"
+              class="text-caption text-grey-7"
+            >
+              (đã chọn ở PO {{ otherPoNumber(props.row) }})
+            </div>
+          </q-td>
+        </template>
+        <template #body-cell-quota="props">
+          <q-td :props="props" class="text-right">
+            ĐM <b>{{ props.row.quota_cones }}</b> ·
+            Đã <b>{{ props.row.transferred_for_po }}</b> ·
+            Còn <b>{{ props.row.pending_for_po }}</b>
+          </q-td>
+        </template>
+        <template #body-cell-source="props">
+          <q-td :props="props" class="text-right">
+            {{ props.row.reserved_at_source }}
           </q-td>
         </template>
         <template #body-cell-full_qty="props">
           <q-td :props="props">
             <AppInput
-              v-if="isSelected(props.row.thread_type_id, props.row.color_id)"
-              :model-value="
-                getSelection(props.row.thread_type_id, props.row.color_id)?.full_quantity
-              "
+              v-if="isSelected(props.row.thread_type_id, props.row.thread_color_id)"
+              :model-value="getSelection(props.row.thread_type_id, props.row.thread_color_id)?.full_quantity"
               type="number"
               dense
-              :error="
-                isInvalid(
-                  getSelection(props.row.thread_type_id, props.row.color_id)?.full_quantity,
-                  props.row.reserved_full_cones_at_source
-                )
-              "
               @update:model-value="
                 emit(
                   'set-full-quantity',
                   props.row.thread_type_id,
-                  props.row.color_id,
-                  Number($event) || 0
+                  props.row.thread_color_id,
+                  Number($event) || 0,
                 )
               "
             />
-            <span
-              v-else
-              class="text-grey"
-            >—</span>
+            <span v-else class="text-grey">—</span>
           </q-td>
         </template>
-        <template #body-cell-partial_qty="props">
-          <q-td :props="props">
-            <AppInput
-              v-if="isSelected(props.row.thread_type_id, props.row.color_id)"
-              :model-value="
-                getSelection(props.row.thread_type_id, props.row.color_id)?.partial_quantity
-              "
-              type="number"
-              dense
-              :error="
-                isInvalid(
-                  getSelection(props.row.thread_type_id, props.row.color_id)?.partial_quantity,
-                  props.row.reserved_partial_cones_at_source
-                )
-              "
-              @update:model-value="
-                emit(
-                  'set-partial-quantity',
-                  props.row.thread_type_id,
-                  props.row.color_id,
-                  Number($event) || 0
-                )
-              "
-            />
-            <span
-              v-else
-              class="text-grey"
-            >—</span>
-          </q-td>
-        </template>
-        <template #body-cell-summary="props">
-          <q-td :props="props">
-            <span
-              v-if="toWarehouseId != null"
+        <template #body-cell-history="props">
+          <q-td :props="props" class="text-right">
+            <div
+              v-if="props.row.last_transfer"
               class="text-caption text-grey-8"
             >
-              Gán: {{ props.row.total_reserved_for_week }} | Đã chuyển: {{ props.row.already_at_destination }} | Còn: {{ props.row.reserved_cones_at_source }}
-            </span>
-            <span
+              Lần cuối: {{ props.row.last_transfer.full_cones + props.row.last_transfer.partial_cones }} cuộn ·
+              {{ formatDateTime(props.row.last_transfer.transferred_at) }} ·
+              {{ props.row.last_transfer.by_user_name }}
+            </div>
+            <div
               v-else
-              class="text-grey"
-            >—</span>
+              class="text-caption text-grey"
+            >
+              Chưa có lịch sử
+            </div>
+            <q-btn
+              flat
+              dense
+              icon="history"
+              size="sm"
+              label="Lịch sử"
+              @click="emit('open-history', props.row)"
+            />
           </q-td>
         </template>
       </q-table>
@@ -120,67 +125,62 @@
 
 <script setup lang="ts">
 import AppInput from '@/components/ui/inputs/AppInput.vue'
-import type { ReservedThreadLine } from '@/types/transferReserved'
+import type { TransferThreadLine, TransferPoGroup } from '@/types/transferReserved'
 
 const props = defineProps<{
-  title: string
-  lines: ReservedThreadLine[]
-  toWarehouseId?: number | null
-  isSelected: (tt: number, c: number) => boolean
+  poId: number | null
+  poNumber: string
+  displayOrder: number
+  lines: TransferThreadLine[]
+  summary: TransferPoGroup['summary'] | null
+  poNumberByPoId: Map<number, string>
+  isSelected: (tt: number, cc: number) => boolean
   getSelection: (
     tt: number,
-    c: number
+    cc: number,
   ) => { full_quantity: number; partial_quantity: number } | undefined
+  selectedInOtherPo: (poId: number | null, tt: number, cc: number) => number | null
 }>()
-
-void props
 
 const emit = defineEmits<{
-  (
-    e: 'toggle',
-    tt: number,
-    c: number,
-    availableFull: number,
-    availablePartial: number,
-    label: string
-  ): void
-  (e: 'set-full-quantity', tt: number, c: number, q: number): void
-  (e: 'set-partial-quantity', tt: number, c: number, q: number): void
+  (e: 'toggle', poId: number | null, line: TransferThreadLine): void
+  (e: 'set-full-quantity', tt: number, cc: number, q: number): void
+  (e: 'open-history', line: TransferThreadLine): void
 }>()
+
+const headerLabel = `PO ${props.poNumber} (#${props.displayOrder})`
 
 const columns = [
   { name: 'pick', label: '', field: 'pick', align: 'center' as const },
-  { name: 'thread', label: 'Loại chỉ (NCC - Tex - Màu)', field: 'thread', align: 'left' as const },
-  {
-    name: 'available',
-    label: 'Tổng cuộn',
-    field: 'reserved_cones_at_source',
-    align: 'right' as const,
-  },
-  {
-    name: 'full',
-    label: 'Có sẵn (nguyên)',
-    field: 'reserved_full_cones_at_source',
-    align: 'right' as const,
-  },
-  {
-    name: 'partial',
-    label: 'Có sẵn (lẻ)',
-    field: 'reserved_partial_cones_at_source',
-    align: 'right' as const,
-  },
-  { name: 'full_qty', label: 'Cuộn nguyên chuyển', field: 'full_qty', align: 'right' as const },
-  { name: 'partial_qty', label: 'Cuộn lẻ chuyển', field: 'partial_qty', align: 'right' as const },
-  { name: 'summary', label: 'Tóm tắt', field: 'summary', align: 'left' as const },
+  { name: 'thread', label: 'Loại chỉ', field: 'thread', align: 'left' as const },
+  { name: 'quota', label: 'Định mức / Đã / Còn', field: 'quota', align: 'right' as const },
+  { name: 'source', label: 'Kho nguồn', field: 'source', align: 'right' as const },
+  { name: 'full_qty', label: 'Chuyển', field: 'full_qty', align: 'right' as const },
+  { name: 'history', label: 'Lịch sử', field: 'history', align: 'left' as const },
 ]
 
-function rowLabel(row: ReservedThreadLine) {
+function rowLabel(row: TransferThreadLine) {
   return `${row.supplier_name} - Tex ${row.tex_number} - ${row.color_name}`
 }
 
-function isInvalid(q: number | undefined, max: number) {
-  if (q === undefined || q === null) return false
-  if (!Number.isFinite(q) || q < 0 || q > max) return true
-  return false
+function sharedLabel(row: TransferThreadLine) {
+  return row.shared_with_pos
+    .map(id => `PO ${props.poNumberByPoId.get(id) ?? id}`)
+    .join(', ')
+}
+
+function isDisabledByOther(row: TransferThreadLine) {
+  return props.selectedInOtherPo(props.poId, row.thread_type_id, row.thread_color_id) != null
+}
+
+function otherPoNumber(row: TransferThreadLine) {
+  const otherId = props.selectedInOtherPo(props.poId, row.thread_type_id, row.thread_color_id)
+  if (otherId == null) return ''
+  return props.poNumberByPoId.get(otherId) ?? otherId
+}
+
+function formatDateTime(iso: string) {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 </script>
