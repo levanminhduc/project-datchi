@@ -6,6 +6,7 @@ export const transferReservedItemSchema = z
     color_id: z.number().int().positive(),
     full_quantity: z.number().int().min(0),
     partial_quantity: z.number().int().min(0),
+    po_id: z.number().int().positive().nullable().optional(),
   })
   .refine((d) => d.full_quantity + d.partial_quantity > 0, {
     message: 'Phải nhập số cuộn nguyên hoặc cuộn lẻ > 0',
