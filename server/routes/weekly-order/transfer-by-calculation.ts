@@ -221,6 +221,128 @@ function applySequentialAllocation(
   return { transferredByPoThread, overflowByThread }
 }
 
+type LastTransferEntry = {
+  transferred_at: string
+  by_user_name: string
+  full_cones: number
+  partial_cones: number
+}
+
+async function fetchLastTransferMap(weekId: number) {
+  // batch_transactions stores cone_ids[] — no per-thread table.
+  // We join thread_inventory via unnest to get thread_type_id/color_id per cone.
+  const { data, error } = await supabaseAdmin
+    .from('batch_transactions')
+    .select('id, created_at, performed_by, cone_ids')
+    .eq('operation_type', 'TRANSFER')
+    .like('notes', `%Tuần #${weekId}%`)
+    .order('created_at', { ascending: false })
+    .limit(2000)
+  if (error) throw error
+
+  if (!data || data.length === 0) return new Map<ThreadKey, LastTransferEntry>()
+
+  // Collect all cone ids to batch-fetch thread_type_id / color_id / is_partial
+  const allConeIds: number[] = []
+  const txByConeId = new Map<
+    number,
+    { created_at: string; performed_by: string | null }
+  >()
+  for (const tx of data as Array<{
+    id: number
+    created_at: string
+    performed_by: string | null
+    cone_ids: number[]
+  }>) {
+    for (const coneId of tx.cone_ids ?? []) {
+      if (!txByConeId.has(coneId)) {
+        // newest-first order from query → first seen = most recent tx
+        txByConeId.set(coneId, {
+          created_at: tx.created_at,
+          performed_by: tx.performed_by,
+        })
+        allConeIds.push(coneId)
+      }
+    }
+  }
+
+  if (allConeIds.length === 0) return new Map<ThreadKey, LastTransferEntry>()
+
+  // Batch-fetch cone details (chunked to stay under PostgREST limits)
+  const CHUNK = 1000
+  const coneDetails: Array<{
+    id: number
+    thread_type_id: number
+    color_id: number | null
+    is_partial: boolean
+  }> = []
+  for (let i = 0; i < allConeIds.length; i += CHUNK) {
+    const chunk = allConeIds.slice(i, i + CHUNK)
+    const { data: rows, error: rowErr } = await supabaseAdmin
+      .from('thread_inventory')
+      .select('id, thread_type_id, color_id, is_partial')
+      .in('id', chunk)
+      .limit(CHUNK)
+    if (rowErr) throw rowErr
+    coneDetails.push(
+      ...((rows ?? []) as Array<{
+        id: number
+        thread_type_id: number
+        color_id: number | null
+        is_partial: boolean
+      }>),
+    )
+  }
+
+  const map = new Map<ThreadKey, LastTransferEntry>()
+  // Group cones by thread key, tracking the most-recent tx per key
+  const keyTxMap = new Map<
+    ThreadKey,
+    { created_at: string; performed_by: string | null; full_cones: number; partial_cones: number }
+  >()
+  for (const cone of coneDetails) {
+    const tx = txByConeId.get(cone.id)
+    if (!tx) continue
+    const key: ThreadKey = `${cone.thread_type_id}_${cone.color_id ?? ''}`
+    const existing = keyTxMap.get(key)
+    if (!existing || tx.created_at > existing.created_at) {
+      keyTxMap.set(key, {
+        created_at: tx.created_at,
+        performed_by: tx.performed_by,
+        full_cones: cone.is_partial ? 0 : 1,
+        partial_cones: cone.is_partial ? 1 : 0,
+      })
+    } else if (tx.created_at === existing.created_at) {
+      if (cone.is_partial) existing.partial_cones++
+      else existing.full_cones++
+    }
+  }
+  for (const [key, entry] of keyTxMap) {
+    map.set(key, {
+      transferred_at: entry.created_at,
+      by_user_name: entry.performed_by ?? '',
+      full_cones: entry.full_cones,
+      partial_cones: entry.partial_cones,
+    })
+  }
+  return map
+}
+
+function buildSharedWithPosMap(
+  poQuotaMap: Map<number | null, Map<ThreadKey, AggregatedThread>>,
+): Map<ThreadKey, number[]> {
+  const map = new Map<ThreadKey, number[]>()
+  for (const [poId, quotaMap] of poQuotaMap) {
+    if (poId == null) continue
+    for (const key of quotaMap.keys()) {
+      const arr = map.get(key) ?? []
+      arr.push(poId)
+      map.set(key, arr)
+    }
+  }
+  return map
+}
+
 const router = new Hono<AppEnv>()
 
 router.get(
