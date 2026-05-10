@@ -552,18 +552,126 @@ router.get(
   '/:weekId/transfer-history-thread',
   requirePermission('thread.batch.transfer'),
   async (c) => {
-    const weekIdRaw = c.req.param('weekId')
-    if (!/^\d+$/.test(weekIdRaw)) {
-      return c.json({ data: null, error: 'weekId không hợp lệ' }, 400)
+    try {
+      const weekIdRaw = c.req.param('weekId')
+      if (!/^\d+$/.test(weekIdRaw)) {
+        return c.json({ data: null, error: 'weekId không hợp lệ' }, 400)
+      }
+      const weekId = Number(weekIdRaw)
+
+      const queryParse = threadTransferHistoryQuerySchema.safeParse({
+        thread_type_id: c.req.query('thread_type_id'),
+        thread_color_id: c.req.query('thread_color_id'),
+      })
+      if (!queryParse.success) {
+        return c.json({ data: null, error: queryParse.error.issues[0]?.message ?? 'Tham số không hợp lệ' }, 400)
+      }
+      const { thread_type_id, thread_color_id } = queryParse.data
+
+      // Step A: Fetch all TRANSFER transactions for this week
+      const { data: txs, error: txErr } = await supabaseAdmin
+        .from('batch_transactions')
+        .select('id, performed_at, performed_by, cone_ids, from_warehouse_id, to_warehouse_id')
+        .eq('operation_type', 'TRANSFER')
+        .like('notes', `%Tuần #${weekId}%`)
+        .order('performed_at', { ascending: false })
+        .limit(200)
+      if (txErr) throw txErr
+
+      if (!txs || txs.length === 0) {
+        return c.json({ data: [], error: null })
+      }
+
+      // Step B: Collect all warehouse IDs and batch-fetch warehouse details
+      const warehouseIdSet = new Set<number>()
+      for (const tx of txs as Array<{ from_warehouse_id: number | null; to_warehouse_id: number | null }>) {
+        if (tx.from_warehouse_id != null) warehouseIdSet.add(tx.from_warehouse_id)
+        if (tx.to_warehouse_id != null) warehouseIdSet.add(tx.to_warehouse_id)
+      }
+      const warehouseIds = Array.from(warehouseIdSet)
+      const warehouseMap = new Map<number, { id: number; code: string; name: string }>()
+      if (warehouseIds.length > 0) {
+        const { data: whs, error: whErr } = await supabaseAdmin
+          .from('warehouses')
+          .select('id, code, name')
+          .in('id', warehouseIds)
+          .limit(warehouseIds.length)
+        if (whErr) throw whErr
+        for (const wh of (whs ?? []) as Array<{ id: number; code: string; name: string }>) {
+          warehouseMap.set(wh.id, wh)
+        }
+      }
+
+      // Step C: Collect all cone_ids and batch-fetch thread_inventory filtered by thread_type_id + color_id
+      const allConeIds: number[] = []
+      for (const tx of txs as Array<{ cone_ids: number[] }>) {
+        for (const id of tx.cone_ids ?? []) allConeIds.push(id)
+      }
+      const uniqueConeIds = Array.from(new Set(allConeIds))
+
+      const CHUNK = 1000
+      const coneMap = new Map<number, { is_partial: boolean }>()
+      for (let i = 0; i < uniqueConeIds.length; i += CHUNK) {
+        const chunk = uniqueConeIds.slice(i, i + CHUNK)
+        const { data: rows, error: rowErr } = await supabaseAdmin
+          .from('thread_inventory')
+          .select('id, is_partial')
+          .in('id', chunk)
+          .eq('thread_type_id', thread_type_id)
+          .eq('color_id', thread_color_id)
+          .limit(CHUNK)
+        if (rowErr) throw rowErr
+        for (const row of (rows ?? []) as Array<{ id: number; is_partial: boolean }>) {
+          coneMap.set(row.id, { is_partial: row.is_partial })
+        }
+      }
+
+      // Step D: For each transaction, count matching cones
+      const entries: Array<{
+        transaction_id: number
+        transferred_at: string
+        by_user_name: string
+        source_warehouse_name: string
+        destination_warehouse_name: string
+        full_cones: number
+        partial_cones: number
+        total_cones: number
+      }> = []
+
+      for (const tx of txs as Array<{
+        id: number
+        performed_at: string
+        performed_by: string | null
+        cone_ids: number[]
+        from_warehouse_id: number | null
+        to_warehouse_id: number | null
+      }>) {
+        let full_cones = 0
+        let partial_cones = 0
+        for (const coneId of tx.cone_ids ?? []) {
+          const cone = coneMap.get(coneId)
+          if (!cone) continue
+          if (cone.is_partial) partial_cones++
+          else full_cones++
+        }
+        if (full_cones === 0 && partial_cones === 0) continue
+        entries.push({
+          transaction_id: tx.id,
+          transferred_at: tx.performed_at,
+          by_user_name: tx.performed_by ?? '',
+          source_warehouse_name: tx.from_warehouse_id != null ? (warehouseMap.get(tx.from_warehouse_id)?.name ?? '') : '',
+          destination_warehouse_name: tx.to_warehouse_id != null ? (warehouseMap.get(tx.to_warehouse_id)?.name ?? '') : '',
+          full_cones,
+          partial_cones,
+          total_cones: full_cones + partial_cones,
+        })
+      }
+
+      return c.json({ data: entries, error: null })
+    } catch (err) {
+      console.error('[transfer-history-thread] failed:', err)
+      return c.json({ data: null, error: err instanceof Error ? err.message : 'Lỗi truy vấn' }, 500)
     }
-    const queryParse = threadTransferHistoryQuerySchema.safeParse({
-      thread_type_id: c.req.query('thread_type_id'),
-      thread_color_id: c.req.query('thread_color_id'),
-    })
-    if (!queryParse.success) {
-      return c.json({ data: null, error: queryParse.error.issues[0]?.message ?? 'Tham số không hợp lệ' }, 400)
-    }
-    return c.json({ data: null, error: 'Not implemented' }, 501)
   },
 )
 
