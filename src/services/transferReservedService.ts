@@ -4,6 +4,8 @@ import type {
   TransferReservedBody,
   TransferReservedResult,
   PoSearchResult,
+  TransferByCalcResponse,
+  ThreadTransferHistoryEntry,
 } from '@/types/transferReserved'
 
 interface ApiResponse<T> {
@@ -18,6 +20,24 @@ export const transferReservedService = {
     if (toWarehouseId != null) params.set('to_warehouse_id', String(toWarehouseId))
     return fetchApi<ApiResponse<ReservedByPoResponse>>(
       `/api/weekly-orders/${weekId}/reserved-by-po?${params.toString()}`,
+    )
+  },
+
+  async getTransferByCalculation(weekId: number, warehouseId: number, toWarehouseId?: number | null) {
+    const params = new URLSearchParams({ warehouse_id: String(warehouseId) })
+    if (toWarehouseId != null) params.set('to_warehouse_id', String(toWarehouseId))
+    return fetchApi<ApiResponse<TransferByCalcResponse>>(
+      `/api/weekly-orders/${weekId}/transfer-by-calculation?${params.toString()}`,
+    )
+  },
+
+  async getThreadTransferHistory(weekId: number, threadTypeId: number, threadColorId: number) {
+    const params = new URLSearchParams({
+      thread_type_id: String(threadTypeId),
+      thread_color_id: String(threadColorId),
+    })
+    return fetchApi<ApiResponse<ThreadTransferHistoryEntry[]>>(
+      `/api/weekly-orders/${weekId}/transfer-history-thread?${params.toString()}`,
     )
   },
 
