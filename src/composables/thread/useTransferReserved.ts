@@ -46,7 +46,7 @@ export function useTransferReserved() {
       } else {
         data.value = res.data
         selected.value = new Map()
-        if (res.message) snackbar.error(res.message)
+        if (res.message) snackbar.info(res.message)
       }
     } catch (e: unknown) {
       snackbar.error(e instanceof Error ? e.message : 'Lỗi tải dữ liệu')

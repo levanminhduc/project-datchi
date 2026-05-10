@@ -124,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import type { TransferThreadLine, TransferPoGroup } from '@/types/transferReserved'
 
@@ -148,7 +149,7 @@ const emit = defineEmits<{
   (e: 'open-history', line: TransferThreadLine): void
 }>()
 
-const headerLabel = `PO ${props.poNumber} (#${props.displayOrder})`
+const headerLabel = computed(() => `PO ${props.poNumber} (#${props.displayOrder})`)
 
 const columns = [
   { name: 'pick', label: '', field: 'pick', align: 'center' as const },
