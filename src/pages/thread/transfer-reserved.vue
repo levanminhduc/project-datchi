@@ -85,7 +85,6 @@
       :selected-in-other-po="selectedInOtherPo"
       @toggle="toggle"
       @set-full-quantity="setFullQuantity"
-      @open-history="openHistory"
       @open-po-history="openPoHistory(po.po_id, po.po_number, po.thread_lines, po.summary)"
     />
 
@@ -140,14 +139,6 @@
       </div>
     </q-card>
 
-    <ThreadHistoryDialog
-      v-model="historyDialogOpen"
-      :week-id="weekId"
-      :thread-type-id="historyThreadTypeId"
-      :thread-color-id="historyThreadColorId"
-      :thread-label="historyThreadLabel"
-    />
-
     <PoHistoryDialog
       v-model="showPoHistory"
       :week-id="weekId"
@@ -170,7 +161,6 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { warehouseService } from '@/services/warehouseService'
 import PoSection from '@/components/thread/transfer-reserved/PoSection.vue'
-import ThreadHistoryDialog from '@/components/thread/transfer-reserved/ThreadHistoryDialog.vue'
 import PoHistoryDialog from '@/components/thread/transfer-reserved/PoHistoryDialog.vue'
 import PoSearchPopup from '@/components/thread/transfer-reserved/PoSearchPopup.vue'
 import type { TransferThreadLine, TransferPoGroup } from '@/types/transferReserved'
@@ -203,11 +193,6 @@ const snackbar = useSnackbar()
 
 const weekOptions = ref<Array<{ label: string; value: number }>>([])
 const warehouseOptions = ref<Array<{ label: string; value: number }>>([])
-
-const historyDialogOpen = ref(false)
-const historyThreadTypeId = ref<number | null>(null)
-const historyThreadColorId = ref<number | null>(null)
-const historyThreadLabel = ref('')
 
 const showPoHistory = ref(false)
 const poHistoryPoId = ref<number | null>(null)
@@ -244,13 +229,6 @@ async function onPoSearchSelect(payload: { weekId: number; poNumber: string }) {
       ;(section.$el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
-}
-
-function openHistory(line: TransferThreadLine) {
-  historyThreadTypeId.value = line.thread_type_id
-  historyThreadColorId.value = line.thread_color_id
-  historyThreadLabel.value = `${line.supplier_name} - Tex ${line.tex_number} - ${line.color_name}`
-  historyDialogOpen.value = true
 }
 
 function openPoHistory(poId: number | null, poNumber: string, lines: TransferThreadLine[], summary: TransferPoGroup['summary'] | null) {

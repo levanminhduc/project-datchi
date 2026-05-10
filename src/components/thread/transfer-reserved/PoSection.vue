@@ -124,35 +124,6 @@
             >—</span>
           </q-td>
         </template>
-        <template #body-cell-history="props">
-          <q-td
-            :props="props"
-            class="text-right"
-          >
-            <div
-              v-if="props.row.last_transfer"
-              class="text-caption text-grey-8"
-            >
-              Lần cuối: {{ props.row.last_transfer.full_cones + props.row.last_transfer.partial_cones }} cuộn ·
-              {{ formatDateTime(props.row.last_transfer.transferred_at) }} ·
-              {{ props.row.last_transfer.by_user_name }}
-            </div>
-            <div
-              v-else
-              class="text-caption text-grey"
-            >
-              Chưa có lịch sử
-            </div>
-            <q-btn
-              flat
-              dense
-              icon="history"
-              size="sm"
-              label="Lịch sử"
-              @click="emit('open-history', props.row)"
-            />
-          </q-td>
-        </template>
       </q-table>
     </q-card>
   </q-expansion-item>
@@ -181,7 +152,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'toggle', poId: number | null, line: TransferThreadLine): void
   (e: 'set-full-quantity', tt: number, cc: number, q: number): void
-  (e: 'open-history', line: TransferThreadLine): void
   (e: 'open-po-history'): void
 }>()
 
@@ -193,7 +163,6 @@ const columns = [
   { name: 'quota', label: 'Định mức / Đã / Còn', field: 'quota', align: 'right' as const },
   { name: 'source', label: 'Kho nguồn', field: 'source', align: 'right' as const },
   { name: 'full_qty', label: 'Chuyển', field: 'full_qty', align: 'right' as const },
-  { name: 'history', label: 'Lịch sử', field: 'history', align: 'left' as const },
 ]
 
 function rowLabel(row: TransferThreadLine) {
@@ -214,10 +183,5 @@ function otherPoNumber(row: TransferThreadLine) {
   const otherId = props.selectedInOtherPo(props.poId, row.thread_type_id, row.thread_color_id)
   if (otherId == null) return ''
   return props.poNumberByPoId.get(otherId) ?? otherId
-}
-
-function formatDateTime(iso: string) {
-  const d = new Date(iso)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 </script>
