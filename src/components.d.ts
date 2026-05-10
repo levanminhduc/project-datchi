@@ -116,6 +116,7 @@ declare module 'vue' {
     PendingAllocationsWidget: typeof import('./components/thread/PendingAllocationsWidget.vue')['default']
     PercentageSelector: typeof import('./components/thread/PercentageSelector.vue')['default']
     POFormDialog: typeof import('./components/thread/POFormDialog.vue')['default']
+    PoHistoryDialog: typeof import('./components/thread/transfer-reserved/PoHistoryDialog.vue')['default']
     POItemHistoryDialog: typeof import('./components/thread/POItemHistoryDialog.vue')['default']
     POOrderCard: typeof import('./components/thread/weekly-order/POOrderCard.vue')['default']
     PopupEdit: typeof import('./components/ui/dialogs/PopupEdit.vue')['default']

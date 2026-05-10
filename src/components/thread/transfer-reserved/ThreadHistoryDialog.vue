@@ -8,14 +8,26 @@
       Lịch sử chuyển — {{ threadLabel }}
     </template>
     <template #default>
-      <div v-if="loading" class="q-pa-md text-center">
+      <div
+        v-if="loading"
+        class="q-pa-md text-center"
+      >
         <q-spinner size="32px" />
       </div>
-      <div v-else-if="!entries.length" class="q-pa-md text-grey">
+      <div
+        v-else-if="!entries.length"
+        class="q-pa-md text-grey"
+      >
         Chưa có lịch sử chuyển kho cho loại chỉ này.
       </div>
-      <q-list v-else separator>
-        <q-item v-for="e in entries" :key="e.transaction_id">
+      <q-list
+        v-else
+        separator
+      >
+        <q-item
+          v-for="e in entries"
+          :key="e.transaction_id"
+        >
           <q-item-section>
             <q-item-label>
               {{ e.full_cones + e.partial_cones }} cuộn

@@ -41,8 +41,12 @@
                 bordered
                 class="text-center q-pa-sm"
               >
-                <div class="text-caption text-grey">Định mức</div>
-                <div class="text-h6">{{ summary?.total_needed ?? 0 }}</div>
+                <div class="text-caption text-grey">
+                  Định mức
+                </div>
+                <div class="text-h6">
+                  {{ summary?.total_needed ?? 0 }}
+                </div>
               </q-card>
             </div>
             <div class="col-4">
@@ -51,8 +55,12 @@
                 bordered
                 class="text-center q-pa-sm"
               >
-                <div class="text-caption text-grey">Đã chuyển</div>
-                <div class="text-h6 text-positive">{{ summary?.total_transferred ?? 0 }}</div>
+                <div class="text-caption text-grey">
+                  Đã chuyển
+                </div>
+                <div class="text-h6 text-positive">
+                  {{ summary?.total_transferred ?? 0 }}
+                </div>
               </q-card>
             </div>
             <div class="col-4">
@@ -61,8 +69,12 @@
                 bordered
                 class="text-center q-pa-sm"
               >
-                <div class="text-caption text-grey">Còn thiếu</div>
-                <div class="text-h6 text-negative">{{ summary?.total_pending ?? 0 }}</div>
+                <div class="text-caption text-grey">
+                  Còn thiếu
+                </div>
+                <div class="text-h6 text-negative">
+                  {{ summary?.total_pending ?? 0 }}
+                </div>
               </q-card>
             </div>
           </div>
