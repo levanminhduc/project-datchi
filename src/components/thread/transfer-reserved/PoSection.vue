@@ -21,12 +21,20 @@
         >
           ĐM tổng: <b>{{ summary.total_needed }}</b> ·
           Đã chuyển: <b>{{ summary.total_transferred }}</b> ·
-          Còn theo ĐM: <b>{{ summary.total_pending }}</b>
+          <template v-if="summary.total_transferred > summary.total_needed">
+            <span class="text-red">Vượt: +{{ summary.total_transferred - summary.total_needed }}</span>
+          </template>
+          <template v-else>
+            Còn theo ĐM: <b>{{ summary.total_pending }}</b>
+          </template>
         </div>
       </q-item-section>
     </template>
 
-    <q-card flat bordered>
+    <q-card
+      flat
+      bordered
+    >
       <q-table
         :rows="lines"
         :columns="columns"
@@ -62,14 +70,25 @@
           </q-td>
         </template>
         <template #body-cell-quota="props">
-          <q-td :props="props" class="text-right">
+          <q-td
+            :props="props"
+            class="text-right"
+          >
             ĐM <b>{{ props.row.quota_cones }}</b> ·
             Đã <b>{{ props.row.transferred_for_po }}</b> ·
-            Còn <b>{{ props.row.pending_for_po }}</b>
+            <template v-if="props.row.transferred_for_po > props.row.quota_cones">
+              <span class="text-red">(+{{ props.row.transferred_for_po - props.row.quota_cones }} dư)</span>
+            </template>
+            <template v-else>
+              Còn <b>{{ props.row.pending_for_po }}</b>
+            </template>
           </q-td>
         </template>
         <template #body-cell-source="props">
-          <q-td :props="props" class="text-right">
+          <q-td
+            :props="props"
+            class="text-right"
+          >
             {{ props.row.reserved_at_source }}
           </q-td>
         </template>
@@ -89,11 +108,17 @@
                 )
               "
             />
-            <span v-else class="text-grey">—</span>
+            <span
+              v-else
+              class="text-grey"
+            >—</span>
           </q-td>
         </template>
         <template #body-cell-history="props">
-          <q-td :props="props" class="text-right">
+          <q-td
+            :props="props"
+            class="text-right"
+          >
             <div
               v-if="props.row.last_transfer"
               class="text-caption text-grey-8"
