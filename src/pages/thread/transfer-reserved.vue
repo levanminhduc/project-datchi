@@ -129,13 +129,24 @@
           label="Hủy"
           @click="clearSelection"
         />
-        <AppButton
-          color="primary"
-          :loading="submitting"
-          :disable="!canSubmit"
-          label="Chuyển"
-          @click="onSubmit"
-        />
+        <span class="transfer-submit-tooltip-target">
+          <AppButton
+            color="primary"
+            :loading="submitting"
+            :disable="!canSubmit"
+            label="Chuyển"
+            @click="onSubmit"
+          />
+          <q-tooltip
+            v-if="!toWarehouseId"
+            anchor="top middle"
+            self="bottom middle"
+            :offset="[0, 24]"
+            class="transfer-submit-tooltip"
+          >
+            Hãy chọn Kho muốn chuyển đến
+          </q-tooltip>
+        </span>
       </div>
     </q-card>
 
@@ -328,5 +339,17 @@ onMounted(() => {
   bottom: 0;
   z-index: 10;
   background: white;
+}
+
+.transfer-submit-tooltip-target {
+  display: inline-block;
+}
+
+:global(.transfer-submit-tooltip) {
+  z-index: 3000;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 500;
 }
 </style>
