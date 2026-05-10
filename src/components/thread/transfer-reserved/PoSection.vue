@@ -65,12 +65,14 @@
         <template #body-cell-thread="props">
           <q-td :props="props">
             <div>{{ rowLabel(props.row) }}</div>
+            <!-- Hidden: share PO info
             <div
               v-if="props.row.shared_with_pos.length > 0"
               class="text-caption text-orange-9"
             >
               (share {{ sharedLabel(props.row) }})
             </div>
+            -->
             <div
               v-if="isDisabledByOther(props.row)"
               class="text-caption text-grey-7"
