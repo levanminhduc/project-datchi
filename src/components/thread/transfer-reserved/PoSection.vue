@@ -6,7 +6,7 @@
   >
     <template #header>
       <q-item-section>
-        <div class="row items-center q-gutter-sm">
+        <div class="row items-center q-gutter-sm full-width">
           <span class="text-weight-medium">{{ headerLabel }}</span>
           <q-chip
             dense
@@ -14,14 +14,13 @@
             text-color="grey-9"
             :label="`${lines.length} loại chỉ`"
           />
+          <q-space />
           <q-btn
             v-if="poId != null"
-            flat
-            dense
+            outline
             icon="history"
-            size="sm"
+            color="primary"
             label="Lịch sử PO"
-            class="q-ml-sm"
             @click.stop="emit('open-po-history')"
           />
         </div>
@@ -29,13 +28,13 @@
           v-if="summary"
           class="text-caption text-grey-8 q-mt-xs"
         >
-          ĐM tổng: <b>{{ summary.total_needed }}</b> ·
+          Định mức tổng: <b>{{ summary.total_needed }}</b> ·
           Đã chuyển: <b>{{ summary.total_transferred }}</b> ·
           <template v-if="summary.total_transferred > summary.total_needed">
             <span class="text-red">Vượt: +{{ summary.total_transferred - summary.total_needed }}</span>
           </template>
           <template v-else>
-            Còn theo ĐM: <b>{{ summary.total_pending }}</b>
+            Còn theo định mức: <b>{{ summary.total_pending }}</b>
           </template>
         </div>
       </q-item-section>
@@ -86,8 +85,8 @@
             :props="props"
             class="text-right"
           >
-            ĐM <b>{{ props.row.quota_cones }}</b> ·
-            Đã <b>{{ props.row.transferred_for_po }}</b> ·
+            Định mức <b>{{ props.row.quota_cones }}</b> ·
+            Đã chuyển <b>{{ props.row.transferred_for_po }}</b> ·
             <template v-if="props.row.transferred_for_po > props.row.quota_cones">
               <span class="text-red">(+{{ props.row.transferred_for_po - props.row.quota_cones }} dư)</span>
             </template>
@@ -162,7 +161,7 @@ const headerLabel = computed(() => `PO ${props.poNumber} (#${props.displayOrder}
 const columns = [
   { name: 'pick', label: '', field: 'pick', align: 'center' as const },
   { name: 'thread', label: 'Loại chỉ', field: 'thread', align: 'left' as const },
-  { name: 'quota', label: 'Định mức / Đã / Còn', field: 'quota', align: 'right' as const },
+  { name: 'quota', label: 'Định mức / Đã chuyển / Còn', field: 'quota', align: 'right' as const },
   { name: 'source', label: 'Kho nguồn', field: 'source', align: 'right' as const },
   { name: 'full_qty', label: 'Chuyển', field: 'full_qty', align: 'right' as const },
 ]
