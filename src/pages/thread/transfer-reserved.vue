@@ -4,7 +4,11 @@
       Chuyển kho cho chỉ đã gán theo Tuần
     </div>
 
-    <q-card flat bordered class="q-pa-md q-mb-md">
+    <q-card
+      flat
+      bordered
+      class="q-pa-md q-mb-md"
+    >
       <div class="row q-col-gutter-md items-center">
         <div class="col-12 col-md-3">
           <AppSelect
@@ -54,7 +58,12 @@
       </div>
     </q-card>
 
-    <q-card v-if="data" flat bordered class="q-mb-md q-pa-sm">
+    <q-card
+      v-if="data"
+      flat
+      bordered
+      class="q-mb-md q-pa-sm"
+    >
       Tổng quan tuần: {{ data.pos.length }} PO ·
       {{ totalLines }} loại chỉ ·
       Kho nguồn {{ totalAtSource }} ·
@@ -77,6 +86,7 @@
       @toggle="toggle"
       @set-full-quantity="setFullQuantity"
       @open-history="openHistory"
+      @open-po-history="openPoHistory(po.po_id, po.po_number, po.thread_lines, po.summary)"
     />
 
     <q-card
@@ -85,7 +95,9 @@
       bordered
       class="q-pa-md q-mb-md"
     >
-      <div class="text-subtitle1 q-mb-sm">Đặt thêm ngoài định mức</div>
+      <div class="text-subtitle1 q-mb-sm">
+        Đặt thêm ngoài định mức
+      </div>
       <div
         v-for="line in data.additional"
         :key="`${line.thread_type_id}_${line.thread_color_id}`"
@@ -93,7 +105,10 @@
       >
         <span>{{ line.supplier_name }} - Tex {{ line.tex_number }} - {{ line.color_name }}</span>
         <span class="text-caption q-ml-md">
-          <span v-if="line.is_overflow" class="text-red">Vượt: +{{ line.reserved_at_destination }}</span>
+          <span
+            v-if="line.is_overflow"
+            class="text-red"
+          >Vượt: +{{ line.reserved_at_destination }}</span>
           <span v-else>Đặt thêm: {{ line.additional_quantity }}</span>
           · Kho nguồn: {{ line.reserved_at_source }} · Kho đích: {{ line.reserved_at_destination }}
         </span>
@@ -110,7 +125,11 @@
         Đã chọn: {{ selectedArray.length }} dòng · Tổng <b>{{ totalSelectedCones }}</b> cuộn
       </div>
       <div class="q-gutter-sm">
-        <AppButton flat label="Hủy" @click="clearSelection" />
+        <AppButton
+          flat
+          label="Hủy"
+          @click="clearSelection"
+        />
         <AppButton
           color="primary"
           :loading="submitting"
@@ -128,6 +147,16 @@
       :thread-color-id="historyThreadColorId"
       :thread-label="historyThreadLabel"
     />
+
+    <PoHistoryDialog
+      v-model="showPoHistory"
+      :week-id="weekId"
+      :po-id="poHistoryPoId"
+      :po-number="poHistoryPoNumber"
+      :to-warehouse-id="toWarehouseId"
+      :lines="poHistoryLines"
+      :summary="poHistorySummary"
+    />
   </q-page>
 </template>
 
@@ -142,8 +171,9 @@ import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { warehouseService } from '@/services/warehouseService'
 import PoSection from '@/components/thread/transfer-reserved/PoSection.vue'
 import ThreadHistoryDialog from '@/components/thread/transfer-reserved/ThreadHistoryDialog.vue'
+import PoHistoryDialog from '@/components/thread/transfer-reserved/PoHistoryDialog.vue'
 import PoSearchPopup from '@/components/thread/transfer-reserved/PoSearchPopup.vue'
-import type { TransferThreadLine } from '@/types/transferReserved'
+import type { TransferThreadLine, TransferPoGroup } from '@/types/transferReserved'
 
 const {
   weekId,
@@ -178,6 +208,12 @@ const historyDialogOpen = ref(false)
 const historyThreadTypeId = ref<number | null>(null)
 const historyThreadColorId = ref<number | null>(null)
 const historyThreadLabel = ref('')
+
+const showPoHistory = ref(false)
+const poHistoryPoId = ref<number | null>(null)
+const poHistoryPoNumber = ref('')
+const poHistoryLines = ref<TransferThreadLine[]>([])
+const poHistorySummary = ref<TransferPoGroup['summary'] | null>(null)
 
 const poSectionRefsMap = ref<Map<string, InstanceType<typeof PoSection>>>(new Map())
 
@@ -215,6 +251,14 @@ function openHistory(line: TransferThreadLine) {
   historyThreadColorId.value = line.thread_color_id
   historyThreadLabel.value = `${line.supplier_name} - Tex ${line.tex_number} - ${line.color_name}`
   historyDialogOpen.value = true
+}
+
+function openPoHistory(poId: number | null, poNumber: string, lines: TransferThreadLine[], summary: TransferPoGroup['summary'] | null) {
+  poHistoryPoId.value = poId
+  poHistoryPoNumber.value = poNumber
+  poHistoryLines.value = lines
+  poHistorySummary.value = summary
+  showPoHistory.value = true
 }
 
 async function loadWeeks() {
