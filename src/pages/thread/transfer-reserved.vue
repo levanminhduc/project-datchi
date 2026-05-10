@@ -4,11 +4,7 @@
       Chuyển kho cho chỉ đã gán theo Tuần
     </div>
 
-    <q-card
-      flat
-      bordered
-      class="q-pa-md q-mb-md"
-    >
+    <q-card flat bordered class="q-pa-md q-mb-md">
       <div class="row q-col-gutter-md items-center">
         <div class="col-12 col-md-3">
           <AppSelect
@@ -44,17 +40,10 @@
             label="Kho đích"
             emit-value
             map-options
+            @update:model-value="onDestChange"
           />
         </div>
-        <div class="col-12 col-md-3 text-right q-gutter-sm">
-          <AppButton
-            flat
-            color="primary"
-            icon="history"
-            :disable="!weekId"
-            label="Xem lịch sử"
-            @click="openHistory"
-          />
+        <div class="col-12 text-right q-gutter-sm">
           <AppButton
             :loading="loading"
             :disable="!weekId || !fromWarehouseId"
@@ -65,48 +54,51 @@
       </div>
     </q-card>
 
-    <TransferHistoryDialog
-      ref="historyDialogRef"
-      v-model="showHistory"
-      :week-id="weekId"
-      :week-label="selectedWeekLabel"
-    />
-
-    <q-card
-      v-if="data"
-      flat
-      bordered
-      class="q-mb-md q-pa-sm"
-    >
-      Tổng quan: {{ data.pos.length }} PO ·
+    <q-card v-if="data" flat bordered class="q-mb-md q-pa-sm">
+      Tổng quan tuần: {{ data.pos.length }} PO ·
       {{ totalLines }} loại chỉ ·
-      {{ totalAvailableCones }} cuộn ở {{ data.source_warehouse.name }}
+      Kho nguồn {{ totalAtSource }} ·
+      Kho đích {{ totalAtDest }}
     </q-card>
 
     <PoSection
       v-for="po in data?.pos || []"
       :ref="(el) => collectPoRef(el, po.po_number)"
-      :key="po.po_id"
-      :title="po.po_number"
+      :key="po.po_id ?? 'null'"
+      :po-id="po.po_id"
+      :po-number="po.po_number"
+      :display-order="po.display_order"
       :lines="po.thread_lines"
-      :to-warehouse-id="toWarehouseId"
+      :summary="po.summary"
+      :po-number-by-po-id="poNumberByPoId"
       :is-selected="isSelected"
       :get-selection="getSelection"
+      :selected-in-other-po="selectedInOtherPo"
       @toggle="toggle"
       @set-full-quantity="setFullQuantity"
-      @set-partial-quantity="setPartialQuantity"
+      @open-history="openHistory"
     />
-    <PoSection
-      v-if="data && data.unassigned.thread_lines.length"
-      title="Không thuộc PO nào"
-      :lines="data.unassigned.thread_lines"
-      :to-warehouse-id="toWarehouseId"
-      :is-selected="isSelected"
-      :get-selection="getSelection"
-      @toggle="toggle"
-      @set-full-quantity="setFullQuantity"
-      @set-partial-quantity="setPartialQuantity"
-    />
+
+    <q-card
+      v-if="data && data.additional.length > 0"
+      flat
+      bordered
+      class="q-pa-md q-mb-md"
+    >
+      <div class="text-subtitle1 q-mb-sm">Đặt thêm ngoài định mức</div>
+      <div
+        v-for="line in data.additional"
+        :key="`${line.thread_type_id}_${line.thread_color_id}`"
+        class="q-py-xs"
+      >
+        <span>{{ line.supplier_name }} - Tex {{ line.tex_number }} - {{ line.color_name }}</span>
+        <span class="text-caption q-ml-md">
+          <span v-if="line.is_overflow" class="text-red">Vượt: +{{ line.reserved_at_destination }}</span>
+          <span v-else>Đặt thêm: {{ line.additional_quantity }}</span>
+          · Kho nguồn: {{ line.reserved_at_source }} · Kho đích: {{ line.reserved_at_destination }}
+        </span>
+      </div>
+    </q-card>
 
     <q-card
       v-if="selectedArray.length"
@@ -115,15 +107,10 @@
       class="q-pa-md row items-center justify-between sticky-footer"
     >
       <div>
-        Đã chọn: {{ selectedArray.length }} dòng · Tổng
-        <b>{{ totalSelectedCones }}</b> cuộn
+        Đã chọn: {{ selectedArray.length }} dòng · Tổng <b>{{ totalSelectedCones }}</b> cuộn
       </div>
       <div class="q-gutter-sm">
-        <AppButton
-          flat
-          label="Hủy"
-          @click="clearSelection"
-        />
+        <AppButton flat label="Hủy" @click="clearSelection" />
         <AppButton
           color="primary"
           :loading="submitting"
@@ -133,6 +120,14 @@
         />
       </div>
     </q-card>
+
+    <ThreadHistoryDialog
+      v-model="historyDialogOpen"
+      :week-id="weekId"
+      :thread-type-id="historyThreadTypeId"
+      :thread-color-id="historyThreadColorId"
+      :thread-label="historyThreadLabel"
+    />
   </q-page>
 </template>
 
@@ -146,8 +141,9 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { warehouseService } from '@/services/warehouseService'
 import PoSection from '@/components/thread/transfer-reserved/PoSection.vue'
-import TransferHistoryDialog from '@/components/thread/transfer-reserved/TransferHistoryDialog.vue'
+import ThreadHistoryDialog from '@/components/thread/transfer-reserved/ThreadHistoryDialog.vue'
 import PoSearchPopup from '@/components/thread/transfer-reserved/PoSearchPopup.vue'
+import type { TransferThreadLine } from '@/types/transferReserved'
 
 const {
   weekId,
@@ -166,8 +162,11 @@ const {
   submit,
   isSelected,
   getSelection,
+  selectedInOtherPo,
   selected,
 } = useTransferReserved()
+
+void setPartialQuantity
 
 const { confirm } = useConfirm()
 const snackbar = useSnackbar()
@@ -175,13 +174,11 @@ const snackbar = useSnackbar()
 const weekOptions = ref<Array<{ label: string; value: number }>>([])
 const warehouseOptions = ref<Array<{ label: string; value: number }>>([])
 
-const showHistory = ref(false)
-const historyDialogRef = ref<InstanceType<typeof TransferHistoryDialog> | null>(null)
-const selectedWeekLabel = computed(
-  () => weekOptions.value.find((w) => w.value === weekId.value)?.label || ''
-)
+const historyDialogOpen = ref(false)
+const historyThreadTypeId = ref<number | null>(null)
+const historyThreadColorId = ref<number | null>(null)
+const historyThreadLabel = ref('')
 
-const searchedPoNumber = ref<string | null>(null)
 const poSectionRefsMap = ref<Map<string, InstanceType<typeof PoSection>>>(new Map())
 
 function collectPoRef(el: unknown, poNumber: string) {
@@ -192,9 +189,16 @@ function collectPoRef(el: unknown, poNumber: string) {
   }
 }
 
+const poNumberByPoId = computed(() => {
+  const map = new Map<number, string>()
+  for (const p of data.value?.pos ?? []) {
+    if (p.po_id != null) map.set(p.po_id, p.po_number)
+  }
+  return map
+})
+
 async function onPoSearchSelect(payload: { weekId: number; poNumber: string }) {
   weekId.value = payload.weekId
-  searchedPoNumber.value = payload.poNumber
   selected.value = new Map()
   if (fromWarehouseId.value) {
     await fetchData()
@@ -203,22 +207,20 @@ async function onPoSearchSelect(payload: { weekId: number; poNumber: string }) {
     if (section?.$el) {
       ;(section.$el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
-    searchedPoNumber.value = null
   }
 }
 
-function openHistory() {
-  if (!weekId.value) {
-    snackbar.error('Vui lòng chọn tuần đặt hàng trước')
-    return
-  }
-  showHistory.value = true
+function openHistory(line: TransferThreadLine) {
+  historyThreadTypeId.value = line.thread_type_id
+  historyThreadColorId.value = line.thread_color_id
+  historyThreadLabel.value = `${line.supplier_name} - Tex ${line.tex_number} - ${line.color_name}`
+  historyDialogOpen.value = true
 }
 
 async function loadWeeks() {
   try {
     const weeks = await weeklyOrderService.getAll({ status: 'CONFIRMED' })
-    weekOptions.value = weeks.map((w) => ({ label: w.week_name, value: w.id }))
+    weekOptions.value = weeks.map(w => ({ label: w.week_name, value: w.id }))
   } catch (e: unknown) {
     snackbar.error(e instanceof Error ? e.message : 'Lỗi tải danh sách tuần')
   }
@@ -228,30 +230,37 @@ async function loadWarehouses() {
   try {
     const warehouses = await warehouseService.getAll()
     warehouseOptions.value = warehouses
-      .filter((w) => w.type === 'STORAGE' && w.is_active)
-      .map((w) => ({ label: w.name, value: w.id }))
+      .filter(w => w.type === 'STORAGE' && w.is_active)
+      .map(w => ({ label: w.name, value: w.id }))
   } catch (e: unknown) {
     snackbar.error(e instanceof Error ? e.message : 'Lỗi tải danh sách kho')
   }
 }
 
-const totalLines = computed(
-  () =>
-    (data.value?.pos.reduce((s, p) => s + p.thread_lines.length, 0) || 0) +
-    (data.value?.unassigned.thread_lines.length || 0)
-)
-const totalAvailableCones = computed(() => {
-  const all = [
-    ...(data.value?.pos.flatMap((p) => p.thread_lines) || []),
-    ...(data.value?.unassigned.thread_lines || []),
-  ]
+const totalLines = computed(() => data.value?.pos.reduce((s, p) => s + p.thread_lines.length, 0) ?? 0)
+const totalAtSource = computed(() => {
   const seen = new Set<string>()
   let sum = 0
-  for (const l of all) {
-    const k = `${l.thread_type_id}-${l.color_id}`
-    if (seen.has(k)) continue
-    seen.add(k)
-    sum += l.reserved_cones_at_source
+  for (const po of data.value?.pos ?? []) {
+    for (const line of po.thread_lines) {
+      const k = `${line.thread_type_id}_${line.thread_color_id}`
+      if (seen.has(k)) continue
+      seen.add(k)
+      sum += line.reserved_at_source
+    }
+  }
+  return sum
+})
+const totalAtDest = computed(() => {
+  const seen = new Set<string>()
+  let sum = 0
+  for (const po of data.value?.pos ?? []) {
+    for (const line of po.thread_lines) {
+      const k = `${line.thread_type_id}_${line.thread_color_id}`
+      if (seen.has(k)) continue
+      seen.add(k)
+      sum += line.reserved_at_destination
+    }
   }
   return sum
 })
@@ -264,14 +273,17 @@ function onSourceChange() {
   selected.value = new Map()
   if (weekId.value && fromWarehouseId.value) fetchData()
 }
+function onDestChange() {
+  if (weekId.value && fromWarehouseId.value) fetchData()
+}
 
 function clearSelection() {
   selected.value = new Map()
 }
 
 async function onSubmit() {
-  const fromName = warehouseOptions.value.find((w) => w.value === fromWarehouseId.value)?.label || ''
-  const toName = warehouseOptions.value.find((w) => w.value === toWarehouseId.value)?.label || ''
+  const fromName = warehouseOptions.value.find(w => w.value === fromWarehouseId.value)?.label || ''
+  const toName = warehouseOptions.value.find(w => w.value === toWarehouseId.value)?.label || ''
   const ok = await confirm({
     title: 'Xác nhận chuyển kho',
     message: `Chuyển ${totalSelectedCones.value} cuộn của ${selectedArray.value.length} loại chỉ từ [${fromName}] sang [${toName}]?`,
@@ -279,10 +291,7 @@ async function onSubmit() {
     cancelText: 'Hủy',
   })
   if (!ok) return
-  const success = await submit()
-  if (success && showHistory.value) {
-    await historyDialogRef.value?.refresh()
-  }
+  await submit()
 }
 
 onMounted(() => {
