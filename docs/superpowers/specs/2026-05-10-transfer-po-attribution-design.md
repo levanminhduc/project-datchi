@@ -1,7 +1,7 @@
 # Transfer PO Attribution — Ghi nhận chuyển kho theo PO
 
 **Ngày:** 2026-05-10
-**Trạng thái:** Approved
+**Trạng thái:** Approved (updated after Codex review R1+R2)
 **Extends:** `2026-05-09-transfer-reserved-po-quota-design.md`
 
 ## Tóm tắt
@@ -26,6 +26,10 @@ Khi submit transfer, ghi `po_attribution` (JSONB) vào `batch_transactions`. Khi
 | Data cũ | Fallback sequential allocation (backward compatible) |
 | Frontend source | `selected_in_po_id` đã có sẵn trong `SelectionEntry` |
 | Vượt ĐM display | Label đỏ "(+X dư)" per thread line, "Vượt: +X" ở header |
+| Legacy vs new client | Phân biệt qua `po_id !== undefined` (new) vs omitted (legacy) |
+| Mixed-mode fallback | Per-THREAD check: nếu thread có bất kỳ attribution → dùng cho tất cả PO của thread đó |
+| Attribution query scope | Filter theo `to_warehouse_id` (destination-scoped) |
+| PO validation | Lightweight warn-only: check `po_id` thuộc `thread_order_items` của week |
 
 ## Thiết kế chi tiết
 
@@ -49,27 +53,29 @@ Format:
 
 ### 2. Migration — Sửa `fn_transfer_reserved_cones`
 
-Thêm param `p_po_attribution JSONB DEFAULT NULL`. Chỉ thay đổi INSERT:
+DROP old 5-param version trước, tạo 6-param version (tránh overload ambiguity). Dựa trên split version hiện tại (`full_quantity`/`partial_quantity`):
 
 ```sql
+DROP FUNCTION IF EXISTS fn_transfer_reserved_cones(INTEGER, INTEGER, INTEGER, JSONB, VARCHAR);
+
 CREATE OR REPLACE FUNCTION fn_transfer_reserved_cones(
   p_week_id INTEGER,
   p_from_warehouse_id INTEGER,
   p_to_warehouse_id INTEGER,
   p_items JSONB,
   p_performed_by VARCHAR,
-  p_po_attribution JSONB DEFAULT NULL  -- MỚI
+  p_po_attribution JSONB DEFAULT NULL
 ) RETURNS JSON AS $$
--- ... logic pick/transfer giữ nguyên ...
+-- ... logic pick/transfer giữ nguyên (split version) ...
   INSERT INTO batch_transactions (
     operation_type, from_warehouse_id, to_warehouse_id,
     cone_ids, cone_count, notes, performed_by, performed_at,
-    po_attribution  -- MỚI
+    po_attribution
   ) VALUES (
     'TRANSFER', p_from_warehouse_id, p_to_warehouse_id,
     v_cone_ids, v_total,
     'Chuyển kho cho Tuần #' || p_week_id, p_performed_by, NOW(),
-    p_po_attribution  -- MỚI
+    p_po_attribution
   ) RETURNING id INTO v_transaction_id;
 -- ... return giữ nguyên ...
 ```
@@ -83,20 +89,45 @@ export const transferReservedItemSchema = z.object({
   color_id: z.number().int().positive(),
   full_quantity: z.number().int().min(0),
   partial_quantity: z.number().int().min(0),
-  po_id: z.number().int().positive().nullable().optional(), // MỚI
+  po_id: z.number().int().positive().nullable().optional(),
 })
 ```
 
-### 4. Backend Route — Build `po_attribution` và gửi RPC
+`.optional()` → old clients omit (`undefined` after parse). `.nullable()` → new clients send `null` for non-PO.
+
+### 4. Backend Route — Build `po_attribution`, validate, gửi RPC
 
 ```typescript
 // server/routes/weekly-order/transfer-reserved.ts POST handler
-const poAttribution = parsed.data.items.map(item => ({
-  po_id: item.po_id ?? null,
-  thread_type_id: item.thread_type_id,
-  color_id: item.color_id,
-  cones: item.full_quantity + item.partial_quantity,
-}))
+
+// Distinguish new client (po_id present, even if null) from legacy (po_id omitted)
+const hasAttribution = parsed.data.items.some(item => item.po_id !== undefined)
+let poAttribution = null
+
+if (hasAttribution) {
+  poAttribution = parsed.data.items.map(item => ({
+    po_id: item.po_id ?? null,
+    thread_type_id: item.thread_type_id,
+    color_id: item.color_id,
+    cones: item.full_quantity + item.partial_quantity,
+  }))
+
+  // Lightweight validation: warn if po_id not in week
+  const poIds = [...new Set(poAttribution.filter(a => a.po_id != null).map(a => a.po_id!))]
+  if (poIds.length > 0) {
+    const { data: validPos } = await supabaseAdmin
+      .from('thread_order_items')
+      .select('po_id')
+      .eq('week_id', weekId)
+      .in('po_id', poIds)
+      .limit(poIds.length)
+    const validPoIds = new Set((validPos ?? []).map(p => p.po_id))
+    const invalidPoIds = poIds.filter(id => !validPoIds.has(id))
+    if (invalidPoIds.length > 0) {
+      console.warn(`[transfer-reserved] Invalid po_ids for week ${weekId}: ${invalidPoIds.join(', ')}`)
+    }
+  }
+}
 
 await supabaseAdmin.rpc('fn_transfer_reserved_cones', {
   // ... existing params ...
@@ -107,23 +138,23 @@ await supabaseAdmin.rpc('fn_transfer_reserved_cones', {
 ### 5. Backend — `fetchPoAttributionMap` trong transfer-by-calculation
 
 ```typescript
-async function fetchPoAttributionMap(weekId: number) {
+// Destination-scoped attribution query
+async function fetchPoAttributionMap(weekId: number, toWarehouseId: number | null) {
+  if (toWarehouseId == null) return new Map<string, number>()
+
   const { data, error } = await supabaseAdmin
     .from('batch_transactions')
     .select('po_attribution')
     .eq('operation_type', 'TRANSFER')
+    .eq('to_warehouse_id', toWarehouseId)
     .like('notes', `%Tuần #${weekId}%`)
     .not('po_attribution', 'is', null)
     .limit(2000)
   if (error) throw error
 
-  // Cộng dồn: Map<"poId_threadTypeId_colorId", totalCones>
   const map = new Map<string, number>()
   for (const tx of data ?? []) {
-    const items = tx.po_attribution as Array<{
-      po_id: number | null; thread_type_id: number; color_id: number; cones: number
-    }>
-    for (const item of items ?? []) {
+    for (const item of tx.po_attribution ?? []) {
       const key = `${item.po_id ?? 'null'}_${item.thread_type_id}_${item.color_id}`
       map.set(key, (map.get(key) ?? 0) + item.cones)
     }
@@ -132,16 +163,18 @@ async function fetchPoAttributionMap(weekId: number) {
 }
 ```
 
-Khi build response, ưu tiên `po_attribution`:
+Per-thread mixed-mode fallback (tránh double-counting):
 
 ```typescript
-const poAttrMap = await fetchPoAttributionMap(weekId)
+// Check if ANY PO has attribution for this thread key
+const threadKey = `${t.thread_type_id}_${t.thread_color_id}`
+const threadHasAttr = hasAttributionForThread(poAttrMap, threadKey)
 
-// Per thread line per PO:
-const attrKey = `${po.po_id ?? 'null'}_${t.thread_type_id}_${t.thread_color_id}`
-const transferred_for_po = poAttrMap.has(attrKey)
-  ? poAttrMap.get(attrKey)!
-  : (transferredByPoThread.get(`${po.po_id ?? 'null'}_${key}`) ?? 0)  // fallback
+// If thread has any attribution → ALL POs for that thread use attribution
+// If thread has zero attribution → ALL POs use sequential allocation
+const transferred_for_po = threadHasAttr
+  ? (poAttrMap.get(`${po.po_id ?? 'null'}_${threadKey}`) ?? 0)
+  : (transferredByPoThread.get(`${po.po_id ?? 'null'}_${threadKey}`) ?? 0)
 ```
 
 ### 6. Frontend — Gửi `po_id` khi submit
@@ -153,7 +186,7 @@ export interface TransferReservedItem {
   color_id: number
   full_quantity: number
   partial_quantity: number
-  po_id?: number | null  // MỚI
+  po_id?: number | null
 }
 
 // src/composables/thread/useTransferReserved.ts submit()
@@ -162,7 +195,7 @@ const items = selectedArray.value.map(x => ({
   color_id: x.thread_color_id,
   full_quantity: Number(x.full_quantity) || 0,
   partial_quantity: Number(x.partial_quantity) || 0,
-  po_id: x.selected_in_po_id,  // MỚI — đã có sẵn
+  po_id: x.selected_in_po_id,
 }))
 ```
 
@@ -190,10 +223,10 @@ Ngược lại:
 
 | File | Thay đổi |
 |------|----------|
-| `supabase/migrations/{ts}_add_po_attribution.sql` | ALTER TABLE + sửa RPC |
-| `server/validation/transferReservedSchema.ts` | Thêm `po_id` optional |
-| `server/routes/weekly-order/transfer-reserved.ts` | Build `po_attribution` → gửi RPC |
-| `server/routes/weekly-order/transfer-by-calculation.ts` | Thêm `fetchPoAttributionMap()`, ưu tiên data thực |
+| `supabase/migrations/{ts}_add_po_attribution.sql` | ALTER TABLE + DROP/CREATE RPC |
+| `server/validation/transferReservedSchema.ts` | Thêm `po_id` optional+nullable |
+| `server/routes/weekly-order/transfer-reserved.ts` | Build `po_attribution` + validate po_ids → gửi RPC |
+| `server/routes/weekly-order/transfer-by-calculation.ts` | `fetchPoAttributionMap()` (dest-scoped), per-thread mixed-mode fallback |
 | `src/types/transferReserved.ts` | Thêm `po_id` vào `TransferReservedItem` |
 | `src/composables/thread/useTransferReserved.ts` | Gửi `po_id` kèm item |
 | `src/components/thread/transfer-reserved/PoSection.vue` | Label vượt ĐM |
@@ -203,13 +236,18 @@ Ngược lại:
 | Case | Xử lý |
 |------|-------|
 | Data cũ (trước feature) | `po_attribution = NULL` → fallback sequential allocation |
-| Mix data cũ + mới trong 1 tuần | Nếu có bất kỳ `po_attribution` → dùng attribution cho tất cả, fallback = 0 cho phần không có log |
-| User không chọn PO (tick từ "Đặt thêm") | `po_id = null` trong attribution |
+| Mix data cũ + mới cho cùng thread | Per-thread check: nếu thread có BẤT KỲ attribution → dùng attribution cho TẤT CẢ PO của thread (PO không có entry → 0). Tránh double-count. |
+| Mix data cũ + mới cho thread KHÁC nhau | Thread A có attribution → dùng attribution. Thread B không có → dùng sequential. Mỗi thread độc lập. |
+| User không chọn PO (tick từ "Đặt thêm") | `po_id = null` trong attribution (explicit null, NOT omitted) |
+| Legacy client (no `po_id` field) | `po_id = undefined` after Zod parse → `hasAttribution = false` → `po_attribution = null` → fallback |
 | Chuyển 164 cuộn, ĐM 162 | `transferred_for_po = 164`, `pending_for_po = 0`, UI: "Đã 164 (+2 dư)" |
-| Summary `total_pending` âm | Hiển thị "Vượt: +X" thay vì "Còn: -X" |
+| Summary `total_pending` âm | `Math.max(0, ...)` + hiển thị "Vượt: +X" thay vì "Còn: -X" |
+| Invalid `po_id` for week | Warn in console, store attribution anyway (non-blocking) |
+| Different destination warehouse | Attribution query scoped to `to_warehouse_id` → each dest shows only its transfers |
 
 ## Backward Compatibility
 
 - `po_id` optional trong Zod schema → API cũ vẫn hoạt động
+- `po_id !== undefined` phân biệt new client vs legacy → legacy không tạo attribution
 - RPC param `p_po_attribution DEFAULT NULL` → caller cũ không break
-- Query fallback sequential allocation khi không có `po_attribution`
+- Per-thread fallback: sequential allocation hoạt động cho threads chưa có attribution nào
