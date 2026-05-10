@@ -381,6 +381,42 @@ function buildSharedWithPosMap(
   return map
 }
 
+async function fetchPoAttributionMap(weekId: number, toWarehouseId: number | null) {
+  if (toWarehouseId == null) return new Map<string, number>()
+
+  const { data, error } = await supabaseAdmin
+    .from('batch_transactions')
+    .select('po_attribution')
+    .eq('operation_type', 'TRANSFER')
+    .eq('to_warehouse_id', toWarehouseId)
+    .like('notes', `%Tuần #${weekId}%`)
+    .not('po_attribution', 'is', null)
+    .limit(2000)
+  if (error) throw error
+
+  const map = new Map<string, number>()
+  for (const tx of data ?? []) {
+    const items = tx.po_attribution as Array<{
+      po_id: number | null
+      thread_type_id: number
+      color_id: number
+      cones: number
+    }>
+    for (const item of items ?? []) {
+      const key = `${item.po_id ?? 'null'}_${item.thread_type_id}_${item.color_id}`
+      map.set(key, (map.get(key) ?? 0) + item.cones)
+    }
+  }
+  return map
+}
+
+function hasAttributionForThread(poAttrMap: Map<string, number>, threadKey: string): boolean {
+  for (const key of poAttrMap.keys()) {
+    if (key.endsWith(`_${threadKey}`)) return true
+  }
+  return false
+}
+
 const router = new Hono<AppEnv>()
 
 router.get(
@@ -476,7 +512,10 @@ router.get(
 
       const sharedMap = buildSharedWithPosMap(poQuotaMap)
 
-      const lastTransferMap = await fetchLastTransferMap(weekId)
+      const [lastTransferMap, poAttrMap] = await Promise.all([
+        fetchLastTransferMap(weekId),
+        fetchPoAttributionMap(weekId, to_warehouse_id ?? null),
+      ])
 
       const poNumbersMap = new Map<number, string>()
       const poIdsToFetch = poOrder.map(p => p.po_id).filter((id): id is number => id != null)
@@ -496,7 +535,11 @@ router.get(
         const quotaMap = poQuotaMap.get(po.po_id) ?? new Map()
         const thread_lines = Array.from(quotaMap.values()).map(t => {
           const key: ThreadKey = `${t.thread_type_id}_${t.thread_color_id}`
-          const transferred_for_po = transferredByPoThread.get(`${po.po_id ?? 'null'}_${key}`) ?? 0
+          const attrKey = `${po.po_id ?? 'null'}_${key}`
+          const threadHasAttr = hasAttributionForThread(poAttrMap, key)
+          const transferred_for_po = threadHasAttr
+            ? (poAttrMap.get(attrKey) ?? 0)
+            : (transferredByPoThread.get(attrKey) ?? 0)
           const reserved_at_source = inventoryAtSource.get(key)?.count ?? 0
           const reserved_at_destination = inventoryAtDest.get(key)?.count ?? 0
           const shared_with_pos = (sharedMap.get(key) ?? []).filter(pid => pid !== po.po_id)
@@ -525,7 +568,7 @@ router.get(
           summary: {
             total_needed,
             total_transferred,
-            total_pending: total_needed - total_transferred,
+            total_pending: Math.max(0, total_needed - total_transferred),
           },
           thread_lines,
         }
