@@ -146,6 +146,7 @@ export function useTransferReserved() {
         color_id: x.thread_color_id,
         full_quantity: Number(x.full_quantity) || 0,
         partial_quantity: Number(x.partial_quantity) || 0,
+        po_id: x.selected_in_po_id,
       }))
       const res = await transferReservedService.submit(weekId.value, {
         from_warehouse_id: fromWarehouseId.value!,
