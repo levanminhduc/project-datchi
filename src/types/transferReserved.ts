@@ -128,3 +128,22 @@ export interface ThreadTransferHistoryEntry {
   partial_cones: number
   total_cones: number
 }
+
+export interface PoTransferTransactionLine {
+  thread_type_id: number
+  thread_color_id: number
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  cones: number
+}
+
+export interface PoTransferTransaction {
+  transaction_id: number
+  performed_at: string
+  by_user_name: string
+  source_warehouse_name: string
+  destination_warehouse_name: string
+  total_cones: number
+  lines: PoTransferTransactionLine[]
+}
