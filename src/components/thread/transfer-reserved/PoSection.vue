@@ -14,6 +14,16 @@
             text-color="grey-9"
             :label="`${lines.length} loại chỉ`"
           />
+          <q-btn
+            v-if="poId != null"
+            flat
+            dense
+            icon="history"
+            size="sm"
+            label="Lịch sử PO"
+            class="q-ml-sm"
+            @click.stop="emit('open-po-history')"
+          />
         </div>
         <div
           v-if="summary"
@@ -172,6 +182,7 @@ const emit = defineEmits<{
   (e: 'toggle', poId: number | null, line: TransferThreadLine): void
   (e: 'set-full-quantity', tt: number, cc: number, q: number): void
   (e: 'open-history', line: TransferThreadLine): void
+  (e: 'open-po-history'): void
 }>()
 
 const headerLabel = computed(() => `PO ${props.poNumber} (#${props.displayOrder})`)
