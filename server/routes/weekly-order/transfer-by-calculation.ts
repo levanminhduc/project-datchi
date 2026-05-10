@@ -349,28 +349,202 @@ router.get(
   '/:weekId/transfer-by-calculation',
   requirePermission('thread.batch.transfer'),
   async (c) => {
-    const weekIdRaw = c.req.param('weekId')
-    if (!/^\d+$/.test(weekIdRaw)) {
-      return c.json({ data: null, error: 'weekId không hợp lệ' }, 400)
-    }
-    const weekId = Number(weekIdRaw)
+    try {
+      const weekIdRaw = c.req.param('weekId')
+      if (!/^\d+$/.test(weekIdRaw)) {
+        return c.json({ data: null, error: 'weekId không hợp lệ' }, 400)
+      }
+      const weekId = Number(weekIdRaw)
 
-    const queryParse = transferByCalculationQuerySchema.safeParse({
-      warehouse_id: c.req.query('warehouse_id'),
-      to_warehouse_id: c.req.query('to_warehouse_id'),
-    })
-    if (!queryParse.success) {
-      return c.json({ data: null, error: queryParse.error.issues[0]?.message ?? 'Tham số không hợp lệ' }, 400)
-    }
-    const { warehouse_id, to_warehouse_id } = queryParse.data
+      const queryParse = transferByCalculationQuerySchema.safeParse({
+        warehouse_id: c.req.query('warehouse_id'),
+        to_warehouse_id: c.req.query('to_warehouse_id'),
+      })
+      if (!queryParse.success) {
+        return c.json({ data: null, error: queryParse.error.issues[0]?.message ?? 'Tham số không hợp lệ' }, 400)
+      }
+      const { warehouse_id, to_warehouse_id } = queryParse.data
 
-    if (to_warehouse_id != null && to_warehouse_id === warehouse_id) {
-      return c.json({ data: null, error: 'Kho nguồn và kho đích phải khác nhau' }, 400)
-    }
+      if (to_warehouse_id != null && to_warehouse_id === warehouse_id) {
+        return c.json({ data: null, error: 'Kho nguồn và kho đích phải khác nhau' }, 400)
+      }
 
-    void weekId
-    void supabaseAdmin
-    return c.json({ data: null, error: 'Not implemented' }, 501)
+      const { data: weekRow, error: weekErr } = await supabaseAdmin
+        .from('thread_order_weeks')
+        .select('id, week_name, status')
+        .eq('id', weekId)
+        .maybeSingle()
+      if (weekErr) throw weekErr
+      if (!weekRow) return c.json({ data: null, error: 'Tuần không tồn tại' }, 404)
+
+      const warehouseIds = [warehouse_id]
+      if (to_warehouse_id != null) warehouseIds.push(to_warehouse_id)
+      const { data: warehouses, error: whErr } = await supabaseAdmin
+        .from('warehouses')
+        .select('id, code, name')
+        .in('id', warehouseIds)
+        .limit(2)
+      if (whErr) throw whErr
+      const sourceWh = warehouses?.find(w => w.id === warehouse_id)
+      const destWh = to_warehouse_id != null ? warehouses?.find(w => w.id === to_warehouse_id) : null
+      if (!sourceWh) return c.json({ data: null, error: 'Kho nguồn không tồn tại' }, 404)
+      if (to_warehouse_id != null && !destWh) return c.json({ data: null, error: 'Kho đích không tồn tại' }, 404)
+
+      const [{ calculation_data, summary_data }, orderItems] = await Promise.all([
+        fetchCalculationData(weekId),
+        fetchOrderItems(weekId),
+      ])
+
+      if (calculation_data.length === 0) {
+        return c.json({
+          data: {
+            week: weekRow,
+            source_warehouse: sourceWh,
+            destination_warehouse: destWh ?? null,
+            pos: [],
+            additional: [],
+          },
+          error: null,
+          message: 'Tuần chưa được tính chỉ',
+        })
+      }
+
+      const styleColorIds = Array.from(new Set(orderItems.map(it => it.style_color_id)))
+      const specs = await fetchSpecsByStyleColors(styleColorIds)
+
+      const { poOrder, poQuotaMap } = buildPoQuotaMap(orderItems, specs, calculation_data)
+
+      const [inventoryAtSource, inventoryAtDest] = await Promise.all([
+        fetchInventoryAgg(weekId, warehouse_id),
+        to_warehouse_id != null ? fetchInventoryAgg(weekId, to_warehouse_id) : Promise.resolve(new Map<string, InventoryAggRow>()),
+      ])
+
+      const { transferredByPoThread, overflowByThread } = applySequentialAllocation(
+        poOrder,
+        poQuotaMap,
+        inventoryAtDest,
+      )
+
+      const sharedMap = buildSharedWithPosMap(poQuotaMap)
+
+      const lastTransferMap = await fetchLastTransferMap(weekId)
+
+      const poNumbersMap = new Map<number, string>()
+      const poIdsToFetch = poOrder.map(p => p.po_id).filter((id): id is number => id != null)
+      if (poIdsToFetch.length > 0) {
+        const { data: pos, error: posErr } = await supabaseAdmin
+          .from('purchase_orders')
+          .select('id, po_number')
+          .in('id', poIdsToFetch)
+          .limit(poIdsToFetch.length)
+        if (posErr) throw posErr
+        for (const p of (pos ?? []) as Array<{ id: number; po_number: string }>) {
+          poNumbersMap.set(p.id, p.po_number)
+        }
+      }
+
+      const posResp = poOrder.map(po => {
+        const quotaMap = poQuotaMap.get(po.po_id) ?? new Map()
+        const thread_lines = Array.from(quotaMap.values()).map(t => {
+          const key: ThreadKey = `${t.thread_type_id}_${t.thread_color_id}`
+          const transferred_for_po = transferredByPoThread.get(`${po.po_id ?? 'null'}_${key}`) ?? 0
+          const reserved_at_source = inventoryAtSource.get(key)?.count ?? 0
+          const reserved_at_destination = inventoryAtDest.get(key)?.count ?? 0
+          const shared_with_pos = (sharedMap.get(key) ?? []).filter(pid => pid !== po.po_id)
+          const last = lastTransferMap.get(key) ?? null
+          return {
+            thread_type_id: t.thread_type_id,
+            thread_color_id: t.thread_color_id,
+            supplier_name: t.supplier_name,
+            tex_number: t.tex_number,
+            color_name: t.color_name,
+            quota_cones: t.quota_cones,
+            shared_with_pos,
+            reserved_at_source,
+            reserved_at_destination,
+            transferred_for_po,
+            pending_for_po: Math.max(0, t.quota_cones - transferred_for_po),
+            last_transfer: last,
+          }
+        })
+        const total_needed = thread_lines.reduce((s, l) => s + l.quota_cones, 0)
+        const total_transferred = thread_lines.reduce((s, l) => s + l.transferred_for_po, 0)
+        return {
+          po_id: po.po_id,
+          po_number: po.po_id != null ? (poNumbersMap.get(po.po_id) ?? '') : '(Không có PO)',
+          display_order: po.display_order,
+          summary: {
+            total_needed,
+            total_transferred,
+            total_pending: total_needed - total_transferred,
+          },
+          thread_lines,
+        }
+      })
+
+      const additional = (summary_data ?? [])
+        .filter(s => (s.additional_order ?? 0) > 0)
+        .map(s => {
+          const colorIdLookup = orderItems
+            .map(it => specs.find(sp => sp.style_color_id === it.style_color_id && sp.thread_type_id === s.thread_type_id))
+            .find(Boolean)
+          const thread_color_id = colorIdLookup?.thread_color_id ?? 0
+          const key: ThreadKey = `${s.thread_type_id}_${thread_color_id}`
+          return {
+            thread_type_id: s.thread_type_id,
+            thread_color_id,
+            supplier_name: s.supplier_name,
+            tex_number: s.tex_number,
+            color_name: s.thread_color ?? '',
+            additional_quantity: s.additional_order,
+            reserved_at_source: inventoryAtSource.get(key)?.count ?? 0,
+            reserved_at_destination: inventoryAtDest.get(key)?.count ?? 0,
+            is_overflow: false,
+          }
+        })
+
+      for (const [key, overflow] of overflowByThread) {
+        const [ttRaw, ccRaw] = key.split('_')
+        const tt = Number(ttRaw)
+        const cc = Number(ccRaw)
+        const sample = Array.from(poQuotaMap.values())
+          .map(m => m.get(key))
+          .find(Boolean)
+        if (!sample) continue
+        const existing = additional.find(a => a.thread_type_id === tt && a.thread_color_id === cc)
+        if (existing) {
+          existing.reserved_at_destination += overflow
+          existing.is_overflow = true
+        } else {
+          additional.push({
+            thread_type_id: tt,
+            thread_color_id: cc,
+            supplier_name: sample.supplier_name,
+            tex_number: sample.tex_number,
+            color_name: sample.color_name,
+            additional_quantity: 0,
+            reserved_at_source: 0,
+            reserved_at_destination: overflow,
+            is_overflow: true,
+          })
+        }
+      }
+
+      return c.json({
+        data: {
+          week: weekRow,
+          source_warehouse: sourceWh,
+          destination_warehouse: destWh ?? null,
+          pos: posResp,
+          additional,
+        },
+        error: null,
+      })
+    } catch (err) {
+      console.error('[transfer-by-calculation] failed:', err)
+      const message = err instanceof Error ? err.message : 'Lỗi truy vấn dữ liệu'
+      return c.json({ data: null, error: message }, 500)
+    }
   },
 )
 
