@@ -62,3 +62,68 @@ export interface TransferReservedResult {
     moved: number
   }>
 }
+
+export interface ThreadLineLastTransfer {
+  transferred_at: string
+  by_user_name: string
+  full_cones: number
+  partial_cones: number
+}
+
+export interface TransferThreadLine {
+  thread_type_id: number
+  thread_color_id: number
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  quota_cones: number
+  shared_with_pos: number[]
+  reserved_at_source: number
+  reserved_at_destination: number
+  transferred_for_po: number
+  pending_for_po: number
+  last_transfer: ThreadLineLastTransfer | null
+}
+
+export interface TransferPoGroup {
+  po_id: number | null
+  po_number: string
+  display_order: number
+  summary: {
+    total_needed: number
+    total_transferred: number
+    total_pending: number
+  }
+  thread_lines: TransferThreadLine[]
+}
+
+export interface TransferAdditionalLine {
+  thread_type_id: number
+  thread_color_id: number
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  additional_quantity: number
+  reserved_at_source: number
+  reserved_at_destination: number
+  is_overflow: boolean
+}
+
+export interface TransferByCalcResponse {
+  week: { id: number; week_name: string; status: string }
+  source_warehouse: { id: number; code: string; name: string }
+  destination_warehouse: { id: number; code: string; name: string } | null
+  pos: TransferPoGroup[]
+  additional: TransferAdditionalLine[]
+}
+
+export interface ThreadTransferHistoryEntry {
+  transaction_id: number
+  transferred_at: string
+  by_user_name: string
+  source_warehouse_name: string
+  destination_warehouse_name: string
+  full_cones: number
+  partial_cones: number
+  total_cones: number
+}
