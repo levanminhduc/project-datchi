@@ -5,6 +5,7 @@ import type { AppEnv } from '../../types/hono-env'
 import {
   transferByCalculationQuerySchema,
   threadTransferHistoryQuerySchema,
+  poTransferHistoryQuerySchema,
 } from '../../validation/transferByCalculationSchema'
 
 type CalculationDataRow = {
@@ -759,6 +760,185 @@ router.get(
       return c.json({ data: entries, error: null })
     } catch (err) {
       console.error('[transfer-history-thread] failed:', err)
+      return c.json({ data: null, error: err instanceof Error ? err.message : 'Lỗi truy vấn' }, 500)
+    }
+  },
+)
+
+router.get(
+  '/:weekId/transfer-history-po',
+  requirePermission('thread.batch.transfer'),
+  async (c) => {
+    try {
+      const weekIdRaw = c.req.param('weekId')
+      if (!/^\d+$/.test(weekIdRaw)) {
+        return c.json({ data: null, error: 'weekId không hợp lệ' }, 400)
+      }
+      const weekId = Number(weekIdRaw)
+
+      const queryParse = poTransferHistoryQuerySchema.safeParse({
+        po_id: c.req.query('po_id'),
+        to_warehouse_id: c.req.query('to_warehouse_id'),
+      })
+      if (!queryParse.success) {
+        return c.json({ data: null, error: queryParse.error.issues[0]?.message ?? 'Tham số không hợp lệ' }, 400)
+      }
+      const { po_id, to_warehouse_id } = queryParse.data
+
+      let query = supabaseAdmin
+        .from('batch_transactions')
+        .select('id, performed_at, performed_by, from_warehouse_id, to_warehouse_id, po_attribution')
+        .eq('operation_type', 'TRANSFER')
+        .like('notes', `%Tuần #${weekId}%`)
+        .not('po_attribution', 'is', null)
+        .order('performed_at', { ascending: false })
+        .limit(500)
+
+      if (to_warehouse_id != null) {
+        query = query.eq('to_warehouse_id', to_warehouse_id)
+      }
+
+      const { data: txs, error: txErr } = await query
+      if (txErr) throw txErr
+
+      if (!txs || txs.length === 0) {
+        return c.json({ data: [], error: null })
+      }
+
+      type PoAttrItem = { po_id: number; thread_type_id: number; color_id: number; cones: number }
+      const relevantTxs: typeof txs = []
+      const txPoAttrMap = new Map<number, PoAttrItem[]>()
+
+      for (const tx of txs as Array<{
+        id: number
+        performed_at: string
+        performed_by: string | null
+        from_warehouse_id: number | null
+        to_warehouse_id: number | null
+        po_attribution: PoAttrItem[] | null
+      }>) {
+        if (!tx.po_attribution || !Array.isArray(tx.po_attribution)) continue
+        const forThisPo = tx.po_attribution.filter(a => a.po_id === po_id)
+        if (forThisPo.length > 0) {
+          relevantTxs.push(tx)
+          txPoAttrMap.set(tx.id, forThisPo)
+        }
+      }
+
+      if (relevantTxs.length === 0) {
+        return c.json({ data: [], error: null })
+      }
+
+      const warehouseIdSet = new Set<number>()
+      for (const tx of relevantTxs as Array<{ from_warehouse_id: number | null; to_warehouse_id: number | null }>) {
+        if (tx.from_warehouse_id != null) warehouseIdSet.add(tx.from_warehouse_id)
+        if (tx.to_warehouse_id != null) warehouseIdSet.add(tx.to_warehouse_id)
+      }
+      const warehouseIds = Array.from(warehouseIdSet)
+      const warehouseMap = new Map<number, { id: number; code: string; name: string }>()
+      if (warehouseIds.length > 0) {
+        const { data: whs, error: whErr } = await supabaseAdmin
+          .from('warehouses')
+          .select('id, code, name')
+          .in('id', warehouseIds)
+          .limit(warehouseIds.length)
+        if (whErr) throw whErr
+        for (const wh of (whs ?? []) as Array<{ id: number; code: string; name: string }>) {
+          warehouseMap.set(wh.id, wh)
+        }
+      }
+
+      const threadTypeIdSet = new Set<number>()
+      const colorIdSet = new Set<number>()
+      for (const attrs of txPoAttrMap.values()) {
+        for (const a of attrs) {
+          threadTypeIdSet.add(a.thread_type_id)
+          colorIdSet.add(a.color_id)
+        }
+      }
+
+      const threadTypeMap = new Map<number, { supplier_name: string; tex_number: string }>()
+      if (threadTypeIdSet.size > 0) {
+        const { data: tts, error: ttErr } = await supabaseAdmin
+          .from('thread_types')
+          .select('id, tex_number, suppliers(name)')
+          .in('id', Array.from(threadTypeIdSet))
+          .limit(threadTypeIdSet.size)
+        if (ttErr) throw ttErr
+        for (const tt of (tts ?? []) as Array<{ id: number; tex_number: string; suppliers: { name: string } | null }>) {
+          threadTypeMap.set(tt.id, {
+            supplier_name: tt.suppliers?.name ?? '',
+            tex_number: tt.tex_number,
+          })
+        }
+      }
+
+      const colorMap = new Map<number, string>()
+      if (colorIdSet.size > 0) {
+        const { data: cols, error: colErr } = await supabaseAdmin
+          .from('colors')
+          .select('id, name')
+          .in('id', Array.from(colorIdSet))
+          .limit(colorIdSet.size)
+        if (colErr) throw colErr
+        for (const col of (cols ?? []) as Array<{ id: number; name: string }>) {
+          colorMap.set(col.id, col.name)
+        }
+      }
+
+      const transactions: Array<{
+        transaction_id: number
+        performed_at: string
+        by_user_name: string
+        source_warehouse_name: string
+        destination_warehouse_name: string
+        total_cones: number
+        lines: Array<{
+          thread_type_id: number
+          thread_color_id: number
+          supplier_name: string
+          tex_number: string
+          color_name: string
+          cones: number
+        }>
+      }> = []
+
+      for (const tx of relevantTxs as Array<{
+        id: number
+        performed_at: string
+        performed_by: string | null
+        from_warehouse_id: number | null
+        to_warehouse_id: number | null
+      }>) {
+        const attrs = txPoAttrMap.get(tx.id) ?? []
+        const lines = attrs.map(a => {
+          const tt = threadTypeMap.get(a.thread_type_id)
+          return {
+            thread_type_id: a.thread_type_id,
+            thread_color_id: a.color_id,
+            supplier_name: tt?.supplier_name ?? '',
+            tex_number: tt?.tex_number ?? '',
+            color_name: colorMap.get(a.color_id) ?? '',
+            cones: a.cones,
+          }
+        })
+        const total_cones = lines.reduce((sum, l) => sum + l.cones, 0)
+        if (total_cones === 0) continue
+
+        transactions.push({
+          transaction_id: tx.id,
+          performed_at: tx.performed_at,
+          by_user_name: tx.performed_by ?? '',
+          source_warehouse_name: tx.from_warehouse_id != null ? (warehouseMap.get(tx.from_warehouse_id)?.name ?? '') : '',
+          destination_warehouse_name: tx.to_warehouse_id != null ? (warehouseMap.get(tx.to_warehouse_id)?.name ?? '') : '',
+          total_cones,
+          lines,
+        })
+      }
+
+      return c.json({ data: transactions, error: null })
+    } catch (err) {
+      console.error('[transfer-history-po] failed:', err)
       return c.json({ data: null, error: err instanceof Error ? err.message : 'Lỗi truy vấn' }, 500)
     }
   },
