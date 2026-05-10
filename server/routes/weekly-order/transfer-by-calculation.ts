@@ -19,6 +19,10 @@ type CalculationDataRow = {
       color_id: number
       color_name: string
       thread_color: string | null
+      thread_color_id?: number | null
+      thread_type_id: number
+      supplier_name: string
+      tex_number: string
       total_meters: number
       meters_per_cone: number
       meters_per_unit: number
@@ -36,6 +40,7 @@ type ThreadOrderItem = {
 
 type SpecRow = {
   style_color_id: number
+  style_thread_spec_id: number
   thread_type_id: number
   thread_color_id: number
 }
@@ -95,7 +100,7 @@ async function fetchSpecsByStyleColors(styleColorIds: number[]) {
   if (styleColorIds.length === 0) return []
   const { data, error } = await supabaseAdmin
     .from('style_color_thread_specs')
-    .select('style_color_id, thread_type_id, thread_color_id')
+    .select('style_color_id, style_thread_spec_id, thread_type_id, thread_color_id')
     .in('style_color_id', styleColorIds)
     .limit(10000)
   if (error) throw error
@@ -135,7 +140,7 @@ type AggregatedThread = {
   quota_cones: number
 }
 
-function buildPoQuotaMap(
+export function buildPoQuotaMap(
   orderItems: ThreadOrderItem[],
   specs: SpecRow[],
   calcData: CalculationDataRow[],
@@ -182,20 +187,26 @@ function buildPoQuotaMap(
       let conesNeeded = 0
       let supplierName = ''
       let texNumber = ''
-      const matchingCalcs = calcRow.calculations.filter(c => c.thread_type_id === spec.thread_type_id)
-      for (const calcEntry of matchingCalcs) {
-        const matchColor = calcEntry.color_breakdown.find(cb =>
-          cb.color_id === item.style_color_id &&
-          cb.thread_color != null &&
-          colorByName.get(cb.thread_color) === spec.thread_color_id,
-        )
-        if (!matchColor) continue
-        const meters = (matchColor.meters_per_unit ?? 0) * (item.quantity ?? 0)
-        if (meters <= 0 || matchColor.meters_per_cone <= 0) continue
-        conesNeeded += Math.ceil(meters / matchColor.meters_per_cone)
-        if (!supplierName) supplierName = calcEntry.supplier_name
-        if (!texNumber) texNumber = calcEntry.tex_number
-      }
+      const calcEntry = calcRow.calculations.find(c => c.spec_id === spec.style_thread_spec_id)
+      const matchColor = calcEntry?.color_breakdown.find(cb =>
+        cb.color_id === item.style_color_id &&
+        cb.thread_type_id === spec.thread_type_id &&
+        (
+          cb.thread_color_id === spec.thread_color_id ||
+          (
+            cb.thread_color_id == null &&
+            cb.thread_color != null &&
+            colorByName.get(cb.thread_color) === spec.thread_color_id
+          )
+        ),
+      )
+      if (!matchColor) continue
+
+      const meters = (matchColor.meters_per_unit ?? 0) * (item.quantity ?? 0)
+      if (meters <= 0 || matchColor.meters_per_cone <= 0) continue
+      conesNeeded += Math.ceil(meters / matchColor.meters_per_cone)
+      supplierName = matchColor.supplier_name || calcEntry?.supplier_name || ''
+      texNumber = matchColor.tex_number || calcEntry?.tex_number || ''
       if (conesNeeded === 0) continue
 
       const key: ThreadKey = `${spec.thread_type_id}_${spec.thread_color_id}`
