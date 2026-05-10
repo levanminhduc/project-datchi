@@ -83,7 +83,7 @@
         <template #body-cell-quota="props">
           <q-td
             :props="props"
-            class="text-right"
+            class="text-left"
           >
             Định mức <b>{{ props.row.quota_cones }}</b> ·
             Đã chuyển <b>{{ props.row.transferred_for_po }}</b> ·
@@ -104,21 +104,31 @@
           </q-td>
         </template>
         <template #body-cell-full_qty="props">
-          <q-td :props="props">
-            <AppInput
+          <q-td
+            :props="props"
+            class="transfer-qty-cell"
+          >
+            <div
               v-if="isSelected(props.row.thread_type_id, props.row.thread_color_id)"
-              :model-value="getSelection(props.row.thread_type_id, props.row.thread_color_id)?.full_quantity"
-              type="number"
-              dense
-              @update:model-value="
-                emit(
-                  'set-full-quantity',
-                  props.row.thread_type_id,
-                  props.row.thread_color_id,
-                  Number($event) || 0,
-                )
-              "
-            />
+              class="transfer-qty-input"
+            >
+              <AppInput
+                :model-value="getSelection(props.row.thread_type_id, props.row.thread_color_id)?.full_quantity"
+                type="number"
+                inputmode="numeric"
+                dense
+                hide-bottom-space
+                input-class="text-right"
+                @update:model-value="
+                  emit(
+                    'set-full-quantity',
+                    props.row.thread_type_id,
+                    props.row.thread_color_id,
+                    Number($event) || 0,
+                  )
+                "
+              />
+            </div>
             <span
               v-else
               class="text-grey"
@@ -161,9 +171,16 @@ const headerLabel = computed(() => `PO ${props.poNumber} (#${props.displayOrder}
 const columns = [
   { name: 'pick', label: '', field: 'pick', align: 'center' as const },
   { name: 'thread', label: 'Loại chỉ', field: 'thread', align: 'left' as const },
-  { name: 'quota', label: 'Định mức / Đã chuyển / Còn', field: 'quota', align: 'right' as const },
+  { name: 'quota', label: 'Định mức / Đã chuyển / Còn', field: 'quota', align: 'left' as const },
   { name: 'source', label: 'Kho nguồn', field: 'source', align: 'right' as const },
-  { name: 'full_qty', label: 'Chuyển', field: 'full_qty', align: 'right' as const },
+  {
+    name: 'full_qty',
+    label: 'Chuyển',
+    field: 'full_qty',
+    align: 'right' as const,
+    style: 'width: 152px',
+    headerStyle: 'width: 152px',
+  },
 ]
 
 function rowLabel(row: TransferThreadLine) {
@@ -180,3 +197,32 @@ function otherPoNumber(row: TransferThreadLine) {
   return props.poNumberByPoId.get(otherId) ?? otherId
 }
 </script>
+
+<style scoped>
+.transfer-qty-cell {
+  width: 152px;
+}
+
+.transfer-qty-input {
+  width: clamp(120px, 12vw, 128px);
+  margin-left: auto;
+}
+
+.transfer-qty-input :deep(.q-field) {
+  width: 100%;
+}
+
+.transfer-qty-input :deep(input[type='number']) {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 599px) {
+  .transfer-qty-cell {
+    width: 136px;
+  }
+
+  .transfer-qty-input {
+    width: 120px;
+  }
+}
+</style>
