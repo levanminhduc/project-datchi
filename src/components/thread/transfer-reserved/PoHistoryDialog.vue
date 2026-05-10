@@ -79,7 +79,7 @@
             </div>
           </div>
 
-          <q-table
+          <DataTable
             :rows="linesWithKey"
             :columns="overviewColumns"
             row-key="row_key"
@@ -112,7 +112,7 @@
                 />
               </q-td>
             </template>
-          </q-table>
+          </DataTable>
         </q-tab-panel>
 
         <q-tab-panel name="details">
@@ -144,7 +144,7 @@
               expand-separator
               default-opened
             >
-              <q-table
+              <DataTable
                 :rows="tx.lines.map(l => ({ ...l, row_key: `${l.thread_type_id}_${l.thread_color_id}` }))"
                 :columns="detailColumns"
                 row-key="row_key"
@@ -158,7 +158,7 @@
                     {{ props.row.supplier_name }} - Tex {{ props.row.tex_number }} - {{ props.row.color_name }}
                   </q-td>
                 </template>
-              </q-table>
+              </DataTable>
             </q-expansion-item>
           </q-list>
         </q-tab-panel>
@@ -179,6 +179,7 @@
 import { ref, computed, watch } from 'vue'
 import AppDialog from '@/components/ui/dialogs/AppDialog.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
+import DataTable from '@/components/ui/tables/DataTable.vue'
 import { transferReservedService } from '@/services/transferReservedService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type { TransferThreadLine, TransferPoGroup, PoTransferTransaction } from '@/types/transferReserved'
