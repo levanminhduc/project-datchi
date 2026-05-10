@@ -382,7 +382,7 @@ function buildSharedWithPosMap(
 }
 
 async function fetchPoAttributionMap(weekId: number, toWarehouseId: number | null) {
-  if (toWarehouseId == null) return new Map<string, number>()
+  if (toWarehouseId == null) return { map: new Map<string, number>(), threadKeys: new Set<string>() }
 
   const { data, error } = await supabaseAdmin
     .from('batch_transactions')
@@ -395,26 +395,23 @@ async function fetchPoAttributionMap(weekId: number, toWarehouseId: number | nul
   if (error) throw error
 
   const map = new Map<string, number>()
+  const threadKeys = new Set<string>()
   for (const tx of data ?? []) {
+    if (!Array.isArray(tx.po_attribution)) continue
     const items = tx.po_attribution as Array<{
       po_id: number | null
       thread_type_id: number
       color_id: number
       cones: number
     }>
-    for (const item of items ?? []) {
+    for (const item of items) {
+      if (typeof item.thread_type_id !== 'number' || typeof item.color_id !== 'number' || typeof item.cones !== 'number') continue
       const key = `${item.po_id ?? 'null'}_${item.thread_type_id}_${item.color_id}`
       map.set(key, (map.get(key) ?? 0) + item.cones)
+      threadKeys.add(`${item.thread_type_id}_${item.color_id}`)
     }
   }
-  return map
-}
-
-function hasAttributionForThread(poAttrMap: Map<string, number>, threadKey: string): boolean {
-  for (const key of poAttrMap.keys()) {
-    if (key.endsWith(`_${threadKey}`)) return true
-  }
-  return false
+  return { map, threadKeys }
 }
 
 const router = new Hono<AppEnv>()
@@ -512,7 +509,7 @@ router.get(
 
       const sharedMap = buildSharedWithPosMap(poQuotaMap)
 
-      const [lastTransferMap, poAttrMap] = await Promise.all([
+      const [lastTransferMap, poAttr] = await Promise.all([
         fetchLastTransferMap(weekId),
         fetchPoAttributionMap(weekId, to_warehouse_id ?? null),
       ])
@@ -536,9 +533,9 @@ router.get(
         const thread_lines = Array.from(quotaMap.values()).map(t => {
           const key: ThreadKey = `${t.thread_type_id}_${t.thread_color_id}`
           const attrKey = `${po.po_id ?? 'null'}_${key}`
-          const threadHasAttr = hasAttributionForThread(poAttrMap, key)
+          const threadHasAttr = poAttr.threadKeys.has(key)
           const transferred_for_po = threadHasAttr
-            ? (poAttrMap.get(attrKey) ?? 0)
+            ? (poAttr.map.get(attrKey) ?? 0)
             : (transferredByPoThread.get(attrKey) ?? 0)
           const reserved_at_source = inventoryAtSource.get(key)?.count ?? 0
           const reserved_at_destination = inventoryAtDest.get(key)?.count ?? 0
