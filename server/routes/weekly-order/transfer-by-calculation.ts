@@ -233,32 +233,30 @@ async function fetchLastTransferMap(weekId: number) {
   // We join thread_inventory via unnest to get thread_type_id/color_id per cone.
   const { data, error } = await supabaseAdmin
     .from('batch_transactions')
-    .select('id, created_at, performed_by, cone_ids')
+    .select('id, performed_at, performed_by, cone_ids')
     .eq('operation_type', 'TRANSFER')
     .like('notes', `%Tuần #${weekId}%`)
-    .order('created_at', { ascending: false })
+    .order('performed_at', { ascending: false })
     .limit(2000)
   if (error) throw error
 
   if (!data || data.length === 0) return new Map<ThreadKey, LastTransferEntry>()
 
-  // Collect all cone ids to batch-fetch thread_type_id / color_id / is_partial
   const allConeIds: number[] = []
   const txByConeId = new Map<
     number,
-    { created_at: string; performed_by: string | null }
+    { performed_at: string; performed_by: string | null }
   >()
   for (const tx of data as Array<{
     id: number
-    created_at: string
+    performed_at: string
     performed_by: string | null
     cone_ids: number[]
   }>) {
     for (const coneId of tx.cone_ids ?? []) {
       if (!txByConeId.has(coneId)) {
-        // newest-first order from query → first seen = most recent tx
         txByConeId.set(coneId, {
-          created_at: tx.created_at,
+          performed_at: tx.performed_at,
           performed_by: tx.performed_by,
         })
         allConeIds.push(coneId)
@@ -295,31 +293,30 @@ async function fetchLastTransferMap(weekId: number) {
   }
 
   const map = new Map<ThreadKey, LastTransferEntry>()
-  // Group cones by thread key, tracking the most-recent tx per key
   const keyTxMap = new Map<
     ThreadKey,
-    { created_at: string; performed_by: string | null; full_cones: number; partial_cones: number }
+    { performed_at: string; performed_by: string | null; full_cones: number; partial_cones: number }
   >()
   for (const cone of coneDetails) {
     const tx = txByConeId.get(cone.id)
     if (!tx) continue
     const key: ThreadKey = `${cone.thread_type_id}_${cone.color_id ?? ''}`
     const existing = keyTxMap.get(key)
-    if (!existing || tx.created_at > existing.created_at) {
+    if (!existing || tx.performed_at > existing.performed_at) {
       keyTxMap.set(key, {
-        created_at: tx.created_at,
+        performed_at: tx.performed_at,
         performed_by: tx.performed_by,
         full_cones: cone.is_partial ? 0 : 1,
         partial_cones: cone.is_partial ? 1 : 0,
       })
-    } else if (tx.created_at === existing.created_at) {
+    } else if (tx.performed_at === existing.performed_at) {
       if (cone.is_partial) existing.partial_cones++
       else existing.full_cones++
     }
   }
   for (const [key, entry] of keyTxMap) {
     map.set(key, {
-      transferred_at: entry.created_at,
+      transferred_at: entry.performed_at,
       by_user_name: entry.performed_by ?? '',
       full_cones: entry.full_cones,
       partial_cones: entry.partial_cones,
