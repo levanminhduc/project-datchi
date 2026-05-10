@@ -170,12 +170,6 @@ function rowLabel(row: TransferThreadLine) {
   return `${row.supplier_name} - Tex ${row.tex_number} - ${row.color_name}`
 }
 
-function sharedLabel(row: TransferThreadLine) {
-  return row.shared_with_pos
-    .map(id => `PO ${props.poNumberByPoId.get(id) ?? id}`)
-    .join(', ')
-}
-
 function isDisabledByOther(row: TransferThreadLine) {
   return props.selectedInOtherPo(props.poId, row.thread_type_id, row.thread_color_id) != null
 }
