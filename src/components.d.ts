@@ -155,6 +155,7 @@ declare module 'vue' {
     SyncConflictDialog: typeof import('./components/thread/SyncConflictDialog.vue')['default']
     SyncStatus: typeof import('./components/thread/SyncStatus.vue')['default']
     TabPanel: typeof import('./components/ui/navigation/TabPanel.vue')['default']
+    ThreadHistoryDialog: typeof import('./components/thread/transfer-reserved/ThreadHistoryDialog.vue')['default']
     ThreadSummaryTable: typeof import('./components/thread/weekly-order/ThreadSummaryTable.vue')['default']
     ThreadTypeFormDialog: typeof import('./components/thread/ThreadTypeFormDialog.vue')['default']
     ThreadTypeSuppliersDialog: typeof import('./components/thread/ThreadTypeSuppliersDialog.vue')['default']

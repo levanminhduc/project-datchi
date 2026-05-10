@@ -17,8 +17,10 @@ type CalculationDataRow = {
     color_breakdown: Array<{
       color_id: number
       color_name: string
+      thread_color: string | null
       total_meters: number
       meters_per_cone: number
+      meters_per_unit: number
     }>
   }>
 }
@@ -28,6 +30,7 @@ type ThreadOrderItem = {
   po_id: number | null
   style_color_id: number
   style_id: number | null
+  quantity: number
 }
 
 type SpecRow = {
@@ -64,12 +67,27 @@ async function fetchCalculationData(weekId: number) {
 async function fetchOrderItems(weekId: number) {
   const { data, error } = await supabaseAdmin
     .from('thread_order_items')
-    .select('id, po_id, style_color_id, style_id')
+    .select('id, po_id, style_color_id, style_id, quantity')
     .eq('week_id', weekId)
     .order('id', { ascending: true })
     .limit(10000)
   if (error) throw error
   return (data ?? []) as ThreadOrderItem[]
+}
+
+async function fetchColorNameToIdMap(threadColorIds: number[]) {
+  if (threadColorIds.length === 0) return new Map<string, number>()
+  const { data, error } = await supabaseAdmin
+    .from('colors')
+    .select('id, name')
+    .in('id', threadColorIds)
+    .limit(threadColorIds.length)
+  if (error) throw error
+  const map = new Map<string, number>()
+  for (const row of (data ?? []) as Array<{ id: number; name: string }>) {
+    map.set(row.name, row.id)
+  }
+  return map
 }
 
 async function fetchSpecsByStyleColors(styleColorIds: number[]) {
@@ -120,6 +138,8 @@ function buildPoQuotaMap(
   orderItems: ThreadOrderItem[],
   specs: SpecRow[],
   calcData: CalculationDataRow[],
+  colorByName: Map<string, number>,
+  colorById: Map<number, string>,
 ): {
   poOrder: Array<{ po_id: number | null; po_number: null; display_order: number }>
   poStyleMap: Map<number | null, Set<number>>
@@ -158,12 +178,25 @@ function buildPoQuotaMap(
     if (!calcRow) continue
 
     for (const spec of itemSpecs) {
-      const matchCalc = calcRow.calculations.find(c => c.thread_type_id === spec.thread_type_id)
-      if (!matchCalc) continue
-      const matchColor = matchCalc.color_breakdown.find(cb => cb.color_id === spec.thread_color_id)
-      if (!matchColor) continue
+      let conesNeeded = 0
+      let supplierName = ''
+      let texNumber = ''
+      const matchingCalcs = calcRow.calculations.filter(c => c.thread_type_id === spec.thread_type_id)
+      for (const calcEntry of matchingCalcs) {
+        const matchColor = calcEntry.color_breakdown.find(cb =>
+          cb.color_id === item.style_color_id &&
+          cb.thread_color != null &&
+          colorByName.get(cb.thread_color) === spec.thread_color_id,
+        )
+        if (!matchColor) continue
+        const meters = (matchColor.meters_per_unit ?? 0) * (item.quantity ?? 0)
+        if (meters <= 0 || matchColor.meters_per_cone <= 0) continue
+        conesNeeded += Math.ceil(meters / matchColor.meters_per_cone)
+        if (!supplierName) supplierName = calcEntry.supplier_name
+        if (!texNumber) texNumber = calcEntry.tex_number
+      }
+      if (conesNeeded === 0) continue
 
-      const conesNeeded = Math.ceil(matchColor.total_meters / matchColor.meters_per_cone)
       const key: ThreadKey = `${spec.thread_type_id}_${spec.thread_color_id}`
       const quotaMap = poQuotaMap.get(poId)!
       const existing = quotaMap.get(key)
@@ -173,9 +206,9 @@ function buildPoQuotaMap(
         quotaMap.set(key, {
           thread_type_id: spec.thread_type_id,
           thread_color_id: spec.thread_color_id,
-          supplier_name: matchCalc.supplier_name,
-          tex_number: matchCalc.tex_number,
-          color_name: matchColor.color_name,
+          supplier_name: supplierName,
+          tex_number: texNumber,
+          color_name: colorById.get(spec.thread_color_id) ?? '',
           quota_cones: conesNeeded,
         })
       }
@@ -206,16 +239,24 @@ function applySequentialAllocation(
   for (const key of allKeys) {
     const destEntry = inventoryAtDest.get(key)
     let remaining = destEntry?.count ?? 0
-    for (const po of poOrder) {
-      const quotaEntry = poQuotaMap.get(po.po_id)?.get(key)
-      if (!quotaEntry || quotaEntry.quota_cones === 0) continue
-      const fulfilled = Math.min(remaining, quotaEntry.quota_cones)
+    const posWithThread = poOrder.filter(po => {
+      const entry = poQuotaMap.get(po.po_id)?.get(key)
+      return entry != null && entry.quota_cones > 0
+    })
+    for (let i = 0; i < posWithThread.length; i++) {
+      const po = posWithThread[i]
+      const quotaEntry = poQuotaMap.get(po.po_id)!.get(key)!
+      const isLast = i === posWithThread.length - 1
+      const fulfilled = isLast ? remaining : Math.min(remaining, quotaEntry.quota_cones)
       transferredByPoThread.set(`${po.po_id ?? 'null'}_${key}`, fulfilled)
       remaining -= fulfilled
-      if (remaining === 0) break
+      if (!isLast && remaining === 0) break
     }
-    if (remaining > 0) {
-      overflowByThread.set(key, remaining)
+  }
+
+  for (const [key, destEntry] of inventoryAtDest) {
+    if (!allKeys.has(key)) {
+      overflowByThread.set(key, destEntry.count)
     }
   }
   return { transferredByPoThread, overflowByThread }
@@ -409,7 +450,18 @@ router.get(
       const styleColorIds = Array.from(new Set(orderItems.map(it => it.style_color_id)))
       const specs = await fetchSpecsByStyleColors(styleColorIds)
 
-      const { poOrder, poQuotaMap } = buildPoQuotaMap(orderItems, specs, calculation_data)
+      const threadColorIds = Array.from(new Set(specs.map(s => s.thread_color_id).filter((v): v is number => v != null)))
+      const colorByName = await fetchColorNameToIdMap(threadColorIds)
+      const colorById = new Map<number, string>()
+      for (const [name, id] of colorByName) colorById.set(id, name)
+
+      const { poOrder, poQuotaMap } = buildPoQuotaMap(
+        orderItems,
+        specs,
+        calculation_data,
+        colorByName,
+        colorById,
+      )
 
       const [inventoryAtSource, inventoryAtDest] = await Promise.all([
         fetchInventoryAgg(weekId, warehouse_id),
