@@ -42,6 +42,7 @@ export interface TransferReservedItem {
   color_id: number
   full_quantity: number
   partial_quantity: number
+  po_id?: number | null
 }
 
 export interface TransferReservedBody {
