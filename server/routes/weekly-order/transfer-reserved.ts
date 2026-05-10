@@ -425,12 +425,40 @@ router.post(
 
     const performedBy = await getPerformerName(c)
 
+    const hasAttribution = parsed.data.items.some(item => item.po_id !== undefined)
+    let poAttribution: Array<{ po_id: number | null; thread_type_id: number; color_id: number; cones: number }> | null = null
+
+    if (hasAttribution) {
+      poAttribution = parsed.data.items.map(item => ({
+        po_id: item.po_id ?? null,
+        thread_type_id: item.thread_type_id,
+        color_id: item.color_id,
+        cones: item.full_quantity + item.partial_quantity,
+      }))
+
+      const poIds = [...new Set(poAttribution.filter(a => a.po_id != null).map(a => a.po_id!))]
+      if (poIds.length > 0) {
+        const { data: validPos } = await supabaseAdmin
+          .from('thread_order_items')
+          .select('po_id')
+          .eq('week_id', weekId)
+          .in('po_id', poIds)
+          .limit(poIds.length)
+        const validPoIds = new Set((validPos ?? []).map(p => p.po_id))
+        const invalidPoIds = poIds.filter(id => !validPoIds.has(id))
+        if (invalidPoIds.length > 0) {
+          console.warn(`[transfer-reserved] Invalid po_ids for week ${weekId}: ${invalidPoIds.join(', ')}`)
+        }
+      }
+    }
+
     const { data, error } = await supabaseAdmin.rpc('fn_transfer_reserved_cones', {
       p_week_id: weekId,
       p_from_warehouse_id: parsed.data.from_warehouse_id,
       p_to_warehouse_id: parsed.data.to_warehouse_id,
       p_items: parsed.data.items,
       p_performed_by: performedBy,
+      p_po_attribution: poAttribution,
     })
 
     if (error) {
