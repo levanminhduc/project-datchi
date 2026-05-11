@@ -3,6 +3,30 @@
 import type { Router } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import type { RouteMeta } from '@/types/auth'
+import { useSidebar } from '@/composables/useSidebar'
+import type { NavItem } from '@/types/navigation'
+
+const APP_TITLE = 'Hòa Thọ Điện Bàn'
+
+interface NavLabelResult {
+  label: string
+  parentLabel: string | null
+}
+
+function findNavLabelWithParent(navItems: NavItem[], path: string, parentLabel: string | null = null): NavLabelResult | null {
+  const normalizedPath = path.replace(/#.*$/, '')
+  for (const item of navItems) {
+    const itemPath = item.to?.replace(/#.*$/, '')
+    if (itemPath === normalizedPath) {
+      return { label: item.label, parentLabel }
+    }
+    if (item.children) {
+      const result = findNavLabelWithParent(item.children, path, item.label)
+      if (result) return result
+    }
+  }
+  return null
+}
 
 /**
  * Setup router navigation guards for authentication and authorization
@@ -86,11 +110,27 @@ export function setupRouterGuards(router: Router) {
     next()
   })
 
-  // Update page title from route meta
+  // Update page title from route meta or sidebar nav label
   router.afterEach((to) => {
     const meta = to.meta as RouteMeta
-    if (meta.title) {
-      document.title = `${meta.title} | Quản lý Kho Chỉ`
+    const { navItems } = useSidebar()
+
+    // Home page - just show app title
+    if (to.path === '/' || to.path === '/#top') {
+      document.title = APP_TITLE
+      return
+    }
+
+    // Find page label and parent from sidebar
+    const navResult = findNavLabelWithParent(navItems, to.path)
+    const pageTitle = meta.title || navResult?.label
+
+    if (pageTitle) {
+      // If has parent: "Page | Parent", else "Page | App Title"
+      const suffix = navResult?.parentLabel || APP_TITLE
+      document.title = `${pageTitle} | ${suffix}`
+    } else {
+      document.title = APP_TITLE
     }
   })
 }
