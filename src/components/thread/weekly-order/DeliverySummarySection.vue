@@ -117,14 +117,30 @@
       >
         <thead>
           <tr>
-            <th class="text-left">NCC</th>
-            <th class="text-left">Tex</th>
-            <th class="text-left">Màu</th>
-            <th class="text-right">Đặt</th>
-            <th class="text-right">Đã giao</th>
-            <th class="text-right">Đã nhập</th>
-            <th class="text-right">Chờ giao</th>
-            <th class="text-right">Chờ nhập</th>
+            <th class="text-left">
+              NCC
+            </th>
+            <th class="text-left">
+              Tex
+            </th>
+            <th class="text-left">
+              Màu
+            </th>
+            <th class="text-right">
+              Đặt
+            </th>
+            <th class="text-right">
+              Đã giao
+            </th>
+            <th class="text-right">
+              Đã nhập
+            </th>
+            <th class="text-right">
+              Chờ giao
+            </th>
+            <th class="text-right">
+              Chờ nhập
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -135,9 +151,15 @@
             <td>{{ row.supplier_name || '-' }}</td>
             <td>{{ row.tex_number || '-' }}</td>
             <td>{{ row.color_name || '-' }}</td>
-            <td class="text-right">{{ row.ordered }}</td>
-            <td class="text-right text-positive">{{ row.delivered }}</td>
-            <td class="text-right text-info">{{ row.received }}</td>
+            <td class="text-right">
+              {{ row.ordered }}
+            </td>
+            <td class="text-right text-positive">
+              {{ row.delivered }}
+            </td>
+            <td class="text-right text-info">
+              {{ row.received }}
+            </td>
             <td
               class="text-right"
               :class="row.pending_delivery > 0 ? 'text-warning text-weight-medium' : 'text-grey-5'"

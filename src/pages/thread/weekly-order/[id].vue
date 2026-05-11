@@ -482,7 +482,6 @@
                 @click="handleExportSummary"
               />
             </div>
-
           </template>
 
           <template v-else>

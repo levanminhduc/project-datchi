@@ -150,13 +150,27 @@
                   >
                     <thead>
                       <tr>
-                        <th class="text-left">NCC</th>
-                        <th class="text-left">Tex</th>
-                        <th class="text-left">Màu chỉ</th>
-                        <th class="text-right">Cần (cuộn)</th>
-                        <th class="text-right">Đã xuất</th>
-                        <th class="text-right">Đã trả</th>
-                        <th class="text-right">Còn lại</th>
+                        <th class="text-left">
+                          NCC
+                        </th>
+                        <th class="text-left">
+                          Tex
+                        </th>
+                        <th class="text-left">
+                          Màu chỉ
+                        </th>
+                        <th class="text-right">
+                          Cần (cuộn)
+                        </th>
+                        <th class="text-right">
+                          Đã xuất
+                        </th>
+                        <th class="text-right">
+                          Đã trả
+                        </th>
+                        <th class="text-right">
+                          Còn lại
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -167,7 +181,9 @@
                         <td>{{ line.supplier_name || '-' }}</td>
                         <td>{{ line.tex_number || '-' }}</td>
                         <td>{{ line.color_name || '-' }}</td>
-                        <td class="text-right">{{ line.quota_cones }}</td>
+                        <td class="text-right">
+                          {{ line.quota_cones }}
+                        </td>
                         <td class="text-right text-positive">
                           {{ line.net_issued }}
                           <span
@@ -175,7 +191,9 @@
                             class="text-caption text-grey-7"
                           >({{ line.issued_cones }}-{{ line.returned_cones }})</span>
                         </td>
-                        <td class="text-right text-grey-7">{{ line.returned_cones }}</td>
+                        <td class="text-right text-grey-7">
+                          {{ line.returned_cones }}
+                        </td>
                         <td
                           class="text-right"
                           :class="line.pending_cones > 0 ? 'text-warning text-weight-medium' : (line.pending_cones === 0 && line.net_issued > line.quota_cones ? 'text-negative text-weight-medium' : 'text-positive')"
@@ -203,13 +221,27 @@
                 >
                   <thead>
                     <tr>
-                      <th class="text-left">NCC</th>
-                      <th class="text-left">Tex</th>
-                      <th class="text-left">Màu chỉ</th>
-                      <th class="text-right">Cần (cuộn)</th>
-                      <th class="text-right">Đã xuất</th>
-                      <th class="text-right">Đã trả</th>
-                      <th class="text-right">Còn lại</th>
+                      <th class="text-left">
+                        NCC
+                      </th>
+                      <th class="text-left">
+                        Tex
+                      </th>
+                      <th class="text-left">
+                        Màu chỉ
+                      </th>
+                      <th class="text-right">
+                        Cần (cuộn)
+                      </th>
+                      <th class="text-right">
+                        Đã xuất
+                      </th>
+                      <th class="text-right">
+                        Đã trả
+                      </th>
+                      <th class="text-right">
+                        Còn lại
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -220,7 +252,9 @@
                       <td>{{ line.supplier_name || '-' }}</td>
                       <td>{{ line.tex_number || '-' }}</td>
                       <td>{{ line.color_name || '-' }}</td>
-                      <td class="text-right">{{ line.quota_cones }}</td>
+                      <td class="text-right">
+                        {{ line.quota_cones }}
+                      </td>
                       <td class="text-right text-positive">
                         {{ line.net_issued }}
                         <span
@@ -228,7 +262,9 @@
                           class="text-caption text-grey-7"
                         >({{ line.issued_cones }}-{{ line.returned_cones }})</span>
                       </td>
-                      <td class="text-right text-grey-7">{{ line.returned_cones }}</td>
+                      <td class="text-right text-grey-7">
+                        {{ line.returned_cones }}
+                      </td>
                       <td
                         class="text-right"
                         :class="line.pending_cones > 0 ? 'text-warning text-weight-medium' : 'text-positive'"
