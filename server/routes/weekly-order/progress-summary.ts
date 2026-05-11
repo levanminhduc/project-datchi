@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { supabaseAdmin } from '../../db/supabase'
 import { requirePermission } from '../../middleware/auth'
 import type { AppEnv } from '../../types/hono-env'
+import { getPartialConeRatio } from '../../utils/settings-helper'
 import {
   buildPoQuotaMap,
   fetchCalculationData,
@@ -18,7 +19,11 @@ type IssuedRow = {
   returned_cones: number
 }
 
-async function fetchIssuedByPo(weekId: number): Promise<IssuedRow[]> {
+function roundToTwoDecimals(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
+async function fetchIssuedByPo(weekId: number, ratio: number): Promise<IssuedRow[]> {
   const { data: items, error: itemsErr } = await supabaseAdmin
     .from('thread_order_items')
     .select('po_id, style_id, style_color_id')
@@ -34,9 +39,10 @@ async function fetchIssuedByPo(weekId: number): Promise<IssuedRow[]> {
 
   const { data: lines, error: linesErr } = await supabaseAdmin
     .from('thread_issue_lines')
-    .select('po_id, style_id, style_color_id, thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial')
+    .select('po_id, style_id, style_color_id, thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status)')
     .in('po_id', poIds)
     .in('style_color_id', styleColorIds)
+    .eq('thread_issues.status', 'CONFIRMED')
     .limit(50000)
   if (linesErr) throw linesErr
   if (!lines || lines.length === 0) return []
@@ -61,8 +67,8 @@ async function fetchIssuedByPo(weekId: number): Promise<IssuedRow[]> {
     const itemKey = `${line.po_id ?? 'null'}_${line.style_id ?? 'null'}_${line.style_color_id ?? 'null'}`
     if (!validKeys.has(itemKey)) continue
     const key = `${line.po_id ?? 'null'}_${line.thread_type_id}_${line.thread_color_id ?? ''}`
-    const issued = (line.issued_full ?? 0) + (line.issued_partial ?? 0)
-    const returned = (line.returned_full ?? 0) + (line.returned_partial ?? 0)
+    const issued = roundToTwoDecimals((line.issued_full ?? 0) + (line.issued_partial ?? 0) * ratio)
+    const returned = roundToTwoDecimals((line.returned_full ?? 0) + (line.returned_partial ?? 0) * ratio)
     const existing = grouped.get(key)
     if (existing) {
       existing.issued_cones += issued
@@ -101,11 +107,12 @@ router.get(
       if (weekErr) throw weekErr
       if (!weekRow) return c.json({ data: null, error: 'Tuần không tồn tại' }, 404)
 
-      const [{ calculation_data }, orderItems, issuedRows] = await Promise.all([
+      const [{ calculation_data }, orderItems, ratio] = await Promise.all([
         fetchCalculationData(weekId),
         fetchOrderItems(weekId),
-        fetchIssuedByPo(weekId),
+        getPartialConeRatio(),
       ])
+      const issuedRows = await fetchIssuedByPo(weekId, ratio)
 
       if (calculation_data.length === 0) {
         return c.json({

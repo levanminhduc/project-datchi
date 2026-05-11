@@ -157,6 +157,11 @@
           icon="calculate"
         />
         <q-tab
+          name="progress"
+          label="Tiến độ"
+          icon="trending_up"
+        />
+        <q-tab
           name="overview"
           label="Tổng quan"
           icon="info"
@@ -185,6 +190,15 @@
         animated
         keep-alive
       >
+        <!-- Tab: Progress -->
+        <q-tab-panel name="progress">
+          <ProgressSummarySection
+            :pos="progressPos"
+            :loading="progressLoading"
+            @refresh="loadProgressSummary"
+          />
+        </q-tab-panel>
+
         <!-- Tab: Overview -->
         <q-tab-panel name="overview">
           <div class="text-subtitle2 text-weight-medium q-mb-md">
@@ -477,13 +491,6 @@
               />
             </div>
 
-            <q-separator class="q-my-lg" />
-
-            <ProgressSummarySection
-              :pos="progressPos"
-              :loading="progressLoading"
-              @refresh="loadProgressSummary"
-            />
           </template>
 
           <template v-else>
@@ -1030,6 +1037,8 @@ watch(activeTab, (tab) => {
   }
   if (tab === 'calculation') {
     if (!calculationResults.value) loadCalculationResults()
+  }
+  if (tab === 'progress') {
     if (progressPos.value.length === 0) loadProgressSummary()
   }
 })
@@ -1040,11 +1049,12 @@ onMounted(async () => {
     loadCompletions()
   }
   const tabParam = route.query.tab as string
-  if (tabParam && ['overview', 'reservations', 'loans', 'deliveries', 'calculation'].includes(tabParam)) {
+  if (tabParam && ['overview', 'reservations', 'loans', 'deliveries', 'calculation', 'progress'].includes(tabParam)) {
     activeTab.value = tabParam
   }
   if (activeTab.value === 'calculation') {
     loadCalculationResults()
+  } else if (activeTab.value === 'progress') {
     loadProgressSummary()
   } else if (activeTab.value === 'reservations') {
     loadReservations()
