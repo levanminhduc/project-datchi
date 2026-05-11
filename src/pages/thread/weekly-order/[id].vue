@@ -424,19 +424,11 @@
 
         <!-- Tab: Deliveries -->
         <q-tab-panel name="deliveries">
-          <div class="text-subtitle2 text-weight-medium q-mb-md">
-            Thông tin giao hàng
-          </div>
-          <div class="text-body2 text-grey-7">
-            Xem chi tiết giao hàng tại trang
-            <AppButton
-              flat
-              dense
-              color="primary"
-              label="Quản lý giao hàng"
-              @click="router.push('/thread/weekly-order/deliveries')"
-            />
-          </div>
+          <DeliverySummarySection
+            :summary="deliverySummary"
+            :loading="deliverySummaryLoading"
+            @refresh="loadDeliverySummary"
+          />
         </q-tab-panel>
 
         <!-- Tab: Calculation -->
@@ -677,7 +669,7 @@ import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useWeeklyOrderReservations } from '@/composables/thread/useWeeklyOrderReservations'
-import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone, ReservationSummary, ThreadOrderItemCompletion, SurplusPreview, WeeklyOrderProgressPo } from '@/types/thread'
+import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone, ReservationSummary, ThreadOrderItemCompletion, SurplusPreview, WeeklyOrderProgressPo, DeliverySummary } from '@/types/thread'
 import type { WeeklyOrderResults, StyleOrderEntry } from '@/types/thread/weeklyOrder'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatThreadTypeDisplay } from '@/utils/thread-format'
@@ -694,6 +686,7 @@ import AppCheckbox from '@/components/ui/inputs/AppCheckbox.vue'
 import ResultsDetailView from '@/components/thread/weekly-order/ResultsDetailView.vue'
 import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
 import ProgressSummarySection from '@/components/thread/weekly-order/ProgressSummarySection.vue'
+import DeliverySummarySection from '@/components/thread/weekly-order/DeliverySummarySection.vue'
 import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
 import { exportOrderResults, exportOrdersAsZip, getSupplierGroups } from '@/composables/thread/useWeeklyOrderExport'
 import SupplierExportDialog from '@/components/thread/weekly-order/SupplierExportDialog.vue'
@@ -748,6 +741,9 @@ const calculationLoading = ref(false)
 
 const progressPos = ref<WeeklyOrderProgressPo[]>([])
 const progressLoading = ref(false)
+
+const deliverySummary = ref<DeliverySummary | null>(null)
+const deliverySummaryLoading = ref(false)
 
 const orderEntriesFromItems = computed<StyleOrderEntry[]>(() => {
   if (!week.value?.items) return []
@@ -968,6 +964,19 @@ const loadProgressSummary = async () => {
   }
 }
 
+const loadDeliverySummary = async () => {
+  if (!weekId.value) return
+  deliverySummaryLoading.value = true
+  try {
+    deliverySummary.value = await weeklyOrderService.getDeliverySummary(weekId.value)
+  } catch (err: any) {
+    snackbar.error(err.message || 'Không thể tải tóm tắt giao hàng')
+    deliverySummary.value = null
+  } finally {
+    deliverySummaryLoading.value = false
+  }
+}
+
 const showSupplierDialog = ref(false)
 const showProgressDialog = ref(false)
 const exportProgress = ref({ current: 0, total: 0, currentName: '' })
@@ -1041,6 +1050,9 @@ watch(activeTab, (tab) => {
   if (tab === 'progress') {
     if (progressPos.value.length === 0) loadProgressSummary()
   }
+  if (tab === 'deliveries' && !deliverySummary.value) {
+    loadDeliverySummary()
+  }
 })
 
 onMounted(async () => {
@@ -1060,6 +1072,8 @@ onMounted(async () => {
     loadReservations()
   } else if (activeTab.value === 'loans') {
     loadLoans()
+  } else if (activeTab.value === 'deliveries') {
+    loadDeliverySummary()
   }
 })
 

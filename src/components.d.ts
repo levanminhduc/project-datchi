@@ -75,6 +75,7 @@ declare module 'vue' {
     DataTable: typeof import('./components/ui/tables/DataTable.vue')['default']
     DatePicker: typeof import('./components/ui/pickers/DatePicker.vue')['default']
     DeleteDialog: typeof import('./components/ui/dialogs/DeleteDialog.vue')['default']
+    DeliverySummarySection: typeof import('./components/thread/weekly-order/DeliverySummarySection.vue')['default']
     DensityCalculator: typeof import('./components/thread/DensityCalculator.vue')['default']
     EmptyState: typeof import('./components/ui/feedback/EmptyState.vue')['default']
     ExportProgressDialog: typeof import('./components/thread/weekly-order/ExportProgressDialog.vue')['default']

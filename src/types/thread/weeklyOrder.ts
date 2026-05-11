@@ -471,6 +471,22 @@ export interface WeeklyOrderProgressThreadLine {
   pending_cones: number
 }
 
+export interface WeeklyOrderProgressStyle {
+  style_id: number
+  style_code: string
+  style_name: string
+  style_colors: string[]
+  summary: {
+    total_quota_cones: number
+    total_issued_cones: number
+    total_returned_cones: number
+    total_net_issued: number
+    total_pending_cones: number
+    over_quota_cones: number
+  }
+  thread_lines: WeeklyOrderProgressThreadLine[]
+}
+
 export interface WeeklyOrderProgressPo {
   po_id: number | null
   po_number: string
@@ -482,10 +498,32 @@ export interface WeeklyOrderProgressPo {
     total_net_issued: number
     total_pending_cones: number
   }
+  styles: WeeklyOrderProgressStyle[]
   thread_lines: WeeklyOrderProgressThreadLine[]
 }
 
 export interface WeeklyOrderProgressSummary {
   week: { id: number; week_name: string; status: string }
   pos: WeeklyOrderProgressPo[]
+}
+
+export interface DeliverySupplierBreakdown {
+  supplier_id: number
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  color_hex: string
+  ordered: number
+  delivered: number
+  received: number
+  pending_delivery: number
+  pending_receive: number
+}
+
+export interface DeliverySummary {
+  total_ordered: number
+  total_delivered: number
+  total_received: number
+  percent_received: number
+  by_supplier: DeliverySupplierBreakdown[]
 }
