@@ -51,7 +51,7 @@ type InventoryAggRow = {
   count: number
 }
 
-async function fetchCalculationData(weekId: number) {
+export async function fetchCalculationData(weekId: number) {
   const { data, error } = await supabaseAdmin
     .from('thread_order_results')
     .select('calculation_data, summary_data')
@@ -70,7 +70,7 @@ async function fetchCalculationData(weekId: number) {
   }
 }
 
-async function fetchOrderItems(weekId: number) {
+export async function fetchOrderItems(weekId: number) {
   const { data, error } = await supabaseAdmin
     .from('thread_order_items')
     .select('id, po_id, style_color_id, style_id, quantity')
@@ -81,7 +81,7 @@ async function fetchOrderItems(weekId: number) {
   return (data ?? []) as ThreadOrderItem[]
 }
 
-async function fetchColorNameToIdMap(threadColorIds: number[]) {
+export async function fetchColorNameToIdMap(threadColorIds: number[]) {
   if (threadColorIds.length === 0) return new Map<string, number>()
   const { data, error } = await supabaseAdmin
     .from('colors')
@@ -96,7 +96,7 @@ async function fetchColorNameToIdMap(threadColorIds: number[]) {
   return map
 }
 
-async function fetchSpecsByStyleColors(styleColorIds: number[]) {
+export async function fetchSpecsByStyleColors(styleColorIds: number[]) {
   if (styleColorIds.length === 0) return []
   const { data, error } = await supabaseAdmin
     .from('style_color_thread_specs')

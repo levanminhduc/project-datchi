@@ -6,6 +6,7 @@ import deliveryRoutes from './deliveries'
 import loansReservationsRoutes from './loans-reservations'
 import transferReservedRoutes from './transfer-reserved'
 import transferByCalculationRoutes from './transfer-by-calculation'
+import progressSummaryRoutes from './progress-summary'
 
 const weeklyOrder = new Hono<AppEnv>()
 
@@ -13,6 +14,7 @@ const weeklyOrder = new Hono<AppEnv>()
 // BEFORE coreRoutes' /:id to avoid Hono matching 'search-po' as an id param
 weeklyOrder.route('/', transferReservedRoutes)
 weeklyOrder.route('/', transferByCalculationRoutes)
+weeklyOrder.route('/', progressSummaryRoutes)
 weeklyOrder.route('/', coreRoutes)
 weeklyOrder.route('/', calculationRoutes)
 weeklyOrder.route('/', deliveryRoutes)

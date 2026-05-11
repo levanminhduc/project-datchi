@@ -457,3 +457,35 @@ export interface DeliveryReceiveLog {
   quantity_cones: number
   received_quantity: number
 }
+
+export interface WeeklyOrderProgressThreadLine {
+  thread_type_id: number
+  thread_color_id: number
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  quota_cones: number
+  issued_cones: number
+  returned_cones: number
+  net_issued: number
+  pending_cones: number
+}
+
+export interface WeeklyOrderProgressPo {
+  po_id: number | null
+  po_number: string
+  display_order: number
+  summary: {
+    total_quota_cones: number
+    total_issued_cones: number
+    total_returned_cones: number
+    total_net_issued: number
+    total_pending_cones: number
+  }
+  thread_lines: WeeklyOrderProgressThreadLine[]
+}
+
+export interface WeeklyOrderProgressSummary {
+  week: { id: number; week_name: string; status: string }
+  pos: WeeklyOrderProgressPo[]
+}

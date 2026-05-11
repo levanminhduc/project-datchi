@@ -35,6 +35,7 @@ import type {
   ReleaseSurplusResult,
   ThreadSummaryRow,
   ThreadOrderItem,
+  WeeklyOrderProgressSummary,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -638,5 +639,12 @@ export const weeklyOrderService = {
       method: 'PUT',
       body: JSON.stringify({ warehouse_ids: warehouseIds }),
     })
+  },
+
+  async getProgressSummary(weekId: number): Promise<WeeklyOrderProgressSummary> {
+    const response = await fetchApi<ApiResponse<WeeklyOrderProgressSummary>>(`${BASE}/${weekId}/progress-summary`)
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không thể tải tiến độ xuất chỉ')
+    return response.data
   },
 }

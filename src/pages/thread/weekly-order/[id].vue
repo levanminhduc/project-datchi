@@ -476,6 +476,14 @@
                 @click="handleExportSummary"
               />
             </div>
+
+            <q-separator class="q-my-lg" />
+
+            <ProgressSummarySection
+              :pos="progressPos"
+              :loading="progressLoading"
+              @refresh="loadProgressSummary"
+            />
           </template>
 
           <template v-else>
@@ -662,7 +670,7 @@ import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useWeeklyOrderReservations } from '@/composables/thread/useWeeklyOrderReservations'
-import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone, ReservationSummary, ThreadOrderItemCompletion, SurplusPreview } from '@/types/thread'
+import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone, ReservationSummary, ThreadOrderItemCompletion, SurplusPreview, WeeklyOrderProgressPo } from '@/types/thread'
 import type { WeeklyOrderResults, StyleOrderEntry } from '@/types/thread/weeklyOrder'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatThreadTypeDisplay } from '@/utils/thread-format'
@@ -678,6 +686,7 @@ import ManualReturnDialog from '@/components/thread/weekly-order/ManualReturnDia
 import AppCheckbox from '@/components/ui/inputs/AppCheckbox.vue'
 import ResultsDetailView from '@/components/thread/weekly-order/ResultsDetailView.vue'
 import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
+import ProgressSummarySection from '@/components/thread/weekly-order/ProgressSummarySection.vue'
 import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
 import { exportOrderResults, exportOrdersAsZip, getSupplierGroups } from '@/composables/thread/useWeeklyOrderExport'
 import SupplierExportDialog from '@/components/thread/weekly-order/SupplierExportDialog.vue'
@@ -729,6 +738,9 @@ const releaseLoading = ref(false)
 const calculationView = ref<'detail' | 'summary'>('detail')
 const calculationResults = ref<WeeklyOrderResults | null>(null)
 const calculationLoading = ref(false)
+
+const progressPos = ref<WeeklyOrderProgressPo[]>([])
+const progressLoading = ref(false)
 
 const orderEntriesFromItems = computed<StyleOrderEntry[]>(() => {
   if (!week.value?.items) return []
@@ -935,6 +947,20 @@ const loadCalculationResults = async () => {
   }
 }
 
+const loadProgressSummary = async () => {
+  if (!weekId.value) return
+  progressLoading.value = true
+  try {
+    const result = await weeklyOrderService.getProgressSummary(weekId.value)
+    progressPos.value = result.pos
+  } catch (err: any) {
+    snackbar.error(err.message || 'Không thể tải tiến độ xuất chỉ')
+    progressPos.value = []
+  } finally {
+    progressLoading.value = false
+  }
+}
+
 const showSupplierDialog = ref(false)
 const showProgressDialog = ref(false)
 const exportProgress = ref({ current: 0, total: 0, currentName: '' })
@@ -1002,8 +1028,9 @@ watch(activeTab, (tab) => {
   if (tab === 'loans' && loans.value.length === 0) {
     loadLoans()
   }
-  if (tab === 'calculation' && !calculationResults.value) {
-    loadCalculationResults()
+  if (tab === 'calculation') {
+    if (!calculationResults.value) loadCalculationResults()
+    if (progressPos.value.length === 0) loadProgressSummary()
   }
 })
 
@@ -1018,6 +1045,7 @@ onMounted(async () => {
   }
   if (activeTab.value === 'calculation') {
     loadCalculationResults()
+    loadProgressSummary()
   } else if (activeTab.value === 'reservations') {
     loadReservations()
   } else if (activeTab.value === 'loans') {
