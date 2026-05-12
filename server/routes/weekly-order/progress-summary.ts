@@ -473,6 +473,7 @@ router.get(
         const total_returned = thread_lines.reduce((s, l) => s + l.returned_cones, 0)
         const total_net = roundToTwoDecimals(Math.max(0, total_issued - total_returned))
         const total_pending = roundToTwoDecimals(Math.max(0, total_quota - total_net))
+        const over_quota = roundToTwoDecimals(Math.max(0, total_net - total_quota))
 
         return {
           po_id: po.po_id,
@@ -484,6 +485,7 @@ router.get(
             total_returned_cones: roundToTwoDecimals(total_returned),
             total_net_issued: total_net,
             total_pending_cones: total_pending,
+            over_quota_cones: over_quota,
           },
           styles,
           thread_lines,

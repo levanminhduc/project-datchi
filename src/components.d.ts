@@ -123,6 +123,7 @@ declare module 'vue' {
     PopupEdit: typeof import('./components/ui/dialogs/PopupEdit.vue')['default']
     PoSearchPopup: typeof import('./components/thread/transfer-reserved/PoSearchPopup.vue')['default']
     PoSection: typeof import('./components/thread/transfer-reserved/PoSection.vue')['default']
+    ProgressStyleGroup: typeof import('./components/thread/weekly-order/ProgressStyleGroup.vue')['default']
     ProgressSummarySection: typeof import('./components/thread/weekly-order/ProgressSummarySection.vue')['default']
     PullToRefresh: typeof import('./components/ui/scroll/PullToRefresh.vue')['default']
     QrLabelGrid: typeof import('./components/qr/QrLabelGrid.vue')['default']

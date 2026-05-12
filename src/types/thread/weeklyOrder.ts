@@ -497,6 +497,7 @@ export interface WeeklyOrderProgressPo {
     total_returned_cones: number
     total_net_issued: number
     total_pending_cones: number
+    over_quota_cones: number
   }
   styles: WeeklyOrderProgressStyle[]
   thread_lines: WeeklyOrderProgressThreadLine[]

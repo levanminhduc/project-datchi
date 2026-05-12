@@ -1,5 +1,10 @@
 // Global styles that apply across the entire application
 
+// Always show vertical scrollbar (prevents layout shift)
+html {
+  overflow-y: scroll;
+}
+
 // z-index fix for popup dropdowns inside dialogs
 .z-max {
   z-index: 9999;

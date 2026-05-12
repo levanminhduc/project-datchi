@@ -821,8 +821,16 @@ function handleBack() {
     return
   }
   clearIssue()
-  activeTab.value = 'history'
-  router.replace({ query: { tab: 'history' } })
+  step2Visible.value = false
+  selectedPoId.value = null
+  selectedStyleId.value = null
+  selectedSubArtId.value = null
+  selectedColorIds.value = []
+  subArtOptions.value = []
+  colorOptions.value = []
+  lineInputs.value = {}
+  shortageData.value = null
+  showBorrowDialog.value = false
 }
 
 function handleNewIssue() {
