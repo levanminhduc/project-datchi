@@ -101,9 +101,10 @@ const search = ref("");
 const dialogMinWidth = ref<number | null>(null);
 
 const filteredWeeks = computed(() => {
-  if (!search.value.trim()) return props.weeks;
+  const nonCancelled = props.weeks.filter((w) => w.status !== 'CANCELLED')
+  if (!search.value.trim()) return nonCancelled;
   const q = search.value.toLowerCase();
-  return props.weeks.filter(
+  return nonCancelled.filter(
     (w) =>
       w.week_name?.toLowerCase().includes(q) ||
       w.created_by?.toLowerCase().includes(q),

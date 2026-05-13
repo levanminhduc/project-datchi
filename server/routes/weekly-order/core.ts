@@ -316,9 +316,7 @@ core.get('/history-by-week', requirePermission('thread.allocations.view'), async
       .range(from, from + limit - 1)
 
     const statusParam = validated.status
-    if (statusParam === 'ALL') {
-      // No status filter
-    } else if (statusParam && ['DRAFT', 'CONFIRMED', 'CANCELLED'].includes(statusParam)) {
+    if (statusParam && ['DRAFT', 'CONFIRMED', 'COMPLETED'].includes(statusParam)) {
       countQuery = countQuery.eq('status', statusParam)
       weeksQuery = weeksQuery.eq('status', statusParam)
     } else {
@@ -1355,6 +1353,92 @@ core.post('/:id/notify', requirePermission('thread.allocations.manage'), async (
   }
 })
 
+core.get('/:id/cancel-preview', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data: week, error: weekError } = await supabase
+      .from('thread_order_weeks')
+      .select('id, week_name, status, start_date, end_date, created_by, created_at')
+      .eq('id', id)
+      .single()
+
+    if (weekError) {
+      if (weekError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
+      }
+      throw weekError
+    }
+
+    if (week.status === 'CANCELLED') {
+      return c.json({ data: null, error: 'Đơn hàng đã bị hủy trước đó' }, 400)
+    }
+
+    const [conesResult, deliveriesResult, loansResult] = await Promise.all([
+      supabase
+        .from('thread_inventory')
+        .select('id, quantity_meters, thread_type_id, color_id')
+        .eq('reserved_week_id', id)
+        .limit(10000),
+      supabase
+        .from('thread_order_deliveries')
+        .select('id, status, inventory_status')
+        .eq('week_id', id)
+        .limit(10000),
+      supabase
+        .from('thread_order_loans')
+        .select('id')
+        .or(`from_week_id.eq.${id},to_week_id.eq.${id}`)
+        .is('deleted_at', null)
+        .limit(1),
+    ])
+
+    const cones = conesResult.data || []
+    const deliveries = deliveriesResult.data || []
+    const hasActiveLoans = (loansResult.data || []).length > 0
+
+    const conesSummary = {
+      total_cones: cones.length,
+      total_meters: cones.reduce((sum, c) => sum + (c.quantity_meters || 0), 0),
+      thread_types: new Set(cones.map((c) => c.thread_type_id)).size,
+      colors: new Set(cones.map((c) => c.color_id).filter(Boolean)).size,
+    }
+
+    const deliveriesSummary = {
+      total: deliveries.length,
+      pending: deliveries.filter((d) => d.status === 'PENDING').length,
+      delivered: deliveries.filter((d) => d.status === 'DELIVERED').length,
+      received: deliveries.filter((d) => d.inventory_status === 'RECEIVED').length,
+    }
+
+    const warnings: string[] = []
+    if (deliveriesSummary.received > 0) {
+      warnings.push(`${deliveriesSummary.received} delivery đã nhập kho (RECEIVED) - không thể hoàn tác`)
+    }
+    if (hasActiveLoans) {
+      warnings.push('Còn khoản mượn/cho mượn chưa thanh toán - không thể hủy')
+    }
+
+    return c.json({
+      data: {
+        week,
+        cones_summary: conesSummary,
+        deliveries_summary: deliveriesSummary,
+        has_active_loans: hasActiveLoans,
+        can_cancel: !hasActiveLoans,
+        warnings,
+      },
+      error: null,
+    })
+  } catch (err) {
+    console.error('Error fetching cancel preview:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 core.patch('/:id/leader-sign', requirePermission('thread.leader.sign'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
@@ -1551,6 +1635,16 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
 
       if (releaseError) {
         return c.json({ data: null, error: releaseError.message }, 500)
+      }
+
+      const { error: cancelDeliveriesError } = await supabase
+        .from('thread_order_deliveries')
+        .update({ status: 'CANCELLED' })
+        .eq('week_id', id)
+        .eq('inventory_status', 'PENDING')
+
+      if (cancelDeliveriesError) {
+        console.warn('[PATCH status] Cancel pending deliveries warning:', cancelDeliveriesError)
       }
     }
 

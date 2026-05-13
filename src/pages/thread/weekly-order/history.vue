@@ -393,12 +393,10 @@ const filters = ref<HistoryByWeekFilter>({
 });
 
 const statusOptions = [
-  { label: "Tất cả (trừ đã hủy)", value: undefined },
+  { label: "Tất cả", value: undefined },
   { label: "Nháp", value: "DRAFT" },
   { label: "Đã xác nhận", value: "CONFIRMED" },
   { label: "Đã hoàn tất", value: "COMPLETED" },
-  { label: "Đã hủy", value: "CANCELLED" },
-  { label: "Tất cả", value: "ALL" },
 ];
 
 const poOptions = computed(() =>
