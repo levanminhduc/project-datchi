@@ -18,6 +18,7 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
   try {
     const status = c.req.query('status')
     const weekId = c.req.query('week_id')
+    const showCancelled = status === 'CANCELLED'
 
     const allDeliveries: any[] = []
     let offset = 0
@@ -29,13 +30,16 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
           *,
           supplier:suppliers(id, name),
           thread_type:thread_types(id, name, tex_number, color_data:colors!color_id(name, hex_code)),
-          week:thread_order_weeks(id, week_name)
+          week:thread_order_weeks(id, week_name, status)
         `)
         .order('delivery_date', { ascending: true })
         .range(offset, offset + BATCH_SIZE - 1)
 
       if (status) {
         query = query.eq('status', status)
+      } else {
+        // Mặc định ẩn deliveries đã hủy
+        query = query.neq('status', 'CANCELLED')
       }
       if (weekId) {
         query = query.eq('week_id', parseInt(weekId))
@@ -122,6 +126,9 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
         }
       })
       .filter((row: any) => {
+        // Ẩn deliveries của đơn hàng tuần đã hủy (trừ khi đang xem CANCELLED)
+        if (!showCancelled && row.week?.status === 'CANCELLED') return false
+
         const quantityCones = Number(row.quantity_cones || 0)
         const receivedQuantity = Number(row.received_quantity || 0)
         const hasSupplier = row.supplier_id !== null && row.supplier_id !== undefined

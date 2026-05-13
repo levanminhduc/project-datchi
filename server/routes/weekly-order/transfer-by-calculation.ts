@@ -319,8 +319,8 @@ async function fetchLastTransferMap(weekId: number) {
 
   if (allConeIds.length === 0) return new Map<ThreadKey, LastTransferEntry>()
 
-  // Batch-fetch cone details (chunked to stay under PostgREST limits)
-  const CHUNK = 1000
+  // Keep the .in() URL below PostgREST URI limits for weeks with many transfers.
+  const CHUNK = 500
   const coneDetails: Array<{
     id: number
     thread_type_id: number

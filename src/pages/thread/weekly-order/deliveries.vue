@@ -211,8 +211,8 @@
               <template #body-cell-status="props">
                 <q-td :props="props">
                   <q-badge
-                    :color="props.row.status === DeliveryStatus.DELIVERED ? 'green' : 'orange'"
-                    :label="props.row.status === DeliveryStatus.DELIVERED ? 'Đã giao' : 'Chờ giao'"
+                    :color="props.row.status === DeliveryStatus.DELIVERED ? 'green' : props.row.status === DeliveryStatus.CANCELLED ? 'red' : 'orange'"
+                    :label="props.row.status === DeliveryStatus.DELIVERED ? 'Đã giao' : props.row.status === DeliveryStatus.CANCELLED ? 'Đã hủy' : 'Chờ giao'"
                   />
                 </q-td>
               </template>
@@ -584,6 +584,7 @@ const statusOptions = [
   { label: 'Tất cả', value: null },
   { label: 'Chờ giao', value: DeliveryStatus.PENDING },
   { label: 'Đã giao', value: DeliveryStatus.DELIVERED },
+  { label: 'Đã hủy', value: DeliveryStatus.CANCELLED },
 ]
 
 // Delivered dialog state
