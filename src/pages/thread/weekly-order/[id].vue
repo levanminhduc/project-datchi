@@ -78,6 +78,14 @@
             </div>
             <div class="col-12 col-sm-3">
               <div class="text-caption text-grey-6">
+                Ngày tạo đơn hàng
+              </div>
+              <div class="text-body2">
+                {{ formatDate(week.created_at) }}
+              </div>
+            </div>
+            <div class="col-12 col-sm-3">
+              <div class="text-caption text-grey-6">
                 Ngày giao hàng
               </div>
               <div class="text-body2">
@@ -136,6 +144,15 @@
               >
                 —
               </div>
+            </div>
+            <div class="col-12 col-sm-3">
+              <AppButton
+                flat
+                icon="file_download"
+                label="Xuất Excel"
+                :loading="calculationLoading"
+                @click="handleExportSummaryFromCard"
+              />
             </div>
           </div>
         </q-card-section>
@@ -1083,6 +1100,13 @@ const supplierGroups = computed(() => {
   if (!calculationResults.value) return []
   return getSupplierGroups(calculationResults.value.summary_data)
 })
+
+const handleExportSummaryFromCard = async () => {
+  if (!calculationResults.value) {
+    await loadCalculationResults()
+  }
+  handleExportSummary()
+}
 
 const handleExportSummary = () => {
   if (!calculationResults.value || !week.value) return

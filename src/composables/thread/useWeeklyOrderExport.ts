@@ -235,6 +235,7 @@ async function buildOrderWorkbook(
   worksheet.getColumn('sl_can_dat').numFmt = numFmt
   worksheet.getColumn('additional_order').numFmt = numFmt
   worksheet.getColumn('total_final').numFmt = numFmt
+  worksheet.getColumn('delivery_date').alignment = { horizontal: 'right' }
 
   data.forEach((r) => {
     worksheet.addRow({
