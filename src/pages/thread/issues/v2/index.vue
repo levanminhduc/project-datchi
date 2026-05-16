@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDebounceFn, useLocalStorage, StorageSerializers } from '@vueuse/core'
 import { useIssueV2 } from '@/composables/thread/useIssueV2'
@@ -22,6 +22,7 @@ import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
 import { dateRules } from '@/utils'
 import { formatStyleDisplay } from '@/utils/thread-format'
 import IssueV2StatusBadge from '@/components/thread/IssueV2StatusBadge.vue'
+import IssueActivityPanel from '@/components/thread/issues/IssueActivityPanel.vue'
 import type { QTableColumn, QTableProps } from 'quasar'
 import { format as quasarFormat } from 'quasar'
 
@@ -357,6 +358,98 @@ async function loadInitialOptions() {
 async function handleCreateIssue() {
   if (!canCreateIssue.value) return
   step2Visible.value = true
+}
+
+function waitForOption<T extends { value: number }>(
+  source: Ref<T[]>,
+  targetValue: number,
+  timeout = 5000,
+): Promise<T[]> {
+  return new Promise((resolve) => {
+    const check = () => source.value.some(o => o.value === targetValue)
+    if (check()) {
+      resolve(source.value)
+      return
+    }
+    const timer = setTimeout(() => { stop(); resolve([]) }, timeout)
+    const stop = watch(source, (val) => {
+      if (val.some(o => o.value === targetValue)) {
+        clearTimeout(timer)
+        stop()
+        resolve(val)
+      }
+    })
+  })
+}
+
+function waitForNonEmpty<T>(source: Ref<T[]>, timeout = 5000): Promise<T[]> {
+  return new Promise((resolve) => {
+    if (source.value.length > 0) {
+      resolve(source.value)
+      return
+    }
+    const timer = setTimeout(() => { stop(); resolve([]) }, timeout)
+    const stop = watch(source, (val) => {
+      if (val.length > 0) {
+        clearTimeout(timer)
+        stop()
+        resolve(val)
+      }
+    })
+  })
+}
+
+async function handleActivitySelect(payload: { poId: number; styleId: number; colorIds: number[] }) {
+  if (!department.value.trim() || !createdBy.value.trim()) return
+  if (hasIssue.value) return
+
+  step2Visible.value = true
+
+  const samePo = selectedPoId.value === payload.poId
+
+  subArtOptions.value = []
+  colorOptions.value = []
+  allColorOptions.value = []
+  selectedSubArtId.value = null
+  selectedColorIds.value = []
+
+  if (samePo) {
+    selectedStyleId.value = null
+  } else {
+    styleOptions.value = []
+    selectedStyleId.value = null
+    selectedPoId.value = payload.poId
+  }
+
+  const styles = await waitForOption(styleOptions, payload.styleId)
+  const matchStyle = styles.find(s => s.value === payload.styleId)
+  if (!matchStyle) return
+  selectedStyleId.value = payload.styleId
+
+  if (matchStyle.has_sub_arts) {
+    const subArts = await waitForNonEmpty(subArtOptions)
+    if (subArts.length === 0) return
+
+    for (const sa of subArts) {
+      selectedSubArtId.value = sa.value
+      await nextTick()
+      const cOpts = colorOptions.value
+      const validIds = payload.colorIds.filter(id => cOpts.some(c => c.value === id))
+      if (validIds.length > 0) {
+        selectedColorIds.value = validIds
+        return
+      }
+    }
+  } else {
+    const targetId = payload.colorIds[0]
+    if (targetId != null) {
+      const colors = await waitForOption(colorOptions, targetId)
+      const validIds = payload.colorIds.filter(id => colors.some(c => c.value === id))
+      if (validIds.length > 0) {
+        selectedColorIds.value = validIds
+      }
+    }
+  }
 }
 
 async function handleLoadFormData(forceReload = false) {
@@ -1100,6 +1193,11 @@ onUnmounted(() => {
         animated
       >
         <q-tab-panel name="create">
+          <IssueActivityPanel
+            :can-quick-fill="!!department.trim() && !!createdBy.trim() && !hasIssue"
+            @select="handleActivitySelect"
+          />
+
           <div class="row items-center q-mb-lg">
             <AppButton
               icon="arrow_back"
