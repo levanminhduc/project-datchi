@@ -141,6 +141,37 @@
         </q-card-section>
       </q-card>
 
+      <!-- Inventory diff warning banner (DRAFT only) -->
+      <q-banner
+        v-if="inventoryDiffWarning"
+        class="bg-orange-1 text-orange-10 q-mb-md"
+        rounded
+        dense
+      >
+        <template #avatar>
+          <q-icon
+            name="warning"
+            color="orange-10"
+          />
+        </template>
+        <div class="text-weight-medium q-mb-xs">
+          Tồn kho đã thay đổi so với lúc lưu nháp ({{ inventoryDiffWarning.count }} loại chỉ)
+        </div>
+        <div class="text-caption">
+          Vui lòng mở đơn để tính toán lại với tồn kho hiện tại trước khi xác nhận đơn hàng.
+        </div>
+        <template #action>
+          <AppButton
+            color="orange-10"
+            label="Tính toán lại"
+            icon="calculate"
+            dense
+            unelevated
+            @click="goRecalculate"
+          />
+        </template>
+      </q-banner>
+
       <!-- Tabs -->
       <q-tabs
         v-model="activeTab"
@@ -744,6 +775,8 @@ const progressLoading = ref(false)
 const deliverySummary = ref<DeliverySummary | null>(null)
 const deliverySummaryLoading = ref(false)
 
+const inventoryDiffWarning = ref<{ count: number } | null>(null)
+
 const orderEntriesFromItems = computed<StyleOrderEntry[]>(() => {
   if (!week.value?.items) return []
   const map = new Map<string, StyleOrderEntry>()
@@ -1054,10 +1087,31 @@ watch(activeTab, (tab) => {
   }
 })
 
+async function checkInventoryDiff() {
+  if (!weekId.value || !week.value || week.value.status !== 'DRAFT') {
+    inventoryDiffWarning.value = null
+    return
+  }
+  try {
+    const resp = await weeklyOrderService.getInventoryDiff(weekId.value)
+    inventoryDiffWarning.value = resp.has_changed ? { count: resp.diff.length } : null
+  } catch {
+    inventoryDiffWarning.value = null
+  }
+}
+
+function goRecalculate() {
+  if (!weekId.value) return
+  router.push({ path: '/thread/weekly-order', query: { load: String(weekId.value) } })
+}
+
 onMounted(async () => {
   await loadWeek()
   if (week.value && (week.value.status === 'CONFIRMED' || week.value.status === 'COMPLETED')) {
     loadCompletions()
+  }
+  if (week.value && week.value.status === 'DRAFT') {
+    checkInventoryDiff()
   }
   const tabParam = route.query.tab as string
   if (tabParam && ['overview', 'reservations', 'loans', 'deliveries', 'calculation', 'progress'].includes(tabParam)) {

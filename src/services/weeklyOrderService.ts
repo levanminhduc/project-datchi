@@ -655,4 +655,33 @@ export const weeklyOrderService = {
     if (!response.data) throw new Error('Không thể tải tóm tắt giao hàng')
     return response.data
   },
+
+  async getInventoryDiff(weekId: number): Promise<InventoryDiffResponse> {
+    const response = await fetchApi<ApiResponse<InventoryDiffResponse>>(`${BASE}/${weekId}/inventory-diff`)
+    if (response.error) throw new Error(response.error)
+    return response.data || { week_status: 'DRAFT', has_changed: false, diff: [] }
+  },
+}
+
+export interface InventoryDiffRow {
+  thread_type_id: number
+  thread_color_id: number | null
+  thread_type_name: string | null
+  supplier_name: string | null
+  tex_number: string | null
+  thread_color: string | null
+  old_inventory_cones: number
+  new_inventory_cones: number
+  old_sl_can_dat: number
+  new_sl_can_dat: number
+  old_total_final: number
+  new_total_final: number
+  quota_cones: number | null
+  total_cones: number
+}
+
+export interface InventoryDiffResponse {
+  week_status: string
+  has_changed: boolean
+  diff: InventoryDiffRow[]
 }

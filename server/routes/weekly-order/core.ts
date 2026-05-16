@@ -25,6 +25,7 @@ import {
 import { syncDeliveries } from './save-results-helpers'
 import { enrichWithInventory } from './enrich-helper'
 import { reaggregateSummary, adjustCalcDataForRemainingItems } from './reaggregate-helper'
+import { getInventoryDiffForWeek } from './inventory-diff-helper'
 
 const core = new Hono<AppEnv>()
 
@@ -735,6 +736,40 @@ core.put('/:id/warehouses', requirePermission('thread.allocations.manage'), asyn
     })
   } catch (err) {
     console.error('Error saving week warehouses:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+core.get('/:id/inventory-diff', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data: week, error: weekError } = await supabase
+      .from('thread_order_weeks')
+      .select('id, status')
+      .eq('id', id)
+      .single()
+
+    if (weekError) {
+      if (weekError.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
+      }
+      throw weekError
+    }
+
+    const diffResult = await getInventoryDiffForWeek(id)
+    return c.json({
+      data: {
+        week_status: week.status,
+        ...diffResult,
+      },
+      error: null,
+    })
+  } catch (err) {
+    console.error('[inventory-diff] Error:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })
@@ -1550,6 +1585,23 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
           error: null,
           message: 'Tuần đã được xác nhận trước đó',
         })
+      }
+
+      try {
+        const diffResult = await getInventoryDiffForWeek(id)
+        if (diffResult.has_changed) {
+          return c.json(
+            {
+              data: { diff: diffResult.diff },
+              error: 'INVENTORY_CHANGED',
+              message: 'Tồn kho đã thay đổi so với lúc lưu nháp. Vui lòng tính toán lại đơn hàng trước khi xác nhận.',
+            },
+            409,
+          )
+        }
+      } catch (diffErr) {
+        console.error('[PATCH status] inventory diff check failed:', diffErr)
+        return c.json({ data: null, error: 'Không thể kiểm tra tồn kho. Vui lòng thử lại.' }, 500)
       }
 
       let result = null

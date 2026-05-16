@@ -90,6 +90,7 @@ declare module 'vue' {
     InfoCard: typeof import('./components/ui/cards/InfoCard.vue')['default']
     InnerLoading: typeof import('./components/ui/feedback/InnerLoading.vue')['default']
     InventorySummaryCard: typeof import('./components/thread/InventorySummaryCard.vue')['default']
+    IssueActivityPanel: typeof import('./components/thread/issues/IssueActivityPanel.vue')['default']
     IssueDialog: typeof import('./components/thread/IssueDialog.vue')['default']
     IssueV2StatusBadge: typeof import('./components/thread/IssueV2StatusBadge.vue')['default']
     ListItem: typeof import('./components/ui/lists/ListItem.vue')['default']

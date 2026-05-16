@@ -370,6 +370,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import {
   useWeeklyOrder,
@@ -380,7 +381,8 @@ import {
   useWarehouses,
 } from '@/composables'
 import { purchaseOrderService } from '@/services/purchaseOrderService'
-import { weeklyOrderService } from '@/services/weeklyOrderService'
+import { weeklyOrderService, type InventoryDiffRow } from '@/services/weeklyOrderService'
+import { ApiError } from '@/services/api'
 import type { PurchaseOrderWithItems, CalculationResult } from '@/types/thread'
 import { OrderWeekStatus } from '@/types/thread/enums'
 import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
@@ -959,6 +961,68 @@ const resetConfirmSteps = () => {
   }
 }
 
+function escapeHtmlEntity(s: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }
+  return s.replace(/[&<>"']/g, (c) => map[c]!)
+}
+
+function showInventoryDiffDialog(diff: InventoryDiffRow[]): Promise<void> {
+  return new Promise((resolve) => {
+    const rowsHtml = diff
+      .map((d) => {
+        const label = `${escapeHtmlEntity(d.supplier_name || '-')} · Tex ${escapeHtmlEntity(d.tex_number || '-')} · ${escapeHtmlEntity(d.thread_color || '-')}`
+        const newStyle =
+          d.new_inventory_cones < d.old_inventory_cones
+            ? 'color:#c10015; font-weight:600'
+            : 'color:#21ba45; font-weight:600'
+        return `<tr>
+          <td style="padding:4px 8px;border-bottom:1px solid #eee">${label}</td>
+          <td style="padding:4px 8px;text-align:right;color:#888;border-bottom:1px solid #eee">${d.old_inventory_cones}</td>
+          <td style="padding:4px 8px;text-align:right;border-bottom:1px solid #eee;${newStyle}">${d.new_inventory_cones}</td>
+          <td style="padding:4px 8px;text-align:right;border-bottom:1px solid #eee">${d.new_sl_can_dat}</td>
+        </tr>`
+      })
+      .join('')
+
+    $q.dialog({
+      title: 'Tồn kho đã thay đổi',
+      message: `<div style="margin-bottom:12px">Tồn kho thực tế đã thay đổi so với lúc lưu nháp cho các loại chỉ sau. Vui lòng tính toán lại đơn hàng trước khi xác nhận:</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:#f5f5f5">
+            <th style="padding:6px 8px;text-align:left">Loại chỉ</th>
+            <th style="padding:6px 8px;text-align:right">Tồn cũ</th>
+            <th style="padding:6px 8px;text-align:right">Tồn mới</th>
+            <th style="padding:6px 8px;text-align:right">Cần đặt</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>`,
+      html: true,
+      persistent: true,
+      ok: { label: 'Tính toán lại và lưu', color: 'primary', unelevated: true },
+      cancel: { label: 'Đóng', flat: true },
+    })
+      .onOk(async () => {
+        try {
+          await handleCalculate()
+          await handleSave({ skipReset: true })
+          snackbar.info('Đã tính toán lại với tồn kho mới. Vui lòng kiểm tra và xác nhận đơn hàng lại.')
+        } catch (err) {
+          snackbar.error(err instanceof Error ? err.message : 'Lỗi khi tính toán lại')
+        } finally {
+          resolve()
+        }
+      })
+      .onCancel(() => resolve())
+      .onDismiss(() => resolve())
+  })
+}
+
 const handleConfirmWeek = async () => {
   if (!hasResults.value) return
 
@@ -991,6 +1055,20 @@ const handleConfirmWeek = async () => {
     return
   }
 
+  if (selectedWeek.value.status !== OrderWeekStatus.CONFIRMED) {
+    try {
+      const diffResp = await weeklyOrderService.getInventoryDiff(selectedWeek.value.id)
+      if (diffResp.has_changed) {
+        setStepStatus(1, 'error', 'Tồn kho đã thay đổi. Vui lòng tính toán lại đơn hàng.')
+        showConfirmDialog.value = false
+        await showInventoryDiffDialog(diffResp.diff)
+        return
+      }
+    } catch (err) {
+      console.warn('[handleConfirmWeek] inventory diff pre-check failed:', err)
+    }
+  }
+
   if (selectedWeek.value.status === OrderWeekStatus.CONFIRMED) {
     setStepStatus(1, 'success')
     setStepStatus(2, 'loading')
@@ -1005,6 +1083,21 @@ const handleConfirmWeek = async () => {
       selectedWeek.value.status = OrderWeekStatus.CONFIRMED
       setStepStatus(1, 'success')
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setStepStatus(1, 'error', err.message)
+        showConfirmDialog.value = false
+        try {
+          const diffResp = await weeklyOrderService.getInventoryDiff(selectedWeek.value!.id)
+          if (diffResp.has_changed) {
+            await showInventoryDiffDialog(diffResp.diff)
+            return
+          }
+        } catch {
+          // fall through
+        }
+        snackbar.error(err.message)
+        return
+      }
       try {
         const week = await weeklyOrderService.getById(selectedWeek.value!.id)
         if (week.status === OrderWeekStatus.CONFIRMED) {
@@ -1060,8 +1153,19 @@ const handleConfirmWeek = async () => {
   })
 }
 
+const route = useRoute()
+const router = useRouter()
+
 // Lifecycle
 onMounted(async () => {
   await Promise.all([fetchAllPurchaseOrders(), fetchWeeks(), fetchWarehouses()])
+
+  const loadParam = route.query.load
+  const loadIdStr = Array.isArray(loadParam) ? loadParam[0] : loadParam
+  const loadId = loadIdStr ? Number(loadIdStr) : NaN
+  if (Number.isFinite(loadId) && loadId > 0) {
+    await handleLoadWeek(loadId).catch(() => {})
+    router.replace({ query: {} })
+  }
 })
 </script>
