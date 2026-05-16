@@ -30,6 +30,7 @@ import type {
   GroupedReturnLog,
   IssueInsufficientStockResponse,
   ReturnListFilters,
+  IssueActivityResponse,
 } from '@/types/thread/issueV2'
 
 const BASE = '/api/issues/v2'
@@ -388,5 +389,18 @@ export const issueV2Service = {
       throw new Error(response.error || 'Không thể refresh tồn kho')
     }
     return response.data.stocks
+  },
+
+  async getIssueActivity(page = 1, limit = 20, department?: string): Promise<IssueActivityResponse> {
+    const params = new URLSearchParams()
+    params.append('page', String(page))
+    params.append('limit', String(limit))
+    if (department) params.append('department', department)
+
+    const response = await fetchApi<ApiResponse<IssueActivityResponse>>(`${BASE}/issue-activity?${params}`)
+    if (response.error) {
+      throw new Error(response.error)
+    }
+    return response.data ?? { pos: [], total: 0, page, limit }
   },
 }
