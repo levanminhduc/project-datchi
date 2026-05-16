@@ -434,3 +434,58 @@ export interface ReturnLog {
   thread_code: string
   color_name: string | null
 }
+
+// ============================================================================
+// Issue Activity Panel Types
+// ============================================================================
+
+export interface IssueActivityThreadLine {
+  thread_type_id: number
+  thread_color_id: number | null
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  quota_cones: number
+  issued_cones: number
+  returned_cones: number
+  net_issued: number
+  pending_cones: number
+}
+
+export interface IssueActivityStyle {
+  style_id: number
+  style_code: string
+  style_name: string
+  style_colors: Array<{ style_color_id: number; name: string }>
+  summary: {
+    total_quota_cones: number
+    total_net_issued: number
+    total_pending_cones: number
+    total_issued_cones: number
+    total_returned_cones: number
+    over_quota_cones: number
+  }
+  thread_lines: IssueActivityThreadLine[]
+}
+
+export interface IssueActivityPo {
+  po_id: number
+  po_number: string
+  last_issued_at: string | null
+  summary: {
+    total_quota_cones: number
+    total_issued_cones: number
+    total_returned_cones: number
+    total_net_issued: number
+    total_pending_cones: number
+    over_quota_cones: number
+  }
+  styles: IssueActivityStyle[]
+}
+
+export interface IssueActivityResponse {
+  pos: IssueActivityPo[]
+  total: number
+  page: number
+  limit: number
+}
