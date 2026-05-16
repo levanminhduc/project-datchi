@@ -1193,11 +1193,6 @@ onUnmounted(() => {
         animated
       >
         <q-tab-panel name="create">
-          <IssueActivityPanel
-            :can-quick-fill="!!department.trim() && !!createdBy.trim() && !hasIssue"
-            @select="handleActivitySelect"
-          />
-
           <div class="row items-center q-mb-lg">
             <AppButton
               icon="arrow_back"
@@ -1294,6 +1289,12 @@ onUnmounted(() => {
               />
             </q-card-actions>
           </q-card>
+
+          <IssueActivityPanel
+            v-if="!hasIssue && !step2Visible"
+            :can-quick-fill="!!department.trim() && !!createdBy.trim()"
+            @select="handleActivitySelect"
+          />
 
           <q-card
             v-if="(step2Visible || hasIssue) && !isConfirmed"
