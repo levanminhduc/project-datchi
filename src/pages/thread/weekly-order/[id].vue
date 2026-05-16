@@ -480,6 +480,45 @@
             />
           </div>
 
+          <!-- Search filters -->
+          <div
+            v-if="calculationResults && !calculationLoading"
+            class="row q-col-gutter-sm q-mb-md"
+          >
+            <template v-if="calculationView === 'detail'">
+              <div class="col-12 col-sm-4">
+                <q-input
+                  v-model="detailSearch"
+                  dense
+                  outlined
+                  clearable
+                  placeholder="Tìm PO, Style, Màu Hàng..."
+                  debounce="300"
+                >
+                  <template #prepend>
+                    <q-icon name="search" />
+                  </template>
+                </q-input>
+              </div>
+            </template>
+            <template v-else>
+              <div class="col-12 col-sm-4">
+                <q-input
+                  v-model="summarySearchColor"
+                  dense
+                  outlined
+                  clearable
+                  placeholder="Tìm Màu..."
+                  debounce="300"
+                >
+                  <template #prepend>
+                    <q-icon name="search" />
+                  </template>
+                </q-input>
+              </div>
+            </template>
+          </div>
+
           <template v-if="calculationLoading">
             <div class="row justify-center q-py-xl">
               <q-spinner-dots
@@ -492,13 +531,13 @@
           <template v-else-if="calculationResults">
             <ResultsDetailView
               v-if="calculationView === 'detail'"
-              :results="deduplicatedCalculationData"
+              :results="filteredDetailData"
               :order-entries="orderEntriesFromItems"
               readonly
             />
             <ResultsSummaryTable
               v-else
-              :rows="calculationResults.summary_data"
+              :rows="filteredSummaryData"
               readonly
             />
 
@@ -769,6 +808,9 @@ const calculationView = ref<'detail' | 'summary'>('detail')
 const calculationResults = ref<WeeklyOrderResults | null>(null)
 const calculationLoading = ref(false)
 
+const detailSearch = ref('')
+const summarySearchColor = ref('')
+
 const progressPos = ref<WeeklyOrderProgressPo[]>([])
 const progressLoading = ref(false)
 
@@ -815,6 +857,30 @@ const deduplicatedCalculationData = computed(() => {
     seen.add(r.style_id)
     return true
   })
+})
+
+const filteredDetailData = computed(() => {
+  const data = deduplicatedCalculationData.value
+  const q = detailSearch.value?.trim().toLowerCase()
+  if (!q) return data
+
+  return data.filter(result => {
+    if (result.style_code.toLowerCase().includes(q)) return true
+    if (result.style_name.toLowerCase().includes(q)) return true
+    const entries = orderEntriesFromItems.value.filter(e => e.style_id === result.style_id)
+    if (entries.some(e => e.po_number.toLowerCase().includes(q))) return true
+    if (entries.some(e => e.colors.some(c => c.color_name.toLowerCase().includes(q)))) return true
+    return false
+  })
+})
+
+const filteredSummaryData = computed(() => {
+  if (!calculationResults.value) return []
+  const color = summarySearchColor.value?.trim().toLowerCase()
+  if (!color) return calculationResults.value.summary_data
+  return calculationResults.value.summary_data.filter(row =>
+    row.thread_color?.toLowerCase().includes(color),
+  )
 })
 
 const isCompleted = computed(() => week.value?.status === 'COMPLETED')
