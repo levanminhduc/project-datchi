@@ -34,6 +34,7 @@ import {
 import type { ThreadApiResponse } from '../types/thread'
 import type { AppEnv } from '../types/hono-env'
 import returnGroupedRoutes from './issues-v2-return-grouped'
+import issueActivityRoutes from './issue-activity'
 import {
   batchLookupThreadColorIds,
   batchFindConfirmedWeekIds,
@@ -2380,6 +2381,7 @@ issuesV2.get('/return-list', requirePermission('thread.issues.return'), async (c
   }
 })
 
+issuesV2.route('/', issueActivityRoutes)
 issuesV2.route('/', returnGroupedRoutes)
 
 issuesV2.post('/:id/lines/validate', async (c) => {
