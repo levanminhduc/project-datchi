@@ -10,6 +10,24 @@
           Tiến Độ Xuất Chỉ
         </div>
         <div class="row q-gutter-sm items-center">
+          <q-input
+            v-model="searchQuery"
+            dense
+            outlined
+            clearable
+            hide-bottom-space
+            placeholder="Tìm PO..."
+            debounce="300"
+            style="min-width: 140px"
+            @update:model-value="handleSearchChange"
+          >
+            <template #prepend>
+              <q-icon
+                name="search"
+                size="xs"
+              />
+            </template>
+          </q-input>
           <AppSelect
             v-model="departmentFilter"
             :options="departmentOptions"
@@ -297,6 +315,7 @@ const loading = ref(false)
 const page = ref(1)
 const limit = ref(20)
 const total = ref(0)
+const searchQuery = ref<string | null>(null)
 const departmentFilter = ref<string | null>(null)
 const departmentOptions = ref<{ value: string; label: string }[]>([])
 
@@ -344,6 +363,11 @@ function handleStyleClick(po: IssueActivityPo, style: IssueActivityStyle) {
   emit('select', { poId: po.po_id, styleId: style.style_id, colorIds })
 }
 
+function handleSearchChange() {
+  page.value = 1
+  loadData()
+}
+
 function handleDeptChange() {
   page.value = 1
   loadData()
@@ -352,7 +376,7 @@ function handleDeptChange() {
 async function loadData() {
   loading.value = true
   try {
-    const result = await issueV2Service.getIssueActivity(page.value, limit.value, departmentFilter.value ?? undefined)
+    const result = await issueV2Service.getIssueActivity(page.value, limit.value, departmentFilter.value ?? undefined, searchQuery.value ?? undefined)
     pos.value = result.pos
     total.value = result.total
     if (pos.value.length > 0) triggerAnimation()

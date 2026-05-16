@@ -198,6 +198,17 @@
         >
           <q-tooltip>Xem phân bố kho</q-tooltip>
         </q-btn>
+        <q-btn
+          flat
+          round
+          dense
+          icon="history"
+          color="orange"
+          size="sm"
+          @click.stop="$emit('show-issue-history', props.row)"
+        >
+          <q-tooltip>Lịch sử xuất chỉ</q-tooltip>
+        </q-btn>
       </q-td>
     </template>
 
@@ -318,6 +329,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   refresh: []
   'show-breakdown': [row: ConeSummaryRow]
+  'show-issue-history': [row: ConeSummaryRow]
   'row-click': [row: ConeSummaryRow]
 }>()
 

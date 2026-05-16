@@ -185,6 +185,31 @@ function isModuleSomeSelected(module: string) {
   return selected.length > 0 && selected.length < modulePerms.length
 }
 
+const MODULE_LABELS: Record<string, string> = {
+  dashboard: 'Tổng Quan',
+  thread: 'Quản Lý Chỉ',
+  reports: 'Báo Cáo',
+  employees: 'Nhân Viên',
+  admin: 'Quản Trị Hệ Thống',
+  settings: 'Cài Đặt',
+}
+
+function moduleLabel(module: string): string {
+  return MODULE_LABELS[module] || module
+}
+
+const permissionByCode = computed(() => {
+  const map = new Map<string, Permission>()
+  for (const perm of permMgmt.permissions.value) {
+    map.set(perm.code, perm)
+  }
+  return map
+})
+
+function permLabel(code: string): string {
+  return permissionByCode.value.get(code)?.name || code
+}
+
 // ============================================
 // Tab 2: Permissions List
 // ============================================
@@ -640,7 +665,7 @@ onMounted(async () => {
                   <q-expansion-item
                     v-for="module in permMgmt.moduleList.value"
                     :key="module"
-                    :label="module"
+                    :label="moduleLabel(module)"
                     header-class="bg-grey-2"
                     expand-icon-class="text-primary"
                   >
@@ -654,7 +679,7 @@ onMounted(async () => {
                         />
                       </q-item-section>
                       <q-item-section>
-                        <q-item-label>{{ module }}</q-item-label>
+                        <q-item-label>{{ moduleLabel(module) }}</q-item-label>
                         <q-item-label caption>
                           {{ (permMgmt.permissionsByModule.value[module] || []).length }} quyền
                         </q-item-label>
@@ -752,7 +777,7 @@ onMounted(async () => {
             <q-expansion-item
               v-for="module in filteredModuleList"
               :key="module"
-              :label="module"
+              :label="moduleLabel(module)"
               header-class="bg-grey-1 text-weight-medium"
               expand-icon-class="text-primary"
               default-opened
@@ -765,7 +790,7 @@ onMounted(async () => {
                   />
                 </q-item-section>
                 <q-item-section>
-                  <q-item-label>{{ module }}</q-item-label>
+                  <q-item-label>{{ moduleLabel(module) }}</q-item-label>
                 </q-item-section>
                 <q-item-section side>
                   <q-badge color="primary">
@@ -1144,7 +1169,7 @@ onMounted(async () => {
                   <q-expansion-item
                     v-for="module in permMgmt.moduleList.value"
                     :key="module"
-                    :label="module"
+                    :label="moduleLabel(module)"
                     header-class="bg-grey-1"
                   >
                     <q-card flat>
@@ -1226,7 +1251,8 @@ onMounted(async () => {
                     text-color="white"
                     dense
                   >
-                    {{ permCode }}
+                    {{ permLabel(permCode) }}
+                    <q-tooltip>{{ permCode }}</q-tooltip>
                   </q-chip>
                 </div>
               </div>

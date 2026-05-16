@@ -59,6 +59,18 @@
             dense
           />
           <q-space />
+          <q-input
+            v-model="trackingSearch"
+            dense
+            outlined
+            placeholder="Tìm NCC, Tex, Màu, Đơn hàng..."
+            clearable
+            style="min-width: 250px"
+          >
+            <template #prepend>
+              <q-icon name="search" />
+            </template>
+          </q-input>
           <q-btn
             color="primary"
             icon="refresh"
@@ -266,6 +278,18 @@
         <!-- Filters -->
         <div class="row q-mb-md q-gutter-sm items-center">
           <q-space />
+          <q-input
+            v-model="receiveSearch"
+            dense
+            outlined
+            placeholder="Tìm NCC, Tex, Màu, Đơn hàng..."
+            clearable
+            style="min-width: 250px"
+          >
+            <template #prepend>
+              <q-icon name="search" />
+            </template>
+          </q-input>
           <q-btn
             color="primary"
             icon="refresh"
@@ -276,16 +300,16 @@
         </div>
 
         <!-- Receive Table -->
-        <q-table
-          :rows="pendingReceiveItems"
+        <DataTable
+          v-model:pagination="receivePagination"
+          :rows="filteredReceiveItems"
           :columns="receiveColumns"
           row-key="id"
           :loading="loadingReceive"
-          flat
-          bordered
           dense
-          :rows-per-page-options="[20, 50, 0]"
-          :pagination="{ rowsPerPage: 20 }"
+          empty-icon="local_shipping"
+          empty-title="Không có đơn chờ nhập kho"
+          empty-subtitle="Tất cả đơn hàng đã được nhập đủ"
         >
           <!-- color_name with color dot -->
           <template #body-cell-color_name="props">
@@ -333,7 +357,7 @@
               />
             </q-td>
           </template>
-        </q-table>
+        </DataTable>
       </q-tab-panel>
 
       <!-- Tab 3: Receive History -->
@@ -357,16 +381,16 @@
           />
         </div>
 
-        <q-table
+        <DataTable
+          v-model:pagination="historyPagination"
           :rows="historyLogs"
           :columns="historyColumns"
           row-key="id"
           :loading="loadingHistory"
-          flat
-          bordered
           dense
-          :rows-per-page-options="[20, 50, 0]"
-          :pagination="{ rowsPerPage: 50 }"
+          empty-icon="history"
+          empty-title="Chưa có lịch sử nhập kho"
+          empty-subtitle="Lịch sử sẽ hiển thị khi có đơn được nhập kho"
         >
           <template #body-cell-color_name="props">
             <q-td :props="props">
@@ -386,12 +410,7 @@
               <span class="text-grey-6"> / {{ props.row.quantity_cones || '—' }}</span>
             </q-td>
           </template>
-          <template #no-data>
-            <div class="full-width text-center q-pa-lg text-grey-6">
-              Chưa có lịch sử nhập kho
-            </div>
-          </template>
-        </q-table>
+        </DataTable>
       </q-tab-panel>
     </q-tab-panels>
 
@@ -565,8 +584,16 @@ import { DeliveryStatus, InventoryReceiptStatus } from '@/types/thread/enums'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
+import DataTable from '@/components/ui/tables/DataTable.vue'
 import ReceiveResultDialog from '@/components/thread/weekly-order/ReceiveResultDialog.vue'
 import type { ReceiveResult } from '@/components/thread/weekly-order/ReceiveResultDialog.vue'
+
+definePage({
+  meta: {
+    requiresAuth: true,
+    permissions: ['thread.allocations.view'],
+  },
+})
 
 const snackbar = useSnackbar()
 const { employee } = useAuth()
@@ -579,6 +606,7 @@ const loading = ref(false)
 const deliveries = ref<DeliveryRecord[]>([])
 const statusFilter = ref<string | null>(null)
 const hideFullyReceived = ref(true)
+const trackingSearch = ref('')
 const expandedWeekId = ref<number | null>(null)
 const statusOptions = [
   { label: 'Tất cả', value: null },
@@ -595,7 +623,12 @@ const updating = ref(false)
 
 // Receive tab state
 const loadingReceive = ref(false)
+const receiveSearch = ref('')
 const pendingReceiveItems = ref<DeliveryRecord[]>([])
+const receivePagination = ref({
+  page: 1,
+  rowsPerPage: 20,
+})
 
 // Receive dialog state
 const showReceiveDialog = ref(false)
@@ -622,6 +655,10 @@ const receiveResult = ref<ReceiveResult | null>(null)
 const loadingHistory = ref(false)
 const historyLogs = ref<DeliveryReceiveLog[]>([])
 const historyWeekFilter = ref<number | null>(null)
+const historyPagination = ref({
+  page: 1,
+  rowsPerPage: 20,
+})
 const weekOptions = ref<Array<{ id: number; week_name: string }>>([])
 
 const weekFilterOptions = computed(() => {
@@ -636,8 +673,31 @@ const currentUser = computed(() => {
 })
 
 const filteredDeliveries = computed(() => {
-  if (!hideFullyReceived.value) return deliveries.value
-  return deliveries.value.filter(d => d.inventory_status !== InventoryReceiptStatus.RECEIVED)
+  let result = deliveries.value
+  if (hideFullyReceived.value) {
+    result = result.filter(d => d.inventory_status !== InventoryReceiptStatus.RECEIVED)
+  }
+  const search = (trackingSearch.value ?? '').trim().toLowerCase()
+  if (search) {
+    result = result.filter(d =>
+      d.supplier_name?.toLowerCase().includes(search)
+      || d.tex_number?.toLowerCase().includes(search)
+      || d.color_name?.toLowerCase().includes(search)
+      || d.week_name?.toLowerCase().includes(search),
+    )
+  }
+  return result
+})
+
+const filteredReceiveItems = computed(() => {
+  const search = (receiveSearch.value ?? '').trim().toLowerCase()
+  if (!search) return pendingReceiveItems.value
+  return pendingReceiveItems.value.filter(d =>
+    d.supplier_name?.toLowerCase().includes(search)
+    || d.tex_number?.toLowerCase().includes(search)
+    || d.color_name?.toLowerCase().includes(search)
+    || d.week_name?.toLowerCase().includes(search),
+  )
 })
 
 const hasAnyLoans = computed(() => {
@@ -809,7 +869,8 @@ async function loadTrackingData() {
   try {
     const filters: { status?: DeliveryStatus } = {}
     if (statusFilter.value) filters.status = statusFilter.value as DeliveryStatus
-    deliveries.value = await deliveryService.getOverview(filters)
+    const result = await deliveryService.getOverview(filters)
+    deliveries.value = result.data
   } catch (err) {
     snackbar.error('Lỗi tải dữ liệu: ' + (err instanceof Error ? err.message : 'Không xác định'))
   } finally {
@@ -820,9 +881,8 @@ async function loadTrackingData() {
 async function loadReceiveData() {
   loadingReceive.value = true
   try {
-    // Get delivered items that are not fully received
-    const allDeliveries = await deliveryService.getOverview({ status: DeliveryStatus.DELIVERED })
-    pendingReceiveItems.value = allDeliveries.filter(d => d.inventory_status !== InventoryReceiptStatus.RECEIVED)
+    const result = await deliveryService.getOverview({ status: DeliveryStatus.DELIVERED })
+    pendingReceiveItems.value = result.data.filter(d => d.inventory_status !== InventoryReceiptStatus.RECEIVED)
   } catch (err) {
     snackbar.error('Lỗi tải dữ liệu: ' + (err instanceof Error ? err.message : 'Không xác định'))
   } finally {
@@ -842,15 +902,17 @@ async function loadWeekOptions() {
 async function loadHistoryData() {
   loadingHistory.value = true
   try {
-    const params: { week_id?: number; limit?: number } = { limit: 100 }
+    const params: { week_id?: number; limit?: number } = {}
     if (historyWeekFilter.value) params.week_id = historyWeekFilter.value
-    historyLogs.value = await deliveryService.getReceiveLogs(params)
+    const result = await deliveryService.getReceiveLogs(params)
+    historyLogs.value = result.data
   } catch (err) {
     snackbar.error('Lỗi tải lịch sử: ' + (err instanceof Error ? err.message : 'Không xác định'))
   } finally {
     loadingHistory.value = false
   }
 }
+
 
 async function updateDeliveryDate(deliveryId: number, newDate: string) {
   try {

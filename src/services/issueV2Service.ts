@@ -391,11 +391,45 @@ export const issueV2Service = {
     return response.data.stocks
   },
 
-  async getIssueActivity(page = 1, limit = 20, department?: string): Promise<IssueActivityResponse> {
+  async getIssueHistoryByThreadType(params: {
+    thread_type_id: number
+    thread_color_id?: number | null
+  }) {
+    const query = new URLSearchParams()
+    query.set('thread_type_id', String(params.thread_type_id))
+    if (params.thread_color_id != null) query.set('thread_color_id', String(params.thread_color_id))
+
+    const response = await fetchApi<ApiResponse<{
+      items: Array<{
+        po_number: string | null
+        total_net_full: number
+        total_net_partial: number
+        last_issued_at: string
+        lines: Array<{
+          issue_code: string
+          style_code: string | null
+          style_color_name: string | null
+          created_by: string
+          issued_at: string
+          net_full: number
+          net_partial: number
+        }>
+      }>
+      total: number
+    }>>(`/api/issue-history/by-thread-type?${query}`)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+    return response.data ?? { items: [], total: 0 }
+  },
+
+  async getIssueActivity(page = 1, limit = 20, department?: string, search?: string): Promise<IssueActivityResponse> {
     const params = new URLSearchParams()
     params.append('page', String(page))
     params.append('limit', String(limit))
     if (department) params.append('department', department)
+    if (search) params.append('search', search)
 
     const response = await fetchApi<ApiResponse<IssueActivityResponse>>(`${BASE}/issue-activity?${params}`)
     if (response.error) {

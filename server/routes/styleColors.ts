@@ -5,8 +5,6 @@ import { getErrorMessage } from '../utils/errorHelper'
 
 const styleColors = new Hono()
 
-styleColors.use('*', requirePermission('thread.types.view'))
-
 async function validateSubArtColorName(styleId: number, colorName: string): Promise<string | null> {
   const { data: subArts } = await supabase
     .from('sub_arts')
@@ -29,7 +27,7 @@ async function validateSubArtColorName(styleId: number, colorName: string): Prom
   return null
 }
 
-styleColors.post('/:styleId/clone', async (c) => {
+styleColors.post('/:styleId/clone', requirePermission('thread.styles.create'), async (c) => {
   try {
     const styleId = parseInt(c.req.param('styleId'))
     if (isNaN(styleId)) {
@@ -124,7 +122,7 @@ styleColors.post('/:styleId/clone', async (c) => {
   }
 })
 
-styleColors.get('/hex-palette', async (c) => {
+styleColors.get('/hex-palette', requirePermission('thread.styles.view'), async (c) => {
   try {
     const { data, error } = await supabase
       .from('style_colors')
@@ -149,7 +147,7 @@ styleColors.get('/hex-palette', async (c) => {
   }
 })
 
-styleColors.get('/:styleId', async (c) => {
+styleColors.get('/:styleId', requirePermission('thread.styles.view'), async (c) => {
   try {
     const styleId = parseInt(c.req.param('styleId'))
     if (isNaN(styleId)) {
@@ -170,7 +168,7 @@ styleColors.get('/:styleId', async (c) => {
   }
 })
 
-styleColors.post('/:styleId', async (c) => {
+styleColors.post('/:styleId', requirePermission('thread.styles.create'), async (c) => {
   try {
     const styleId = parseInt(c.req.param('styleId'))
     if (isNaN(styleId)) {
@@ -210,7 +208,7 @@ styleColors.post('/:styleId', async (c) => {
   }
 })
 
-styleColors.put('/:styleId/:id', async (c) => {
+styleColors.put('/:styleId/:id', requirePermission('thread.styles.edit'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     if (isNaN(id)) {
@@ -250,7 +248,7 @@ styleColors.put('/:styleId/:id', async (c) => {
   }
 })
 
-styleColors.delete('/:styleId/:id', async (c) => {
+styleColors.delete('/:styleId/:id', requirePermission('thread.styles.delete'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     if (isNaN(id)) {

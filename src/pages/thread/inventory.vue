@@ -188,6 +188,7 @@
           :loading="coneSummaryLoading"
           @refresh="handleSummaryRefresh"
           @show-breakdown="handleShowBreakdown"
+          @show-issue-history="handleShowIssueHistory"
         />
       </q-tab-panel>
 
@@ -756,6 +757,12 @@
 
     <!-- Manual Entry History Dialog -->
     <ManualEntryHistoryDialog v-model="showManualEntryHistoryDialog" />
+
+    <!-- Issue History By Thread Dialog -->
+    <IssueHistoryByThreadDialog
+      v-model="showIssueHistoryDialog"
+      :thread-type="issueHistoryRow"
+    />
   </q-page>
 </template>
 
@@ -771,6 +778,7 @@ import { QrScannerDialog, QrPrintDialog } from '@/components/qr'
 import ConeSummaryTable from '@/components/thread/ConeSummaryTable.vue'
 import ConeWarehouseBreakdownDialog from '@/components/thread/ConeWarehouseBreakdownDialog.vue'
 import ManualEntryHistoryDialog from '@/components/thread/ManualEntryHistoryDialog.vue'
+import IssueHistoryByThreadDialog from '@/components/thread/IssueHistoryByThreadDialog.vue'
 import type { ConeLabelData } from '@/types/qr-label'
 import { threadService } from '@/services/threadService'
 import { stockService } from '@/services/stockService'
@@ -839,6 +847,8 @@ const {
 // Local State
 const activeTab = ref<'detail' | 'summary'>('summary')
 const showBreakdownDialog = ref(false)
+const showIssueHistoryDialog = ref(false)
+const issueHistoryRow = ref<ConeSummaryRow | null>(null)
 const selectedWarehouseName = computed<string | null>(() => {
   const id = filters.warehouse_id
   if (id == null) return null
@@ -1368,6 +1378,11 @@ const handleSummaryRefresh = async () => {
 const handleShowBreakdown = async (row: ConeSummaryRow) => {
   await selectThreadType(row, filters.warehouse_id ?? null)
   showBreakdownDialog.value = true
+}
+
+const handleShowIssueHistory = (row: ConeSummaryRow) => {
+  issueHistoryRow.value = row
+  showIssueHistoryDialog.value = true
 }
 
 // Watch for tab changes to fetch appropriate data

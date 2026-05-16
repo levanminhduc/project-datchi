@@ -27,6 +27,7 @@ issueActivity.get(
       const page = Math.max(1, Number(query.page) || 1)
       const limit = Math.min(100, Math.max(1, Number(query.limit) || 20))
       const department = query.department || undefined
+      const search = query.search?.trim() || undefined
 
       const { data: weeks, error: weeksErr } = await supabaseAdmin
         .from('thread_order_weeks')
@@ -56,20 +57,29 @@ issueActivity.get(
         allOrderItems.map(i => i.po_id).filter((v): v is number => v != null)
       ))
 
-      const total = allPoIds.length
-
       const ratio = await getPartialConeRatio()
       const lastIssuedMap = await fetchLastIssuedAtByPo(allPoIds, department)
 
-      const sortedPoIds = [...allPoIds].sort((a, b) => {
-        const aTime = lastIssuedMap.get(a)
-        const bTime = lastIssuedMap.get(b)
-        if (!aTime && !bTime) return a - b
-        if (!aTime) return 1
-        if (!bTime) return -1
+      let activePoIds = allPoIds.filter(id => lastIssuedMap.has(id))
+
+      if (search && activePoIds.length > 0) {
+        const { data: matchedPos } = await supabaseAdmin
+          .from('purchase_orders')
+          .select('id')
+          .in('id', activePoIds)
+          .ilike('po_number', `%${search}%`)
+          .limit(activePoIds.length)
+        const matchedSet = new Set((matchedPos ?? []).map((p: { id: number }) => p.id))
+        activePoIds = activePoIds.filter(id => matchedSet.has(id))
+      }
+
+      const sortedPoIds = activePoIds.sort((a, b) => {
+        const aTime = lastIssuedMap.get(a)!
+        const bTime = lastIssuedMap.get(b)!
         return new Date(bTime).getTime() - new Date(aTime).getTime()
       })
 
+      const total = sortedPoIds.length
       const offset = (page - 1) * limit
       const pagePoIds = sortedPoIds.slice(offset, offset + limit)
 

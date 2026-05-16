@@ -92,6 +92,7 @@ declare module 'vue' {
     InventorySummaryCard: typeof import('./components/thread/InventorySummaryCard.vue')['default']
     IssueActivityPanel: typeof import('./components/thread/issues/IssueActivityPanel.vue')['default']
     IssueDialog: typeof import('./components/thread/IssueDialog.vue')['default']
+    IssueHistoryByThreadDialog: typeof import('./components/thread/IssueHistoryByThreadDialog.vue')['default']
     IssueV2StatusBadge: typeof import('./components/thread/IssueV2StatusBadge.vue')['default']
     ListItem: typeof import('./components/ui/lists/ListItem.vue')['default']
     LoanDetailDialog: typeof import('./components/thread/weekly-order/LoanDetailDialog.vue')['default']

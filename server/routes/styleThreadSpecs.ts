@@ -6,8 +6,6 @@ import type { AppEnv } from '../types/hono-env'
 
 const styleThreadSpecs = new Hono<AppEnv>()
 
-styleThreadSpecs.use('*', requirePermission('thread.types.view'))
-
 async function ensureColorSpecs(
   specId: number,
   styleId: number,
@@ -58,7 +56,7 @@ async function ensureColorSpecs(
 /**
  * GET /api/style-thread-specs - List all style thread specs with optional filtering
  */
-styleThreadSpecs.get('/', async (c) => {
+styleThreadSpecs.get('/', requirePermission('thread.styles.view'), async (c) => {
   try {
     const query = c.req.query()
     
@@ -94,7 +92,7 @@ styleThreadSpecs.get('/', async (c) => {
 /**
  * GET /api/style-thread-specs/process-names - Distinct process names
  */
-styleThreadSpecs.get('/process-names', async (c) => {
+styleThreadSpecs.get('/process-names', requirePermission('thread.styles.view'), async (c) => {
   try {
     const { data, error } = await supabase
       .from('style_thread_specs')
@@ -115,7 +113,7 @@ styleThreadSpecs.get('/process-names', async (c) => {
 /**
  * GET /api/style-thread-specs/:id - Get a single style thread spec by ID
  */
-styleThreadSpecs.get('/:id', async (c) => {
+styleThreadSpecs.get('/:id', requirePermission('thread.styles.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     
@@ -151,7 +149,7 @@ styleThreadSpecs.get('/:id', async (c) => {
 /**
  * POST /api/style-thread-specs - Create a new style thread spec
  */
-styleThreadSpecs.post('/', async (c) => {
+styleThreadSpecs.post('/', requirePermission('thread.styles.create'), async (c) => {
   try {
     const body = await c.req.json()
     
@@ -223,7 +221,7 @@ styleThreadSpecs.post('/', async (c) => {
 /**
  * PUT /api/style-thread-specs/:id - Update a style thread spec
  */
-styleThreadSpecs.put('/:id', async (c) => {
+styleThreadSpecs.put('/:id', requirePermission('thread.styles.edit'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     
@@ -296,7 +294,7 @@ styleThreadSpecs.put('/:id', async (c) => {
 /**
  * DELETE /api/style-thread-specs/:id - Delete a style thread spec
  */
-styleThreadSpecs.delete('/:id', async (c) => {
+styleThreadSpecs.delete('/:id', requirePermission('thread.styles.delete'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     
@@ -326,7 +324,7 @@ styleThreadSpecs.delete('/:id', async (c) => {
 /**
  * GET /api/style-thread-specs/:id/color-specs - Get color-specific specs for a template
  */
-styleThreadSpecs.get('/:id/color-specs', async (c) => {
+styleThreadSpecs.get('/:id/color-specs', requirePermission('thread.styles.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     
@@ -357,7 +355,7 @@ styleThreadSpecs.get('/:id/color-specs', async (c) => {
 /**
  * POST /api/style-thread-specs/:id/color-specs - Add color-specific spec
  */
-styleThreadSpecs.post('/:id/color-specs', async (c) => {
+styleThreadSpecs.post('/:id/color-specs', requirePermission('thread.styles.create'), async (c) => {
   try {
     const styleThreadSpecId = parseInt(c.req.param('id'))
     
@@ -404,7 +402,7 @@ styleThreadSpecs.post('/:id/color-specs', async (c) => {
  * Batch fetch ALL color specs for ALL specs belonging to a style.
  * Returns flat array of color specs with joined color + thread_type data.
  */
-styleThreadSpecs.get('/by-style/:styleId/all-color-specs', async (c) => {
+styleThreadSpecs.get('/by-style/:styleId/all-color-specs', requirePermission('thread.styles.view'), async (c) => {
   try {
     const styleId = parseInt(c.req.param('styleId'))
 
@@ -450,7 +448,7 @@ styleThreadSpecs.get('/by-style/:styleId/all-color-specs', async (c) => {
 /**
  * PUT /api/style-thread-specs/color-specs/:id - Update a color spec (inline edit)
  */
-styleThreadSpecs.put('/color-specs/:id', async (c) => {
+styleThreadSpecs.put('/color-specs/:id', requirePermission('thread.styles.edit'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
@@ -498,7 +496,7 @@ styleThreadSpecs.put('/color-specs/:id', async (c) => {
  * DELETE /api/style-thread-specs/color-specs/by-style-color/:styleColorId
  * Batch delete ALL color specs for a given style_color_id (1 query thay vì N)
  */
-styleThreadSpecs.delete('/color-specs/by-style-color/:styleColorId', async (c) => {
+styleThreadSpecs.delete('/color-specs/by-style-color/:styleColorId', requirePermission('thread.styles.delete'), async (c) => {
   try {
     const styleColorId = parseInt(c.req.param('styleColorId'))
 
@@ -523,7 +521,7 @@ styleThreadSpecs.delete('/color-specs/by-style-color/:styleColorId', async (c) =
 /**
  * DELETE /api/style-thread-specs/color-specs/:id - Delete a color spec
  */
-styleThreadSpecs.delete('/color-specs/:id', async (c) => {
+styleThreadSpecs.delete('/color-specs/:id', requirePermission('thread.styles.delete'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 

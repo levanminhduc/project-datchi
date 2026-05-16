@@ -5,8 +5,6 @@ import { getErrorMessage } from '../utils/errorHelper'
 
 const styles = new Hono()
 
-styles.use('*', requirePermission('thread.types.view'))
-
 /**
  * GET /api/styles - List all styles with optional filtering
  * Query params:
@@ -17,7 +15,7 @@ styles.use('*', requirePermission('thread.types.view'))
  *   - exclude_ids: comma-separated IDs to exclude (e.g., "1,2,3")
  *   - limit: max results (1-2000, default: no limit)
  */
-styles.get('/', async (c) => {
+styles.get('/', requirePermission('thread.styles.view'), async (c) => {
   try {
     const query = c.req.query()
 
@@ -87,7 +85,7 @@ styles.get('/', async (c) => {
   }
 })
 
-styles.get('/with-specs', async (c) => {
+styles.get('/with-specs', requirePermission('thread.styles.view'), async (c) => {
   try {
     const query = c.req.query()
 
@@ -133,7 +131,7 @@ styles.get('/with-specs', async (c) => {
 /**
  * GET /api/styles/:id - Get a single style by ID
  */
-styles.get('/:id', async (c) => {
+styles.get('/:id', requirePermission('thread.styles.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     
@@ -164,7 +162,7 @@ styles.get('/:id', async (c) => {
 /**
  * POST /api/styles - Create a new style
  */
-styles.post('/', async (c) => {
+styles.post('/', requirePermission('thread.styles.create'), async (c) => {
   try {
     const body = await c.req.json()
     
@@ -204,7 +202,7 @@ styles.post('/', async (c) => {
 /**
  * PUT /api/styles/:id - Update a style
  */
-styles.put('/:id', async (c) => {
+styles.put('/:id', requirePermission('thread.styles.edit'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     
@@ -247,7 +245,7 @@ styles.put('/:id', async (c) => {
 /**
  * DELETE /api/styles/:id - Delete a style
  */
-styles.delete('/:id', async (c) => {
+styles.delete('/:id', requirePermission('thread.styles.delete'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     
@@ -279,7 +277,7 @@ styles.delete('/:id', async (c) => {
 /**
  * GET /api/styles/:id/spec-colors - Get active garment colors for a style
  */
-styles.get('/:id/spec-colors', async (c) => {
+styles.get('/:id/spec-colors', requirePermission('thread.styles.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     if (isNaN(id)) {
@@ -304,7 +302,7 @@ styles.get('/:id/spec-colors', async (c) => {
 /**
  * GET /api/styles/:id/thread-specs - Get thread specs for a style
  */
-styles.get('/:id/thread-specs', async (c) => {
+styles.get('/:id/thread-specs', requirePermission('thread.styles.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     

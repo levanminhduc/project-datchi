@@ -18,6 +18,8 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
   try {
     const status = c.req.query('status')
     const weekId = c.req.query('week_id')
+    const page = Math.max(1, parseInt(c.req.query('page') || '1'))
+    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '20')))
     const showCancelled = status === 'CANCELLED'
 
     const allDeliveries: any[] = []
@@ -189,7 +191,14 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
       }
     })
 
-    return c.json({ data: withLoanContext, error: null })
+    const total = withLoanContext.length
+    if (c.req.query('page')) {
+      const start = (page - 1) * limit
+      const paginated = withLoanContext.slice(start, start + limit)
+      return c.json({ data: paginated, total, error: null })
+    }
+
+    return c.json({ data: withLoanContext, total, error: null })
   } catch (err) {
     console.error('Error fetching deliveries overview:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -207,6 +216,7 @@ deliveries.get('/deliveries/receive-logs', requirePermission('thread.allocations
 
     const deliveryId = parsed.delivery_id ? parseInt(parsed.delivery_id) : undefined
     const weekId = parsed.week_id ? parseInt(parsed.week_id) : undefined
+    const page = Math.max(1, parseInt(c.req.query('page') || '1'))
     const limit = Math.min(parsed.limit ? parseInt(parsed.limit) : 50, 100)
 
     let query = supabase
@@ -271,7 +281,14 @@ deliveries.get('/deliveries/receive-logs', requirePermission('thread.allocations
         received_quantity: row.delivery?.received_quantity || 0,
       }))
 
-    return c.json({ data: enriched, error: null })
+    const total = enriched.length
+    if (c.req.query('page')) {
+      const start = (page - 1) * limit
+      const paginated = enriched.slice(start, start + limit)
+      return c.json({ data: paginated, total, error: null })
+    }
+
+    return c.json({ data: enriched, total, error: null })
   } catch (err) {
     console.error('Error fetching receive logs:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)

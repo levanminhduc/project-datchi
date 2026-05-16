@@ -46,16 +46,18 @@ export const deliveryService = {
     return response.data
   },
 
-  async getOverview(filters?: DeliveryFilter): Promise<DeliveryRecord[]> {
+  async getOverview(filters?: DeliveryFilter & { page?: number; limit?: number }): Promise<{ data: DeliveryRecord[]; total: number }> {
     const params = new URLSearchParams()
     if (filters?.status) params.append('status', filters.status)
     if (filters?.week_id) params.append('week_id', String(filters.week_id))
+    if (filters?.page) params.append('page', String(filters.page))
+    if (filters?.limit) params.append('limit', String(filters.limit))
     const queryString = params.toString()
     const url = queryString ? `${BASE}/deliveries/overview?${queryString}` : `${BASE}/deliveries/overview`
 
-    const response = await fetchApi<ApiResponse<DeliveryRecord[]>>(url)
+    const response = await fetchApi<ApiResponse<DeliveryRecord[]> & { total?: number }>(url)
     if (response.error) throw new Error(response.error)
-    return response.data || []
+    return { data: response.data || [], total: response.total ?? (response.data?.length || 0) }
   },
 
   async receiveDelivery(deliveryId: number, dto: ReceiveDeliveryDTO): Promise<ReceiveDeliveryResponse> {
@@ -68,16 +70,17 @@ export const deliveryService = {
     return response.data
   },
 
-  async getReceiveLogs(params: { delivery_id?: number; week_id?: number; limit?: number }): Promise<DeliveryReceiveLog[]> {
+  async getReceiveLogs(params: { delivery_id?: number; week_id?: number; limit?: number; page?: number }): Promise<{ data: DeliveryReceiveLog[]; total: number }> {
     const searchParams = new URLSearchParams()
     if (params.delivery_id) searchParams.append('delivery_id', String(params.delivery_id))
     if (params.week_id) searchParams.append('week_id', String(params.week_id))
     if (params.limit) searchParams.append('limit', String(params.limit))
+    if (params.page) searchParams.append('page', String(params.page))
     const queryString = searchParams.toString()
     const url = queryString ? `${BASE}/deliveries/receive-logs?${queryString}` : `${BASE}/deliveries/receive-logs`
 
-    const response = await fetchApi<ApiResponse<DeliveryReceiveLog[]>>(url)
+    const response = await fetchApi<ApiResponse<DeliveryReceiveLog[]> & { total?: number }>(url)
     if (response.error) throw new Error(response.error)
-    return response.data || []
+    return { data: response.data || [], total: response.total ?? (response.data?.length || 0) }
   },
 }
