@@ -8,6 +8,7 @@ export type NotificationType =
   | 'CONFLICT'
   | 'RECOVERY'
   | 'WEEKLY_ORDER'
+  | 'ORDER_APPROVED'
 
 export interface NotificationRow {
   id: number
@@ -33,6 +34,7 @@ export const notificationQuerySchema = z.object({
     'CONFLICT',
     'RECOVERY',
     'WEEKLY_ORDER',
+    'ORDER_APPROVED',
   ]).optional(),
   is_read: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
 })

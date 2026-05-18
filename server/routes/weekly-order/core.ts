@@ -3,7 +3,7 @@ import { ZodError } from 'zod'
 import { supabaseAdmin as supabase } from '../../db/supabase'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
-import { broadcastNotification, getWarehouseEmployeeIds, getLeaderEmployeeIds } from '../../utils/notificationService'
+import { broadcastNotification, createNotification, getWarehouseEmployeeIds, getLeaderEmployeeIds } from '../../utils/notificationService'
 import { dispatchExternalNotification } from '../../utils/external-notification-dispatcher'
 import {
   CreateWeeklyOrderSchema,
@@ -1516,6 +1516,53 @@ core.patch('/:id/leader-sign', requirePermission('thread.leader.sign'), async (c
       .single()
 
     if (updateError) throw updateError
+
+    const { data: creator } = await supabase
+      .from('employees')
+      .select('id, full_name')
+      .eq('full_name', updated.created_by || '')
+      .limit(1)
+      .maybeSingle()
+
+    const { data: leader } = await supabase
+      .from('employees')
+      .select('full_name')
+      .eq('id', employeeId)
+      .single()
+
+    const leaderName = leader?.full_name || ''
+    const weekName = updated.week_name || `#${id}`
+
+    if (creator?.id) {
+      await createNotification({
+        employeeId: creator.id,
+        type: 'ORDER_APPROVED',
+        title: `Đơn hàng "${weekName}" đã được ký duyệt`,
+        body: `Lãnh đạo ${leaderName} đã ký duyệt đơn của bạn`,
+        actionUrl: `/thread/weekly-order/${id}`,
+        metadata: {
+          week_id: id,
+          week_name: weekName,
+          leader_signed_by_id: employeeId,
+          leader_signed_by_name: leaderName,
+          leader_signed_at: updated.leader_signed_at,
+        },
+      })
+    } else {
+      console.warn(`[leader-sign] Cannot map creator "${updated.created_by}" to employee_id — in-app notification skipped`)
+    }
+
+    try {
+      dispatchExternalNotification('ORDER_APPROVED', {
+        weekId: id,
+        weekLabel: weekName,
+        creatorName: updated.created_by || '',
+        leaderName,
+        signedAt: updated.leader_signed_at || new Date().toISOString(),
+      })
+    } catch (err) {
+      console.error('[leader-sign] external dispatch failed:', err)
+    }
 
     return c.json({ data: updated, error: null, message: 'Ký duyệt thành công' })
   } catch (err) {
