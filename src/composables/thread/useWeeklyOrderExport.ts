@@ -82,7 +82,7 @@ const COLUMN_DEFS: Array<{ header: string; key: string; width: number }> = [
 ]
 
 const LAST_COL_LETTER = String.fromCharCode(64 + COLUMN_DEFS.length)
-const TABLE_HEADER_ROW = 10
+const TABLE_HEADER_ROW = 11
 
 function renderDocHeader(
   worksheet: Worksheet,
@@ -138,6 +138,13 @@ function renderDocHeader(
   const r8e = worksheet.getCell('E8')
   r8e.value = today
   r8e.font = { size: 11 }
+
+  const r9a = worksheet.getCell('A9')
+  r9a.value = 'Thông Tin Đơn Đặt Hàng:'
+  r9a.font = { bold: true, size: 11 }
+  const r9d = worksheet.getCell('D9')
+  r9d.value = week.week_name
+  r9d.font = { size: 11 }
 }
 
 function renderTableHeader(worksheet: Worksheet) {
@@ -218,10 +225,14 @@ async function buildOrderWorkbook(
   const workbook = new ExcelJS.Workbook()
   const worksheet = workbook.addWorksheet('Đặt Hàng Chỉ')
 
-  worksheet.columns = COLUMN_DEFS.map((c) => ({ key: c.key, width: c.width }))
-
   renderDocHeader(worksheet, week, data)
   renderTableHeader(worksheet)
+
+  COLUMN_DEFS.forEach((col, idx) => {
+    const wsCol = worksheet.getColumn(idx + 1)
+    wsCol.key = col.key
+    wsCol.width = col.width
+  })
 
   const numFmt = '#,##0'
   const numFmt2 = '#,##0.00'
@@ -235,7 +246,7 @@ async function buildOrderWorkbook(
   worksheet.getColumn('sl_can_dat').numFmt = numFmt
   worksheet.getColumn('additional_order').numFmt = numFmt
   worksheet.getColumn('total_final').numFmt = numFmt
-  worksheet.getColumn('delivery_date').alignment = { horizontal: 'right' }
+  const deliveryDateColIdx = COLUMN_DEFS.findIndex((c) => c.key === 'delivery_date') + 1
 
   data.forEach((r) => {
     worksheet.addRow({
@@ -264,11 +275,15 @@ async function buildOrderWorkbook(
   for (let rowIdx = TABLE_HEADER_ROW + 1; rowIdx <= lastDataRow; rowIdx++) {
     const row = worksheet.getRow(rowIdx)
     for (let colIdx = 1; colIdx <= COLUMN_DEFS.length; colIdx++) {
-      row.getCell(colIdx).border = {
+      const cell = row.getCell(colIdx)
+      cell.border = {
         top: { style: 'thin' },
         left: { style: 'thin' },
         bottom: { style: 'thin' },
         right: { style: 'thin' },
+      }
+      if (colIdx === deliveryDateColIdx) {
+        cell.alignment = { horizontal: 'right' }
       }
     }
     row.commit()

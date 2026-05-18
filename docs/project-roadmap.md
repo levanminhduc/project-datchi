@@ -128,6 +128,7 @@
 ### System
 
 - [ ] Notification push — real-time alerts cho pending approvals
+- [ ] Notification targeting by department/user — research proposal: `docs/superpowers/specs/2026-05-18-thread-notification-targeting-research.md`
 - [ ] Audit log viewer — UI để xem change history
 - [ ] Security remediation từ review 2026-02-21 (C01 global auth đã apply; H01–H05 và M01–M07 pending)
 - [ ] Performance optimization cho large inventory datasets (pagination improvements)
@@ -188,5 +189,6 @@ psql -h 127.0.0.1 -p 54322 -U postgres -d postgres
 | `docs/system-architecture.md` | Architecture, auth flow, DB schema conventions |
 | `docs/codebase-summary.md` | File counts, composables, services, component inventory |
 | `docs/code-standards.md` | Coding patterns, anti-patterns, pre-commit checklist |
+| `docs/superpowers/specs/2026-05-18-thread-notification-targeting-research.md` | Research proposal for notification targeting by department/user |
 | `docs/docker-deployment.md` | Docker + nginx production deployment |
 | `docs/backend-security-review-2026-02-21.md` | Point-in-time security review (Feb 2026) |

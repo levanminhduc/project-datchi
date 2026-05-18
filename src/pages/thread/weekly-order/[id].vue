@@ -147,7 +147,7 @@
             </div>
             <div class="col-12 col-sm-3">
               <AppButton
-                flat
+                color="primary"
                 icon="file_download"
                 label="Xuất Excel"
                 :loading="calculationLoading"
