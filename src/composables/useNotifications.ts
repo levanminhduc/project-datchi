@@ -47,6 +47,17 @@ export function useNotifications() {
     }
   }
 
+  async function markAllAsReadByType(type: string) {
+    try {
+      const targets = notifications.value.filter(n => n.type === type && !n.is_read)
+      if (targets.length === 0) return
+      await Promise.all(targets.map(n => notificationService.markAsRead(n.id)))
+      targets.forEach(n => { n.is_read = true })
+      unreadCount.value = Math.max(0, unreadCount.value - targets.length)
+    } catch {
+    }
+  }
+
   async function deleteNotification(id: number) {
     try {
       await notificationService.deleteNotification(id)
@@ -64,9 +75,11 @@ export function useNotifications() {
     if (pollingInterval) return
 
     fetchUnreadCount()
+    fetchNotifications({ limit: 20 })
 
     pollingInterval = setInterval(() => {
       fetchUnreadCount()
+      fetchNotifications({ limit: 20 })
     }, intervalMs)
   }
 
@@ -91,6 +104,7 @@ export function useNotifications() {
     fetchUnreadCount,
     markAsRead,
     markAllAsRead,
+    markAllAsReadByType,
     deleteNotification,
     startPolling,
     stopPolling,

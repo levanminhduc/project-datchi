@@ -1,4 +1,4 @@
-export type NotificationType = 'STOCK_ALERT' | 'BATCH_RECEIVE' | 'BATCH_ISSUE' | 'ALLOCATION' | 'CONFLICT' | 'RECOVERY' | 'WEEKLY_ORDER'
+export type NotificationType = 'STOCK_ALERT' | 'BATCH_RECEIVE' | 'BATCH_ISSUE' | 'ALLOCATION' | 'CONFLICT' | 'RECOVERY' | 'WEEKLY_ORDER' | 'ORDER_APPROVED'
 
 export interface Notification {
   id: number

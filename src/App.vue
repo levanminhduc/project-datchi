@@ -1,5 +1,5 @@
 ﻿<script lang="ts" setup>
-import { onMounted, computed, watch } from "vue";
+import { onMounted, computed, watch, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DarkModeToggle from "./components/DarkModeToggle.vue";
 import ChangePasswordModal from "./components/auth/ChangePasswordModal.vue";
@@ -9,6 +9,8 @@ import { useNotifications } from "./composables/useNotifications";
 import { useAuth } from "./composables/useAuth";
 import { useVersionCheck } from "./composables/useVersionCheck";
 import AnnouncementPopup from './components/ui/AnnouncementPopup.vue'
+import ApprovedOrdersPopup from './components/notifications/ApprovedOrdersPopup.vue'
+import type { Notification } from '@/types/notification'
 import NetworkStatusBanner from './components/ui/feedback/NetworkStatusBanner.vue'
 import AppLoading from './components/ui/AppLoading.vue'
 import { useAnnouncements } from './composables/use-announcements'
@@ -18,7 +20,7 @@ const route = useRoute();
 const router = useRouter();
 const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
-const { startPolling, stopPolling } = useNotifications();
+const { notifications, startPolling, stopPolling } = useNotifications();
 const { isAuthenticated, tempPassword, isLoading } = useAuth();
 const { startVersionCheck, stopVersionCheck } = useVersionCheck();
 const {
@@ -53,6 +55,23 @@ function onPasswordChanged() {
 
 const isPublicPage = computed(() => route.path.startsWith('/g/'))
 const showSidebar = computed(() => route.path !== "/login" && !isPublicPage.value && isAuthenticated.value);
+
+const approvedPopupOpen = ref(false)
+const dismissedApprovedThisSession = ref(false)
+
+const unreadApprovedOrders = computed<Notification[]>(() =>
+  notifications.value.filter(n => n.type === 'ORDER_APPROVED' && !n.is_read)
+)
+
+watch(unreadApprovedOrders, (list) => {
+  if (list.length > 0 && !dismissedApprovedThisSession.value && showSidebar.value) {
+    approvedPopupOpen.value = true
+  }
+})
+
+function onApprovedDismiss() {
+  dismissedApprovedThisSession.value = true
+}
 
 watch(showSidebar, (show) => {
   if (show) {
@@ -148,6 +167,12 @@ onMounted(() => {
       :current="currentPosition"
       :total="totalPending"
       @dismiss="dismissAnnouncement"
+    />
+
+    <ApprovedOrdersPopup
+      v-model="approvedPopupOpen"
+      :orders="unreadApprovedOrders"
+      @dismiss="onApprovedDismiss"
     />
   </q-layout>
 </template>

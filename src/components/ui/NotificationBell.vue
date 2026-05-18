@@ -136,6 +136,7 @@ const typeConfig: Record<NotificationType, { icon: string; color: string }> = {
   CONFLICT: { icon: 'error', color: 'red' },
   RECOVERY: { icon: 'restore', color: 'teal' },
   WEEKLY_ORDER: { icon: 'calendar_today', color: 'indigo' },
+  ORDER_APPROVED: { icon: 'check_circle', color: 'positive' },
 }
 
 function getTypeIcon(type: NotificationType): string {
