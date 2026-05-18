@@ -125,6 +125,12 @@
                 <q-item-label>{{ group.summary.week_name }}</q-item-label>
                 <q-item-label caption>
                   {{ group.summary.supplier_count }} NCC · {{ group.summary.thread_type_count }} loại chỉ
+                  <span
+                    v-if="group.summary.delivery_status_text"
+                    :class="['q-ml-xs text-weight-medium', group.summary.delivery_status_color]"
+                  >
+                    · {{ group.summary.delivery_status_text }}
+                  </span>
                 </q-item-label>
               </q-item-section>
               <q-item-section side>
@@ -713,6 +719,8 @@ interface WeekSummary {
   total_received: number
   total_pending: number
   percent_received: number
+  delivery_status_text: string
+  delivery_status_color: string
 }
 
 const weekGroups = computed(() => {
@@ -735,6 +743,28 @@ const weekGroups = computed(() => {
     const totalPending = totalOrdered - totalReceived
     const percent = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0
 
+    const pendingDeliveries = sorted.filter(d => d.status === DeliveryStatus.PENDING)
+    let deliveryStatusText = ''
+    let deliveryStatusColor = ''
+    if (pendingDeliveries.length > 0) {
+      const daysList = pendingDeliveries
+        .map(d => d.days_remaining)
+        .filter((v): v is number => typeof v === 'number')
+      if (daysList.length > 0) {
+        const minDays = Math.min(...daysList)
+        if (minDays < 0) {
+          deliveryStatusText = `Quá hạn giao ${Math.abs(minDays)} ngày`
+          deliveryStatusColor = 'text-red'
+        } else if (minDays === 0) {
+          deliveryStatusText = 'Đến hạn giao'
+          deliveryStatusColor = 'text-orange'
+        } else {
+          deliveryStatusText = `Còn ${minDays} ngày sẽ giao`
+          deliveryStatusColor = 'text-green-8'
+        }
+      }
+    }
+
     result.push({
       summary: {
         week_id: weekId,
@@ -745,6 +775,8 @@ const weekGroups = computed(() => {
         total_received: totalReceived,
         total_pending: totalPending,
         percent_received: percent,
+        delivery_status_text: deliveryStatusText,
+        delivery_status_color: deliveryStatusColor,
       },
       deliveries: sorted,
     })
