@@ -157,6 +157,7 @@ declare module 'vue' {
     StockReceiptDialog: typeof import('./components/thread/StockReceiptDialog.vue')['default']
     StyleColorSpecsTab: typeof import('./components/thread/StyleColorSpecsTab.vue')['default']
     StyleOrderCard: typeof import('./components/thread/weekly-order/StyleOrderCard.vue')['default']
+    StyleSpecMobileEditDialog: typeof import('./components/thread/StyleSpecMobileEditDialog.vue')['default']
     SupplierExportDialog: typeof import('./components/thread/weekly-order/SupplierExportDialog.vue')['default']
     SupplierSelector: typeof import('./components/ui/inputs/SupplierSelector.vue')['default']
     SyncConflictDialog: typeof import('./components/thread/SyncConflictDialog.vue')['default']

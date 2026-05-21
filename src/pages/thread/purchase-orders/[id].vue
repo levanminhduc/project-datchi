@@ -193,13 +193,23 @@
           </template>
 
           <template #body-cell-quantity="props">
-            <q-td :props="props">
-              <span class="text-weight-medium">{{ props.row.quantity }}</span>
+            <q-td
+              :props="props"
+              class="cursor-pointer editable-cell"
+            >
+              <span class="cell-value text-weight-medium">{{ props.row.quantity }}</span>
+              <q-icon
+                name="edit"
+                size="xs"
+                class="edit-hint q-ml-xs text-grey-5"
+              />
               <q-popup-edit
                 v-slot="scope"
-                v-model="editingQuantity"
-                auto-save
-                @before-show="editingQuantity = props.row.quantity"
+                :model-value="props.row.quantity"
+                buttons
+                label-set="Lưu"
+                label-cancel="Hủy"
+                :validate="validateQuantity"
                 @save="(val) => updateItemQuantity(props.row.id, val)"
               >
                 <q-input
@@ -207,14 +217,10 @@
                   type="number"
                   dense
                   autofocus
+                  :min="1"
                   @keyup.enter="scope.set"
                 />
               </q-popup-edit>
-              <q-icon
-                name="edit"
-                size="xs"
-                class="q-ml-xs text-grey-5 cursor-pointer"
-              />
             </q-td>
           </template>
 
@@ -306,7 +312,6 @@ const loadingItems = ref(false)
 const showAddItemDialog = ref(false)
 const showHistoryDialog = ref(false)
 const selectedItem = ref<POItem | null>(null)
-const editingQuantity = ref(0)
 
 const totalQuantity = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
 const existingStyleIds = computed(() => items.value.map(item => item.style_id))
@@ -380,16 +385,24 @@ async function loadPO() {
   }
 }
 
+function validateQuantity(val: unknown): boolean {
+  const num = Number(val)
+  return Number.isFinite(num) && num > 0
+}
+
 async function updateItemQuantity(itemId: number, newQuantity: number) {
-  if (!newQuantity || newQuantity <= 0) {
+  if (!validateQuantity(newQuantity)) {
     snackbar.error('Số lượng phải lớn hơn 0')
     return
   }
 
   try {
-    await purchaseOrderService.updateItem(poId.value, itemId, { quantity: newQuantity })
+    const updated = await purchaseOrderService.updateItem(poId.value, itemId, { quantity: newQuantity })
+    const idx = items.value.findIndex(i => i.id === itemId)
+    if (idx !== -1) {
+      items.value[idx] = { ...items.value[idx]!, ...updated }
+    }
     snackbar.success('Cập nhật số lượng thành công')
-    loadPO()
   } catch (err) {
     snackbar.error((err as Error).message || 'Không thể cập nhật số lượng')
   }
@@ -428,3 +441,33 @@ onMounted(() => {
   loadPO()
 })
 </script>
+
+<style scoped>
+.editable-cell {
+  position: relative;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.18);
+  padding: 8px 8px !important;
+  min-height: 48px;
+}
+
+.edit-hint {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+@media (hover: hover) {
+  .editable-cell:hover {
+    border-bottom-color: var(--q-primary);
+    background-color: rgba(25, 118, 210, 0.04);
+  }
+  .editable-cell:hover .edit-hint {
+    opacity: 1;
+  }
+}
+
+@media (hover: none) {
+  .edit-hint {
+    opacity: 0.45;
+  }
+}
+</style>

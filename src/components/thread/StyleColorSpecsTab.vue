@@ -192,7 +192,7 @@
                   >
                     <q-select
                       v-model="scope.value"
-                      :options="getFilteredColorOptions(props.row.spec)"
+                      :options="colorDisplayOptions"
                       option-value="value"
                       option-label="label"
                       emit-value
@@ -203,9 +203,12 @@
                       use-input
                       fill-input
                       hide-selected
+                      input-debounce="200"
                       label="Chọn màu chỉ"
                       style="min-width: 250px"
-                      @filter="(val, update) => filterColorOptions(val, update, props.row.spec)"
+                      :loading="isColorOptionsLoading(props.row.spec.supplier_id)"
+                      loading-label="Đang tải màu..."
+                      @filter="(val, update, abort) => filterColorOptions(val, update, abort, props.row.spec)"
                     />
                   </q-popup-edit>
                 </template>
@@ -471,17 +474,41 @@ const openCloneDialog = (colorId: number) => {
 }
 
 const supplierColorsCache = ref<Record<number, { id: number; name: string; hex_code: string }[]>>({})
+const supplierColorsInFlight = new Map<number, Promise<{ id: number; name: string; hex_code: string }[]>>()
+const supplierColorsInFlightVersion = ref(0)
+const colorDisplayOptions = ref<{ label: string; value: number }[]>([])
+const currentColorFilterSpecId = ref<number | null>(null)
 
-const fetchSupplierColors = async (supplierId: number) => {
-  if (supplierColorsCache.value[supplierId]) return
-  try {
-    const data = await supplierService.getColors(supplierId)
-    supplierColorsCache.value[supplierId] = (data as Array<{ color: { id: number; name: string; hex_code: string; is_active: boolean } }>)
-      .filter((link: { color: { id: number; name: string; hex_code: string; is_active: boolean } }) => link.color?.is_active)
-      .map((link: { color: { id: number; name: string; hex_code: string; is_active: boolean } }) => link.color)
-  } catch {
-    supplierColorsCache.value[supplierId] = []
+const ensureSupplierColorsLoaded = (supplierId: number): Promise<{ id: number; name: string; hex_code: string }[]> => {
+  if (supplierColorsCache.value[supplierId]) {
+    return Promise.resolve(supplierColorsCache.value[supplierId])
   }
+  if (!supplierColorsInFlight.has(supplierId)) {
+    supplierColorsInFlightVersion.value++
+    const promise = supplierService.getColors(supplierId)
+      .then((data) => {
+        const colors = (data as Array<{ color: { id: number; name: string; hex_code: string; is_active: boolean } }>)
+          .filter(link => link.color?.is_active)
+          .map(link => link.color)
+        supplierColorsCache.value[supplierId] = colors
+        supplierColorsInFlight.delete(supplierId)
+        supplierColorsInFlightVersion.value++
+        return colors
+      })
+      .catch(() => {
+        supplierColorsInFlight.delete(supplierId)
+        supplierColorsCache.value[supplierId] = []
+        supplierColorsInFlightVersion.value++
+        return [] as { id: number; name: string; hex_code: string }[]
+      })
+    supplierColorsInFlight.set(supplierId, promise)
+  }
+  return supplierColorsInFlight.get(supplierId)!
+}
+
+const isColorOptionsLoading = (supplierId: number | null | undefined): boolean => {
+  void supplierColorsInFlightVersion.value
+  return supplierId != null && supplierColorsInFlight.has(supplierId)
 }
 
 // Helpers
@@ -500,29 +527,30 @@ const parseColorName = (colorName: string): { subArt: string | null; color: stri
   return { subArt: colorName.substring(0, idx), color: colorName.substring(idx + 3) }
 }
 
-const getColorOptionsForSpec = (spec: StyleThreadSpec): { label: string; value: number }[] => {
-  if (!spec.supplier_id) return []
-  const colors = supplierColorsCache.value[spec.supplier_id] || []
-  return colors.map(c => ({
-    label: c.name,
-    value: c.id,
-  }))
-}
-
-const filteredColorOptionsMap = ref<Record<number, { label: string; value: number }[]>>({})
-const getFilteredColorOptions = (spec: StyleThreadSpec): { label: string; value: number }[] => {
-  if (!spec.supplier_id) return []
-  return filteredColorOptionsMap.value[spec.supplier_id] ?? getColorOptionsForSpec(spec)
-}
-const filterColorOptions = (val: string, update: (fn: () => void) => void, spec: StyleThreadSpec) => {
+const filterColorOptions = async (
+  val: string,
+  update: (fn: () => void) => void,
+  abort: () => void,
+  spec: StyleThreadSpec
+) => {
+  if (!spec.supplier_id) {
+    abort()
+    return
+  }
+  currentColorFilterSpecId.value = spec.id
+  const colors = await ensureSupplierColorsLoaded(spec.supplier_id)
+  if (currentColorFilterSpecId.value !== spec.id) {
+    abort()
+    return
+  }
+  const allOptions = colors.map(c => ({ label: c.name, value: c.id }))
   update(() => {
-    const allOptions = getColorOptionsForSpec(spec)
     if (!val) {
-      filteredColorOptionsMap.value[spec.supplier_id] = allOptions
+      colorDisplayOptions.value = allOptions
       return
     }
     const needle = val.toLowerCase()
-    filteredColorOptionsMap.value[spec.supplier_id] = allOptions.filter(o => o.label.toLowerCase().includes(needle))
+    colorDisplayOptions.value = allOptions.filter(o => o.label.toLowerCase().includes(needle))
   })
 }
 
@@ -620,9 +648,9 @@ const loadColorSpecs = async () => {
 
 onMounted(async () => {
   await loadColorSpecs()
-  const supplierIds = [...new Set(props.specs.map(s => s.supplier_id).filter(Boolean))]
+  const supplierIds = [...new Set(props.specs.map(s => s.supplier_id).filter(Boolean))] as number[]
   await Promise.all([
-    ...supplierIds.map(id => fetchSupplierColors(id)),
+    ...supplierIds.map(id => ensureSupplierColorsLoaded(id)),
     subArtService.getByStyleId(props.styleId).then(data => { subArts.value = data }).catch(() => { subArts.value = [] }),
     styleColorService.getHexPalette().then(data => { hexPalette.value = data }).catch(() => {}),
   ])
@@ -795,12 +823,31 @@ const handleColorSpecEdit = async (
   border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
-.editable-cell:hover .edit-hint {
-  opacity: 1 !important;
+.editable-cell {
+  position: relative;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.18);
+  padding: 8px 8px !important;
+  min-height: 48px;
 }
 
 .edit-hint {
   opacity: 0;
   transition: opacity 0.2s;
+}
+
+@media (hover: hover) {
+  .editable-cell:hover {
+    border-bottom-color: var(--q-primary);
+    background-color: rgba(25, 118, 210, 0.04);
+  }
+  .editable-cell:hover .edit-hint {
+    opacity: 1;
+  }
+}
+
+@media (hover: none) {
+  .edit-hint {
+    opacity: 0.45;
+  }
 }
 </style>

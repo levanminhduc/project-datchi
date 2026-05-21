@@ -172,6 +172,25 @@
                 </q-td>
               </template>
 
+              <template #body-cell-mobile_edit="props">
+                <q-td
+                  :props="props"
+                  class="mobile-edit-col"
+                >
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="edit"
+                    color="primary"
+                    size="sm"
+                    @click="openMobileEdit(props.row)"
+                  >
+                    <q-tooltip>Sửa toàn bộ</q-tooltip>
+                  </q-btn>
+                </q-td>
+              </template>
+
               <!-- Inline Edit: Process Name Column -->
               <template #body-cell-process_name="props">
                 <q-td
@@ -249,15 +268,20 @@
                     >
                       <q-select
                         v-model="scope.value"
-                        :options="supplierOptions"
+                        :options="filteredSupplierOptions"
                         option-value="value"
                         option-label="label"
                         emit-value
                         map-options
                         dense
                         autofocus
+                        use-input
+                        fill-input
+                        hide-selected
+                        input-debounce="200"
                         label="Nhà cung cấp"
                         style="min-width: 200px"
+                        @filter="filterSupplierOptions"
                       />
                     </q-popup-edit>
                   </template>
@@ -293,7 +317,7 @@
                     >
                       <q-select
                         v-model="scope.value"
-                        :options="getFilteredTexOptions(props.row)"
+                        :options="texDisplayOptions"
                         option-value="value"
                         option-label="label"
                         emit-value
@@ -303,11 +327,14 @@
                         use-input
                         fill-input
                         hide-selected
+                        input-debounce="200"
                         label="Tex"
                         style="min-width: 200px"
                         :disable="!props.row.supplier_id"
+                        :loading="isTexLoading(props.row.supplier_id)"
+                        loading-label="Đang tải Tex..."
                         :hint="!props.row.supplier_id ? 'Chọn NCC trước' : ''"
-                        @filter="(val, update) => filterTexOptions(val, update, props.row)"
+                        @filter="(val, update, abort) => filterTexOptions(val, update, abort, props.row)"
                       />
                     </q-popup-edit>
                   </template>
@@ -424,6 +451,17 @@
         @click="$router.back()"
       />
     </div>
+
+    <StyleSpecMobileEditDialog
+      v-model="mobileEditOpen"
+      :row="mobileEditRow"
+      :supplier-options="supplierOptions"
+      :process-name-options="processNameOptions"
+      :load-tex-for-supplier="loadTexForSupplierMobile"
+      :is-tex-loading="isTexLoadingMobile"
+      :saving="mobileSaving"
+      @save="handleMobileSave"
+    />
   </q-page>
 </template>
 
@@ -432,6 +470,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useStyleColors, useSnackbar } from '@/composables'
 import StyleColorSpecsTab from '@/components/thread/StyleColorSpecsTab.vue'
+import StyleSpecMobileEditDialog from '@/components/thread/StyleSpecMobileEditDialog.vue'
 import { fetchApi } from '@/services/api'
 import { styleThreadSpecService, threadService } from '@/services'
 import type { QTableColumn } from 'quasar'
@@ -499,7 +538,7 @@ const handleInlineEdit = async (
     }
 
     if (field === 'supplier_id' && typeof newValue === 'number') {
-      await fetchTexOptions(newValue)
+      await ensureTexLoaded(newValue)
       snackbar.info('Đã cập nhật NCC. Vui lòng chọn lại Tex.')
     } else {
       snackbar.success('Cập nhật định mức chỉ thành công')
@@ -553,8 +592,23 @@ const supplierOptions = computed(() =>
   suppliers.value.map(s => ({ label: s.name, value: s.id }))
 )
 
+const filteredSupplierOptions = ref<{ label: string; value: number }[]>([])
+const filterSupplierOptions = (val: string, update: (fn: () => void) => void) => {
+  update(() => {
+    if (!val) {
+      filteredSupplierOptions.value = supplierOptions.value
+      return
+    }
+    const needle = val.toLowerCase()
+    filteredSupplierOptions.value = supplierOptions.value.filter(o => o.label.toLowerCase().includes(needle))
+  })
+}
+
 const texOptionsCache = ref<Record<number, { label: string; value: number }[]>>({})
-const texOptionsLoading = ref<Record<number, boolean>>({})
+const texInFlight = new Map<number, Promise<{ label: string; value: number }[]>>()
+const texInFlightVersion = ref(0)
+const texDisplayOptions = ref<{ label: string; value: number }[]>([])
+const currentTexFilterRowId = ref<number | null>(null)
 
 const formatTexDisplay = (texNumber?: string | null, texLabel?: string | null): string => {
   const trimmedTexNumber = texNumber?.trim()
@@ -575,32 +629,39 @@ const formatTexDisplay = (texNumber?: string | null, texLabel?: string | null): 
   return '-'
 }
 
-const fetchTexOptions = async (supplierId: number): Promise<void> => {
-  if (texOptionsCache.value[supplierId] || texOptionsLoading.value[supplierId]) return
-
-  texOptionsLoading.value[supplierId] = true
-  try {
-    const threadTypes = await threadService.getAll({ supplier_id: supplierId })
-    texOptionsCache.value[supplierId] = threadTypes
-      .filter(threadType => threadType.tex_number != null)
-      .map(threadType => ({
-        label: formatTexDisplay(threadType.tex_number, threadType.tex_label),
-        value: threadType.id,
-      }))
-  } catch {
-    texOptionsCache.value[supplierId] = []
-  } finally {
-    texOptionsLoading.value[supplierId] = false
+const ensureTexLoaded = (supplierId: number): Promise<{ label: string; value: number }[]> => {
+  if (texOptionsCache.value[supplierId]) {
+    return Promise.resolve(texOptionsCache.value[supplierId])
   }
+  if (!texInFlight.has(supplierId)) {
+    texInFlightVersion.value++
+    const promise = threadService.getAll({ supplier_id: supplierId })
+      .then((threadTypes) => {
+        const opts = threadTypes
+          .filter(t => t.tex_number != null)
+          .map(t => ({
+            label: formatTexDisplay(t.tex_number, t.tex_label),
+            value: t.id,
+          }))
+        texOptionsCache.value[supplierId] = opts
+        texInFlight.delete(supplierId)
+        texInFlightVersion.value++
+        return opts
+      })
+      .catch(() => {
+        texInFlight.delete(supplierId)
+        texOptionsCache.value[supplierId] = []
+        texInFlightVersion.value++
+        return [] as { label: string; value: number }[]
+      })
+    texInFlight.set(supplierId, promise)
+  }
+  return texInFlight.get(supplierId)!
 }
 
-const getTexOptionsForRow = (row: StyleThreadSpec): { label: string; value: number }[] => {
-  if (!row.supplier_id) return []
-  if (!texOptionsCache.value[row.supplier_id]) {
-    fetchTexOptions(row.supplier_id)
-    return []
-  }
-  return texOptionsCache.value[row.supplier_id] ?? []
+const isTexLoading = (supplierId: number | null | undefined): boolean => {
+  void texInFlightVersion.value
+  return supplierId != null && texInFlight.has(supplierId)
 }
 
 const processNameOptions = ref<string[]>([])
@@ -624,20 +685,29 @@ const filterProcessOptions = (val: string, update: (fn: () => void) => void) => 
   })
 }
 
-const filteredTexOptionsMap = ref<Record<number, { label: string; value: number }[]>>({})
-const getFilteredTexOptions = (row: StyleThreadSpec): { label: string; value: number }[] => {
-  if (!row.supplier_id) return []
-  return filteredTexOptionsMap.value[row.supplier_id] ?? getTexOptionsForRow(row)
-}
-const filterTexOptions = (val: string, update: (fn: () => void) => void, row: StyleThreadSpec) => {
+const filterTexOptions = async (
+  val: string,
+  update: (fn: () => void) => void,
+  abort: () => void,
+  row: StyleThreadSpec
+) => {
+  if (!row.supplier_id) {
+    abort()
+    return
+  }
+  currentTexFilterRowId.value = row.id
+  const all = await ensureTexLoaded(row.supplier_id)
+  if (currentTexFilterRowId.value !== row.id) {
+    abort()
+    return
+  }
   update(() => {
-    const allOptions = getTexOptionsForRow(row)
     if (!val) {
-      filteredTexOptionsMap.value[row.supplier_id] = allOptions
+      texDisplayOptions.value = all
       return
     }
     const needle = val.toLowerCase()
-    filteredTexOptionsMap.value[row.supplier_id] = allOptions.filter(o => o.label.toLowerCase().includes(needle))
+    texDisplayOptions.value = all.filter(o => o.label.toLowerCase().includes(needle))
   })
 }
 const isSaving = ref(false)
@@ -661,6 +731,49 @@ const {
 const { styleColors, fetchStyleColors } = useStyleColors()
 
 const { suppliers, fetchSuppliers } = useSuppliers()
+
+const mobileEditOpen = ref(false)
+const mobileEditRow = ref<StyleThreadSpec | null>(null)
+const mobileSaving = ref(false)
+
+const openMobileEdit = (row: StyleThreadSpec) => {
+  mobileEditRow.value = row
+  mobileEditOpen.value = true
+}
+
+const loadTexForSupplierMobile = (supplierId: number) => ensureTexLoaded(supplierId)
+
+const isTexLoadingMobile = (supplierId: number | null) => isTexLoading(supplierId)
+
+const handleMobileSave = async (payload: {
+  process_name: string
+  supplier_id: number | null
+  thread_type_id: number | null
+  meters_per_unit: number
+}) => {
+  if (!mobileEditRow.value) return
+  const specId = mobileEditRow.value.id
+  mobileSaving.value = true
+  try {
+    await styleThreadSpecService.update(specId, {
+      process_name: payload.process_name,
+      supplier_id: payload.supplier_id ?? undefined,
+      thread_type_id: payload.thread_type_id ?? undefined,
+      meters_per_unit: payload.meters_per_unit,
+    })
+    const idx = styleThreadSpecs.value.findIndex(s => s.id === specId)
+    if (idx !== -1) {
+      const full = await styleThreadSpecService.getById(specId)
+      Object.assign(styleThreadSpecs.value[idx]!, full)
+    }
+    snackbar.success('Cập nhật định mức thành công')
+    mobileEditOpen.value = false
+  } catch {
+    snackbar.error('Cập nhật thất bại')
+  } finally {
+    mobileSaving.value = false
+  }
+}
 
 // Form state
 const form = ref({
@@ -686,6 +799,15 @@ const specColumns: QTableColumn[] = [
     field: '',
     align: 'center',
     style: 'width: 50px',
+  },
+  {
+    name: 'mobile_edit',
+    label: '',
+    field: '',
+    align: 'center',
+    style: 'width: 50px',
+    classes: 'mobile-edit-col',
+    headerClasses: 'mobile-edit-col',
   },
   {
     name: 'process_name',
@@ -758,7 +880,7 @@ onMounted(async () => {
   ])
 
   const supplierIds = [...new Set(styleThreadSpecs.value.map(s => s.supplier_id).filter(Boolean))] as number[]
-  await Promise.all(supplierIds.map(sid => fetchTexOptions(sid)))
+  await Promise.all(supplierIds.map(sid => ensureTexLoaded(sid)))
 })
 
 // Watch addToTop and persist to localStorage
@@ -795,12 +917,43 @@ const handleDeleteSpec = async (spec: StyleThreadSpec) => {
 </script>
 
 <style scoped>
-/* Inline edit styles */
-.editable-cell:hover .edit-hint {
-  opacity: 1 !important;
+.editable-cell {
+  position: relative;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.18);
+  padding: 8px 8px !important;
+  min-height: 48px;
 }
+
+.editable-cell .cell-value {
+  display: inline-block;
+  min-height: 32px;
+  line-height: 32px;
+}
+
 .edit-hint {
   opacity: 0;
   transition: opacity 0.2s;
+}
+
+@media (hover: hover) {
+  .editable-cell:hover {
+    border-bottom-color: var(--q-primary);
+    background-color: rgba(25, 118, 210, 0.04);
+  }
+  .editable-cell:hover .edit-hint {
+    opacity: 1;
+  }
+}
+
+@media (hover: none) {
+  .edit-hint {
+    opacity: 0.45;
+  }
+}
+
+@media (min-width: 600px) {
+  :deep(.mobile-edit-col) {
+    display: none;
+  }
 }
 </style>

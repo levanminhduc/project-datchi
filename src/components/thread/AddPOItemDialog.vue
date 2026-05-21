@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { useDebounceFn } from '@vueuse/core'
 import FormDialog from '@/components/ui/dialogs/FormDialog.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -44,29 +43,23 @@ function resetForm() {
   styles.value = []
 }
 
-const searchStyles = useDebounceFn(async (query: string) => {
-  loadingStyles.value = true
-  try {
-    styles.value = await styleService.search({
-      search: query,
-      limit: 2000,
-      excludeIds: props.existingStyleIds
-    })
-  } catch (err) {
-    console.error('Error searching styles:', err)
-    styles.value = []
-  } finally {
-    loadingStyles.value = false
-  }
-}, 300)
+let currentSearchId = 0
+
+async function fetchStyles(query: string): Promise<Style[]> {
+  return await styleService.search({
+    search: query || undefined,
+    limit: 2000,
+    excludeIds: props.existingStyleIds
+  })
+}
 
 async function loadInitialStyles() {
   loadingStyles.value = true
   try {
-    styles.value = await styleService.search({
-      limit: 2000,
-      excludeIds: props.existingStyleIds
-    })
+    styles.value = await fetchStyles('')
+  } catch (err) {
+    console.error('Error loading initial styles:', err)
+    styles.value = []
   } finally {
     loadingStyles.value = false
   }
@@ -79,15 +72,28 @@ watch(() => props.modelValue, (newVal) => {
   }
 })
 
-function handleFilter(val: string, update: (fn: () => void) => void) {
-  update(() => {
-    searchText.value = val
-    if (val.length >= 1) {
-      searchStyles(val)
-    } else if (val === '') {
-      loadInitialStyles()
-    }
-  })
+async function handleFilter(
+  val: string,
+  update: (fn: () => void) => void,
+  abort: () => void
+) {
+  const myId = ++currentSearchId
+  searchText.value = val
+  loadingStyles.value = true
+  let result: Style[] = []
+  try {
+    result = await fetchStyles(val)
+  } catch (err) {
+    console.error('Error searching styles:', err)
+    result = []
+  }
+  if (myId !== currentSearchId) {
+    abort()
+    return
+  }
+  styles.value = result
+  loadingStyles.value = false
+  update(() => {})
 }
 
 async function onSubmit() {
@@ -141,6 +147,9 @@ function onCancel() {
           label="Mã hàng"
           outlined
           use-input
+          fill-input
+          hide-selected
+          input-debounce="300"
           emit-value
           map-options
           :loading="loadingStyles"
