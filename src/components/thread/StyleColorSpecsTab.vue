@@ -226,6 +226,31 @@
                   : '-' }}
               </q-td>
             </template>
+
+            <template #body-cell-history="props">
+              <q-td
+                :props="props"
+                class="text-center"
+              >
+                <q-btn
+                  flat
+                  round
+                  dense
+                  icon="history"
+                  color="grey-7"
+                  size="sm"
+                  :disable="props.row.colorSpecId === null"
+                  @click="openHistory(props.row.colorSpecId)"
+                >
+                  <q-tooltip v-if="props.row.colorSpecId !== null">
+                    Xem lịch sử chỉnh sửa
+                  </q-tooltip>
+                  <q-tooltip v-else>
+                    Chưa có lịch sử (chưa được tạo)
+                  </q-tooltip>
+                </q-btn>
+              </q-td>
+            </template>
           </q-table>
         </q-card-section>
       </q-card>
@@ -361,6 +386,12 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <AuditHistoryDialog
+      v-model="historyOpen"
+      table-name="style_color_thread_specs"
+      :record-id="historyRecordId"
+    />
   </div>
 </template>
 
@@ -375,6 +406,7 @@ import { styleThreadSpecService } from '@/services'
 import { supplierService } from '@/services/supplierService'
 import { subArtService } from '@/services/subArtService'
 import { AppSelect } from '@/components/ui/inputs'
+import AuditHistoryDialog from '@/components/thread/AuditHistoryDialog.vue'
 
 interface Props {
   styleId: number
@@ -398,6 +430,8 @@ interface ColorSpecRow {
     name: string
     hex_code: string
   } | null
+  updatedBy: string | null
+  updatedAt: string | null
 }
 
 interface ColorGroup {
@@ -427,6 +461,22 @@ const {
 const colorSpecsLoading = ref(false)
 const inlineEditLoading = ref<Record<string, boolean>>({})
 const showCreateColorDialog = ref(false)
+
+const historyOpen = ref(false)
+const historyRecordId = ref<number | null>(null)
+
+const openHistory = (colorSpecId: number | null) => {
+  if (colorSpecId == null) return
+  historyRecordId.value = colorSpecId
+  historyOpen.value = true
+}
+
+const formatDateShort = (iso: string | null): string => {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 const newColorName = ref('')
 const newColorHex = ref('#cccccc')
 const creatingColor = ref(false)
@@ -575,6 +625,8 @@ const colorGroups = computed<ColorGroup[]>(() => {
           name: match.thread_color.name,
           hex_code: match.thread_color.hex_code,
         } : null,
+        updatedBy: match?.updated_by ?? null,
+        updatedAt: match?.updated_at ?? null,
       }
     })
 
@@ -633,6 +685,25 @@ const colorTableColumns: QTableColumn[] = [
     label: 'Màu chỉ',
     field: 'thread_color',
     align: 'left',
+  },
+  {
+    name: 'updated_by',
+    label: 'Sửa bởi',
+    field: (row: ColorSpecRow) => row.updatedBy || '-',
+    align: 'left',
+  },
+  {
+    name: 'updated_at',
+    label: 'Sửa lúc',
+    field: (row: ColorSpecRow) => formatDateShort(row.updatedAt),
+    align: 'left',
+  },
+  {
+    name: 'history',
+    label: '',
+    field: '',
+    align: 'center',
+    style: 'width: 40px',
   },
 ]
 

@@ -383,6 +383,25 @@
                 </q-td>
               </template>
 
+              <template #body-cell-history="props">
+                <q-td
+                  :props="props"
+                  class="text-center"
+                >
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="history"
+                    color="grey-7"
+                    size="sm"
+                    @click="openHistory('style_thread_specs', props.row.id)"
+                  >
+                    <q-tooltip>Xem lịch sử chỉnh sửa</q-tooltip>
+                  </q-btn>
+                </q-td>
+              </template>
+
               <!-- Actions Column (delete only - edit is inline now) -->
               <template #body-cell-actions="props">
                 <q-td
@@ -462,6 +481,12 @@
       :saving="mobileSaving"
       @save="handleMobileSave"
     />
+
+    <AuditHistoryDialog
+      v-model="historyOpen"
+      :table-name="historyTable"
+      :record-id="historyRecordId"
+    />
   </q-page>
 </template>
 
@@ -471,6 +496,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useStyleColors, useSnackbar } from '@/composables'
 import StyleColorSpecsTab from '@/components/thread/StyleColorSpecsTab.vue'
 import StyleSpecMobileEditDialog from '@/components/thread/StyleSpecMobileEditDialog.vue'
+import AuditHistoryDialog from '@/components/thread/AuditHistoryDialog.vue'
 import { fetchApi } from '@/services/api'
 import { styleThreadSpecService, threadService } from '@/services'
 import type { QTableColumn } from 'quasar'
@@ -736,6 +762,23 @@ const mobileEditOpen = ref(false)
 const mobileEditRow = ref<StyleThreadSpec | null>(null)
 const mobileSaving = ref(false)
 
+const historyOpen = ref(false)
+const historyTable = ref<'style_thread_specs' | 'style_color_thread_specs'>('style_thread_specs')
+const historyRecordId = ref<number | null>(null)
+
+const openHistory = (table: 'style_thread_specs' | 'style_color_thread_specs', recordId: number) => {
+  historyTable.value = table
+  historyRecordId.value = recordId
+  historyOpen.value = true
+}
+
+const formatDateShort = (iso: string | null): string => {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 const openMobileEdit = (row: StyleThreadSpec) => {
   mobileEditRow.value = row
   mobileEditOpen.value = true
@@ -838,6 +881,27 @@ const specColumns: QTableColumn[] = [
     sortable: true,
   },
   // Notes column hidden - not in Excel spec from user
+  {
+    name: 'updated_by',
+    label: 'Sửa bởi',
+    field: 'updated_by',
+    align: 'left',
+    format: (v: string | null) => v || '-',
+  },
+  {
+    name: 'updated_at',
+    label: 'Sửa lúc',
+    field: 'updated_at',
+    align: 'left',
+    format: (v: string | null) => formatDateShort(v),
+  },
+  {
+    name: 'history',
+    label: '',
+    field: '',
+    align: 'center',
+    style: 'width: 40px',
+  },
   {
     name: 'actions',
     label: 'Thao tác',
