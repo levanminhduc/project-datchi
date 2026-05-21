@@ -36,6 +36,8 @@ export interface StyleColorThreadSpec {
   notes: string | null
   created_at: string
   updated_at: string
+  created_by: string | null
+  updated_by: string | null
   style_color?: {
     id: number
     color_name: string
@@ -116,4 +118,14 @@ export interface StylesWithSpecsResponse {
   page: number
   pageSize: number
   error: string | null
+}
+
+export interface AuditEntry {
+  id: number
+  action: 'INSERT' | 'UPDATE' | 'DELETE'
+  performed_by: string | null
+  created_at: string
+  changed_fields: string[] | null
+  old_values: Record<string, unknown> | null
+  new_values: Record<string, unknown> | null
 }
