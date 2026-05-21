@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { supabaseAdmin as supabase } from '../db/supabase'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
@@ -6,10 +6,58 @@ import type { AppEnv } from '../types/hono-env'
 
 const styleThreadSpecs = new Hono<AppEnv>()
 
+const AUDIT_IGNORE_FIELDS = new Set([
+  'id', 'created_at', 'updated_at', 'created_by', 'updated_by',
+])
+
+async function resolvePerformer(c: Context<AppEnv>): Promise<string> {
+  const auth = c.get('auth')
+  if (!auth?.employeeId) return 'system'
+  const { data } = await supabase
+    .from('employees')
+    .select('full_name')
+    .eq('id', auth.employeeId)
+    .single()
+  return data?.full_name || `employee#${auth.employeeId}`
+}
+
+type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE'
+
+interface LogAuditInput {
+  tableName: 'style_thread_specs' | 'style_color_thread_specs'
+  recordId: number
+  action: AuditAction
+  oldValues: Record<string, unknown> | null
+  newValues: Record<string, unknown> | null
+  performedBy: string
+}
+
+async function logAudit(args: LogAuditInput): Promise<void> {
+  let changedFields: string[] | null = null
+  if (args.action === 'UPDATE' && args.oldValues && args.newValues) {
+    changedFields = Object.keys({ ...args.oldValues, ...args.newValues }).filter((k) => {
+      if (AUDIT_IGNORE_FIELDS.has(k)) return false
+      return JSON.stringify(args.oldValues![k]) !== JSON.stringify(args.newValues![k])
+    })
+    if (changedFields.length === 0) return
+  }
+  const { error } = await supabase.from('thread_audit_log').insert({
+    table_name: args.tableName,
+    record_id: args.recordId,
+    action: args.action,
+    old_values: args.oldValues,
+    new_values: args.newValues,
+    changed_fields: changedFields,
+    performed_by: args.performedBy,
+  })
+  if (error) console.error('[styleThreadSpecs] audit log insert failed:', error)
+}
+
 async function ensureColorSpecs(
   specId: number,
   styleId: number,
   threadTypeId: number | null,
+  performedBy: string,
 ) {
   if (!threadTypeId) return
 
@@ -22,32 +70,63 @@ async function ensureColorSpecs(
 
   const { data: existing } = await supabase
     .from('style_color_thread_specs')
-    .select('id, style_color_id, thread_type_id')
+    .select('*')
     .eq('style_thread_spec_id', specId)
 
   const existingColorIds = new Set((existing || []).map(e => e.style_color_id))
   const missing = styleColors.filter(sc => !existingColorIds.has(sc.id))
 
   if (missing.length > 0) {
-    await supabase
+    const { data: inserted } = await supabase
       .from('style_color_thread_specs')
       .insert(missing.map(sc => ({
         style_thread_spec_id: specId,
         style_color_id: sc.id,
         thread_type_id: threadTypeId,
+        created_by: performedBy,
+        updated_by: performedBy,
       })))
+      .select('*')
+
+    for (const row of inserted ?? []) {
+      await logAudit({
+        tableName: 'style_color_thread_specs',
+        recordId: row.id,
+        action: 'INSERT',
+        oldValues: null,
+        newValues: row,
+        performedBy,
+      })
+    }
   }
 
   if (existing && existing.length > 0) {
-    const staleIds = existing
-      .filter(e => e.thread_type_id !== threadTypeId)
-      .map(e => e.id)
+    const stale = existing.filter(e => e.thread_type_id !== threadTypeId)
 
-    if (staleIds.length > 0) {
-      await supabase
+    if (stale.length > 0) {
+      const staleIds = stale.map(s => s.id)
+      const { data: updated } = await supabase
         .from('style_color_thread_specs')
-        .update({ thread_type_id: threadTypeId, updated_at: new Date().toISOString() })
+        .update({
+          thread_type_id: threadTypeId,
+          updated_at: new Date().toISOString(),
+          updated_by: performedBy,
+        })
         .in('id', staleIds)
+        .select('*')
+
+      for (const newRow of updated ?? []) {
+        const oldRow = stale.find(s => s.id === newRow.id)
+        if (!oldRow) continue
+        await logAudit({
+          tableName: 'style_color_thread_specs',
+          recordId: newRow.id,
+          action: 'UPDATE',
+          oldValues: oldRow,
+          newValues: newRow,
+          performedBy,
+        })
+      }
     }
   }
 }
@@ -105,6 +184,60 @@ styleThreadSpecs.get('/process-names', requirePermission('thread.styles.view'), 
     const names = [...new Set((data || []).map(r => r.process_name as string))]
     return c.json({ data: names, error: null })
   } catch (err) {
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * GET /api/style-thread-specs/color-specs/:id/audit-history
+ * Audit history for a single color spec row (registered BEFORE /:id to avoid match collision).
+ */
+styleThreadSpecs.get('/color-specs/:id/audit-history', requirePermission('thread.styles.view'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data, error } = await supabase
+      .from('thread_audit_log')
+      .select('id, action, performed_by, created_at, changed_fields, old_values, new_values')
+      .eq('table_name', 'style_color_thread_specs')
+      .eq('record_id', id)
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    if (error) throw error
+    return c.json({ data, error: null })
+  } catch (err) {
+    console.error('Error fetching audit history (style_color_thread_specs):', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+/**
+ * GET /api/style-thread-specs/:id/audit-history
+ * Audit history for a single style thread spec row.
+ */
+styleThreadSpecs.get('/:id/audit-history', requirePermission('thread.styles.view'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data, error } = await supabase
+      .from('thread_audit_log')
+      .select('id, action, performed_by, created_at, changed_fields, old_values, new_values')
+      .eq('table_name', 'style_thread_specs')
+      .eq('record_id', id)
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    if (error) throw error
+    return c.json({ data, error: null })
+  } catch (err) {
+    console.error('Error fetching audit history (style_thread_specs):', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })
@@ -208,7 +341,16 @@ styleThreadSpecs.post('/', requirePermission('thread.styles.create'), async (c) 
 
     if (error) throw error
 
-    await ensureColorSpecs(data.id, body.style_id, body.thread_type_id)
+    await ensureColorSpecs(data.id, body.style_id, body.thread_type_id, createdBy ?? 'system')
+
+    await logAudit({
+      tableName: 'style_thread_specs',
+      recordId: data.id,
+      action: 'INSERT',
+      oldValues: null,
+      newValues: data,
+      performedBy: createdBy ?? 'system',
+    })
 
     return c.json({ data, error: null, message: 'Tạo định mức chỉ thành công' })
   } catch (err) {
@@ -229,6 +371,18 @@ styleThreadSpecs.put('/:id', requirePermission('thread.styles.edit'), async (c) 
     }
 
     const body = await c.req.json()
+
+    const { data: oldRow, error: oldErr } = await supabase
+      .from('style_thread_specs')
+      .select('*')
+      .eq('id', id)
+      .single()
+    if (oldErr) {
+      if (oldErr.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
+      }
+      throw oldErr
+    }
 
     const auth = c.get('auth')
     let updatedBy: string | null = null
@@ -270,8 +424,17 @@ styleThreadSpecs.put('/:id', requirePermission('thread.styles.edit'), async (c) 
 
     if (body.thread_type_id) {
       const styleId = body.style_id || data.style_id
-      await ensureColorSpecs(id, styleId, body.thread_type_id)
+      await ensureColorSpecs(id, styleId, body.thread_type_id, updatedBy ?? 'system')
     }
+
+    await logAudit({
+      tableName: 'style_thread_specs',
+      recordId: id,
+      action: 'UPDATE',
+      oldValues: oldRow,
+      newValues: data,
+      performedBy: updatedBy ?? 'system',
+    })
 
     return c.json({ data, error: null, message: 'Cập nhật định mức chỉ thành công' })
   } catch (err) {
@@ -286,9 +449,21 @@ styleThreadSpecs.put('/:id', requirePermission('thread.styles.edit'), async (c) 
 styleThreadSpecs.delete('/:id', requirePermission('thread.styles.delete'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
-    
+
     if (isNaN(id)) {
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    const { data: oldRow, error: selErr } = await supabase
+      .from('style_thread_specs')
+      .select('*')
+      .eq('id', id)
+      .single()
+    if (selErr) {
+      if (selErr.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
+      }
+      throw selErr
     }
 
     const { error } = await supabase
@@ -296,12 +471,17 @@ styleThreadSpecs.delete('/:id', requirePermission('thread.styles.delete'), async
       .delete()
       .eq('id', id)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
-      }
-      throw error
-    }
+    if (error) throw error
+
+    const performedBy = await resolvePerformer(c)
+    await logAudit({
+      tableName: 'style_thread_specs',
+      recordId: id,
+      action: 'DELETE',
+      oldValues: oldRow,
+      newValues: null,
+      performedBy,
+    })
 
     return c.json({ data: null, error: null, message: 'Xoa dinh muc chi thanh cong' })
   } catch (err) {
@@ -353,15 +533,19 @@ styleThreadSpecs.post('/:id/color-specs', requirePermission('thread.styles.creat
     }
 
     const body = await c.req.json()
-    
+
     if (!body.style_color_id) {
       return c.json({ data: null, error: 'Mã màu hàng (style_color_id) là bắt buộc' }, 400)
     }
+
+    const performedBy = await resolvePerformer(c)
 
     const insertData: Record<string, unknown> = {
       style_thread_spec_id: styleThreadSpecId,
       style_color_id: body.style_color_id,
       notes: body.notes,
+      created_by: performedBy,
+      updated_by: performedBy,
     }
     if (body.thread_type_id) insertData.thread_type_id = body.thread_type_id
     if (body.thread_color_id) insertData.thread_color_id = body.thread_color_id
@@ -378,6 +562,15 @@ styleThreadSpecs.post('/:id/color-specs', requirePermission('thread.styles.creat
       .single()
 
     if (error) throw error
+
+    await logAudit({
+      tableName: 'style_color_thread_specs',
+      recordId: data.id,
+      action: 'INSERT',
+      oldValues: null,
+      newValues: data,
+      performedBy,
+    })
 
     return c.json({ data, error: null, message: 'Them dinh muc chi theo mau thanh cong' })
   } catch (err) {
@@ -447,8 +640,23 @@ styleThreadSpecs.put('/color-specs/:id', requirePermission('thread.styles.edit')
 
     const body = await c.req.json()
 
+    const { data: oldRow, error: oldErr } = await supabase
+      .from('style_color_thread_specs')
+      .select('*')
+      .eq('id', id)
+      .single()
+    if (oldErr) {
+      if (oldErr.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy định mức màu' }, 404)
+      }
+      throw oldErr
+    }
+
+    const performedBy = await resolvePerformer(c)
+
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
+      updated_by: performedBy,
     }
 
     if (body.thread_type_id !== undefined) updateData.thread_type_id = body.thread_type_id
@@ -474,6 +682,15 @@ styleThreadSpecs.put('/color-specs/:id', requirePermission('thread.styles.edit')
       throw error
     }
 
+    await logAudit({
+      tableName: 'style_color_thread_specs',
+      recordId: id,
+      action: 'UPDATE',
+      oldValues: oldRow,
+      newValues: data,
+      performedBy,
+    })
+
     return c.json({ data, error: null, message: 'Cập nhật định mức màu thành công' })
   } catch (err) {
     console.error('Error updating color spec:', err)
@@ -493,12 +710,31 @@ styleThreadSpecs.delete('/color-specs/by-style-color/:styleColorId', requirePerm
       return c.json({ data: null, error: 'Style Color ID không hợp lệ' }, 400)
     }
 
+    const { data: oldRows, error: selErr } = await supabase
+      .from('style_color_thread_specs')
+      .select('*')
+      .eq('style_color_id', styleColorId)
+
+    if (selErr) throw selErr
+
     const { error, count } = await supabase
       .from('style_color_thread_specs')
       .delete({ count: 'exact' })
       .eq('style_color_id', styleColorId)
 
     if (error) throw error
+
+    const performedBy = await resolvePerformer(c)
+    for (const row of oldRows ?? []) {
+      await logAudit({
+        tableName: 'style_color_thread_specs',
+        recordId: row.id,
+        action: 'DELETE',
+        oldValues: row,
+        newValues: null,
+        performedBy,
+      })
+    }
 
     return c.json({ data: { deleted: count }, error: null, message: `Đã xóa ${count ?? 0} định mức màu` })
   } catch (err) {
@@ -518,12 +754,34 @@ styleThreadSpecs.delete('/color-specs/:id', requirePermission('thread.styles.del
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
+    const { data: oldRow, error: selErr } = await supabase
+      .from('style_color_thread_specs')
+      .select('*')
+      .eq('id', id)
+      .single()
+    if (selErr) {
+      if (selErr.code === 'PGRST116') {
+        return c.json({ data: null, error: 'Không tìm thấy định mức màu' }, 404)
+      }
+      throw selErr
+    }
+
     const { error } = await supabase
       .from('style_color_thread_specs')
       .delete()
       .eq('id', id)
 
     if (error) throw error
+
+    const performedBy = await resolvePerformer(c)
+    await logAudit({
+      tableName: 'style_color_thread_specs',
+      recordId: id,
+      action: 'DELETE',
+      oldValues: oldRow,
+      newValues: null,
+      performedBy,
+    })
 
     return c.json({ data: null, error: null, message: 'Xóa định mức màu thành công' })
   } catch (err) {
