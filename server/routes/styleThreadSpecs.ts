@@ -10,7 +10,6 @@ async function ensureColorSpecs(
   specId: number,
   styleId: number,
   threadTypeId: number | null,
-  oldThreadTypeId?: number | null,
 ) {
   if (!threadTypeId) return
 
@@ -39,9 +38,9 @@ async function ensureColorSpecs(
       })))
   }
 
-  if (oldThreadTypeId && oldThreadTypeId !== threadTypeId && existing && existing.length > 0) {
+  if (existing && existing.length > 0) {
     const staleIds = existing
-      .filter(e => e.thread_type_id === oldThreadTypeId)
+      .filter(e => e.thread_type_id !== threadTypeId)
       .map(e => e.id)
 
     if (staleIds.length > 0) {
@@ -242,16 +241,6 @@ styleThreadSpecs.put('/:id', requirePermission('thread.styles.edit'), async (c) 
       updatedBy = emp?.full_name || null
     }
 
-    let oldThreadTypeId: number | null = null
-    if (body.thread_type_id) {
-      const { data: oldSpec } = await supabase
-        .from('style_thread_specs')
-        .select('thread_type_id')
-        .eq('id', id)
-        .single()
-      oldThreadTypeId = oldSpec?.thread_type_id ?? null
-    }
-
     const { data, error } = await supabase
       .from('style_thread_specs')
       .update({
@@ -281,7 +270,7 @@ styleThreadSpecs.put('/:id', requirePermission('thread.styles.edit'), async (c) 
 
     if (body.thread_type_id) {
       const styleId = body.style_id || data.style_id
-      await ensureColorSpecs(id, styleId, body.thread_type_id, oldThreadTypeId)
+      await ensureColorSpecs(id, styleId, body.thread_type_id)
     }
 
     return c.json({ data, error: null, message: 'Cập nhật định mức chỉ thành công' })
