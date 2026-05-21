@@ -257,7 +257,7 @@ export async function fetchLastIssuedAtByPo(
     .select('po_id, thread_issues!inner(created_at, status, department)')
     .in('po_id', poIds)
     .eq('thread_issues.status', 'CONFIRMED')
-    .order('thread_issues(created_at)', { ascending: false })
+    .order('created_at', { ascending: false, referencedTable: 'thread_issues' })
     .limit(50000)
 
   if (department) {

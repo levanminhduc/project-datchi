@@ -37,6 +37,7 @@ declare module 'vue' {
     AppParallax: typeof import('./components/ui/media/AppParallax.vue')['default']
     AppProgress: typeof import('./components/ui/feedback/AppProgress.vue')['default']
     AppRange: typeof import('./components/ui/inputs/AppRange.vue')['default']
+    ApprovedOrdersPopup: typeof import('./components/notifications/ApprovedOrdersPopup.vue')['default']
     AppSelect: typeof import('./components/ui/inputs/AppSelect.vue')['default']
     AppSeparator: typeof import('./components/ui/layout/AppSeparator.vue')['default']
     AppSkeleton: typeof import('./components/ui/feedback/AppSkeleton.vue')['default']

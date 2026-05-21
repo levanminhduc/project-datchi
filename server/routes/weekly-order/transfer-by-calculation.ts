@@ -58,9 +58,11 @@ export async function fetchCalculationData(weekId: number) {
     .eq('week_id', weekId)
     .maybeSingle()
   if (error) throw error
+  const rawCalc = data?.calculation_data
+  const rawSummary = data?.summary_data
   return {
-    calculation_data: (data?.calculation_data ?? []) as CalculationDataRow[],
-    summary_data: (data?.summary_data ?? []) as Array<{
+    calculation_data: (Array.isArray(rawCalc) ? rawCalc : []) as CalculationDataRow[],
+    summary_data: (Array.isArray(rawSummary) ? rawSummary : []) as Array<{
       thread_type_id: number
       thread_color: string | null
       additional_order: number
