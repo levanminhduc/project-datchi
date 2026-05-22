@@ -149,46 +149,189 @@
                 Liên kết
               </q-td>
             </q-tr>
-            <q-tr
+            <template
               v-for="week in props.row.weeks"
               :key="`w-${props.row.warehouse_id}-${week.week_id}`"
-              :props="props"
-              class="bg-grey-2"
             >
-              <q-td />
-              <q-td>
-                <span class="q-ml-md">{{ week.week_name }}</span>
-              </q-td>
-              <q-td class="text-center">
-                <q-badge
-                  color="primary"
-                  label="CONFIRMED"
-                />
-              </q-td>
-              <q-td class="text-center">
-                {{ formatNumber(week.full_cones) }}
-              </q-td>
-              <q-td class="text-center">
-                <span v-if="week.partial_cones > 0">{{ formatNumber(week.partial_cones) }}</span>
-                <span
-                  v-else
-                  class="text-grey"
-                >-</span>
-              </q-td>
-              <q-td class="text-center">
-                <q-btn
-                  flat
-                  dense
-                  round
-                  size="sm"
-                  color="primary"
-                  icon="open_in_new"
-                  @click="openWeekOrder(week.week_id)"
+              <q-tr
+                :props="props"
+                class="bg-grey-2"
+              >
+                <q-td>
+                  <q-btn
+                    size="sm"
+                    flat
+                    dense
+                    round
+                    :icon="isWeekExpanded(props.row.warehouse_id, week.week_id) ? 'remove' : 'add'"
+                    :disable="componentColorId == null"
+                    @click="() => toggleWeek(props.row.warehouse_id, week.week_id)"
+                  >
+                    <q-tooltip v-if="componentColorId == null">
+                      Cần chọn loại chỉ + màu để xem chi tiết PO
+                    </q-tooltip>
+                  </q-btn>
+                </q-td>
+                <q-td>
+                  <span class="q-ml-md">{{ week.week_name }}</span>
+                </q-td>
+                <q-td class="text-center">
+                  <q-badge
+                    color="primary"
+                    label="CONFIRMED"
+                  />
+                </q-td>
+                <q-td class="text-center">
+                  {{ formatNumber(week.full_cones) }}
+                </q-td>
+                <q-td class="text-center">
+                  <span v-if="week.partial_cones > 0">{{ formatNumber(week.partial_cones) }}</span>
+                  <span
+                    v-else
+                    class="text-grey"
+                  >-</span>
+                </q-td>
+                <q-td class="text-center">
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    size="sm"
+                    color="primary"
+                    icon="open_in_new"
+                    @click="openWeekOrder(week.week_id)"
+                  >
+                    <q-tooltip>Mở tuần đặt hàng (tab mới)</q-tooltip>
+                  </q-btn>
+                </q-td>
+              </q-tr>
+
+              <template v-if="isWeekExpanded(props.row.warehouse_id, week.week_id)">
+                <q-tr
+                  :props="props"
+                  class="bg-blue-grey-1"
                 >
-                  <q-tooltip>Mở tuần đặt hàng (tab mới)</q-tooltip>
-                </q-btn>
-              </q-td>
-            </q-tr>
+                  <q-td
+                    colspan="6"
+                    class="q-pa-none"
+                  >
+                    <div class="q-pa-sm bg-grey-1">
+                      <div class="text-caption text-weight-medium text-blue-10 q-mb-xs">
+                        <q-icon
+                          name="receipt_long"
+                          class="q-mr-xs"
+                        />
+                        Chi tiết PO / Mã hàng
+                      </div>
+
+                      <div
+                        v-if="poBreakdownLoading(week.week_id)"
+                        class="text-center text-grey q-py-sm"
+                      >
+                        <q-spinner size="sm" />
+                        Đang tải chi tiết PO...
+                      </div>
+
+                      <div
+                        v-else-if="poBreakdownError(week.week_id)"
+                        class="text-negative q-py-sm"
+                      >
+                        {{ poBreakdownError(week.week_id) }}
+                      </div>
+
+                      <div
+                        v-else-if="poBreakdownRows(week.week_id).length === 0"
+                        class="text-grey text-italic q-py-sm"
+                      >
+                        Không có PO/mã hàng nào khớp loại chỉ + màu này
+                      </div>
+
+                      <q-markup-table
+                        v-else
+                        flat
+                        dense
+                        bordered
+                        class="bg-white"
+                      >
+                        <thead>
+                          <tr class="bg-blue-grey-2 text-weight-medium">
+                            <th class="text-left">
+                              PO
+                            </th>
+                            <th class="text-left">
+                              Mã hàng
+                            </th>
+                            <th class="text-left">
+                              Màu SP
+                            </th>
+                            <th class="text-center">
+                              SL SP
+                            </th>
+                            <th class="text-center">
+                              ĐM cone
+                            </th>
+                            <th class="text-center">
+                              Đã xuất
+                            </th>
+                            <th class="text-center">
+                              Đã trả
+                            </th>
+                            <th class="text-center">
+                              Còn lại
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            v-for="row in poBreakdownRows(week.week_id)"
+                            :key="`po-${props.row.warehouse_id}-${week.week_id}-${row.po_id}-${row.style_id}-${row.style_color_id}`"
+                          >
+                            <td>
+                              {{ row.po_number }}
+                            </td>
+                            <td>
+                              <div class="text-weight-medium">
+                                {{ row.style_code }}
+                              </div>
+                              <div class="text-caption text-grey">
+                                {{ row.style_name }}
+                              </div>
+                            </td>
+                            <td>
+                              {{ row.style_color_name }}
+                            </td>
+                            <td class="text-center">
+                              {{ formatNumber(row.product_quantity) }}
+                            </td>
+                            <td class="text-center">
+                              {{ formatNumber(row.quota_cones) }}
+                            </td>
+                            <td class="text-center">
+                              {{ formatNumber(row.issued_cones) }}
+                            </td>
+                            <td class="text-center">
+                              <span v-if="row.returned_cones > 0">
+                                {{ formatNumber(row.returned_cones) }}
+                              </span>
+                              <span
+                                v-else
+                                class="text-grey"
+                              >-</span>
+                            </td>
+                            <td class="text-center">
+                              <q-badge
+                                :color="row.pending_cones > 0 ? 'warning' : 'positive'"
+                                :label="formatNumber(row.pending_cones)"
+                              />
+                            </td>
+                          </tr>
+                        </tbody>
+                      </q-markup-table>
+                    </div>
+                  </q-td>
+                </q-tr>
+              </template>
+            </template>
           </template>
 
           <template v-if="hasOtherReserved(props.row.other_reserved)">
@@ -262,7 +405,11 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import type { QTableColumn } from 'quasar'
 import { useConeSummary } from '@/composables/thread/useConeSummary'
-import type { ConeReservedAggregate, ConeReservedWarehouseEntry } from '@/types/thread'
+import type {
+  ConeReservedAggregate,
+  ConeReservedWarehouseEntry,
+  ConeReservedPoBreakdownRow,
+} from '@/types/thread'
 
 interface Props {
   threadTypeId: number
@@ -275,9 +422,60 @@ const props = withDefaults(defineProps<Props>(), {
   warehouseId: null,
 })
 
-const { fetchReservedByWeek, reservedByWeekData, reservedByWeekError, reservedByWeekLoading } = useConeSummary()
+const {
+  fetchReservedByWeek,
+  reservedByWeekData,
+  reservedByWeekError,
+  reservedByWeekLoading,
+  fetchPoBreakdown,
+  clearPoBreakdown,
+  poBreakdownByKey,
+  poBreakdownLoadingByKey,
+  poBreakdownErrorByKey,
+  poBreakdownKey,
+} = useConeSummary()
 
 const expandedIds = ref<Set<number>>(new Set())
+
+const expandedWeekKeys = ref<Set<string>>(new Set())
+
+const weekKey = (warehouseId: number, weekId: number): string => `${warehouseId}_${weekId}`
+
+const isWeekExpanded = (warehouseId: number, weekId: number): boolean =>
+  expandedWeekKeys.value.has(weekKey(warehouseId, weekId))
+
+const toggleWeek = async (warehouseId: number, weekId: number): Promise<void> => {
+  const key = weekKey(warehouseId, weekId)
+  if (expandedWeekKeys.value.has(key)) {
+    expandedWeekKeys.value.delete(key)
+  } else {
+    expandedWeekKeys.value.add(key)
+    if (props.colorId != null) {
+      await fetchPoBreakdown(weekId, props.threadTypeId, props.colorId)
+    }
+  }
+  expandedWeekKeys.value = new Set(expandedWeekKeys.value)
+}
+
+const poBreakdownRows = (weekId: number): ConeReservedPoBreakdownRow[] => {
+  if (props.colorId == null) return []
+  const key = poBreakdownKey(weekId, props.threadTypeId, props.colorId)
+  return poBreakdownByKey.value.get(key) ?? []
+}
+
+const poBreakdownLoading = (weekId: number): boolean => {
+  if (props.colorId == null) return false
+  const key = poBreakdownKey(weekId, props.threadTypeId, props.colorId)
+  return poBreakdownLoadingByKey.value.get(key) ?? false
+}
+
+const poBreakdownError = (weekId: number): string | null => {
+  if (props.colorId == null) return null
+  const key = poBreakdownKey(weekId, props.threadTypeId, props.colorId)
+  return poBreakdownErrorByKey.value.get(key) ?? null
+}
+
+const componentColorId = computed(() => props.colorId)
 
 const warehouses = computed<ConeReservedWarehouseEntry[]>(
   () => reservedByWeekData.value?.warehouses ?? []
@@ -325,7 +523,9 @@ onMounted(() => {
 watch(
   () => [props.threadTypeId, props.colorId, props.warehouseId] as const,
   () => {
+    clearPoBreakdown()
+    expandedWeekKeys.value = new Set()
     void reload()
-  }
+  },
 )
 </script>
