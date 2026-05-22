@@ -32,12 +32,25 @@ interface LogAuditInput {
   performedBy: string
 }
 
+function stripJoinedFields(row: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!row) return null
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(row)) {
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) {
+      out[k] = v
+    }
+  }
+  return out
+}
+
 async function logAudit(args: LogAuditInput): Promise<void> {
+  const oldClean = stripJoinedFields(args.oldValues)
+  const newClean = stripJoinedFields(args.newValues)
   let changedFields: string[] | null = null
-  if (args.action === 'UPDATE' && args.oldValues && args.newValues) {
-    changedFields = Object.keys({ ...args.oldValues, ...args.newValues }).filter((k) => {
+  if (args.action === 'UPDATE' && oldClean && newClean) {
+    changedFields = Object.keys({ ...oldClean, ...newClean }).filter((k) => {
       if (AUDIT_IGNORE_FIELDS.has(k)) return false
-      return JSON.stringify(args.oldValues![k]) !== JSON.stringify(args.newValues![k])
+      return JSON.stringify(oldClean[k]) !== JSON.stringify(newClean[k])
     })
     if (changedFields.length === 0) return
   }
@@ -45,8 +58,8 @@ async function logAudit(args: LogAuditInput): Promise<void> {
     table_name: args.tableName,
     record_id: args.recordId,
     action: args.action,
-    old_values: args.oldValues,
-    new_values: args.newValues,
+    old_values: oldClean,
+    new_values: newClean,
     changed_fields: changedFields,
     performed_by: args.performedBy,
   })
@@ -211,12 +224,19 @@ async function enrichAuditEntries(
     } else if (row.action === 'DELETE' && row.old_values) {
       summary = summaryFor(tableName, row.old_values, lookups)
     } else if (row.action === 'UPDATE' && row.changed_fields) {
-      changes = row.changed_fields.map((field) => ({
-        field,
-        label: FIELD_LABELS_SERVER[field] ?? field,
-        old: renderValue(field, row.old_values?.[field], lookups),
-        new: renderValue(field, row.new_values?.[field], lookups),
-      }))
+      const isJoinObj = (v: unknown) => v !== null && typeof v === 'object' && !Array.isArray(v)
+      changes = row.changed_fields
+        .filter((field) => {
+          const oldV = row.old_values?.[field]
+          const newV = row.new_values?.[field]
+          return !isJoinObj(oldV) && !isJoinObj(newV)
+        })
+        .map((field) => ({
+          field,
+          label: FIELD_LABELS_SERVER[field] ?? field,
+          old: renderValue(field, row.old_values?.[field], lookups),
+          new: renderValue(field, row.new_values?.[field], lookups),
+        }))
     }
 
     return {
