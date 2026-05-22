@@ -1057,8 +1057,7 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
     const validRows: POImportRow[] = []
     const errorRows: POImportErrorRow[] = []
     const newPOsSet = new Set<string>()
-    let updateCount = 0
-    let skipCount = 0
+    const duplicatePOsSet = new Set<string>()
 
     for (const row of rows) {
       const customerName = normalizeOptionalText(row.customer_name)
@@ -1095,39 +1094,13 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
 
       const po = poMap.get(poKey)
       let status: POImportRow['status']
+      const isNewStyle = !style
 
-      if (!style) {
-        status = 'new_style'
-      } else if (!po) {
-        status = 'new'
-        newPOsSet.add(poKey)
+      if (po) {
+        status = 'duplicate'
+        duplicatePOsSet.add(poKey)
       } else {
-        const itemKey = `${po.id}-${style.id}`
-        const existingItem = itemMap.get(itemKey)
-        const poChanged =
-          (customerName !== null && customerName !== normalizeOptionalText(po.customer_name)) ||
-          (week !== null && week !== normalizeOptionalText(po.week))
-        const styleChanged =
-          description !== null && description !== normalizeOptionalText(style.description)
-        const itemChanged =
-          existingItem !== undefined && (
-            existingItem.quantity !== quantity ||
-            (finishedProductCode !== null &&
-              finishedProductCode !== normalizeOptionalText(existingItem.finished_product_code))
-          )
-
-        if (!existingItem) {
-          status = 'new'
-        } else if (poChanged || styleChanged || itemChanged) {
-          status = 'update'
-          updateCount++
-        } else {
-          status = 'skip'
-          skipCount++
-        }
-      }
-
-      if (!po) {
+        status = 'new_po'
         newPOsSet.add(poKey)
       }
 
@@ -1142,7 +1115,8 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
         style_id: style?.id,
         finished_product_code: finishedProductCode || undefined,
         quantity,
-        status
+        status,
+        is_new_style: isNewStyle || undefined,
       })
     }
 
@@ -1154,8 +1128,7 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
         valid: validRows.length,
         errors: errorRows.length,
         new_pos: newPOsSet.size,
-        update_items: updateCount,
-        skip_items: skipCount
+        duplicate_pos: duplicatePOsSet.size,
       }
     }
 
@@ -1189,7 +1162,6 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
 
     let createdPOs = 0
     let createdItems = 0
-    let updatedItems = 0
     let skippedItems = 0
     let failedItems = 0
 
@@ -1207,36 +1179,10 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
       })
     })
 
-    const { data: existingPOs } = await supabase
-      .from('purchase_orders')
-      .select('id, po_number, customer_name, week')
-      .is('deleted_at', null)
-
-    const poMap = new Map<string, { id: number; customer_name: string | null; week: string | null }>()
-    existingPOs?.forEach(po => {
-      poMap.set(po.po_number.toLowerCase(), {
-        id: po.id,
-        customer_name: po.customer_name || null,
-        week: po.week || null
-      })
-    })
-
-    const { data: existingItems } = await supabase
-      .from('po_items')
-      .select('id, po_id, style_id, quantity, finished_product_code')
-      .is('deleted_at', null)
-
-    const itemMap = new Map<string, { id: number; quantity: number; finished_product_code: string | null }>()
-    existingItems?.forEach(item => {
-      itemMap.set(`${item.po_id}-${item.style_id}`, {
-        id: item.id,
-        quantity: item.quantity,
-        finished_product_code: item.finished_product_code || null
-      })
-    })
+    const poMap = new Map<string, { id: number }>()
 
     for (const row of rows) {
-      if (row.status === 'skip') {
+      if (row.status === 'duplicate') {
         skippedItems++
         continue
       }
@@ -1296,28 +1242,13 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
 
       row.style_id = styleId
 
-      let rowUpdated = false
-
       if (description !== null && description !== normalizeOptionalText(styleEntry.description)) {
-        const { error: styleUpdateError } = await supabase
+        await supabase
           .from('styles')
-          .update({
-            description,
-            updated_at: new Date().toISOString()
-          })
+          .update({ description, updated_at: new Date().toISOString() })
           .eq('id', styleId)
 
-        if (styleUpdateError) {
-          console.error('Update style description error:', styleUpdateError)
-          failedItems++
-          continue
-        }
-
-        styleMap.set(styleKey, {
-          ...styleEntry,
-          description
-        })
-        rowUpdated = true
+        styleMap.set(styleKey, { ...styleEntry, description })
       }
 
       const poKey = row.po_number.toLowerCase()
@@ -1334,34 +1265,26 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
             week,
             status: 'PENDING'
           })
-          .select('id, customer_name, week')
+          .select('id')
           .single()
 
         if (poError) {
           if (poError.code === '23505') {
             const { data: existingPO } = await supabase
               .from('purchase_orders')
-              .select('id, customer_name, week')
+              .select('id')
               .eq('po_number', row.po_number)
               .is('deleted_at', null)
               .single()
             if (existingPO) {
-              poEntry = {
-                id: existingPO.id,
-                customer_name: existingPO.customer_name || null,
-                week: existingPO.week || null
-              }
+              poEntry = { id: existingPO.id }
               poMap.set(poKey, poEntry)
             }
           } else {
             throw poError
           }
         } else {
-          poEntry = {
-            id: newPO.id,
-            customer_name: newPO.customer_name || null,
-            week: newPO.week || null
-          }
+          poEntry = { id: newPO.id }
           poMap.set(poKey, poEntry)
           createdPOs++
         }
@@ -1372,157 +1295,44 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
         continue
       }
 
-      if (
-        (customerName !== null && customerName !== normalizeOptionalText(poEntry.customer_name)) ||
-        (week !== null && week !== normalizeOptionalText(poEntry.week))
-      ) {
-        const updates: Record<string, string> = {}
-        if (customerName !== null && customerName !== normalizeOptionalText(poEntry.customer_name)) {
-          updates.customer_name = customerName
-        }
-        if (week !== null && week !== normalizeOptionalText(poEntry.week)) {
-          updates.week = week
-        }
-        updates.updated_at = new Date().toISOString()
-
-        const { error: poUpdateError } = await supabase
-          .from('purchase_orders')
-          .update(updates)
-          .eq('id', poEntry.id)
-
-        if (poUpdateError) {
-          console.error('Update purchase order metadata error:', poUpdateError)
-          failedItems++
-          continue
-        }
-
-        poEntry = {
-          ...poEntry,
-          customer_name: updates.customer_name ?? poEntry.customer_name,
-          week: updates.week ?? poEntry.week
-        }
-        poMap.set(poKey, poEntry)
-        rowUpdated = true
-      }
-
-      const itemKey = `${poEntry.id}-${styleId}`
-      let existingItem = itemMap.get(itemKey)
       const finishedProductCode = normalizeOptionalText(row.finished_product_code)
+      const { data: newItem, error: insertError } = await supabase
+        .from('po_items')
+        .insert({
+          po_id: poEntry.id,
+          style_id: styleId,
+          quantity: row.quantity,
+          finished_product_code: finishedProductCode
+        })
+        .select('id')
+        .single()
 
-      if (!existingItem) {
-        const { data: newItem, error: insertError } = await supabase
-          .from('po_items')
-          .insert({
-            po_id: poEntry.id,
-            style_id: styleId,
-            quantity: row.quantity,
-            finished_product_code: finishedProductCode
-          })
-          .select('id, quantity, finished_product_code')
-          .single()
-
-        if (insertError) {
-          if (insertError.code === '23505') {
-            const { data: conflictedItem, error: conflictFetchError } = await supabase
-              .from('po_items')
-              .select('id, quantity, finished_product_code')
-              .eq('po_id', poEntry.id)
-              .eq('style_id', styleId)
-              .is('deleted_at', null)
-              .single()
-
-            if (conflictFetchError || !conflictedItem) {
-              console.error('Insert PO item conflict fetch error:', conflictFetchError || insertError)
-              failedItems++
-              continue
-            }
-
-            itemMap.set(itemKey, {
-              id: conflictedItem.id,
-              quantity: conflictedItem.quantity,
-              finished_product_code: conflictedItem.finished_product_code || null
-            })
-            existingItem = itemMap.get(itemKey)
-          } else {
-            console.error('Insert PO item error:', insertError)
-            failedItems++
-            continue
-          }
+      if (insertError) {
+        if (insertError.code === '23505') {
+          skippedItems++
         } else {
-          itemMap.set(itemKey, {
-            id: newItem.id,
-            quantity: newItem.quantity,
-            finished_product_code: newItem.finished_product_code || null
-          })
-
-          await supabase.from('po_item_history').insert({
-            po_item_id: newItem.id,
-            change_type: 'CREATE',
-            previous_quantity: null,
-            new_quantity: row.quantity,
-            changed_by: auth.employeeId,
-            notes: 'Import từ Excel'
-          })
-
-          createdItems++
-          continue
+          console.error('Insert PO item error:', insertError)
+          failedItems++
         }
-      }
-
-      if (!existingItem) {
-        failedItems++
         continue
       }
 
-      const shouldUpdateItem =
-        existingItem.quantity !== row.quantity ||
-        (finishedProductCode !== null &&
-          finishedProductCode !== normalizeOptionalText(existingItem.finished_product_code))
+      await supabase.from('po_item_history').insert({
+        po_item_id: newItem.id,
+        change_type: 'CREATE',
+        previous_quantity: null,
+        new_quantity: row.quantity,
+        changed_by: auth.employeeId,
+        notes: 'Import từ Excel'
+      })
 
-      if (shouldUpdateItem) {
-        const { error: itemUpdateError } = await supabase
-          .from('po_items')
-          .update({
-            quantity: row.quantity,
-            finished_product_code:
-              finishedProductCode !== null ? finishedProductCode : existingItem.finished_product_code,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingItem.id)
-
-        if (itemUpdateError) {
-          console.error('Update PO item error:', itemUpdateError)
-          failedItems++
-          continue
-        }
-
-        await supabase.from('po_item_history').insert({
-          po_item_id: existingItem.id,
-          change_type: 'UPDATE',
-          previous_quantity: existingItem.quantity,
-          new_quantity: row.quantity,
-          changed_by: auth.employeeId,
-          notes: 'Import từ Excel'
-        })
-
-        itemMap.set(itemKey, {
-          id: existingItem.id,
-          quantity: row.quantity,
-          finished_product_code:
-            finishedProductCode !== null ? finishedProductCode : existingItem.finished_product_code
-        })
-        updatedItems++
-      } else if (rowUpdated) {
-        updatedItems++
-      } else {
-        skippedItems++
-      }
+      createdItems++
     }
 
     const result: POImportResult = {
       created_pos: createdPOs,
       created_items: createdItems,
-      updated_items: updatedItems,
+      updated_items: 0,
       skipped_items: skippedItems,
       failed_items: failedItems
     }
@@ -1530,7 +1340,7 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
     return c.json<ImportApiResponse<POImportResult>>({
       data: result,
       error: null,
-      message: `Import thành công: ${createdPOs} PO mới, ${createdItems} mặt hàng mới, ${updatedItems} cập nhật, ${skippedItems} bỏ qua`
+      message: `Import thành công: ${createdPOs} PO mới, ${createdItems} mặt hàng mới, ${skippedItems} bỏ qua`
     })
   } catch (err) {
     console.error('Execute PO import error:', err)

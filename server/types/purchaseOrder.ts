@@ -51,7 +51,7 @@ export interface POItemApiResponse<T> {
   message?: string
 }
 
-export type POImportRowStatus = 'new' | 'update' | 'skip' | 'new_style'
+export type POImportRowStatus = 'new_po' | 'duplicate'
 
 export interface POImportRow {
   row_number: number
@@ -65,6 +65,7 @@ export interface POImportRow {
   finished_product_code?: string
   quantity: number
   status: POImportRowStatus
+  is_new_style?: boolean
 }
 
 export interface POImportErrorRow {
@@ -78,8 +79,7 @@ export interface POImportSummary {
   valid: number
   errors: number
   new_pos: number
-  update_items: number
-  skip_items: number
+  duplicate_pos: number
 }
 
 export interface POImportPreview {
