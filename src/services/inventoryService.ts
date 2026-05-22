@@ -6,7 +6,7 @@
  */
 
 import { fetchApi } from './api'
-import type { Cone, InventoryFilters, ReceiveStockDTO, ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters, ConeReservedByWeekResponse } from '@/types/thread'
+import type { Cone, InventoryFilters, ReceiveStockDTO, ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters, ConeReservedByWeekResponse, ConeReservedPoBreakdownResponse } from '@/types/thread'
 import type { UnassignedThreadGroup } from '@/types/thread/lot'
 
 interface ApiResponse<T> {
@@ -295,6 +295,34 @@ export const inventoryService = {
     }
 
     return response.data || { warehouses: [] }
+  },
+
+  async getConeReservedPoBreakdown(params: {
+    weekId: number
+    threadTypeId: number
+    colorId: number
+  }): Promise<ConeReservedPoBreakdownResponse> {
+    const qs = new URLSearchParams()
+    qs.append('week_id', String(params.weekId))
+    qs.append('thread_type_id', String(params.threadTypeId))
+    qs.append('color_id', String(params.colorId))
+
+    const response = await fetchApi<ApiResponse<ConeReservedPoBreakdownResponse>>(
+      `/api/thread/cone-summary/po-breakdown?${qs.toString()}`,
+    )
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return (
+      response.data ?? {
+        week: { id: params.weekId, week_name: '', status: '' },
+        thread_type_id: params.threadTypeId,
+        thread_color_id: params.colorId,
+        rows: [],
+      }
+    )
   },
 
   async getUnassignedByThreadType(warehouseId: number): Promise<UnassignedThreadGroup[]> {
