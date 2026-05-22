@@ -58,24 +58,29 @@
             :subtitle="formatDate(entry.created_at)"
           >
             <div
-              v-if="entry.action === 'UPDATE' && entry.changed_fields?.length"
+              v-if="(entry.action === 'INSERT' || entry.action === 'DELETE') && entry.summary"
+              class="text-body2 text-grey-8"
+            >
+              {{ entry.summary }}
+            </div>
+
+            <div
+              v-else-if="entry.action === 'UPDATE' && entry.changes?.length"
               class="q-gutter-y-xs"
             >
               <div
-                v-for="field in entry.changed_fields"
-                :key="field"
+                v-for="change in entry.changes"
+                :key="change.field"
                 class="text-body2"
               >
-                <span class="text-weight-medium">{{ labelFor(field) }}:</span>
-                <span class="text-grey-7 q-ml-xs">
-                  {{ formatValue(entry.old_values?.[field]) }}
-                </span>
+                <span class="text-weight-medium">{{ change.label }}:</span>
+                <span class="text-grey-7 q-ml-xs">{{ change.old }}</span>
                 <q-icon
                   name="arrow_forward"
                   size="xs"
                   class="q-mx-xs"
                 />
-                <span>{{ formatValue(entry.new_values?.[field]) }}</span>
+                <span class="text-primary">{{ change.new }}</span>
               </div>
             </div>
           </q-timeline-entry>
@@ -105,21 +110,6 @@ const snackbar = useSnackbar()
 const loading = ref(false)
 const entries = ref<AuditEntry[]>([])
 
-const FIELD_LABELS: Record<string, string> = {
-  process_name: 'Công đoạn',
-  supplier_id: 'NCC',
-  thread_type_id: 'Loại chỉ (Tex)',
-  meters_per_unit: 'Mét/SP',
-  notes: 'Ghi chú',
-  display_order: 'Thứ tự',
-  thread_color_id: 'Màu chỉ',
-  style_color_id: 'Mã màu hàng',
-  style_id: 'Mã hàng',
-  color_id: 'Màu',
-}
-
-const labelFor = (field: string): string => FIELD_LABELS[field] ?? field
-
 const iconFor = (action: AuditEntry['action']): string => {
   if (action === 'INSERT') return 'add_circle'
   if (action === 'DELETE') return 'delete'
@@ -143,12 +133,6 @@ const formatDate = (iso: string): string => {
   const d = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-const formatValue = (v: unknown): string => {
-  if (v === null || v === undefined || v === '') return '-'
-  if (typeof v === 'object') return JSON.stringify(v)
-  return String(v)
 }
 
 const load = async () => {

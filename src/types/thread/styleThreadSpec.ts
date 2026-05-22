@@ -120,12 +120,18 @@ export interface StylesWithSpecsResponse {
   error: string | null
 }
 
+export interface AuditChange {
+  field: string
+  label: string
+  old: string
+  new: string
+}
+
 export interface AuditEntry {
   id: number
   action: 'INSERT' | 'UPDATE' | 'DELETE'
   performed_by: string | null
   created_at: string
-  changed_fields: string[] | null
-  old_values: Record<string, unknown> | null
-  new_values: Record<string, unknown> | null
+  summary: string | null
+  changes: AuditChange[] | null
 }

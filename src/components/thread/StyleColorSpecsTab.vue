@@ -430,8 +430,6 @@ interface ColorSpecRow {
     name: string
     hex_code: string
   } | null
-  updatedBy: string | null
-  updatedAt: string | null
 }
 
 interface ColorGroup {
@@ -469,13 +467,6 @@ const openHistory = (colorSpecId: number | null) => {
   if (colorSpecId == null) return
   historyRecordId.value = colorSpecId
   historyOpen.value = true
-}
-
-const formatDateShort = (iso: string | null): string => {
-  if (!iso) return '-'
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 const newColorName = ref('')
 const newColorHex = ref('#cccccc')
@@ -625,8 +616,6 @@ const colorGroups = computed<ColorGroup[]>(() => {
           name: match.thread_color.name,
           hex_code: match.thread_color.hex_code,
         } : null,
-        updatedBy: match?.updated_by ?? null,
-        updatedAt: match?.updated_at ?? null,
       }
     })
 
@@ -684,18 +673,6 @@ const colorTableColumns: QTableColumn[] = [
     name: 'thread_color',
     label: 'Màu chỉ',
     field: 'thread_color',
-    align: 'left',
-  },
-  {
-    name: 'updated_by',
-    label: 'Sửa bởi',
-    field: (row: ColorSpecRow) => row.updatedBy || '-',
-    align: 'left',
-  },
-  {
-    name: 'updated_at',
-    label: 'Sửa lúc',
-    field: (row: ColorSpecRow) => formatDateShort(row.updatedAt),
     align: 'left',
   },
   {

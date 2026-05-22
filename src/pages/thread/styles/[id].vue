@@ -383,10 +383,11 @@
                 </q-td>
               </template>
 
-              <template #body-cell-history="props">
+              <!-- Actions Column (history + delete - edit is inline now) -->
+              <template #body-cell-actions="props">
                 <q-td
                   :props="props"
-                  class="text-center"
+                  class="q-gutter-xs"
                 >
                   <q-btn
                     flat
@@ -399,15 +400,6 @@
                   >
                     <q-tooltip>Xem lịch sử chỉnh sửa</q-tooltip>
                   </q-btn>
-                </q-td>
-              </template>
-
-              <!-- Actions Column (delete only - edit is inline now) -->
-              <template #body-cell-actions="props">
-                <q-td
-                  :props="props"
-                  class="q-gutter-xs"
-                >
                   <q-btn
                     flat
                     round
@@ -894,13 +886,6 @@ const specColumns: QTableColumn[] = [
     field: 'updated_at',
     align: 'left',
     format: (v: string | null) => formatDateShort(v),
-  },
-  {
-    name: 'history',
-    label: '',
-    field: '',
-    align: 'center',
-    style: 'width: 40px',
   },
   {
     name: 'actions',

@@ -53,6 +53,183 @@ async function logAudit(args: LogAuditInput): Promise<void> {
   if (error) console.error('[styleThreadSpecs] audit log insert failed:', error)
 }
 
+interface RawAuditRow {
+  id: number
+  action: 'INSERT' | 'UPDATE' | 'DELETE'
+  performed_by: string | null
+  created_at: string
+  changed_fields: string[] | null
+  old_values: Record<string, unknown> | null
+  new_values: Record<string, unknown> | null
+}
+
+interface AuditEnriched {
+  id: number
+  action: 'INSERT' | 'UPDATE' | 'DELETE'
+  performed_by: string | null
+  created_at: string
+  summary: string | null
+  changes: Array<{ field: string; label: string; old: string; new: string }> | null
+}
+
+const FIELD_LABELS_SERVER: Record<string, string> = {
+  process_name: 'Công đoạn',
+  supplier_id: 'NCC',
+  thread_type_id: 'Loại chỉ (Tex)',
+  meters_per_unit: 'Mét/SP',
+  notes: 'Ghi chú',
+  display_order: 'Thứ tự',
+  thread_color_id: 'Màu chỉ',
+  style_color_id: 'Mã màu hàng',
+  style_id: 'Mã hàng',
+  color_id: 'Màu',
+}
+
+function collectIds(
+  rows: RawAuditRow[],
+  fields: string[],
+): Set<number> {
+  const ids = new Set<number>()
+  for (const row of rows) {
+    for (const f of fields) {
+      const oldV = row.old_values?.[f]
+      const newV = row.new_values?.[f]
+      if (typeof oldV === 'number') ids.add(oldV)
+      if (typeof newV === 'number') ids.add(newV)
+    }
+  }
+  return ids
+}
+
+function formatTex(tt: { tex_number?: string | null; tex_label?: string | null } | undefined): string {
+  if (!tt) return ''
+  const num = tt.tex_number?.trim()
+  const lbl = tt.tex_label?.trim()
+  if (num && lbl) return `${num} - ${lbl}`
+  if (num) return `Tex ${num}`
+  if (lbl) return lbl
+  return ''
+}
+
+async function buildLookups(rows: RawAuditRow[]) {
+  const supplierIds = collectIds(rows, ['supplier_id'])
+  const threadTypeIds = collectIds(rows, ['thread_type_id'])
+  const colorIds = collectIds(rows, ['thread_color_id', 'color_id'])
+  const styleColorIds = collectIds(rows, ['style_color_id'])
+
+  const suppliers = new Map<number, string>()
+  const threadTypes = new Map<number, string>()
+  const colors = new Map<number, string>()
+  const styleColors = new Map<number, string>()
+
+  if (supplierIds.size > 0) {
+    const { data } = await supabase
+      .from('suppliers')
+      .select('id, name')
+      .in('id', [...supplierIds])
+    for (const r of data ?? []) suppliers.set(r.id, r.name)
+  }
+  if (threadTypeIds.size > 0) {
+    const { data } = await supabase
+      .from('thread_types')
+      .select('id, tex_number, tex_label, name, suppliers:supplier_id(name)')
+      .in('id', [...threadTypeIds])
+    for (const r of data ?? []) {
+      const tex = formatTex(r)
+      const sup = (r as { suppliers?: { name?: string } | null }).suppliers?.name
+      threadTypes.set(r.id, [sup, tex].filter(Boolean).join(' - ') || r.name || String(r.id))
+    }
+  }
+  if (colorIds.size > 0) {
+    const { data } = await supabase
+      .from('colors')
+      .select('id, name')
+      .in('id', [...colorIds])
+    for (const r of data ?? []) colors.set(r.id, r.name)
+  }
+  if (styleColorIds.size > 0) {
+    const { data } = await supabase
+      .from('style_colors')
+      .select('id, color_name')
+      .in('id', [...styleColorIds])
+    for (const r of data ?? []) styleColors.set(r.id, r.color_name)
+  }
+
+  return { suppliers, threadTypes, colors, styleColors }
+}
+
+type Lookups = Awaited<ReturnType<typeof buildLookups>>
+
+function renderValue(field: string, value: unknown, l: Lookups): string {
+  if (value === null || value === undefined || value === '') return '—'
+  if (typeof value === 'number') {
+    if (field === 'supplier_id') return l.suppliers.get(value) ?? `#${value}`
+    if (field === 'thread_type_id') return l.threadTypes.get(value) ?? `#${value}`
+    if (field === 'thread_color_id' || field === 'color_id') return l.colors.get(value) ?? `#${value}`
+    if (field === 'style_color_id') return l.styleColors.get(value) ?? `#${value}`
+    if (field === 'meters_per_unit') return `${value.toFixed(2)} m`
+    return String(value)
+  }
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function summaryFor(
+  tableName: 'style_thread_specs' | 'style_color_thread_specs',
+  values: Record<string, unknown>,
+  l: Lookups,
+): string {
+  if (tableName === 'style_thread_specs') {
+    const parts = [
+      values.process_name ? String(values.process_name) : null,
+      renderValue('supplier_id', values.supplier_id, l) !== '—' ? renderValue('supplier_id', values.supplier_id, l) : null,
+      renderValue('thread_type_id', values.thread_type_id, l) !== '—' ? renderValue('thread_type_id', values.thread_type_id, l) : null,
+      renderValue('meters_per_unit', values.meters_per_unit, l) !== '—' ? renderValue('meters_per_unit', values.meters_per_unit, l) : null,
+    ].filter(Boolean)
+    return parts.join(' · ')
+  }
+  const parts = [
+    renderValue('style_color_id', values.style_color_id, l) !== '—' ? `Màu hàng: ${renderValue('style_color_id', values.style_color_id, l)}` : null,
+    renderValue('thread_type_id', values.thread_type_id, l) !== '—' ? renderValue('thread_type_id', values.thread_type_id, l) : null,
+    renderValue('thread_color_id', values.thread_color_id, l) !== '—' ? `Màu chỉ: ${renderValue('thread_color_id', values.thread_color_id, l)}` : null,
+  ].filter(Boolean)
+  return parts.join(' · ')
+}
+
+async function enrichAuditEntries(
+  tableName: 'style_thread_specs' | 'style_color_thread_specs',
+  rows: RawAuditRow[],
+): Promise<AuditEnriched[]> {
+  const lookups = await buildLookups(rows)
+
+  return rows.map((row) => {
+    let summary: string | null = null
+    let changes: AuditEnriched['changes'] = null
+
+    if (row.action === 'INSERT' && row.new_values) {
+      summary = summaryFor(tableName, row.new_values, lookups)
+    } else if (row.action === 'DELETE' && row.old_values) {
+      summary = summaryFor(tableName, row.old_values, lookups)
+    } else if (row.action === 'UPDATE' && row.changed_fields) {
+      changes = row.changed_fields.map((field) => ({
+        field,
+        label: FIELD_LABELS_SERVER[field] ?? field,
+        old: renderValue(field, row.old_values?.[field], lookups),
+        new: renderValue(field, row.new_values?.[field], lookups),
+      }))
+    }
+
+    return {
+      id: row.id,
+      action: row.action,
+      performed_by: row.performed_by,
+      created_at: row.created_at,
+      summary,
+      changes,
+    }
+  })
+}
+
 async function ensureColorSpecs(
   specId: number,
   styleId: number,
@@ -208,7 +385,9 @@ styleThreadSpecs.get('/color-specs/:id/audit-history', requirePermission('thread
       .limit(200)
 
     if (error) throw error
-    return c.json({ data, error: null })
+
+    const enriched = await enrichAuditEntries('style_color_thread_specs', (data ?? []) as RawAuditRow[])
+    return c.json({ data: enriched, error: null })
   } catch (err) {
     console.error('Error fetching audit history (style_color_thread_specs):', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -235,7 +414,9 @@ styleThreadSpecs.get('/:id/audit-history', requirePermission('thread.styles.view
       .limit(200)
 
     if (error) throw error
-    return c.json({ data, error: null })
+
+    const enriched = await enrichAuditEntries('style_thread_specs', (data ?? []) as RawAuditRow[])
+    return c.json({ data: enriched, error: null })
   } catch (err) {
     console.error('Error fetching audit history (style_thread_specs):', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
