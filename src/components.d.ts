@@ -73,6 +73,7 @@ declare module 'vue' {
     ConflictResolutionPanel: typeof import('./components/thread/ConflictResolutionPanel.vue')['default']
     ConflictTimeline: typeof import('./components/thread/ConflictTimeline.vue')['default']
     ConsumptionSummary: typeof import('./components/thread/ConsumptionSummary.vue')['default']
+    CreateStyleDialog: typeof import('./components/thread/CreateStyleDialog.vue')['default']
     DarkModeToggle: typeof import('./components/DarkModeToggle.vue')['default']
     DataTable: typeof import('./components/ui/tables/DataTable.vue')['default']
     DatePicker: typeof import('./components/ui/pickers/DatePicker.vue')['default']
