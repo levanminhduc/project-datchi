@@ -642,7 +642,10 @@ const handleUpdateQuotaCones = (threadTypeId: number, value: number | null, thre
   updateQuotaCones(threadTypeId, value, threadColorId, demandNote)
 }
 
-const handleWarehouseFilterChange = (_ids: number[]) => {
+const handleWarehouseFilterChange = (ids: number[] | null) => {
+  if (ids === null) {
+    selectedWarehouseIds.value = []
+  }
   if (hasResults.value) {
     lastModifiedAt.value = Date.now()
   }
