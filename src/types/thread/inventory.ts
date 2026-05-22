@@ -162,3 +162,26 @@ export interface ConeReservedWarehouseEntry {
 export interface ConeReservedByWeekResponse {
   warehouses: ConeReservedWarehouseEntry[]
 }
+
+export interface ConeReservedPoBreakdownRow {
+  po_id: number | null
+  po_number: string
+  style_id: number
+  style_code: string
+  style_name: string
+  style_color_id: number
+  style_color_name: string
+  product_quantity: number
+  quota_cones: number
+  issued_cones: number
+  returned_cones: number
+  net_issued: number
+  pending_cones: number
+}
+
+export interface ConeReservedPoBreakdownResponse {
+  week: { id: number; week_name: string; status: string }
+  thread_type_id: number
+  thread_color_id: number
+  rows: ConeReservedPoBreakdownRow[]
+}
