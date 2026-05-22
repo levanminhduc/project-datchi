@@ -181,15 +181,21 @@
       </template>
     </q-table>
 
-    <!-- Create/Edit Dialog -->
+    <!-- Create Style Dialog -->
+    <CreateStyleDialog
+      v-model="showCreateDialog"
+      @created="onStyleCreated"
+    />
+
+    <!-- Edit Dialog -->
     <q-dialog
-      v-model="formDialog.isOpen"
+      v-model="editDialog.isOpen"
       persistent
     >
       <q-card style="min-width: 500px; max-width: 600px">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">
-            {{ formDialog.mode === 'create' ? 'Thêm Mã Hàng' : 'Chỉnh Sửa Mã Hàng' }}
+            Chỉnh Sửa Mã Hàng
           </div>
           <q-space />
           <q-btn
@@ -206,19 +212,17 @@
             class="row q-col-gutter-md"
             @submit.prevent="handleSubmit"
           >
-            <!-- Style Code -->
             <div class="col-12 col-sm-6">
               <q-input
                 v-model="formData.style_code"
                 label="Mã hàng"
                 outlined
-                :disable="formDialog.mode === 'edit'"
+                disable
                 :rules="[(v: string) => !!v || 'Vui lòng nhập mã hàng']"
                 hint="Mã định danh duy nhất"
               />
             </div>
 
-            <!-- Style Name -->
             <div class="col-12 col-sm-6">
               <q-input
                 v-model="formData.style_name"
@@ -228,7 +232,6 @@
               />
             </div>
 
-            <!-- Fabric Type -->
             <div class="col-12 col-sm-6">
               <q-input
                 v-model="formData.fabric_type"
@@ -237,7 +240,6 @@
               />
             </div>
 
-            <!-- Description -->
             <div class="col-12">
               <q-input
                 v-model="formData.description"
@@ -262,7 +264,7 @@
           />
           <q-btn
             unelevated
-            :label="formDialog.mode === 'create' ? 'Tạo' : 'Lưu'"
+            label="Lưu"
             color="primary"
             :loading="isLoading"
             @click="handleSubmit"
@@ -278,7 +280,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStyles } from '@/composables/thread/useStyles'
 import { subArtService } from '@/services/subArtService'
-import type { Style, CreateStyleDTO, UpdateStyleDTO } from '@/types/thread'
+import CreateStyleDialog from '@/components/thread/CreateStyleDialog.vue'
+import type { Style, UpdateStyleDTO } from '@/types/thread'
 
 definePage({
   meta: {
@@ -291,11 +294,12 @@ definePage({
 const router = useRouter()
 
 // Composables
-const { styles, isLoading, fetchStyles, createStyle, updateStyle } = useStyles()
+const { styles, isLoading, fetchStyles, updateStyle } = useStyles()
 // Tạm ẩn chức năng xóa mã hàng ở frontend.
 // const { confirm } = useConfirm()
 
 // State
+const showCreateDialog = ref(false)
 const searchQuery = ref('')
 const filterSubArtCode = ref<string | null>(null)
 const subArtCodeOptions = ref<string[]>([])
@@ -382,9 +386,8 @@ async function loadSubArtCodes() {
 }
 
 // Dialog states
-const formDialog = reactive({
+const editDialog = reactive({
   isOpen: false,
-  mode: 'create' as 'create' | 'edit',
   id: null as number | null,
 })
 
@@ -410,10 +413,11 @@ function resetFormData() {
 }
 
 function openAddDialog() {
-  formDialog.mode = 'create'
-  formDialog.id = null
-  resetFormData()
-  formDialog.isOpen = true
+  showCreateDialog.value = true
+}
+
+async function onStyleCreated() {
+  await fetchStyles()
 }
 
 function openEditDialog(style: Style) {
@@ -421,15 +425,14 @@ function openEditDialog(style: Style) {
     console.error('[styles] openEditDialog: style is null or undefined')
     return
   }
-  formDialog.mode = 'edit'
-  formDialog.id = style.id
+  editDialog.id = style.id
   Object.assign(formData, {
     style_code: style.style_code || '',
     style_name: style.style_name || '',
     fabric_type: style.fabric_type || '',
     description: style.description || '',
   })
-  formDialog.isOpen = true
+  editDialog.isOpen = true
 }
 
 function viewStyle(id: number) {
@@ -441,24 +444,19 @@ async function handleSubmit() {
     return
   }
 
-  const data: CreateStyleDTO | UpdateStyleDTO = {
+  const data: UpdateStyleDTO = {
     style_code: formData.style_code.trim().toUpperCase(),
     style_name: formData.style_name.trim(),
     fabric_type: formData.fabric_type?.trim() || undefined,
     description: formData.description?.trim() || undefined,
   }
 
-  let result: Style | null = null
-
-  if (formDialog.mode === 'create') {
-    result = await createStyle(data as CreateStyleDTO)
-  } else if (formDialog.id) {
-    result = await updateStyle(formDialog.id, data as UpdateStyleDTO)
-  }
-
-  if (result) {
-    formDialog.isOpen = false
-    resetFormData()
+  if (editDialog.id) {
+    const result = await updateStyle(editDialog.id, data)
+    if (result) {
+      editDialog.isOpen = false
+      resetFormData()
+    }
   }
 }
 

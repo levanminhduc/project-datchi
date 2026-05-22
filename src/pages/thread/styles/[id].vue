@@ -383,12 +383,23 @@
                 </q-td>
               </template>
 
-              <!-- Actions Column (delete only - edit is inline now) -->
+              <!-- Actions Column (history + delete - edit is inline now) -->
               <template #body-cell-actions="props">
                 <q-td
                   :props="props"
                   class="q-gutter-xs"
                 >
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="history"
+                    color="grey-7"
+                    size="sm"
+                    @click="openHistory('style_thread_specs', props.row.id)"
+                  >
+                    <q-tooltip>Xem lịch sử chỉnh sửa</q-tooltip>
+                  </q-btn>
                   <q-btn
                     flat
                     round
@@ -462,6 +473,12 @@
       :saving="mobileSaving"
       @save="handleMobileSave"
     />
+
+    <AuditHistoryDialog
+      v-model="historyOpen"
+      :table-name="historyTable"
+      :record-id="historyRecordId"
+    />
   </q-page>
 </template>
 
@@ -471,6 +488,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStyles, useStyleThreadSpecs, useConfirm, useSuppliers, useStyleColors, useSnackbar } from '@/composables'
 import StyleColorSpecsTab from '@/components/thread/StyleColorSpecsTab.vue'
 import StyleSpecMobileEditDialog from '@/components/thread/StyleSpecMobileEditDialog.vue'
+import AuditHistoryDialog from '@/components/thread/AuditHistoryDialog.vue'
 import { fetchApi } from '@/services/api'
 import { styleThreadSpecService, threadService } from '@/services'
 import type { QTableColumn } from 'quasar'
@@ -515,9 +533,6 @@ const handleInlineEdit = async (
 
   try {
     const updatePayload: Record<string, unknown> = { [field]: newValue }
-    if (field === 'supplier_id') {
-      updatePayload.thread_type_id = null
-    }
     const result = await styleThreadSpecService.update(specId, updatePayload)
 
     const idx = styleThreadSpecs.value.findIndex(s => s.id === specId)
@@ -735,6 +750,16 @@ const { suppliers, fetchSuppliers } = useSuppliers()
 const mobileEditOpen = ref(false)
 const mobileEditRow = ref<StyleThreadSpec | null>(null)
 const mobileSaving = ref(false)
+
+const historyOpen = ref(false)
+const historyTable = ref<'style_thread_specs' | 'style_color_thread_specs'>('style_thread_specs')
+const historyRecordId = ref<number | null>(null)
+
+const openHistory = (table: 'style_thread_specs' | 'style_color_thread_specs', recordId: number) => {
+  historyTable.value = table
+  historyRecordId.value = recordId
+  historyOpen.value = true
+}
 
 const openMobileEdit = (row: StyleThreadSpec) => {
   mobileEditRow.value = row

@@ -6,7 +6,9 @@
   >
     <q-card style="width: 100%; max-width: 600px">
       <q-card-section class="row items-center q-pb-none">
-        <div class="text-h6">Sửa định mức chỉ</div>
+        <div class="text-h6">
+          Sửa định mức chỉ
+        </div>
         <q-space />
         <q-btn
           v-close-popup

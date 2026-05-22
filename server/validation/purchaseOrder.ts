@@ -37,7 +37,7 @@ export const POImportExecuteRequestSchema = z.object({
     style_id: z.number().optional(),
     finished_product_code: z.string().optional(),
     quantity: z.number(),
-    status: z.enum(['new', 'update', 'skip', 'new_style']),
+    status: z.enum(['new_po', 'duplicate']),
   })).min(1, { message: 'Không có dữ liệu để import' }),
 })
 

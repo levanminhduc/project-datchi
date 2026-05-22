@@ -13,6 +13,7 @@ import type {
   CreateStyleColorThreadSpecDTO,
   UpdateStyleColorThreadSpecDTO,
   StyleThreadSpecFilter,
+  AuditEntry,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -232,5 +233,27 @@ export const styleThreadSpecService = {
     }
 
     return response.data?.deleted ?? 0
+  },
+
+  /**
+   * Lấy lịch sử chỉnh sửa của một row
+   * @param tableName - 'style_thread_specs' hoặc 'style_color_thread_specs'
+   * @param id - record id
+   */
+  async getAuditHistory(
+    tableName: 'style_thread_specs' | 'style_color_thread_specs',
+    id: number,
+  ): Promise<AuditEntry[]> {
+    const path = tableName === 'style_thread_specs'
+      ? `${BASE}/${id}/audit-history`
+      : `${BASE}/color-specs/${id}/audit-history`
+
+    const response = await fetchApi<ApiResponse<AuditEntry[]>>(path)
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    return response.data ?? []
   },
 }

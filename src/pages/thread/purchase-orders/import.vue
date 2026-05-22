@@ -79,25 +79,14 @@
               </q-badge>
             </div>
             <div
-              v-if="preview?.summary.update_items"
+              v-if="preview?.summary.duplicate_pos"
               class="col-auto"
             >
               <q-badge
-                color="accent"
+                color="orange"
                 class="q-pa-sm text-body2"
               >
-                {{ preview.summary.update_items }} cập nhật
-              </q-badge>
-            </div>
-            <div
-              v-if="preview?.summary.skip_items"
-              class="col-auto"
-            >
-              <q-badge
-                color="grey"
-                class="q-pa-sm text-body2"
-              >
-                {{ preview.summary.skip_items }} bỏ qua
+                {{ preview.summary.duplicate_pos }} PO trùng
               </q-badge>
             </div>
             <div
@@ -152,7 +141,7 @@
                   <q-td :props="props">
                     {{ props.value }}
                     <q-badge
-                      v-if="props.row.status === 'new_style'"
+                      v-if="props.row.is_new_style"
                       color="warning"
                       label="Mới"
                       class="q-ml-sm"
@@ -231,7 +220,6 @@
               PO mới: {{ importResult.created_pos }}
             </div>
             <div>Mặt hàng mới: {{ importResult.created_items }}</div>
-            <div>Cập nhật: {{ importResult.updated_items }}</div>
             <div v-if="importResult.skipped_items > 0">
               Bỏ qua: {{ importResult.skipped_items }}
             </div>
@@ -309,20 +297,16 @@ const errorColumns = [
 
 function getRowStatusColor(status: POImportRowStatus): string {
   const colors: Record<POImportRowStatus, string> = {
-    new: 'positive',
-    update: 'info',
-    skip: 'grey',
-    new_style: 'warning'
+    new_po: 'positive',
+    duplicate: 'orange',
   }
   return colors[status] || 'grey'
 }
 
 function getRowStatusLabel(status: POImportRowStatus): string {
   const labels: Record<POImportRowStatus, string> = {
-    new: 'Mới',
-    update: 'Cập nhật',
-    skip: 'Bỏ qua',
-    new_style: 'Mã hàng mới'
+    new_po: 'PO Mới',
+    duplicate: 'Trùng',
   }
   return labels[status] || status
 }
@@ -428,7 +412,7 @@ async function doImport() {
   try {
     const result = await importService.executePOImport(preview.value.valid_rows)
     importResult.value = result
-    snackbar.success(`Import thành công: ${result.created_pos} PO mới, ${result.created_items} mặt hàng mới, ${result.updated_items} cập nhật`)
+    snackbar.success(`Import thành công: ${result.created_pos} PO mới, ${result.created_items} mặt hàng mới`)
     currentStep.value = 'result'
   } catch (err) {
     snackbar.error((err as Error).message || 'Lỗi khi import dữ liệu')

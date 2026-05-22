@@ -176,7 +176,18 @@
         >
           <template #body-cell-style_code="props">
             <q-td :props="props">
-              <span class="text-weight-medium">{{ props.row.style?.style_code }}</span>
+              <router-link
+                :to="`/thread/styles/${props.row.style_id}`"
+                class="text-weight-medium text-primary"
+                style="text-decoration: none"
+              >
+                {{ props.row.style?.style_code }}
+                <q-icon
+                  name="open_in_new"
+                  size="xs"
+                  class="q-ml-xs"
+                />
+              </router-link>
             </q-td>
           </template>
 
