@@ -12,12 +12,13 @@ import { useLoading } from '../useLoading'
 import { useRealtime } from '../useRealtime'
 import { getErrorMessage } from '@/utils/errorMessages'
 import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
-import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters, ConeReservedByWeekResponse } from '@/types/thread'
+import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters, ConeReservedByWeekResponse, ConeReservedPoBreakdownRow } from '@/types/thread'
 
 const MESSAGES = {
   FETCH_ERROR: 'Không thể tải dữ liệu tổng hợp',
   BREAKDOWN_ERROR: 'Không thể tải chi tiết theo kho',
   RESERVED_BY_WEEK_ERROR: 'Không tải được dữ liệu reserve',
+  PO_BREAKDOWN_ERROR: 'Không tải được chi tiết PO',
 }
 
 const CACHE_TTL = 10_000
@@ -34,6 +35,9 @@ export function useConeSummary() {
   const reservedByWeekData = ref<ConeReservedByWeekResponse | null>(null)
   const reservedByWeekLoading = ref(false)
   const reservedByWeekError = ref<string | null>(null)
+  const poBreakdownByKey = ref<Map<string, ConeReservedPoBreakdownRow[]>>(new Map())
+  const poBreakdownLoadingByKey = ref<Map<string, boolean>>(new Map())
+  const poBreakdownErrorByKey = ref<Map<string, string | null>>(new Map())
   // Realtime state
   const realtimeEnabled = ref(false)
   const realtimeChannelName = ref<string | null>(null)
@@ -170,6 +174,59 @@ export function useConeSummary() {
     }
   }
 
+  const poBreakdownKey = (weekId: number, threadTypeId: number, colorId: number): string =>
+    `${weekId}_${threadTypeId}_${colorId}`
+
+  const fetchPoBreakdown = async (
+    weekId: number,
+    threadTypeId: number,
+    colorId: number,
+  ): Promise<void> => {
+    const key = poBreakdownKey(weekId, threadTypeId, colorId)
+    const cacheKey = `/api/thread/cone-summary/po-breakdown:${key}`
+
+    const cached = getCacheEntry<ConeReservedPoBreakdownRow[]>(cacheKey)
+    if (cached && !cached.isStale) {
+      poBreakdownByKey.value.set(key, cached.data)
+      poBreakdownByKey.value = new Map(poBreakdownByKey.value)
+      poBreakdownErrorByKey.value.set(key, null)
+      poBreakdownErrorByKey.value = new Map(poBreakdownErrorByKey.value)
+      return
+    }
+
+    poBreakdownLoadingByKey.value.set(key, true)
+    poBreakdownLoadingByKey.value = new Map(poBreakdownLoadingByKey.value)
+    poBreakdownErrorByKey.value.set(key, null)
+    poBreakdownErrorByKey.value = new Map(poBreakdownErrorByKey.value)
+
+    try {
+      const data = await inventoryService.getConeReservedPoBreakdown({
+        weekId,
+        threadTypeId,
+        colorId,
+      })
+      poBreakdownByKey.value.set(key, data.rows)
+      poBreakdownByKey.value = new Map(poBreakdownByKey.value)
+      setCacheEntry(cacheKey, data.rows, CACHE_TTL)
+    } catch (err) {
+      const errorMessage = getErrorMessage(err)
+      poBreakdownErrorByKey.value.set(key, errorMessage || MESSAGES.PO_BREAKDOWN_ERROR)
+      poBreakdownErrorByKey.value = new Map(poBreakdownErrorByKey.value)
+      poBreakdownByKey.value.set(key, [])
+      poBreakdownByKey.value = new Map(poBreakdownByKey.value)
+      console.error('[useConeSummary] fetchPoBreakdown error:', err)
+    } finally {
+      poBreakdownLoadingByKey.value.set(key, false)
+      poBreakdownLoadingByKey.value = new Map(poBreakdownLoadingByKey.value)
+    }
+  }
+
+  const clearPoBreakdown = (): void => {
+    poBreakdownByKey.value = new Map()
+    poBreakdownLoadingByKey.value = new Map()
+    poBreakdownErrorByKey.value = new Map()
+  }
+
   /**
    * Set filters and refetch
    * @param newFilters - New filters to apply
@@ -295,6 +352,9 @@ export function useConeSummary() {
     reservedByWeekData.value = null
     reservedByWeekError.value = null
     reservedByWeekLoading.value = false
+    poBreakdownByKey.value = new Map()
+    poBreakdownLoadingByKey.value = new Map()
+    poBreakdownErrorByKey.value = new Map()
     disableRealtime()
     loading.reset()
   }
@@ -309,6 +369,9 @@ export function useConeSummary() {
     error,
     reservedByWeekData,
     reservedByWeekError,
+    poBreakdownByKey,
+    poBreakdownLoadingByKey,
+    poBreakdownErrorByKey,
 
     // Loading states
     isLoading,
@@ -326,6 +389,9 @@ export function useConeSummary() {
     fetchSummary,
     fetchWarehouseBreakdown,
     fetchReservedByWeek,
+    fetchPoBreakdown,
+    clearPoBreakdown,
+    poBreakdownKey,
     selectThreadType,
     setFilters,
     clearFilters,
