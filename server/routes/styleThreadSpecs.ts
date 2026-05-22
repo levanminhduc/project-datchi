@@ -30,6 +30,13 @@ interface LogAuditInput {
   oldValues: Record<string, unknown> | null
   newValues: Record<string, unknown> | null
   performedBy: string
+  /**
+   * Whitelist of fields the user directly intended to update.
+   * If provided, changed_fields is intersected with this list so cascade
+   * side-effects (e.g. clearing thread_type_id when supplier changes) are
+   * NOT recorded as user edits.
+   */
+  userTouchedFields?: string[]
 }
 
 function stripJoinedFields(row: Record<string, unknown> | null): Record<string, unknown> | null {
@@ -48,8 +55,10 @@ async function logAudit(args: LogAuditInput): Promise<void> {
   const newClean = stripJoinedFields(args.newValues)
   let changedFields: string[] | null = null
   if (args.action === 'UPDATE' && oldClean && newClean) {
-    changedFields = Object.keys({ ...oldClean, ...newClean }).filter((k) => {
-      if (AUDIT_IGNORE_FIELDS.has(k)) return false
+    const allKeys = args.userTouchedFields
+      ? args.userTouchedFields.filter(k => !AUDIT_IGNORE_FIELDS.has(k))
+      : Object.keys({ ...oldClean, ...newClean }).filter(k => !AUDIT_IGNORE_FIELDS.has(k))
+    changedFields = allKeys.filter((k) => {
       return JSON.stringify(oldClean[k]) !== JSON.stringify(newClean[k])
     })
     if (changedFields.length === 0) return
@@ -322,6 +331,7 @@ async function ensureColorSpecs(
           oldValues: oldRow,
           newValues: newRow,
           performedBy,
+          userTouchedFields: ['thread_type_id'],
         })
       }
     }
@@ -596,18 +606,27 @@ styleThreadSpecs.put('/:id', requirePermission('thread.styles.edit'), async (c) 
       updatedBy = emp?.full_name || null
     }
 
+    const userTouchedFields = Object.keys(body).filter(k => !AUDIT_IGNORE_FIELDS.has(k))
+
+    const updatePayload: Record<string, unknown> = {
+      updated_by: updatedBy,
+      updated_at: new Date().toISOString(),
+    }
+    for (const k of ['style_id', 'supplier_id', 'process_name', 'thread_type_id', 'meters_per_unit', 'notes'] as const) {
+      if (body[k] !== undefined) updatePayload[k] = body[k]
+    }
+
+    if (
+      body.supplier_id !== undefined &&
+      body.supplier_id !== oldRow.supplier_id &&
+      body.thread_type_id === undefined
+    ) {
+      updatePayload.thread_type_id = null
+    }
+
     const { data, error } = await supabase
       .from('style_thread_specs')
-      .update({
-        style_id: body.style_id,
-        supplier_id: body.supplier_id,
-        process_name: body.process_name,
-        thread_type_id: body.thread_type_id,
-        meters_per_unit: body.meters_per_unit,
-        notes: body.notes,
-        updated_by: updatedBy,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select(`
         *,
@@ -635,6 +654,7 @@ styleThreadSpecs.put('/:id', requirePermission('thread.styles.edit'), async (c) 
       oldValues: oldRow,
       newValues: data,
       performedBy: updatedBy ?? 'system',
+      userTouchedFields,
     })
 
     return c.json({ data, error: null, message: 'Cập nhật định mức chỉ thành công' })
@@ -855,6 +875,8 @@ styleThreadSpecs.put('/color-specs/:id', requirePermission('thread.styles.edit')
 
     const performedBy = await resolvePerformer(c)
 
+    const userTouchedFields = Object.keys(body).filter(k => !AUDIT_IGNORE_FIELDS.has(k))
+
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
       updated_by: performedBy,
@@ -890,6 +912,7 @@ styleThreadSpecs.put('/color-specs/:id', requirePermission('thread.styles.edit')
       oldValues: oldRow,
       newValues: data,
       performedBy,
+      userTouchedFields,
     })
 
     return c.json({ data, error: null, message: 'Cập nhật định mức màu thành công' })

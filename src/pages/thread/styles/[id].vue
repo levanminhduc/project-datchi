@@ -533,9 +533,6 @@ const handleInlineEdit = async (
 
   try {
     const updatePayload: Record<string, unknown> = { [field]: newValue }
-    if (field === 'supplier_id') {
-      updatePayload.thread_type_id = null
-    }
     const result = await styleThreadSpecService.update(specId, updatePayload)
 
     const idx = styleThreadSpecs.value.findIndex(s => s.id === specId)
@@ -764,13 +761,6 @@ const openHistory = (table: 'style_thread_specs' | 'style_color_thread_specs', r
   historyOpen.value = true
 }
 
-const formatDateShort = (iso: string | null): string => {
-  if (!iso) return '-'
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
 const openMobileEdit = (row: StyleThreadSpec) => {
   mobileEditRow.value = row
   mobileEditOpen.value = true
@@ -873,20 +863,6 @@ const specColumns: QTableColumn[] = [
     sortable: true,
   },
   // Notes column hidden - not in Excel spec from user
-  {
-    name: 'updated_by',
-    label: 'Sửa bởi',
-    field: 'updated_by',
-    align: 'left',
-    format: (v: string | null) => v || '-',
-  },
-  {
-    name: 'updated_at',
-    label: 'Sửa lúc',
-    field: 'updated_at',
-    align: 'left',
-    format: (v: string | null) => formatDateShort(v),
-  },
   {
     name: 'actions',
     label: 'Thao tác',
