@@ -7,3 +7,11 @@ export const byWarehouseWeekQuerySchema = z.object({
 })
 
 export type ByWarehouseWeekQueryDTO = z.infer<typeof byWarehouseWeekQuerySchema>
+
+export const poBreakdownQuerySchema = z.object({
+  week_id: z.coerce.number().int().positive(),
+  thread_type_id: z.coerce.number().int().positive(),
+  color_id: z.coerce.number().int().positive(),
+})
+
+export type PoBreakdownQueryDTO = z.infer<typeof poBreakdownQuerySchema>
