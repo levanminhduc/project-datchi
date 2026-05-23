@@ -354,7 +354,6 @@ export function buildPoStyleColorQuotaMap(
       const existing = threadMap.get(key)
       if (existing) {
         existing.quota_cones += conesNeeded
-        existing.product_quantity += item.quantity ?? 0
       } else {
         threadMap.set(key, {
           thread_type_id: spec.thread_type_id,
