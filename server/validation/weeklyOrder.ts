@@ -97,6 +97,8 @@ export const ReceiveLogsQuerySchema = z.object({
   delivery_id: z.string().optional(),
   week_id: z.string().optional(),
   limit: z.string().optional(),
+  page: z.string().optional(),
+  search: z.string().optional(),
 })
 
 // ============ LOAN SCHEMAS ============

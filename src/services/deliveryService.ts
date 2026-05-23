@@ -70,12 +70,13 @@ export const deliveryService = {
     return response.data
   },
 
-  async getReceiveLogs(params: { delivery_id?: number; week_id?: number; limit?: number; page?: number }): Promise<{ data: DeliveryReceiveLog[]; total: number }> {
+  async getReceiveLogs(params: { delivery_id?: number; week_id?: number; limit?: number; page?: number; search?: string }): Promise<{ data: DeliveryReceiveLog[]; total: number }> {
     const searchParams = new URLSearchParams()
     if (params.delivery_id) searchParams.append('delivery_id', String(params.delivery_id))
     if (params.week_id) searchParams.append('week_id', String(params.week_id))
     if (params.limit) searchParams.append('limit', String(params.limit))
     if (params.page) searchParams.append('page', String(params.page))
+    if (params.search) searchParams.append('search', params.search)
     const queryString = searchParams.toString()
     const url = queryString ? `${BASE}/deliveries/receive-logs?${queryString}` : `${BASE}/deliveries/receive-logs`
 

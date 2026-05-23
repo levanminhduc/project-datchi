@@ -211,84 +211,107 @@ deliveries.get('/deliveries/receive-logs', requirePermission('thread.allocations
       delivery_id: c.req.query('delivery_id'),
       week_id: c.req.query('week_id'),
       limit: c.req.query('limit'),
+      page: c.req.query('page'),
+      search: c.req.query('search'),
     }
     const parsed = ReceiveLogsQuerySchema.parse(rawQuery)
 
     const deliveryId = parsed.delivery_id ? parseInt(parsed.delivery_id) : undefined
     const weekId = parsed.week_id ? parseInt(parsed.week_id) : undefined
-    const page = Math.max(1, parseInt(c.req.query('page') || '1'))
-    const limit = Math.min(parsed.limit ? parseInt(parsed.limit) : 50, 100)
+    const search = (parsed.search || '').trim().toLowerCase()
+    const page = Math.max(1, parsed.page ? parseInt(parsed.page) : 1)
+    const limit = Math.min(parsed.limit ? parseInt(parsed.limit) : 25, 100)
 
-    let query = supabase
-      .from('delivery_receive_logs')
-      .select(`
-        id,
-        delivery_id,
-        quantity,
-        warehouse_id,
-        received_by,
-        notes,
-        created_at,
-        delivery:thread_order_deliveries!delivery_id(
-          thread_type_id,
-          week_id,
-          quantity_cones,
-          received_quantity,
-          thread_color,
-          thread_color_code,
-          thread_type:thread_types(name, tex_number, supplier:suppliers(name), color_data:colors!color_id(name, hex_code)),
-          week:thread_order_weeks(week_name)
-        ),
-        warehouse:warehouses!warehouse_id(name)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(limit)
-
-    if (deliveryId) {
-      query = query.eq('delivery_id', deliveryId)
-    }
-
+    let deliveryIdFilter: number[] | undefined
     if (weekId) {
-      query = query.eq('delivery.week_id', weekId)
+      const { data: weekDeliveries } = await supabase
+        .from('thread_order_deliveries')
+        .select('id')
+        .eq('week_id', weekId)
+      deliveryIdFilter = (weekDeliveries || []).map((d: any) => d.id)
+      if (deliveryIdFilter.length === 0) {
+        return c.json({ data: [], total: 0, error: null })
+      }
     }
 
-    const { data, error } = await query
+    const allLogs: any[] = []
+    let offset = 0
+    while (true) {
+      let query = supabase
+        .from('delivery_receive_logs')
+        .select(`
+          id,
+          delivery_id,
+          quantity,
+          warehouse_id,
+          received_by,
+          notes,
+          created_at,
+          delivery:thread_order_deliveries!delivery_id(
+            thread_type_id,
+            week_id,
+            quantity_cones,
+            received_quantity,
+            thread_color,
+            thread_color_code,
+            thread_type:thread_types(name, tex_number, supplier:suppliers(name), color_data:colors!color_id(name, hex_code)),
+            week:thread_order_weeks(week_name)
+          ),
+          warehouse:warehouses!warehouse_id(name)
+        `)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + BATCH_SIZE - 1)
 
-    if (error) throw error
+      if (deliveryId) {
+        query = query.eq('delivery_id', deliveryId)
+      }
+      if (deliveryIdFilter) {
+        query = query.in('delivery_id', deliveryIdFilter)
+      }
 
-    const enriched = (data || [])
-      .filter((row: any) => {
-        if (weekId && !row.delivery?.week_id) return false
-        if (weekId && row.delivery?.week_id !== weekId) return false
-        return true
-      })
-      .map((row: any) => ({
-        id: row.id,
-        delivery_id: row.delivery_id,
-        quantity: row.quantity,
-        warehouse_id: row.warehouse_id,
-        received_by: row.received_by,
-        notes: row.notes,
-        created_at: row.created_at,
-        thread_type_name: row.delivery?.thread_type?.name || '',
-        tex_number: row.delivery?.thread_type?.tex_number || '',
-        supplier_name: row.delivery?.thread_type?.supplier?.name || '',
-        color_name: row.delivery?.thread_color || row.delivery?.thread_type?.color_data?.name || '',
-        color_hex: row.delivery?.thread_color_code || row.delivery?.thread_type?.color_data?.hex_code || '',
-        week_name: row.delivery?.week?.week_name || '',
-        warehouse_name: row.warehouse?.name || '',
-        quantity_cones: row.delivery?.quantity_cones || 0,
-        received_quantity: row.delivery?.received_quantity || 0,
-      }))
+      const { data, error } = await query
+      if (error) throw error
+      if (!data || data.length === 0) break
+      allLogs.push(...data)
+      if (data.length < BATCH_SIZE) break
+      offset += BATCH_SIZE
+    }
+
+    let enriched = allLogs.map((row: any) => ({
+      id: row.id,
+      delivery_id: row.delivery_id,
+      quantity: row.quantity,
+      warehouse_id: row.warehouse_id,
+      received_by: row.received_by,
+      notes: row.notes,
+      created_at: row.created_at,
+      thread_type_name: row.delivery?.thread_type?.name || '',
+      tex_number: row.delivery?.thread_type?.tex_number || '',
+      supplier_name: row.delivery?.thread_type?.supplier?.name || '',
+      color_name: row.delivery?.thread_color || row.delivery?.thread_type?.color_data?.name || '',
+      color_hex: row.delivery?.thread_color_code || row.delivery?.thread_type?.color_data?.hex_code || '',
+      week_name: row.delivery?.week?.week_name || '',
+      warehouse_name: row.warehouse?.name || '',
+      quantity_cones: row.delivery?.quantity_cones || 0,
+      received_quantity: row.delivery?.received_quantity || 0,
+    }))
+
+    if (search) {
+      enriched = enriched.filter(row =>
+        row.supplier_name.toLowerCase().includes(search)
+        || row.tex_number.toLowerCase().includes(search)
+        || row.color_name.toLowerCase().includes(search)
+        || row.week_name.toLowerCase().includes(search)
+        || row.warehouse_name.toLowerCase().includes(search)
+        || row.received_by.toLowerCase().includes(search),
+      )
+    }
 
     const total = enriched.length
-    if (c.req.query('page')) {
-      const start = (page - 1) * limit
-      const paginated = enriched.slice(start, start + limit)
-      return c.json({ data: paginated, total, error: null })
-    }
+    const start = (page - 1) * limit
+    const paginated = enriched.slice(start, start + limit)
 
-    return c.json({ data: enriched, total, error: null })
+    return c.json({ data: paginated, total, error: null })
   } catch (err) {
     console.error('Error fetching receive logs:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)

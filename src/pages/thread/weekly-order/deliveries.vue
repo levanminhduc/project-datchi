@@ -375,9 +375,23 @@
             label="Lọc theo tuần"
             dense
             style="min-width: 200px"
-            @update:model-value="loadHistoryData"
+            @update:model-value="onHistoryFilterChange"
           />
           <q-space />
+          <q-input
+            v-model="historySearch"
+            dense
+            outlined
+            placeholder="Tìm NCC, Tex, Màu, Đơn hàng, Kho..."
+            clearable
+            style="min-width: 250px"
+            @clear="onHistoryFilterChange"
+            @keyup.enter="onHistoryFilterChange"
+          >
+            <template #prepend>
+              <q-icon name="search" />
+            </template>
+          </q-input>
           <q-btn
             color="primary"
             icon="refresh"
@@ -397,6 +411,7 @@
           empty-icon="history"
           empty-title="Chưa có lịch sử nhập kho"
           empty-subtitle="Lịch sử sẽ hiển thị khi có đơn được nhập kho"
+          @request="onHistoryRequest"
         >
           <template #body-cell-color_name="props">
             <q-td :props="props">
@@ -661,9 +676,11 @@ const receiveResult = ref<ReceiveResult | null>(null)
 const loadingHistory = ref(false)
 const historyLogs = ref<DeliveryReceiveLog[]>([])
 const historyWeekFilter = ref<number | null>(null)
+const historySearch = ref('')
 const historyPagination = ref({
   page: 1,
-  rowsPerPage: 20,
+  rowsPerPage: 25,
+  rowsNumber: 0,
 })
 const weekOptions = ref<Array<{ id: number; week_name: string }>>([])
 
@@ -934,15 +951,33 @@ async function loadWeekOptions() {
 async function loadHistoryData() {
   loadingHistory.value = true
   try {
-    const params: { week_id?: number; limit?: number } = {}
+    const { page, rowsPerPage } = historyPagination.value
+    const params: { week_id?: number; limit?: number; page?: number; search?: string } = {
+      page,
+      limit: rowsPerPage,
+    }
     if (historyWeekFilter.value) params.week_id = historyWeekFilter.value
+    const search = (historySearch.value ?? '').trim()
+    if (search) params.search = search
     const result = await deliveryService.getReceiveLogs(params)
     historyLogs.value = result.data
+    historyPagination.value.rowsNumber = result.total
   } catch (err) {
     snackbar.error('Lỗi tải lịch sử: ' + (err instanceof Error ? err.message : 'Không xác định'))
   } finally {
     loadingHistory.value = false
   }
+}
+
+function onHistoryRequest(props: { pagination: { page: number; rowsPerPage: number } }) {
+  historyPagination.value.page = props.pagination.page
+  historyPagination.value.rowsPerPage = props.pagination.rowsPerPage
+  loadHistoryData()
+}
+
+function onHistoryFilterChange() {
+  historyPagination.value.page = 1
+  loadHistoryData()
 }
 
 
