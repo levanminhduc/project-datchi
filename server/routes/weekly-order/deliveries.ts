@@ -18,9 +18,24 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
   try {
     const status = c.req.query('status')
     const weekId = c.req.query('week_id')
+    const inventoryStatus = c.req.query('inventory_status')
+    const inventoryStatusNot = c.req.query('inventory_status_not')
+    const search = (c.req.query('search') || '').trim().toLowerCase()
     const page = Math.max(1, parseInt(c.req.query('page') || '1'))
     const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '20')))
     const showCancelled = status === 'CANCELLED'
+    const validDeliveryStatuses = new Set(['PENDING', 'DELIVERED', 'CANCELLED'])
+    const validInventoryStatuses = new Set(['PENDING', 'PARTIAL', 'RECEIVED'])
+
+    if (status && !validDeliveryStatuses.has(status)) {
+      return c.json({ data: null, error: 'Trạng thái giao hàng không hợp lệ' }, 400)
+    }
+    if (inventoryStatus && !validInventoryStatuses.has(inventoryStatus)) {
+      return c.json({ data: null, error: 'Trạng thái nhập kho không hợp lệ' }, 400)
+    }
+    if (inventoryStatusNot && !validInventoryStatuses.has(inventoryStatusNot)) {
+      return c.json({ data: null, error: 'Trạng thái nhập kho không hợp lệ' }, 400)
+    }
 
     const allDeliveries: any[] = []
     let offset = 0
@@ -45,6 +60,12 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
       }
       if (weekId) {
         query = query.eq('week_id', parseInt(weekId))
+      }
+      if (inventoryStatus) {
+        query = query.eq('inventory_status', inventoryStatus)
+      }
+      if (inventoryStatusNot) {
+        query = query.neq('inventory_status', inventoryStatusNot)
       }
 
       const { data, error } = await query
@@ -191,14 +212,25 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
       }
     })
 
-    const total = withLoanContext.length
+    const includesSearch = (value: unknown) => String(value || '').toLowerCase().includes(search)
+    const responseRows = search
+      ? withLoanContext.filter(row =>
+        includesSearch(row.supplier_name)
+        || includesSearch(row.tex_number)
+        || includesSearch(row.color_name)
+        || includesSearch(row.week_name)
+        || includesSearch(row.thread_type_name),
+      )
+      : withLoanContext
+
+    const total = responseRows.length
     if (c.req.query('page')) {
       const start = (page - 1) * limit
-      const paginated = withLoanContext.slice(start, start + limit)
+      const paginated = responseRows.slice(start, start + limit)
       return c.json({ data: paginated, total, error: null })
     }
 
-    return c.json({ data: withLoanContext, total, error: null })
+    return c.json({ data: responseRows, total, error: null })
   } catch (err) {
     console.error('Error fetching deliveries overview:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)

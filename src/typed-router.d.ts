@@ -219,6 +219,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/thread/chat-assistant': RouteRecordInfo<
+      '/thread/chat-assistant',
+      '/thread/chat-assistant',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/thread/colors': RouteRecordInfo<
       '/thread/colors',
       '/thread/colors',
@@ -644,6 +651,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/calculation/index.vue': {
       routes:
         | '/thread/calculation/'
+      views:
+        | never
+    }
+    'src/pages/thread/chat-assistant.vue': {
+      routes:
+        | '/thread/chat-assistant'
       views:
         | never
     }

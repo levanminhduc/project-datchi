@@ -290,7 +290,9 @@
             outlined
             placeholder="Tìm NCC, Tex, Màu, Đơn hàng..."
             clearable
+            debounce="300"
             style="min-width: 250px"
+            @update:model-value="onReceiveSearchChange"
           >
             <template #prepend>
               <q-icon name="search" />
@@ -301,21 +303,23 @@
             icon="refresh"
             label="Tải lại"
             :loading="loadingReceive"
-            @click="loadReceiveData"
+            @click="() => loadReceiveData()"
           />
         </div>
 
         <!-- Receive Table -->
         <DataTable
           v-model:pagination="receivePagination"
-          :rows="filteredReceiveItems"
+          :rows="pendingReceiveItems"
           :columns="receiveColumns"
           row-key="id"
           :loading="loadingReceive"
+          :rows-per-page-options="[20, 50, 100]"
           dense
           empty-icon="local_shipping"
           empty-title="Không có đơn chờ nhập kho"
           empty-subtitle="Tất cả đơn hàng đã được nhập đủ"
+          @request="onReceiveRequest"
         >
           <!-- color_name with color dot -->
           <template #body-cell-color_name="props">
@@ -384,9 +388,9 @@
             outlined
             placeholder="Tìm NCC, Tex, Màu, Đơn hàng, Kho..."
             clearable
+            debounce="300"
             style="min-width: 250px"
-            @clear="onHistoryFilterChange"
-            @keyup.enter="onHistoryFilterChange"
+            @update:model-value="onHistorySearchChange"
           >
             <template #prepend>
               <q-icon name="search" />
@@ -397,7 +401,7 @@
             icon="refresh"
             label="Tải lại"
             :loading="loadingHistory"
-            @click="loadHistoryData"
+            @click="() => loadHistoryData()"
           />
         </div>
 
@@ -649,6 +653,7 @@ const pendingReceiveItems = ref<DeliveryRecord[]>([])
 const receivePagination = ref({
   page: 1,
   rowsPerPage: 20,
+  rowsNumber: 0,
 })
 
 // Receive dialog state
@@ -710,17 +715,6 @@ const filteredDeliveries = computed(() => {
     )
   }
   return result
-})
-
-const filteredReceiveItems = computed(() => {
-  const search = (receiveSearch.value ?? '').trim().toLowerCase()
-  if (!search) return pendingReceiveItems.value
-  return pendingReceiveItems.value.filter(d =>
-    d.supplier_name?.toLowerCase().includes(search)
-    || d.tex_number?.toLowerCase().includes(search)
-    || d.color_name?.toLowerCase().includes(search)
-    || d.week_name?.toLowerCase().includes(search),
-  )
 })
 
 const hasAnyLoans = computed(() => {
@@ -927,16 +921,36 @@ async function loadTrackingData() {
   }
 }
 
-async function loadReceiveData() {
+async function loadReceiveData(searchOverride?: string) {
   loadingReceive.value = true
   try {
-    const result = await deliveryService.getOverview({ status: DeliveryStatus.DELIVERED })
-    pendingReceiveItems.value = result.data.filter(d => d.inventory_status !== InventoryReceiptStatus.RECEIVED)
+    const { page, rowsPerPage } = receivePagination.value
+    const search = (searchOverride ?? receiveSearch.value ?? '').trim()
+    const result = await deliveryService.getOverview({
+      status: DeliveryStatus.DELIVERED,
+      inventory_status_not: InventoryReceiptStatus.RECEIVED,
+      page,
+      limit: rowsPerPage,
+      ...(search ? { search } : {}),
+    })
+    pendingReceiveItems.value = result.data
+    receivePagination.value.rowsNumber = result.total
   } catch (err) {
     snackbar.error('Lỗi tải dữ liệu: ' + (err instanceof Error ? err.message : 'Không xác định'))
   } finally {
     loadingReceive.value = false
   }
+}
+
+function onReceiveRequest(props: { pagination: { page: number; rowsPerPage: number } }) {
+  receivePagination.value.page = props.pagination.page
+  receivePagination.value.rowsPerPage = props.pagination.rowsPerPage
+  loadReceiveData()
+}
+
+function onReceiveSearchChange(value: unknown) {
+  receivePagination.value.page = 1
+  loadReceiveData(String(value ?? ''))
 }
 
 async function loadWeekOptions() {
@@ -948,7 +962,7 @@ async function loadWeekOptions() {
   }
 }
 
-async function loadHistoryData() {
+async function loadHistoryData(searchOverride?: string) {
   loadingHistory.value = true
   try {
     const { page, rowsPerPage } = historyPagination.value
@@ -957,7 +971,7 @@ async function loadHistoryData() {
       limit: rowsPerPage,
     }
     if (historyWeekFilter.value) params.week_id = historyWeekFilter.value
-    const search = (historySearch.value ?? '').trim()
+    const search = (searchOverride ?? historySearch.value ?? '').trim()
     if (search) params.search = search
     const result = await deliveryService.getReceiveLogs(params)
     historyLogs.value = result.data
@@ -978,6 +992,11 @@ function onHistoryRequest(props: { pagination: { page: number; rowsPerPage: numb
 function onHistoryFilterChange() {
   historyPagination.value.page = 1
   loadHistoryData()
+}
+
+function onHistorySearchChange(value: unknown) {
+  historyPagination.value.page = 1
+  loadHistoryData(String(value ?? ''))
 }
 
 

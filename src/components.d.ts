@@ -59,6 +59,7 @@ declare module 'vue' {
     ButtonGroup: typeof import('./components/ui/buttons/ButtonGroup.vue')['default']
     ButtonToggle: typeof import('./components/ui/buttons/ButtonToggle.vue')['default']
     ChangePasswordModal: typeof import('./components/auth/ChangePasswordModal.vue')['default']
+    ChatAssistantPanel: typeof import('./components/thread/ChatAssistantPanel.vue')['default']
     CircularProgress: typeof import('./components/ui/feedback/CircularProgress.vue')['default']
     ColorPicker: typeof import('./components/ui/pickers/ColorPicker.vue')['default']
     ColorSelector: typeof import('./components/ui/inputs/ColorSelector.vue')['default']

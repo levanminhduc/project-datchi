@@ -221,6 +221,9 @@ export interface UpdateDeliveryDTO {
 export interface DeliveryFilter {
   status?: DeliveryStatus
   week_id?: number
+  inventory_status?: InventoryReceiptStatus
+  inventory_status_not?: InventoryReceiptStatus
+  search?: string
 }
 
 // ============ RESERVE & LOAN TYPES ============

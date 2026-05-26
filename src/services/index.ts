@@ -16,6 +16,7 @@ export { colorService } from './colorService'
 export { supplierService } from './supplierService'
 export { threadTypeSupplierService } from './threadTypeSupplierService'
 export { lotService } from './lotService'
+export { chatAssistantService } from './chatAssistantService'
 
 // Thread specification services
 export { purchaseOrderService } from './purchaseOrderService'
