@@ -14,6 +14,8 @@ export const chatAssistantService = {
     const response = await fetchApi<ApiResponse<ChatAssistantResult>>(`${BASE}/query`, {
       method: 'POST',
       body: JSON.stringify({ message }),
+    }, {
+      timeout: 30_000,
     })
 
     if (response.error) throw new Error(response.error)

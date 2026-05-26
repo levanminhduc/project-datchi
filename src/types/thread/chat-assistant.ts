@@ -30,4 +30,6 @@ export interface ChatAssistantResult {
   stock: ChatAssistantStockRow[]
   usage: ChatAssistantUsageRow[]
   suggestions: string[]
+  source_endpoints?: string[]
+  context?: unknown
 }

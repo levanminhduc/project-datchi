@@ -59,6 +59,18 @@ cp .env.example .env
 #        SUPABASE_JWT_SECRET, VITE_API_URL
 ```
 
+### Chatbot service
+
+`/api/chat-assistant/query` có thể proxy sang repo `datchi-chatbot-service` khi bật env:
+
+```bash
+CHATBOT_SERVICE_URL=http://127.0.0.1:8010
+CHATBOT_INTERNAL_TOKEN=change-me
+CHATBOT_REQUEST_TIMEOUT_MS=15000
+```
+
+Luồng khi bật: Vue → Hono `/api/chat-assistant/query` → FastAPI `/v1/chat/query` → Hono data APIs. Hono vẫn forward `Authorization` của user sang FastAPI; FastAPI dùng token đó khi gọi lại data API. Nếu chưa cấu hình `CHATBOT_SERVICE_URL` hoặc `CHATBOT_INTERNAL_TOKEN`, route giữ fallback tra cứu rule-based cũ.
+
 ### Lệnh khác
 
 | Lệnh | Mục đích |
