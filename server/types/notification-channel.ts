@@ -1,9 +1,14 @@
 export type ChannelType = 'TELEGRAM' | 'EMAIL'
 
-export type ExternalEventType = 'ORDER_CONFIRMED' | 'ORDER_CANCELLED'
+export type ExternalEventType =
+  | 'ORDER_CONFIRMED'
+  | 'ORDER_CANCELLED'
+  | 'ORDER_APPROVED'
+  | 'ORDER_APPROVAL_REQUESTED'
 
 export interface TelegramConfig {
   chat_id: string
+  telegram_user_id?: string
   name?: string
 }
 

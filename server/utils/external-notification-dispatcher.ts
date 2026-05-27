@@ -16,9 +16,19 @@ interface OrderApprovedPayload {
   signedAt: string
 }
 
+interface OrderApprovalRequestedPayload {
+  weekId: number
+  weekLabel: string
+  createdBy: string
+  itemCount: number
+  totalQuantity: number
+  totalNeededCones: number
+}
+
 type EventPayload = {
   ORDER_CONFIRMED: OrderConfirmedPayload
   ORDER_APPROVED: OrderApprovedPayload
+  ORDER_APPROVAL_REQUESTED: OrderApprovalRequestedPayload
 }
 
 type ExternalEventType = keyof EventPayload
@@ -54,6 +64,17 @@ function buildMessage<T extends ExternalEventType>(eventType: T, payload: EventP
         `👤 Người tạo: ${p.creatorName}`,
         `👔 Lãnh đạo ký: ${p.leaderName}`,
         `🕒 Thời gian: ${formatVietnameseDateTime(p.signedAt)}`,
+        `🔗 <a href="${appUrl}/thread/weekly-order/${p.weekId}">Xem chi tiết</a>`,
+      ].join('\n')
+    }
+    case 'ORDER_APPROVAL_REQUESTED': {
+      const p = payload as OrderApprovalRequestedPayload
+      return [
+        `🧾 <b>ĐƠN ĐẶT CHỈ CHỜ DUYỆT</b> — ${p.weekLabel}`,
+        `👤 Người tạo: ${p.createdBy}`,
+        `📋 Số dòng hàng: ${p.itemCount}`,
+        `🔢 Tổng số lượng: ${p.totalQuantity}`,
+        `🧵 Tổng cuộn cần đặt: ${p.totalNeededCones}`,
         `🔗 <a href="${appUrl}/thread/weekly-order/${p.weekId}">Xem chi tiết</a>`,
       ].join('\n')
     }

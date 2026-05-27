@@ -34,7 +34,7 @@ export function useNotificationChannels() {
   async function createChannel(payload: {
     employee_id: number
     channel_type: ChannelType
-    channel_config: { chat_id: string; name?: string }
+    channel_config: { chat_id: string; telegram_user_id?: string; name?: string }
     event_types: ExternalEventType[]
   }) {
     try {
@@ -50,7 +50,7 @@ export function useNotificationChannels() {
 
   async function createGroup(payload: {
     channel_type: ChannelType
-    channel_config: { chat_id: string; name?: string }
+    channel_config: { chat_id: string; telegram_user_id?: string; name?: string }
     event_types: ExternalEventType[]
   }) {
     try {

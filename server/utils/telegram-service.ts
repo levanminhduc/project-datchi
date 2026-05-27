@@ -10,31 +10,142 @@ export function isTelegramEnabled(): boolean {
   return BOT_TOKEN.length > 0
 }
 
-export async function sendMessage(chatId: string, text: string): Promise<boolean> {
-  if (!isTelegramEnabled()) return false
+export interface TelegramInlineKeyboardButton {
+  text: string
+  callback_data?: string
+  url?: string
+}
+
+interface SendMessageOptions {
+  reply_markup?: {
+    inline_keyboard: TelegramInlineKeyboardButton[][]
+  }
+}
+
+interface TelegramApiResponse<T> {
+  ok: boolean
+  result?: T
+  description?: string
+}
+
+export interface TelegramSendResult {
+  success: boolean
+  messageId?: number
+  error?: string
+}
+
+async function postTelegram<T>(
+  method: string,
+  payload: Record<string, unknown>,
+): Promise<TelegramApiResponse<T> | null> {
+  if (!isTelegramEnabled()) return null
 
   try {
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      }),
+      body: JSON.stringify(payload),
     })
 
-    if (!res.ok) {
-      const body = await res.text()
-      console.error(`[telegram-service] sendMessage failed for chat_id=${chatId}:`, body)
-      return false
+    const body = await res.text()
+    let parsed: TelegramApiResponse<T> | null = null
+    if (body) {
+      try {
+        parsed = JSON.parse(body) as TelegramApiResponse<T>
+      } catch {
+        parsed = { ok: false, description: body }
+      }
     }
-    return true
+
+    if (!res.ok) {
+      console.error(`[telegram-service] ${method} failed:`, body)
+      return parsed || { ok: false, description: body }
+    }
+
+    return parsed || { ok: true }
   } catch (err) {
-    console.error(`[telegram-service] sendMessage error for chat_id=${chatId}:`, err)
-    return false
+    console.error(`[telegram-service] ${method} error:`, err)
+    return null
   }
+}
+
+export async function sendMessageWithResult(
+  chatId: string,
+  text: string,
+  options: SendMessageOptions = {},
+): Promise<TelegramSendResult> {
+  if (!isTelegramEnabled()) return { success: false, error: 'telegram_disabled' }
+
+  const res = await postTelegram<{ message_id: number }>('sendMessage', {
+    chat_id: chatId,
+    text,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+    ...options,
+  })
+
+  if (!res?.ok) {
+    return { success: false, error: res?.description || 'telegram_request_failed' }
+  }
+
+  return { success: true, messageId: res.result?.message_id }
+}
+
+export async function sendMessage(chatId: string, text: string): Promise<boolean> {
+  const result = await sendMessageWithResult(chatId, text)
+  return result.success
+}
+
+export async function answerCallbackQuery(
+  callbackQueryId: string,
+  text: string,
+  showAlert = false,
+): Promise<boolean> {
+  if (!isTelegramEnabled()) return false
+
+  const res = await postTelegram<true>('answerCallbackQuery', {
+    callback_query_id: callbackQueryId,
+    text,
+    show_alert: showAlert,
+  })
+
+  return res?.ok === true
+}
+
+export async function editMessageText(
+  chatId: string,
+  messageId: number,
+  text: string,
+  options: SendMessageOptions = {},
+): Promise<boolean> {
+  if (!isTelegramEnabled()) return false
+
+  const res = await postTelegram<unknown>('editMessageText', {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+    ...options,
+  })
+
+  return res?.ok === true
+}
+
+export async function editMessageReplyMarkup(
+  chatId: string,
+  messageId: number,
+  replyMarkup: SendMessageOptions['reply_markup'] | null = null,
+): Promise<boolean> {
+  if (!isTelegramEnabled()) return false
+
+  const res = await postTelegram<unknown>('editMessageReplyMarkup', {
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: replyMarkup,
+  })
+
+  return res?.ok === true
 }
 
 export async function sendToGroups(eventType: string, text: string): Promise<void> {

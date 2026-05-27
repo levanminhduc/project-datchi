@@ -4,6 +4,9 @@ import type {
   NotificationChannelGroup,
   ChannelType,
   ExternalEventType,
+  TelegramIdentity,
+  TelegramIdentityAssignMode,
+  TelegramIdentityStatus,
 } from '@/types/notification-channel'
 
 interface ApiResponse<T> {
@@ -28,7 +31,7 @@ export const notificationChannelService = {
   async create(payload: {
     employee_id: number
     channel_type: ChannelType
-    channel_config: { chat_id: string; name?: string }
+    channel_config: { chat_id: string; telegram_user_id?: string; name?: string }
     event_types: ExternalEventType[]
   }): Promise<NotificationChannel> {
     const res = await fetchApi<ApiResponse<NotificationChannel>>(BASE, {
@@ -40,7 +43,7 @@ export const notificationChannelService = {
 
   async createGroup(payload: {
     channel_type: ChannelType
-    channel_config: { chat_id: string; name?: string }
+    channel_config: { chat_id: string; telegram_user_id?: string; name?: string }
     event_types: ExternalEventType[]
   }): Promise<NotificationChannelGroup> {
     const res = await fetchApi<ApiResponse<NotificationChannelGroup>>(`${BASE}/groups`, {
@@ -51,7 +54,7 @@ export const notificationChannelService = {
   },
 
   async update(id: number, payload: {
-    channel_config?: { chat_id: string; name?: string }
+    channel_config?: { chat_id: string; telegram_user_id?: string; name?: string }
     event_types?: ExternalEventType[]
   }): Promise<NotificationChannel> {
     const res = await fetchApi<ApiResponse<NotificationChannel>>(`${BASE}/${id}`, {
@@ -79,5 +82,39 @@ export const notificationChannelService = {
       body: JSON.stringify({ channel_type: channelType, chat_id: chatId }),
     })
     return res.message || 'OK'
+  },
+
+  async listLeaderCandidates(): Promise<Array<{
+    id: number
+    employee_id: string
+    full_name: string
+    department: string | null
+    chuc_vu: string | null
+  }>> {
+    const res = await fetchApi<ApiResponse<Array<{
+      id: number
+      employee_id: string
+      full_name: string
+      department: string | null
+      chuc_vu: string | null
+    }>>>(`${BASE}/leader-candidates`)
+    return res.data || []
+  },
+
+  async listTelegramIdentities(status: TelegramIdentityStatus = 'unassigned'): Promise<TelegramIdentity[]> {
+    const res = await fetchApi<ApiResponse<TelegramIdentity[]>>(`${BASE}/telegram-identities?status=${status}`)
+    return res.data || []
+  },
+
+  async assignTelegramIdentity(id: number, payload: {
+    employee_id: number
+    mode: TelegramIdentityAssignMode
+    event_types?: ExternalEventType[]
+  }): Promise<NotificationChannel> {
+    const res = await fetchApi<ApiResponse<NotificationChannel>>(`${BASE}/telegram-identities/${id}/assign`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    return res.data!
   },
 }

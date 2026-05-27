@@ -3,8 +3,13 @@ import { ZodError } from 'zod'
 import { supabaseAdmin as supabase } from '../../db/supabase'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
-import { broadcastNotification, createNotification, getWarehouseEmployeeIds, getLeaderEmployeeIds } from '../../utils/notificationService'
+import { broadcastNotification, getWarehouseEmployeeIds, getLeaderEmployeeIds } from '../../utils/notificationService'
 import { dispatchExternalNotification } from '../../utils/external-notification-dispatcher'
+import {
+  dispatchOrderApprovalRequests,
+  signWeeklyOrder,
+  WeeklyOrderSignError,
+} from '../../utils/weekly-order-approval-service'
 import {
   CreateWeeklyOrderSchema,
   UpdateWeeklyOrderSchema,
@@ -603,7 +608,7 @@ core.get('/leader-review', requirePermission('thread.leader.sign'), async (c) =>
       return c.json({ data: [], error: null, pagination })
     }
 
-    const weekIds = weeks.map((w: { id: number }) => w.id)
+    const weekIds = (weeks as unknown as Array<{ id: number }>).map((w) => w.id)
     const { data: resultsData, error: resultsError } = await supabase
       .from('thread_order_results')
       .select('week_id, summary_data')
@@ -1381,6 +1386,20 @@ core.post('/:id/notify', requirePermission('thread.allocations.manage'), async (
       totalQuantity,
     })
 
+    dispatchOrderApprovalRequests({
+      week: {
+        id,
+        week_name: week.week_name || null,
+        start_date: week.start_date || null,
+        end_date: week.end_date || null,
+        created_by: week.created_by || null,
+        leader_signed_at: week.leader_signed_at || null,
+      },
+      summaries,
+    }).catch((err) => {
+      console.error('[weekly-order notify] approval Telegram dispatch failed:', err)
+    })
+
     return c.json({ data: { notified: true }, error: null })
   } catch (err) {
     console.error('Error sending notifications:', err)
@@ -1484,88 +1503,17 @@ core.patch('/:id/leader-sign', requirePermission('thread.leader.sign'), async (c
     const auth = c.get('auth')
     const employeeId = auth.employeeId
 
-    const { data: week, error: weekError } = await supabase
-      .from('thread_order_weeks')
-      .select('id, status, leader_signed_by')
-      .eq('id', id)
-      .single()
-
-    if (weekError) {
-      if (weekError.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
-      }
-      throw weekError
-    }
-
-    if (week.status !== 'CONFIRMED') {
-      return c.json({ data: null, error: 'Chỉ có thể ký duyệt đơn đã xác nhận' }, 400)
-    }
-
-    if (week.leader_signed_by) {
-      return c.json({ data: null, error: 'Đơn hàng đã được ký duyệt' }, 400)
-    }
-
-    const { data: updated, error: updateError } = await supabase
-      .from('thread_order_weeks')
-      .update({
-        leader_signed_by: employeeId,
-        leader_signed_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (updateError) throw updateError
-
-    const { data: creator } = await supabase
-      .from('employees')
-      .select('id, full_name')
-      .eq('full_name', updated.created_by || '')
-      .limit(1)
-      .maybeSingle()
-
-    const { data: leader } = await supabase
-      .from('employees')
-      .select('full_name')
-      .eq('id', employeeId)
-      .single()
-
-    const leaderName = leader?.full_name || ''
-    const weekName = updated.week_name || `#${id}`
-
-    if (creator?.id) {
-      await createNotification({
-        employeeId: creator.id,
-        type: 'ORDER_APPROVED',
-        title: `Đơn hàng "${weekName}" đã được ký duyệt`,
-        body: `Lãnh đạo ${leaderName} đã ký duyệt đơn của bạn`,
-        actionUrl: `/thread/weekly-order/${id}`,
-        metadata: {
-          week_id: id,
-          week_name: weekName,
-          leader_signed_by_id: employeeId,
-          leader_signed_by_name: leaderName,
-          leader_signed_at: updated.leader_signed_at,
-        },
-      })
-    } else {
-      console.warn(`[leader-sign] Cannot map creator "${updated.created_by}" to employee_id — in-app notification skipped`)
-    }
-
-    try {
-      dispatchExternalNotification('ORDER_APPROVED', {
-        weekId: id,
-        weekLabel: weekName,
-        creatorName: updated.created_by || '',
-        leaderName,
-        signedAt: updated.leader_signed_at || new Date().toISOString(),
-      })
-    } catch (err) {
-      console.error('[leader-sign] external dispatch failed:', err)
-    }
+    const { week: updated } = await signWeeklyOrder({ weekId: id, employeeId })
 
     return c.json({ data: updated, error: null, message: 'Ký duyệt thành công' })
   } catch (err) {
+    if (err instanceof WeeklyOrderSignError) {
+      if (err.status === 404) return c.json({ data: null, error: err.message }, 404)
+      if (err.status === 403) return c.json({ data: null, error: err.message }, 403)
+      if (err.status === 409) return c.json({ data: null, error: err.message }, 409)
+      if (err.status >= 500) return c.json({ data: null, error: err.message }, 500)
+      return c.json({ data: null, error: err.message }, 400)
+    }
     console.error('Error leader signing:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }

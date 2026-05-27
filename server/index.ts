@@ -37,6 +37,7 @@ import issuesV2Router from './routes/issuesV2'
 import issueHistoryRouter from './routes/issue-history'
 import notificationsRouter from './routes/notifications'
 import notificationChannelsRouter from './routes/notification-channels'
+import telegramRouter from './routes/telegram'
 import importRouter from './routes/import'
 import subArtsRouter from './routes/subArts'
 import styleColorsRouter from './routes/styleColors'
@@ -70,6 +71,7 @@ app.use(
 
 app.route('/api/guides/images', guideImages)
 app.route('/api/public/guides', publicGuidesRouter)
+app.route('/api/telegram', telegramRouter)
 
 app.post('/api/auth/ensure-auth-user', async (c) => {
   try {
