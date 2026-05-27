@@ -84,6 +84,7 @@ declare module 'vue' {
     EmptyState: typeof import('./components/ui/feedback/EmptyState.vue')['default']
     ExportProgressDialog: typeof import('./components/thread/weekly-order/ExportProgressDialog.vue')['default']
     FilePicker: typeof import('./components/ui/pickers/FilePicker.vue')['default']
+    FloatingChatAssistant: typeof import('./components/thread/FloatingChatAssistant.vue')['default']
     FormDialog: typeof import('./components/ui/dialogs/FormDialog.vue')['default']
     GuideCard: typeof import('./components/guides/GuideCard.vue')['default']
     GuidePreview: typeof import('./components/guides/GuidePreview.vue')['default']

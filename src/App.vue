@@ -15,13 +15,14 @@ import NetworkStatusBanner from './components/ui/feedback/NetworkStatusBanner.vu
 import AppLoading from './components/ui/AppLoading.vue'
 import { useAnnouncements } from './composables/use-announcements'
 import { initNetworkStatus } from './composables/useNetworkStatus'
+import FloatingChatAssistant from './components/thread/FloatingChatAssistant.vue'
 
 const route = useRoute();
 const router = useRouter();
 const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
 const { notifications, startPolling, stopPolling } = useNotifications();
-const { isAuthenticated, tempPassword, isLoading } = useAuth();
+const { isAuthenticated, tempPassword, isLoading, hasAllPermissions } = useAuth();
 const { startVersionCheck, stopVersionCheck } = useVersionCheck();
 const {
   currentAnnouncement,
@@ -55,6 +56,11 @@ function onPasswordChanged() {
 
 const isPublicPage = computed(() => route.path.startsWith('/g/'))
 const showSidebar = computed(() => route.path !== "/login" && !isPublicPage.value && isAuthenticated.value);
+const showFloatingChatAssistant = computed(() =>
+  showSidebar.value
+  && route.path !== '/thread/chat-assistant'
+  && hasAllPermissions(['thread.inventory.view', 'thread.styles.view'])
+)
 
 const approvedPopupOpen = ref(false)
 const dismissedApprovedThisSession = ref(false)
@@ -174,6 +180,8 @@ onMounted(() => {
       :orders="unreadApprovedOrders"
       @dismiss="onApprovedDismiss"
     />
+
+    <FloatingChatAssistant v-if="showFloatingChatAssistant" />
   </q-layout>
 </template>
 
