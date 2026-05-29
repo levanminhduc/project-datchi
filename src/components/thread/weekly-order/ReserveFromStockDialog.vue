@@ -34,26 +34,34 @@
           </div>
           <div class="col-6">
             <div class="text-caption text-grey-6">
-              Thiếu (cuộn)
+              Thiếu (quy đổi)
             </div>
             <div class="text-body2 text-negative text-weight-medium">
-              {{ summaryItem.shortage }}
+              {{ formatQty(summaryItem.shortage) }}
             </div>
           </div>
           <div class="col-6">
             <div class="text-caption text-grey-6">
-              Tồn kho khả dụng
+              Tồn kho khả dụng (quy đổi)
             </div>
             <div class="text-body2 text-positive text-weight-medium">
-              {{ summaryItem.available_stock }}
+              {{ formatQty(summaryItem.available_stock) }}
             </div>
           </div>
           <div class="col-6">
             <div class="text-caption text-grey-6">
-              Có thể lấy tối đa
+              Có thể lấy tối đa (quy đổi)
             </div>
             <div class="text-body2 text-weight-medium">
-              {{ maxQuantity }}
+              {{ formatQty(maxQuantity) }}
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="text-caption text-grey-6">
+              Tồn kho vật lý
+            </div>
+            <div class="text-body2 text-weight-medium">
+              {{ summaryItem.available_physical_cones }} cuộn
             </div>
           </div>
         </div>
@@ -63,13 +71,14 @@
 
       <AppInput
         v-model.number="form.quantity"
-        label="Số lượng lấy *"
+        label="Số lượng quy đổi lấy *"
         type="number"
-        :min="1"
+        :min="0.01"
         :max="maxQuantity"
+        :step="0.1"
         :rules="[
           val => val > 0 || 'Số lượng phải lớn hơn 0',
-          val => val <= maxQuantity || `Tối đa ${maxQuantity} cuộn`
+          val => val <= maxQuantity || `Tối đa ${formatQty(maxQuantity)} cuộn quy đổi`
         ]"
       />
 
@@ -139,6 +148,9 @@ const isValid = computed(() =>
   form.value.quantity > 0 && form.value.quantity <= maxQuantity.value
 )
 
+const formatQty = (value: number) =>
+  new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(value || 0)
+
 const resetForm = () => {
   form.value = {
     quantity: maxQuantity.value,
@@ -157,8 +169,8 @@ const handleSubmit = async () => {
       quantity: form.value.quantity,
       reason: form.value.reason || undefined,
     })
-    snackbar.success(`Đã lấy ${result.reserved} cuộn từ tồn kho`)
-    emit('reserved', result.reserved)
+    snackbar.success(`Đã lấy ${result.reserved_physical_cones} cuộn từ tồn kho (${formatQty(result.reserved_equivalent_cones)} cuộn quy đổi)`)
+    emit('reserved', result.reserved_equivalent_cones)
     resetForm()
   } catch (err: any) {
     snackbar.error(err?.message || 'Không thể lấy từ tồn kho')

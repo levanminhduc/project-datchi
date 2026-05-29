@@ -299,8 +299,13 @@ export interface ReservationSummary {
   thread_type_name?: string
   needed: number
   reserved: number
+  reserved_physical_cones: number
+  reserved_equivalent_cones: number
   shortage: number
+  shortage_equivalent_cones: number
   available_stock: number
+  available_physical_cones: number
+  available_equivalent_cones: number
   can_reserve: boolean
   cannot_reserve_reason?: string
 }
@@ -316,7 +321,10 @@ export interface ReserveFromStockDTO {
 export interface ReserveFromStockResult {
   success: boolean
   reserved: number
+  reserved_physical_cones: number
+  reserved_equivalent_cones: number
   shortage: number
+  shortage_equivalent_cones: number
   loan_id: number | null
 }
 
@@ -512,6 +520,7 @@ export interface WeeklyOrderProgressSummary {
 }
 
 export interface DeliverySupplierBreakdown {
+  thread_type_id?: number
   supplier_id: number
   supplier_name: string
   tex_number: string
@@ -522,6 +531,7 @@ export interface DeliverySupplierBreakdown {
   received: number
   pending_delivery: number
   pending_receive: number
+  deliveries?: WeeklyOrderProcessTraceDeliveryLine[]
 }
 
 export interface DeliverySummary {
@@ -530,4 +540,94 @@ export interface DeliverySummary {
   total_received: number
   percent_received: number
   by_supplier: DeliverySupplierBreakdown[]
+}
+
+export interface WeeklyOrderProcessTraceDeliveryLine {
+  id: number
+  thread_type_id: number
+  supplier_id: number
+  status: string
+  quantity_cones: number
+  delivered_cones: number
+  received_quantity: number
+  pending_delivery: number
+  pending_receive: number
+  color_name: string
+}
+
+export interface WeeklyOrderProcessTraceWarehouse {
+  warehouse_id: number
+  warehouse_code: string
+  warehouse_name: string
+  equivalent_cones: number
+  physical_cones: number
+  full_cones: number
+  partial_cones: number
+}
+
+export interface WeeklyOrderProcessTracePoLine {
+  po_id: number | null
+  po_number: string
+  style_id: number | null
+  style_code: string
+  style_name: string
+  style_color_id: number | null
+  style_color_name: string
+  thread_type_id: number
+  thread_color_id: number | null
+  required_cones: number
+  issued_gross_cones: number
+  issued_from_reserved_cones: number
+  issued_from_available_cones: number
+  issued_from_other_cones: number
+  returned_cones: number
+}
+
+export interface WeeklyOrderProcessTraceRow {
+  row_key: string
+  thread_type_id: number
+  thread_color_id: number | null
+  supplier_name: string
+  tex_number: string
+  color_name: string
+  required_cones: number
+  additional_order_cones: number
+  assignment_target_cones: number
+  pending_delivery_cones: number
+  pending_receive_cones: number
+  received_cones: number
+  reserved_cones: number
+  reserved_physical_cones: number
+  issued_gross_cones: number
+  issued_from_reserved_cones: number
+  issued_from_available_cones: number
+  issued_from_other_cones: number
+  returned_cones: number
+  assigned_week_cones: number
+  assignment_gap_cones: number
+  warehouses: WeeklyOrderProcessTraceWarehouse[]
+  po_lines: WeeklyOrderProcessTracePoLine[]
+  delivery_lines: WeeklyOrderProcessTraceDeliveryLine[]
+}
+
+export interface WeeklyOrderProcessTraceResponse {
+  week: { id: number; week_name: string; status: string }
+  summary: {
+    required_cones: number
+    additional_order_cones: number
+    assignment_target_cones: number
+    pending_delivery_cones: number
+    pending_receive_cones: number
+    received_cones: number
+    reserved_cones: number
+    reserved_physical_cones: number
+    issued_gross_cones: number
+    issued_from_reserved_cones: number
+    issued_from_available_cones: number
+    issued_from_other_cones: number
+    returned_cones: number
+    assigned_week_cones: number
+    assignment_gap_cones: number
+  }
+  rows: WeeklyOrderProcessTraceRow[]
 }

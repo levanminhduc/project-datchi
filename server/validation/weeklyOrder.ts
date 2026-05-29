@@ -154,7 +154,6 @@ export const ReserveFromStockSchema = z.object({
     .positive('color_id phải là số nguyên dương'),
   quantity: z
     .number({ error:'Số lượng là bắt buộc' })
-    .int()
     .positive('Số lượng phải lớn hơn 0'),
   reason: z.string().max(500, 'Lý do tối đa 500 ký tự').optional(),
 })

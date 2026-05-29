@@ -11,6 +11,7 @@ import {
 } from '../../validation/weeklyOrder'
 import type { AppEnv } from '../../types/hono-env'
 import { formatZodError, getPerformerName } from './helpers'
+import { getPartialConeRatio } from '../../utils/settings-helper'
 
 const loansReservations = new Hono<AppEnv>()
 
@@ -899,19 +900,29 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
       }
     }
 
+    const partialConeRatio = await getPartialConeRatio()
+    const toEquivalent = (isPartial: boolean | null | undefined) => isPartial ? partialConeRatio : 1
+    const roundEquivalent = (value: number) => Math.round(value * 100) / 100
+
+    type ConeQuantity = { physical: number; equivalent: number }
+    const emptyQuantity = (): ConeQuantity => ({ physical: 0, equivalent: 0 })
+
     const { data: reservedCones, error: reservedError } = await supabase
       .from('thread_inventory')
-      .select('thread_type_id, color_id')
+      .select('thread_type_id, color_id, is_partial')
       .eq('reserved_week_id', id)
       .eq('status', 'RESERVED_FOR_ORDER')
       .in('thread_type_id', threadTypeIds)
       .limit(100000)
     if (reservedError) throw reservedError
 
-    const reservedMap = new Map<string, number>()
+    const reservedMap = new Map<string, ConeQuantity>()
     for (const r of reservedCones || []) {
       const key = `${r.thread_type_id}-${r.color_id ?? ''}`
-      reservedMap.set(key, (reservedMap.get(key) || 0) + 1)
+      const current = reservedMap.get(key) || emptyQuantity()
+      current.physical += 1
+      current.equivalent += toEquivalent(r.is_partial)
+      reservedMap.set(key, current)
     }
 
     const { data: warehouseRows, error: warehouseError } = await supabase
@@ -925,7 +936,7 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
 
     let availableQuery = supabase
       .from('thread_inventory')
-      .select('thread_type_id, color_id')
+      .select('thread_type_id, color_id, is_partial')
       .eq('status', 'AVAILABLE')
       .is('reserved_week_id', null)
       .in('thread_type_id', threadTypeIds)
@@ -936,10 +947,13 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
     const { data: availableCones, error: availableError } = await availableQuery.limit(100000)
     if (availableError) throw availableError
 
-    const availableMap = new Map<string, number>()
+    const availableMap = new Map<string, ConeQuantity>()
     for (const a of availableCones || []) {
       const key = `${a.thread_type_id}-${a.color_id ?? ''}`
-      availableMap.set(key, (availableMap.get(key) || 0) + 1)
+      const current = availableMap.get(key) || emptyQuantity()
+      current.physical += 1
+      current.equivalent += toEquivalent(a.is_partial)
+      availableMap.set(key, current)
     }
 
     const { data: deliveries, error: deliveryError } = await supabase
@@ -954,9 +968,11 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
 
     const summary = bomRows.map((row) => {
       const key = `${row.thread_type_id}-${row.color_id ?? ''}`
-      const reserved = reservedMap.get(key) || 0
-      const availableStock = availableMap.get(key) || 0
-      const shortage = Math.max(0, row.needed_cones - reserved)
+      const reserved = reservedMap.get(key) || emptyQuantity()
+      const availableStock = availableMap.get(key) || emptyQuantity()
+      const reservedEquivalent = roundEquivalent(reserved.equivalent)
+      const availableEquivalent = roundEquivalent(availableStock.equivalent)
+      const shortage = roundEquivalent(Math.max(0, row.needed_cones - reservedEquivalent))
       const hasDelivery = deliverySet.has(row.thread_type_id)
 
       return {
@@ -965,9 +981,14 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
         color_name: row.color_id ? (colorNameMap.get(row.color_id) || '') : '',
         thread_type_name: ttNameMap.get(row.thread_type_id) || '',
         needed: row.needed_cones,
-        reserved,
+        reserved: reservedEquivalent,
+        reserved_physical_cones: reserved.physical,
+        reserved_equivalent_cones: reservedEquivalent,
         shortage,
-        available_stock: availableStock,
+        shortage_equivalent_cones: shortage,
+        available_stock: availableEquivalent,
+        available_physical_cones: availableStock.physical,
+        available_equivalent_cones: availableEquivalent,
         can_reserve: hasDelivery,
         cannot_reserve_reason: hasDelivery ? undefined : 'Không có dữ liệu giao hàng cho loại chỉ này',
       }
@@ -1032,7 +1053,7 @@ loansReservations.post('/:id/reserve-from-stock', requirePermission('thread.allo
     return c.json({
       data: result,
       error: null,
-      message: `Đã lấy ${result?.reserved || 0} cuộn từ tồn kho`,
+      message: `Đã lấy ${result?.reserved_physical_cones || 0} cuộn từ tồn kho (${result?.reserved_equivalent_cones || 0} cuộn quy đổi)`,
     })
   } catch (err) {
     console.error('Error reserving from stock:', err)

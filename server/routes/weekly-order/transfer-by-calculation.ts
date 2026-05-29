@@ -11,6 +11,7 @@ import {
 type CalculationDataRow = {
   style_id: number
   calculations: Array<{
+    spec_id?: number
     thread_type_id: number
     tex_number: string
     supplier_id: number
@@ -65,7 +66,13 @@ export async function fetchCalculationData(weekId: number) {
     summary_data: (Array.isArray(rawSummary) ? rawSummary : []) as Array<{
       thread_type_id: number
       thread_color: string | null
-      additional_order: number
+      thread_color_id?: number | null
+      total_meters?: number | null
+      meters_per_cone?: number | null
+      total_cones?: number | null
+      quota_cones?: number | null
+      additional_order?: number | null
+      total_final?: number | null
       tex_number: string
       supplier_name: string
     }>,
@@ -878,9 +885,10 @@ router.get(
           .in('id', Array.from(threadTypeIdSet))
           .limit(threadTypeIdSet.size)
         if (ttErr) throw ttErr
-        for (const tt of (tts ?? []) as Array<{ id: number; tex_number: string; suppliers: { name: string } | null }>) {
+        for (const tt of (tts ?? []) as unknown as Array<{ id: number; tex_number: string; suppliers: { name: string } | { name: string }[] | null }>) {
+          const supplier = Array.isArray(tt.suppliers) ? tt.suppliers[0] : tt.suppliers
           threadTypeMap.set(tt.id, {
-            supplier_name: tt.suppliers?.name ?? '',
+            supplier_name: supplier?.name ?? '',
             tex_number: tt.tex_number,
           })
         }

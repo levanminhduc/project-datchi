@@ -7,6 +7,7 @@ import loansReservationsRoutes from './loans-reservations'
 import transferReservedRoutes from './transfer-reserved'
 import transferByCalculationRoutes from './transfer-by-calculation'
 import progressSummaryRoutes from './progress-summary'
+import processTraceRoutes from './process-trace'
 
 const weeklyOrder = new Hono<AppEnv>()
 
@@ -15,6 +16,7 @@ const weeklyOrder = new Hono<AppEnv>()
 weeklyOrder.route('/', transferReservedRoutes)
 weeklyOrder.route('/', transferByCalculationRoutes)
 weeklyOrder.route('/', progressSummaryRoutes)
+weeklyOrder.route('/', processTraceRoutes)
 weeklyOrder.route('/', coreRoutes)
 weeklyOrder.route('/', calculationRoutes)
 weeklyOrder.route('/', deliveryRoutes)

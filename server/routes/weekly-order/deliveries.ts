@@ -10,6 +10,7 @@ import {
 } from '../../validation/weeklyOrder'
 import type { AppEnv } from '../../types/hono-env'
 import { formatZodError } from './helpers'
+import { getWeeklyOrderDeliverySummary } from './delivery-summary-helper'
 
 const deliveries = new Hono<AppEnv>()
 const BATCH_SIZE = 1000
@@ -520,107 +521,8 @@ deliveries.get('/:weekId/delivery-summary', requirePermission('thread.allocation
       return c.json({ data: null, error: 'weekId không hợp lệ' }, 400)
     }
 
-    const { data: rows, error } = await supabase
-      .from('thread_order_deliveries')
-      .select(`
-        id,
-        thread_type_id,
-        supplier_id,
-        quantity_cones,
-        received_quantity,
-        status,
-        thread_color,
-        thread_color_code,
-        supplier:suppliers(id, name),
-        thread_type:thread_types(id, name, tex_number, color_data:colors!color_id(name, hex_code))
-      `)
-      .eq('week_id', weekIdParam)
-
-    if (error) throw error
-
-    if (!rows || rows.length === 0) {
-      return c.json({
-        data: {
-          total_ordered: 0,
-          total_delivered: 0,
-          total_received: 0,
-          percent_received: 0,
-          by_supplier: [],
-        },
-        error: null,
-      })
-    }
-
-    let total_ordered = 0
-    let total_delivered = 0
-    let total_received = 0
-
-    const breakdownMap = new Map<string, {
-      supplier_id: number
-      supplier_name: string
-      tex_number: string
-      color_name: string
-      color_hex: string
-      ordered: number
-      delivered: number
-      received: number
-    }>()
-
-    for (const row of rows as any[]) {
-      const qOrdered = Number(row.quantity_cones || 0)
-      const qReceived = Number(row.received_quantity || 0)
-      const isDelivered = row.status === 'DELIVERED'
-
-      total_ordered += qOrdered
-      if (isDelivered) total_delivered += qOrdered
-      total_received += qReceived
-
-      const supplierId = row.supplier_id ?? 0
-      const supplierName = row.supplier?.name || ''
-      const texNumber = row.thread_type?.tex_number || ''
-      const colorName = row.thread_color || row.thread_type?.color_data?.name || ''
-      const colorHex = row.thread_color_code || row.thread_type?.color_data?.hex_code || ''
-
-      const key = `${supplierId}_${row.thread_type_id}_${colorName}`
-      const existing = breakdownMap.get(key)
-      if (!existing) {
-        breakdownMap.set(key, {
-          supplier_id: supplierId,
-          supplier_name: supplierName,
-          tex_number: texNumber,
-          color_name: colorName,
-          color_hex: colorHex,
-          ordered: qOrdered,
-          delivered: isDelivered ? qOrdered : 0,
-          received: qReceived,
-        })
-      } else {
-        existing.ordered += qOrdered
-        if (isDelivered) existing.delivered += qOrdered
-        existing.received += qReceived
-      }
-    }
-
-    const by_supplier = Array.from(breakdownMap.values()).map((row) => ({
-      ...row,
-      pending_delivery: Math.max(0, row.ordered - row.delivered),
-      pending_receive: Math.max(0, row.delivered - row.received),
-    }))
-
-    const percent_received = total_ordered > 0
-      ? Math.round((total_received / total_ordered) * 100)
-      : 0
-
-    return c.json({
-      data: {
-        total_ordered,
-        total_delivered,
-        total_received,
-        percent_received,
-        by_supplier,
-      },
-      error: null,
-    })
+    const summary = await getWeeklyOrderDeliverySummary(weekIdParam)
+    return c.json({ data: summary, error: null })
   } catch (err) {
     console.error('Error fetching delivery summary:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)

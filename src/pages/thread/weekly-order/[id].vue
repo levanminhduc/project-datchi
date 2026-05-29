@@ -210,6 +210,11 @@
           icon="trending_up"
         />
         <q-tab
+          name="process-trace"
+          label="Truy xuất"
+          icon="account_tree"
+        />
+        <q-tab
           name="overview"
           label="Tổng quan"
           icon="info"
@@ -244,6 +249,15 @@
             :pos="progressPos"
             :loading="progressLoading"
             @refresh="loadProgressSummary"
+          />
+        </q-tab-panel>
+
+        <!-- Tab: Process Trace -->
+        <q-tab-panel name="process-trace">
+          <WeeklyOrderProcessTraceSection
+            :trace="processTrace"
+            :loading="processTraceLoading"
+            @refresh="loadProcessTrace"
           />
         </q-tab-panel>
 
@@ -755,7 +769,7 @@ import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useWeeklyOrderReservations } from '@/composables/thread/useWeeklyOrderReservations'
-import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone, ReservationSummary, ThreadOrderItemCompletion, SurplusPreview, WeeklyOrderProgressPo, DeliverySummary } from '@/types/thread'
+import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone, ReservationSummary, ThreadOrderItemCompletion, SurplusPreview, WeeklyOrderProgressPo, DeliverySummary, WeeklyOrderProcessTraceResponse } from '@/types/thread'
 import type { WeeklyOrderResults, StyleOrderEntry } from '@/types/thread/weeklyOrder'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { formatThreadTypeDisplay } from '@/utils/thread-format'
@@ -772,6 +786,7 @@ import AppCheckbox from '@/components/ui/inputs/AppCheckbox.vue'
 import ResultsDetailView from '@/components/thread/weekly-order/ResultsDetailView.vue'
 import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
 import ProgressSummarySection from '@/components/thread/weekly-order/ProgressSummarySection.vue'
+import WeeklyOrderProcessTraceSection from '@/components/thread/weekly-order/WeeklyOrderProcessTraceSection.vue'
 import DeliverySummarySection from '@/components/thread/weekly-order/DeliverySummarySection.vue'
 import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
 import { exportOrderResults, exportOrdersAsZip, getSupplierGroups } from '@/composables/thread/useWeeklyOrderExport'
@@ -830,6 +845,9 @@ const summarySearchColor = ref('')
 
 const progressPos = ref<WeeklyOrderProgressPo[]>([])
 const progressLoading = ref(false)
+
+const processTrace = ref<WeeklyOrderProcessTraceResponse | null>(null)
+const processTraceLoading = ref(false)
 
 const deliverySummary = ref<DeliverySummary | null>(null)
 const deliverySummaryLoading = ref(false)
@@ -1079,6 +1097,19 @@ const loadProgressSummary = async () => {
   }
 }
 
+const loadProcessTrace = async () => {
+  if (!weekId.value) return
+  processTraceLoading.value = true
+  try {
+    processTrace.value = await weeklyOrderService.getProcessTrace(weekId.value)
+  } catch (err: unknown) {
+    snackbar.error(err instanceof Error ? err.message : 'Không thể tải truy xuất chỉ theo tuần')
+    processTrace.value = null
+  } finally {
+    processTraceLoading.value = false
+  }
+}
+
 const loadDeliverySummary = async () => {
   if (!weekId.value) return
   deliverySummaryLoading.value = true
@@ -1172,6 +1203,9 @@ watch(activeTab, (tab) => {
   if (tab === 'progress') {
     if (progressPos.value.length === 0) loadProgressSummary()
   }
+  if (tab === 'process-trace') {
+    if (!processTrace.value) loadProcessTrace()
+  }
   if (tab === 'deliveries' && !deliverySummary.value) {
     loadDeliverySummary()
   }
@@ -1204,13 +1238,15 @@ onMounted(async () => {
     checkInventoryDiff()
   }
   const tabParam = route.query.tab as string
-  if (tabParam && ['overview', 'reservations', 'loans', 'deliveries', 'calculation', 'progress'].includes(tabParam)) {
+  if (tabParam && ['overview', 'reservations', 'loans', 'deliveries', 'calculation', 'progress', 'process-trace'].includes(tabParam)) {
     activeTab.value = tabParam
   }
   if (activeTab.value === 'calculation') {
     loadCalculationResults()
   } else if (activeTab.value === 'progress') {
     loadProgressSummary()
+  } else if (activeTab.value === 'process-trace') {
+    loadProcessTrace()
   } else if (activeTab.value === 'reservations') {
     loadReservations()
   } else if (activeTab.value === 'loans') {
@@ -1252,10 +1288,12 @@ function statusColor(status: string): string {
 
 const reservationSummaryColumns: QTableColumn[] = [
   { name: 'thread_type_id', label: 'Loại chỉ', field: 'thread_type_id', align: 'left' },
-  { name: 'needed', label: 'Cần (cuộn)', field: 'needed', align: 'right' },
-  { name: 'reserved', label: 'Đã đặt trước (cuộn)', field: 'reserved', align: 'right' },
-  { name: 'shortage', label: 'Thiếu (cuộn)', field: 'shortage', align: 'right' },
-  { name: 'available_stock', label: 'Tồn kho', field: 'available_stock', align: 'right' },
+  { name: 'needed', label: 'Cần (QĐ)', field: 'needed', align: 'right', format: (v: number) => v.toLocaleString('vi-VN', { maximumFractionDigits: 2 }) },
+  { name: 'reserved', label: 'Đã đặt trước (QĐ)', field: 'reserved', align: 'right', format: (v: number) => v.toLocaleString('vi-VN', { maximumFractionDigits: 2 }) },
+  { name: 'reserved_physical_cones', label: 'Đã đặt trước (cuộn)', field: 'reserved_physical_cones', align: 'right' },
+  { name: 'shortage', label: 'Thiếu (QĐ)', field: 'shortage', align: 'right', format: (v: number) => v.toLocaleString('vi-VN', { maximumFractionDigits: 2 }) },
+  { name: 'available_stock', label: 'Tồn kho (QĐ)', field: 'available_stock', align: 'right', format: (v: number) => v.toLocaleString('vi-VN', { maximumFractionDigits: 2 }) },
+  { name: 'available_physical_cones', label: 'Tồn kho (cuộn)', field: 'available_physical_cones', align: 'right' },
   { name: 'status', label: 'Trạng thái', field: 'shortage', align: 'center' },
   { name: 'actions', label: '', field: 'actions', align: 'center' },
 ]

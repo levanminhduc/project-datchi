@@ -135,7 +135,13 @@ export interface ReservationSummary {
   thread_type_id: number
   needed: number
   reserved: number
+  reserved_physical_cones?: number
+  reserved_equivalent_cones?: number
   shortage: number
+  shortage_equivalent_cones?: number
+  available_stock?: number
+  available_physical_cones?: number
+  available_equivalent_cones?: number
 }
 
 export interface CreateLoanDTO {

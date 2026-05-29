@@ -181,6 +181,7 @@ declare module 'vue' {
     WaitlistWidget: typeof import('./components/thread/WaitlistWidget.vue')['default']
     WeekHistoryDialog: typeof import('./components/thread/weekly-order/WeekHistoryDialog.vue')['default']
     WeekInfoCard: typeof import('./components/thread/weekly-order/WeekInfoCard.vue')['default']
+    WeeklyOrderProcessTraceSection: typeof import('./components/thread/weekly-order/WeeklyOrderProcessTraceSection.vue')['default']
     WeighingDialog: typeof import('./components/thread/WeighingDialog.vue')['default']
     WeightMeterDisplay: typeof import('./components/thread/WeightMeterDisplay.vue')['default']
     WriteOffDialog: typeof import('./components/thread/WriteOffDialog.vue')['default']
