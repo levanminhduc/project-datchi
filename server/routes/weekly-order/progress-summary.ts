@@ -11,7 +11,10 @@ import {
 } from './transfer-by-calculation'
 import {
   type CalculationDataRow,
+  type SummaryQuotaRow,
   type StyleQuotaThread,
+  applySummaryQuotaSnapshot,
+  buildSummaryOnlyProgressPo,
   roundToTwoDecimals,
   buildPoStyleQuotaMap,
   fetchIssuedByPoStyleMultiWeek,
@@ -38,7 +41,7 @@ router.get(
       if (weekErr) throw weekErr
       if (!weekRow) return c.json({ data: null, error: 'Tuần không tồn tại' }, 404)
 
-      const [{ calculation_data }, orderItems, ratio] = await Promise.all([
+      const [{ calculation_data, summary_data }, orderItems, ratio] = await Promise.all([
         fetchCalculationData(weekId),
         fetchOrderItems(weekId),
         getPartialConeRatio(),
@@ -70,6 +73,11 @@ router.get(
         calculation_data as CalculationDataRow[],
         colorByName,
         colorById,
+      )
+      const summaryOnlyThreads = applySummaryQuotaSnapshot(
+        poStyleQuotaMap,
+        summary_data as SummaryQuotaRow[],
+        colorByName,
       )
 
       // Group issued data by po + style + thread
@@ -166,7 +174,7 @@ router.get(
             .filter(Boolean)
 
           const thread_lines = Array.from(threadMap.values()).map(t => {
-            const issuedKey = `${po.po_id ?? 'null'}_${styleId}_${t.thread_type_id}_${t.thread_color_id}`
+            const issuedKey = `${po.po_id ?? 'null'}_${styleId}_${t.thread_type_id}_${t.thread_color_id ?? ''}`
             const issuedEntry = issuedByKey.get(issuedKey)
             const issued_cones = issuedEntry?.issued ?? 0
             const returned_cones = issuedEntry?.returned ?? 0
@@ -217,7 +225,7 @@ router.get(
         // Build flat thread_lines at PO level (aggregated across styles)
         const poThreadMap = new Map<string, {
           thread_type_id: number
-          thread_color_id: number
+          thread_color_id: number | null
           supplier_name: string
           tex_number: string
           color_name: string
@@ -235,7 +243,7 @@ router.get(
         }
 
         const thread_lines = Array.from(poThreadMap.values()).map(t => {
-          const issuedKey = `${po.po_id ?? 'null'}_${t.thread_type_id}_${t.thread_color_id}`
+          const issuedKey = `${po.po_id ?? 'null'}_${t.thread_type_id}_${t.thread_color_id ?? ''}`
           const issuedEntry = issuedByPoThread.get(issuedKey)
           const issued_cones = issuedEntry?.issued ?? 0
           const returned_cones = issuedEntry?.returned ?? 0
@@ -282,6 +290,34 @@ router.get(
           thread_lines,
         }
       })
+
+      if (summaryOnlyThreads.length > 0) {
+        const summaryOnlyPo = buildSummaryOnlyProgressPo(summaryOnlyThreads, posResp.length + 1)
+        const existingNullPo = posResp.find(po => po.po_id == null)
+        if (existingNullPo) {
+          existingNullPo.thread_lines = [...existingNullPo.thread_lines, ...summaryOnlyPo.thread_lines]
+            .sort((a, b) => {
+              if (a.supplier_name !== b.supplier_name) return a.supplier_name.localeCompare(b.supplier_name)
+              if (a.tex_number !== b.tex_number) return a.tex_number.localeCompare(b.tex_number)
+              return a.color_name.localeCompare(b.color_name)
+            })
+
+          const total_quota = existingNullPo.thread_lines.reduce((s, l) => s + l.quota_cones, 0)
+          const total_issued = existingNullPo.thread_lines.reduce((s, l) => s + l.issued_cones, 0)
+          const total_returned = existingNullPo.thread_lines.reduce((s, l) => s + l.returned_cones, 0)
+          const total_net = roundToTwoDecimals(Math.max(0, total_issued - total_returned))
+          existingNullPo.summary = {
+            total_quota_cones: roundToTwoDecimals(total_quota),
+            total_issued_cones: roundToTwoDecimals(total_issued),
+            total_returned_cones: roundToTwoDecimals(total_returned),
+            total_net_issued: total_net,
+            total_pending_cones: roundToTwoDecimals(Math.max(0, total_quota - total_net)),
+            over_quota_cones: roundToTwoDecimals(Math.max(0, total_net - total_quota)),
+          }
+        } else {
+          posResp.push(summaryOnlyPo)
+        }
+      }
 
       return c.json({
         data: {
