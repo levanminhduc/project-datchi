@@ -80,6 +80,17 @@
         </div>
 
         <div class="row q-mt-md">
+          <div class="col-12">
+            <AppToggle
+              v-model="filters.mode"
+              true-value="detailed"
+              false-value="summary"
+              label="Chi tiết theo Bộ phận & Mã hàng"
+            />
+          </div>
+        </div>
+
+        <div class="row q-mt-md">
           <div class="col text-right">
             <AppButton
               color="primary"
@@ -101,6 +112,7 @@ import { computed, ref } from 'vue'
 import { format } from 'date-fns'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
+import AppToggle from '@/components/ui/inputs/AppToggle.vue'
 import AppWarehouseSelect from '@/components/ui/inputs/AppWarehouseSelect.vue'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import { useAuth } from '@/composables/useAuth'
@@ -188,6 +200,7 @@ async function onExport() {
       warehouse_name: await getWarehouseName(),
       report_number: generateReportNumber(),
       full_name: employee.value.fullName,
+      mode: filters.mode,
     }
 
     await exportFile(rows, meta)

@@ -10,6 +10,7 @@ interface DisplayFilters {
   from_date_display: string
   to_date_display: string
   warehouse_id: number | null
+  mode: 'summary' | 'detailed'
 }
 
 export function ddmmyyyyToISO(value: string): string {
@@ -23,6 +24,7 @@ export function useIssueExportHistory() {
     from_date_display: '',
     to_date_display: '',
     warehouse_id: null,
+    mode: 'summary',
   })
   const { isLoading, withLoading } = useLoading()
 
@@ -31,6 +33,7 @@ export function useIssueExportHistory() {
       from_date: ddmmyyyyToISO(filters.from_date_display),
       to_date: ddmmyyyyToISO(filters.to_date_display),
       warehouse_id: filters.warehouse_id,
+      mode: filters.mode,
     }
   }
 

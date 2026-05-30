@@ -560,10 +560,10 @@
 
         <q-card-actions align="right">
           <q-btn
+            v-close-popup
             flat
             label="Hủy"
             color="grey-7"
-            v-close-popup
           />
           <AppButton
             label="Gán"

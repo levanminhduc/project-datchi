@@ -20,6 +20,8 @@ export const issueHistoryService = {
       params.set('warehouse_id', String(filters.warehouse_id))
     }
 
+    params.set('mode', filters.mode)
+
     const response = await fetchApi<ApiResponse<IssueExportHistoryRow[]>>(
       `${BASE}/aggregated?${params.toString()}`,
     )

@@ -258,6 +258,7 @@ export const ExportHistoryQuerySchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'to_date phải là YYYY-MM-DD'),
     warehouse_id: z.coerce.number().int().positive().optional(),
+    mode: z.enum(['summary', 'detailed']).optional().default('summary'),
   })
   .refine((d) => d.from_date <= d.to_date, {
     message: 'from_date phải <= to_date',

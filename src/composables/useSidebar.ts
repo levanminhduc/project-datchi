@@ -46,7 +46,6 @@ const navItems: NavItem[] = [
       { label: 'Mượn Chỉ', icon: 'o_swap_horiz', to: '/thread/loans' },
       { label: 'Chuyển Kho', icon: 'o_compare_arrows', to: '/thread/batch/transfer' },
       { label: 'Chuyển kho theo Tuần', icon: 'swap_horiz', to: '/thread/transfer-reserved' },
-      { label: 'Trợ Lý Tra Cứu', icon: 'o_manage_search', to: '/thread/chat-assistant' },
     ]
   },
   { label: 'Kho', icon: 'o_inventory_2', to: '/kho#top' },
@@ -60,7 +59,8 @@ const navItems: NavItem[] = [
       { label: 'Màu Sắc', icon: 'o_palette', to: '/thread/colors' },
       { label: 'Nhà Cung Cấp', icon: 'o_store', to: '/thread/suppliers' },
       { label: 'Import Sub-Art', icon: 'o_upload_file', to: '/thread/sub-arts' },
-      { label: 'Lịch Sử Xuất Chỉ', icon: 'o_history', to: '/thread/issues/export-history' }
+      { label: 'Lịch Sử Xuất Chỉ', icon: 'o_history', to: '/thread/issues/export-history' },
+      { label: 'Trợ Lý Tra Cứu', icon: 'o_manage_search', to: '/thread/chat-assistant' }
     ]
   },
   {

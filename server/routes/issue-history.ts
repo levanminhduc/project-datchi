@@ -21,7 +21,10 @@ type AggregatedRow = {
   supplier_id: number
   supplier_name: string
   tex_number: string
+  tex_label: string
   total_full_cones: number
+  department?: string
+  style_code?: string
 }
 
 type RawLine = {
@@ -29,6 +32,7 @@ type RawLine = {
   issued_full: number
   thread_types: {
     tex_number: string | null
+    tex_label: string | null
     supplier_id: number
     suppliers: {
       id: number
@@ -39,7 +43,9 @@ type RawLine = {
     status: string
     updated_at: string
     source_warehouse_id: number | null
+    department: string
   }
+  styles: { style_code: string | null } | null
 }
 
 const BATCH_SIZE = 1000
@@ -54,14 +60,44 @@ function nextCalendarDay(yyyymmdd: string): string {
   return `${nextYear}-${nextMonth}-${nextDay}`
 }
 
-function sortAggregatedRows(rows: AggregatedRow[]): AggregatedRow[] {
+/**
+ * Robust tex comparator: tex_number can be numeric ('60', '100') or
+ * non-numeric ('TSP EB60', 'Elecut 60', 'Tơ 210'). If BOTH parse as finite
+ * numbers, compare numerically; otherwise fall back to locale compare.
+ */
+function compareTex(a: string, b: string): number {
+  const numA = Number.parseFloat(a)
+  const numB = Number.parseFloat(b)
+  if (Number.isFinite(numA) && Number.isFinite(numB)) {
+    return numA - numB
+  }
+  return a.localeCompare(b, 'vi')
+}
+
+function sortAggregatedRows(
+  rows: AggregatedRow[],
+  mode: 'summary' | 'detailed',
+): AggregatedRow[] {
+  if (mode === 'detailed') {
+    return rows.sort((a, b) => {
+      const departmentCompare = (a.department ?? '').localeCompare(b.department ?? '', 'vi')
+      if (departmentCompare !== 0) return departmentCompare
+
+      const styleCompare = (a.style_code ?? '').localeCompare(b.style_code ?? '', 'vi')
+      if (styleCompare !== 0) return styleCompare
+
+      const supplierCompare = a.supplier_name.localeCompare(b.supplier_name, 'vi')
+      if (supplierCompare !== 0) return supplierCompare
+
+      return compareTex(a.tex_number, b.tex_number)
+    })
+  }
+
   return rows.sort((a, b) => {
     const supplierCompare = a.supplier_name.localeCompare(b.supplier_name, 'vi')
     if (supplierCompare !== 0) return supplierCompare
 
-    const texA = Number.parseFloat(a.tex_number) || 0
-    const texB = Number.parseFloat(b.tex_number) || 0
-    return texA - texB
+    return compareTex(a.tex_number, b.tex_number)
   })
 }
 
@@ -78,21 +114,18 @@ issueHistory.get('/aggregated', async (c) => {
       )
     }
 
-    const { from_date, to_date, warehouse_id } = parsed.data
+    const { from_date, to_date, warehouse_id, mode } = parsed.data
     const lowerBound = `${from_date}T00:00:00+07:00`
     const upperBound = `${nextCalendarDay(to_date)}T00:00:00+07:00`
     const aggregated = new Map<string, AggregatedRow>()
     let lastId = 0
 
-    while (true) {
-      let query = supabase
-        .from('thread_issue_lines')
-        .select(
-          `
+    const summarySelect = `
           id,
           issued_full,
           thread_types!inner (
             tex_number,
+            tex_label,
             supplier_id,
             suppliers!inner ( id, name )
           ),
@@ -101,8 +134,30 @@ issueHistory.get('/aggregated', async (c) => {
             updated_at,
             source_warehouse_id
           )
-          `,
-        )
+          `
+    const detailedSelect = `
+          id,
+          issued_full,
+          thread_types!inner (
+            tex_number,
+            tex_label,
+            supplier_id,
+            suppliers!inner ( id, name )
+          ),
+          thread_issues!inner (
+            status,
+            updated_at,
+            source_warehouse_id,
+            department
+          ),
+          styles ( style_code )
+          `
+    const selectString = mode === 'detailed' ? detailedSelect : summarySelect
+
+    while (true) {
+      let query = supabase
+        .from('thread_issue_lines')
+        .select(selectString)
         .eq('thread_issues.status', 'CONFIRMED')
         .gte('thread_issues.updated_at', lowerBound)
         .lt('thread_issues.updated_at', upperBound)
@@ -127,18 +182,42 @@ issueHistory.get('/aggregated', async (c) => {
       for (const row of batch) {
         const supplier = row.thread_types.suppliers
         const texNumber = row.thread_types.tex_number ?? ''
-        const key = `${supplier.id}|${texNumber}`
-        const existing = aggregated.get(key)
+        const texLabel = row.thread_types.tex_label || texNumber || '-'
 
-        if (existing) {
-          existing.total_full_cones += row.issued_full
+        if (mode === 'detailed') {
+          const department = row.thread_issues.department
+          const styleCode = row.styles?.style_code || '(Không có mã hàng)'
+          const key = `${department}|${styleCode}|${supplier.id}|${texLabel}`
+          const existing = aggregated.get(key)
+
+          if (existing) {
+            existing.total_full_cones += row.issued_full
+          } else {
+            aggregated.set(key, {
+              department,
+              style_code: styleCode,
+              supplier_id: supplier.id,
+              supplier_name: supplier.name,
+              tex_number: texNumber,
+              tex_label: texLabel,
+              total_full_cones: row.issued_full,
+            })
+          }
         } else {
-          aggregated.set(key, {
-            supplier_id: supplier.id,
-            supplier_name: supplier.name,
-            tex_number: texNumber,
-            total_full_cones: row.issued_full,
-          })
+          const key = `${supplier.id}|${texLabel}`
+          const existing = aggregated.get(key)
+
+          if (existing) {
+            existing.total_full_cones += row.issued_full
+          } else {
+            aggregated.set(key, {
+              supplier_id: supplier.id,
+              supplier_name: supplier.name,
+              tex_number: texNumber,
+              tex_label: texLabel,
+              total_full_cones: row.issued_full,
+            })
+          }
         }
       }
 
@@ -147,7 +226,7 @@ issueHistory.get('/aggregated', async (c) => {
     }
 
     return c.json({
-      data: sortAggregatedRows([...aggregated.values()]),
+      data: sortAggregatedRows([...aggregated.values()], mode),
       error: null,
     })
   } catch (error) {
