@@ -1303,8 +1303,16 @@ onUnmounted(() => {
             class="q-mb-lg"
           >
             <q-card-section>
-              <div class="text-subtitle1 q-mb-md">
-                Bước 2: Chọn Đơn Hàng / Mã Hàng / Màu
+              <div class="q-mb-md">
+                <div class="text-subtitle1">
+                  Bước 2: Chọn Đơn Hàng / Mã Hàng / Màu
+                </div>
+                <div
+                  v-if="department"
+                  class="text-subtitle1 text-blue"
+                >
+                  Bộ phận: {{ department }}
+                </div>
               </div>
               <div class="row q-col-gutter-md items-end">
                 <div class="col-12 col-md-3">
