@@ -784,6 +784,7 @@ import { threadService } from '@/services/threadService'
 import { stockService } from '@/services/stockService'
 import { ApiError } from '@/services/api'
 import { supplierService } from '@/services/supplierService'
+import { formatTexWithLabel } from '@/utils/thread-format'
 
 // Composables
 const $q = useQuasar()
@@ -1256,9 +1257,8 @@ const manualTexOptions = computed(() => {
   return manualEntryThreadTypes.value
     .filter(tt => tt.tex_number != null)
     .map(tt => {
-      const texLabel = tt.tex_label?.trim()
       return {
-        label: texLabel ? `${tt.tex_number} - ${texLabel}` : `Tex ${tt.tex_number}`,
+        label: formatTexWithLabel(tt.tex_number, tt.tex_label),
         value: tt.id,
       }
     })

@@ -314,6 +314,7 @@
 import { ref, computed } from 'vue'
 import type { QTableColumn } from 'quasar'
 import type { ConeSummaryRow } from '@/types/thread'
+import { formatTexWithLabel } from '@/utils/thread-format'
 
 // Props
 interface Props {
@@ -336,12 +337,14 @@ const emit = defineEmits<{
 // Local state
 const filter = ref('')
 const filterColor = ref(true)
-const getTexDisplay = (row: ConeSummaryRow): string => row.tex_label || row.tex_number || '-'
+const getTexDisplay = (row: ConeSummaryRow): string =>
+  row.tex_number || row.tex_label ? formatTexWithLabel(row.tex_number, row.tex_label) : '-'
 
 const getDisplayName = (row: ConeSummaryRow): string => {
+  const texDisplay = getTexDisplay(row)
   const parts = [
     row.supplier_name || null,
-    getTexDisplay(row) !== '-' ? `TEX ${getTexDisplay(row)}` : null,
+    texDisplay !== '-' ? texDisplay : null,
     row.color_data?.name || null,
   ].filter(Boolean)
   return parts.join(' - ')

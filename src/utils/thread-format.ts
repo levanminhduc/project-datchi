@@ -18,6 +18,28 @@ export function formatTexDisplay(texNumber: number | string | null | undefined):
   return value ? `Tex ${value}` : 'Tex'
 }
 
+function normalizeTexDisplayKey(value: number | string | null | undefined): string {
+  return formatTexDisplay(value).toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ').trim()
+}
+
+export function formatTexWithLabel(
+  texNumber: number | string | null | undefined,
+  texLabel: string | null | undefined,
+): string {
+  const rawTexNumber = String(texNumber ?? '').trim()
+  const rawTexLabel = texLabel?.trim()
+  const texDisplay = rawTexNumber ? formatTexDisplay(rawTexNumber) : formatTexDisplay(rawTexLabel)
+
+  if (!rawTexLabel) return texDisplay
+  const texLabelDisplay = formatTexDisplay(rawTexLabel)
+  const texDisplayKey = normalizeTexDisplayKey(texDisplay)
+  const texLabelDisplayKey = normalizeTexDisplayKey(texLabelDisplay)
+  if (texLabelDisplayKey === texDisplayKey || texLabelDisplayKey.startsWith(`${texDisplayKey} `)) {
+    return texLabelDisplay
+  }
+  return `${texDisplay} - ${rawTexLabel}`
+}
+
 export function formatThreadTypeDisplay(
   supplierName: string | null | undefined,
   texNumber: number | string | null | undefined,

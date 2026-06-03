@@ -315,13 +315,14 @@ import { computed } from 'vue'
 import type { QTableColumn } from 'quasar'
 import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown } from '@/types/thread'
 import ConeReservedByWeekTable from './ConeReservedByWeekTable.vue'
+import { formatTexWithLabel } from '@/utils/thread-format'
 
 const getDisplayName = (row: ConeSummaryRow | null): string => {
   if (!row) return ''
-  const tex = row.tex_label || row.tex_number
+  const tex = row.tex_number || row.tex_label ? formatTexWithLabel(row.tex_number, row.tex_label) : null
   const parts = [
     row.supplier_name || null,
-    tex ? `TEX ${tex}` : null,
+    tex,
     row.color_data?.name || null,
   ].filter(Boolean)
   return parts.join(' - ')

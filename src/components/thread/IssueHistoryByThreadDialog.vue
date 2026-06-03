@@ -185,6 +185,7 @@ import { ref, computed, watch } from 'vue'
 import type { QTableColumn } from 'quasar'
 import type { ConeSummaryRow } from '@/types/thread'
 import { issueV2Service } from '@/services/issueV2Service'
+import { formatTexWithLabel } from '@/utils/thread-format'
 
 interface Props {
   modelValue: boolean
@@ -217,9 +218,12 @@ const loading = ref(false)
 
 const threadLabel = computed(() => {
   if (!props.threadType) return ''
+  const texDisplay = props.threadType.tex_number || props.threadType.tex_label
+    ? formatTexWithLabel(props.threadType.tex_number, props.threadType.tex_label)
+    : null
   const parts = [
     props.threadType.supplier_name,
-    props.threadType.tex_number ? `TEX ${props.threadType.tex_label || props.threadType.tex_number}` : null,
+    texDisplay,
     props.threadType.color_data?.name,
   ].filter(Boolean)
   return parts.join(' - ')
