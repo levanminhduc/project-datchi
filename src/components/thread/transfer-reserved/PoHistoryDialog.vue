@@ -90,7 +90,7 @@
           >
             <template #body-cell-thread="props">
               <q-td :props="props">
-                {{ props.row.supplier_name }} - Tex {{ props.row.tex_number }} - {{ props.row.color_name }}
+                {{ formatThreadTypeDisplay(props.row.supplier_name, props.row.tex_number, props.row.color_name) }}
               </q-td>
             </template>
             <template #body-cell-status="props">
@@ -155,7 +155,7 @@
               >
                 <template #body-cell-thread="props">
                   <q-td :props="props">
-                    {{ props.row.supplier_name }} - Tex {{ props.row.tex_number }} - {{ props.row.color_name }}
+                    {{ formatThreadTypeDisplay(props.row.supplier_name, props.row.tex_number, props.row.color_name) }}
                   </q-td>
                 </template>
               </DataTable>
@@ -182,6 +182,7 @@ import AppButton from '@/components/ui/buttons/AppButton.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
 import { transferReservedService } from '@/services/transferReservedService'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { formatThreadTypeDisplay } from '@/utils/thread-format'
 import type { TransferThreadLine, TransferPoGroup, PoTransferTransaction } from '@/types/transferReserved'
 import type { QTableColumn } from 'quasar'
 

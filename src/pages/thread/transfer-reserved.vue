@@ -102,7 +102,7 @@
         :key="`${line.thread_type_id}_${line.thread_color_id}`"
         class="q-py-xs"
       >
-        <span>{{ line.supplier_name }} - Tex {{ line.tex_number }} - {{ line.color_name }}</span>
+        <span>{{ formatThreadTypeDisplay(line.supplier_name, line.tex_number, line.color_name) }}</span>
         <span class="text-caption q-ml-md">
           <span
             v-if="line.is_overflow"
@@ -174,6 +174,7 @@ import { warehouseService } from '@/services/warehouseService'
 import PoSection from '@/components/thread/transfer-reserved/PoSection.vue'
 import PoHistoryDialog from '@/components/thread/transfer-reserved/PoHistoryDialog.vue'
 import PoSearchPopup from '@/components/thread/transfer-reserved/PoSearchPopup.vue'
+import { formatThreadTypeDisplay } from '@/utils/thread-format'
 import type { TransferThreadLine, TransferPoGroup } from '@/types/transferReserved'
 
 const {

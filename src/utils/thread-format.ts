@@ -9,14 +9,25 @@ export function formatStyleDisplay(
   return `${code} - ${name}`
 }
 
+export function formatTexDisplay(texNumber: number | string | null | undefined): string {
+  const tex = String(texNumber ?? '').trim()
+  if (!tex) return 'Tex ?'
+  const hasTexPrefix = /^tex(?:\s+|(?=\d)|$)/i.test(tex)
+  if (!hasTexPrefix) return `Tex ${tex}`
+  const value = tex.replace(/^tex/i, '').trim()
+  return value ? `Tex ${value}` : 'Tex'
+}
+
 export function formatThreadTypeDisplay(
   supplierName: string | null | undefined,
   texNumber: number | string | null | undefined,
   colorName: string | null | undefined,
   fallbackName?: string,
 ): string {
-  if (!supplierName) return fallbackName || '-'
-  const parts = [supplierName, `TEX ${texNumber ?? '?'}`]
-  if (colorName) parts.push(colorName)
+  const supplier = supplierName?.trim()
+  const color = colorName?.trim()
+  if (!supplier) return fallbackName || '-'
+  const parts = [supplier, formatTexDisplay(texNumber)]
+  if (color) parts.push(color)
   return parts.join(' - ')
 }

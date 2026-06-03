@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { transferReservedService } from '@/services/transferReservedService'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { formatThreadTypeDisplay } from '@/utils/thread-format'
 import type {
   TransferByCalcResponse,
   TransferReservedItem,
@@ -73,7 +74,7 @@ export function useTransferReserved() {
         available_partial: 0,
         full_quantity: fullAtSource,
         partial_quantity: partialAtSource,
-        label: `${line.supplier_name} - Tex ${line.tex_number} - ${line.color_name}`,
+        label: formatThreadTypeDisplay(line.supplier_name, line.tex_number, line.color_name),
       })
     }
     selected.value = new Map(selected.value)

@@ -144,6 +144,7 @@
 import { computed } from 'vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import type { TransferThreadLine, TransferPoGroup } from '@/types/transferReserved'
+import { formatThreadTypeDisplay } from '@/utils/thread-format'
 
 const props = defineProps<{
   poId: number | null
@@ -184,7 +185,7 @@ const columns = [
 ]
 
 function rowLabel(row: TransferThreadLine) {
-  return `${row.supplier_name} - Tex ${row.tex_number} - ${row.color_name}`
+  return formatThreadTypeDisplay(row.supplier_name, row.tex_number, row.color_name)
 }
 
 function isDisabledByOther(row: TransferThreadLine) {
