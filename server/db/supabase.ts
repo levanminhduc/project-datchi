@@ -3,7 +3,7 @@ import { existsSync } from 'fs'
 import dotenv from 'dotenv'
 
 if (existsSync('.env')) {
-  dotenv.config()
+  dotenv.config({ override: true })
 }
 
 const supabaseUrl =

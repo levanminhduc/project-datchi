@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'fs'
 import dotenv from 'dotenv'
 
 if (existsSync('.env')) {
-  dotenv.config()
+  dotenv.config({ override: true })
 }
 
 import authRouter from './routes/auth'

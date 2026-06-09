@@ -138,6 +138,48 @@ async function fetchColorSpecs(threadTypeIds: number[], colorIds: number[]): Pro
   return (data ?? []) as ColorSpecRow[]
 }
 
+export async function getChatStyles(search: string, limit = 10): Promise<Array<{ id: number; style_code: string; style_name: string | null; fabric_type: string | null }>> {
+  const safe = sanitizeSearchTerm(search)
+  if (!safe) return []
+  const { data, error } = await supabase
+    .from('styles')
+    .select('id, style_code, style_name, fabric_type')
+    .is('deleted_at', null)
+    .or(`style_code.ilike.%${safe}%,style_name.ilike.%${safe}%`)
+    .order('style_code', { ascending: true })
+    .limit(Math.min(limit, 20))
+  if (error) throw error
+  return (data ?? []) as Array<{ id: number; style_code: string; style_name: string | null; fabric_type: string | null }>
+}
+
+export async function getChatPurchaseOrders(params: {
+  po_number?: string
+  customer_name?: string
+  status?: string
+  limit?: number
+}): Promise<Array<{ id: number; po_number: string; customer_name: string | null; status: string; order_date: string | null; delivery_date: string | null; week: string | null }>> {
+  let dbQuery = supabase
+    .from('purchase_orders')
+    .select('id, po_number, customer_name, status, order_date, delivery_date, week')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(Math.min(params.limit ?? 10, 20))
+
+  if (params.po_number) {
+    dbQuery = dbQuery.ilike('po_number', `%${sanitizeSearchTerm(params.po_number)}%`)
+  }
+  if (params.customer_name) {
+    dbQuery = dbQuery.ilike('customer_name', `%${sanitizeSearchTerm(params.customer_name)}%`)
+  }
+  if (params.status) {
+    dbQuery = dbQuery.eq('status', params.status)
+  }
+
+  const { data, error } = await dbQuery
+  if (error) throw error
+  return (data ?? []) as Array<{ id: number; po_number: string; customer_name: string | null; status: string; order_date: string | null; delivery_date: string | null; week: string | null }>
+}
+
 async function fetchDirectSpecs(threadTypeIds: number[]): Promise<StyleSpecRow[]> {
   if (threadTypeIds.length === 0) return []
   const { data, error } = await supabase

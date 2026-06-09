@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { authorizeLogout, revokeLogout, clearAll } from '@/lib/supabase-protected-storage'
+import { authorizeLogout, revokeLogout, clearAll, getBackup } from '@/lib/supabase-protected-storage'
 import type { Session } from '@supabase/supabase-js'
 import { isAuthErrorPermanent } from './auth-error-utils'
 
@@ -332,6 +332,20 @@ export async function fetchApiRaw(
     data: { session },
   } = await supabase.auth.getSession()
   let token = session?.access_token
+
+  if (!token && !isLoggingOut) {
+    const backup = getBackup()
+    if (backup) {
+      try {
+        const { data } = await supabase.auth.setSession({
+          access_token: backup.access_token,
+          refresh_token: backup.refresh_token,
+        })
+        token = data.session?.access_token
+      } catch {
+      }
+    }
+  }
 
   if (token && isTokenExpiringSoon(token)) {
     try {

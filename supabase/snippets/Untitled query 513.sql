@@ -1,16 +1,15 @@
-SELECT
-  CASE WHEN i.lot_number LIKE 'WO-%' THEN 'Nhập mới qua delivery'
-       ELSE 'Đặt trước từ tồn kho cũ' END                       AS "Nguồn",
-  w.name                                                        AS "Kho",
-  i.lot_number                                                  AS "Lô (lot)",
-  to_char(i.received_date,'DD/MM/YYYY')                         AS "Ngày nhận",
-  count(*)                                                      AS "Số cuộn",
-  i.status::text
-    || CASE WHEN i.status='AVAILABLE' THEN ' (chưa giữ chỗ)' ELSE '' END AS "Trạng thái"
-FROM thread_inventory i
-LEFT JOIN warehouses w ON w.id = i.warehouse_id
-WHERE i.thread_type_id = 80
-  AND i.color_id = 2068
-  AND (i.reserved_week_id = 57 OR i.lot_number = 'WO-57')
-GROUP BY 1, w.name, i.lot_number, i.received_date, i.status
-ORDER BY i.received_date, w.name, i.status DESC;
+SELECT dpa.id,
+       po.po_number,
+       s.style_code,
+       sc.color_name,
+       dpa.department,
+       dpa.product_quantity
+FROM dept_product_allocations dpa
+JOIN purchase_orders po ON po.id = dpa.po_id
+JOIN styles s           ON s.id  = dpa.style_id
+JOIN style_colors sc    ON sc.id = dpa.style_color_id
+WHERE po.po_number = 'OSB255079'
+  AND s.style_code = '1114520'
+  AND sc.color_name = 'DKNV'
+  AND dpa.department = 'DK01'
+  AND dpa.deleted_at IS NULL;

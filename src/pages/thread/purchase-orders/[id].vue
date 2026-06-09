@@ -156,6 +156,19 @@
             Danh sách mã hàng
           </div>
           <q-space />
+          <q-input
+            v-model="searchText"
+            dense
+            outlined
+            placeholder="Tìm mã hàng..."
+            class="q-mr-sm"
+            style="width: 200px"
+            clearable
+          >
+            <template #prepend>
+              <q-icon name="search" />
+            </template>
+          </q-input>
           <q-btn
             color="primary"
             icon="add"
@@ -167,7 +180,7 @@
 
         <q-table
           flat
-          :rows="items"
+          :rows="filteredItems"
           :columns="itemColumns"
           :loading="loadingItems"
           row-key="id"
@@ -323,6 +336,17 @@ const loadingItems = ref(false)
 const showAddItemDialog = ref(false)
 const showHistoryDialog = ref(false)
 const selectedItem = ref<POItem | null>(null)
+const searchText = ref('')
+
+const filteredItems = computed(() => {
+  if (!searchText.value) return items.value
+  const keyword = searchText.value.toLowerCase()
+  return items.value.filter(item =>
+    item.style?.style_code?.toLowerCase().includes(keyword)
+    || item.style?.style_name?.toLowerCase().includes(keyword)
+    || item.finished_product_code?.toLowerCase().includes(keyword)
+  )
+})
 
 const totalQuantity = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
 const existingStyleIds = computed(() => items.value.map(item => item.style_id))

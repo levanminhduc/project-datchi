@@ -1,145 +1,91 @@
 # CLAUDE.md
 
-## Role
+## 1. Project Overview
 
-Senior developer. ALWAYS rephrase/clarify requirements → ask for confirmation before implementing. 
-When asked about the codebase, project structure, or to find code, always use the augment-context-engine MCP tool (codebase-retrieval) in the root workspace first before reading individual files. Use codebase-retrieval instead of the Explore subagent for codebase exploration and search tasks.
-## Project Context
+# CLAUDE.md
 
-**Thread Inventory Management System** — Vietnamese B2B app for garment industry.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Stack:** Vue 3 + Quasar 2 + TypeScript 5.9 + Vite 8 | Hono 4 (Node.js) | Supabase (PostgreSQL) + Zod 4
+When asked about the codebase, project structure, or to find code, always use the context-engine MCP tool (codebase-retrieval) in the root workspace first before reading individual files. Use `codebase-retrieval` instead of the Explore subagent for codebase exploration and search tasks.
 
-**Domains:** Thread master data, Inventory (kg + meters), Allocations (FEFO), Weekly ordering, Delivery, Issue V2, Reports, Dashboard, HR/Auth (RBAC), Purchase Orders, Notifications (Telegram/Email)
+When you need to read a specific file but don't know the exact line range, use the file-retrieval MCP tool instead of reading the entire file. Describe what information you need and it returns only the relevant snippets with line numbers. Use the Read tool with the returned line ranges (expanded as needed) to get current content before making edits.
 
-## UI Language
+Thread Inventory Management System for Vietnamese garment manufacturing (B2B).
+Tracks thread cones from purchase order through delivery, allocation, issue to production, and recovery.
+Core invariant: a thread type identity = exact combination of Supplier (NCC) + Tex number + Thread color — never merge inventory across this boundary.
 
-All user-facing text MUST be in **Vietnamese**:
-- Success/error messages: `"Lưu thành công"`, `"Không tìm thấy dữ liệu"`
-- Validation messages: `"Vui lòng nhập tên"`, `"Số lượng phải lớn hơn 0"`
-- Button labels, form labels, table headers
-- Toast/snackbar notifications
+## 2. Tech Stack
 
-Code comments and variable names remain in English.
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| Frontend | Vue 3 + Quasar 2 | 3.5.21 + 2.17.10 |
+| Language | TypeScript | 5.9.2 |
+| Build | Vite | 8.0.11 |
+| Backend | Hono on Node.js (tsx) | 4.11.5 + 4.21.0 |
+| Database | Supabase PostgreSQL | cloud + local |
+| Validation | Zod | 4.3.6 |
+| State | Pinia | 3.0.4 |
+| Auth | jose (JWT) | 6.1.3 |
+| Testing | Playwright | 1.58.2 |
 
-## Key Directories
+## 3. Dev Commands
 
-| Directory | Purpose |
-|-----------|---------|
-| `server/routes/` | Hono API endpoints |
-| `server/middleware/` | Auth, validation middleware |
-| `server/validation/` | Zod schemas |
-| `src/pages/` | Vue pages (file-based routing) |
-| `src/composables/` | Vue composables (business logic) |
-| `src/services/` | API service layer (`fetchApi` calls) |
-| `src/components/ui/` | Reusable UI components (App*) |
-| `src/components/thread/` | Domain-specific components |
-| `supabase/migrations/` | Database migrations |
+```bash
+npm install             # Install dependencies
+npm run dev             # Frontend only (Vite :5173)
+npm run server          # Backend only (Hono :3000)
+npm run dev:all         # Both concurrently
 
-## CRITICAL SAFETY RULES
+npm run type-check      # vue-tsc --build --force
+npm run lint            # ESLint --fix
+npm run build           # type-check + vite build
 
-| Command | Consequence | Requirement |
-|---------|-------------|-------------|
-| `supabase db reset` | **DELETES ALL DATA** | NEVER run |
-| `DROP TABLE`, `TRUNCATE` | Data loss | Ask user first |
-| `git push -f` | Lost history | Ask user first |
+npm run e2e             # Playwright headless
+npm run e2e:ui          # Playwright UI mode
+npm run e2e:headed      # Playwright headed
 
-## Business Rules (Domain-Critical)
-
-### Thread Type Identity — 1 Thread Type = Unique (Supplier + Tex + Color)
-
-**Logical identifier:** `supplier_id + tex_number + color_id`
-
-- Same tex + color but **different supplier** → **different `thread_type_id`** → separate inventory
-- Same supplier + tex but **different color** (e.g., C9700 vs C9701) → **MUST be 2 separate rows**, NEVER merge
-- Display format: `"Supplier - TEX xxx - Color"` (e.g., `Coats Epic - TEX Tex 24 - C9700`)
-
-### ⚠️ CRITICAL: `color_id` source depends on context (DO NOT mix up)
-
-**`thread_types.color_id` IS CURRENTLY NULL FOR ALL RECORDS** — DO NOT use this column to determine color.
-
-| Context | Correct Table/Column | Notes |
-|---------|----------------------|-------|
-| **Inventory** | `thread_inventory.color_id` | Each cone in stock has actual color |
-| **PO/Style calculation** | `style_color_thread_specs.thread_color_id` | Spec defines thread color for style+color |
-| **Aggregation key** | `${thread_type_id}_${thread_color_id}` (number) | DO NOT use `thread_color` (string) — causes wrong merge when duplicate/NULL |
-| **❌ NEVER use** | `thread_types.color_id` | All NULL → all colors merge into 1 key |
-
-**Correct aggregation pattern:**
-```typescript
-const key = `${thread_type_id}_${thread_color_id ?? ''}`  // ✅ ID number
-const key = `${thread_type_id}_${thread_color ?? ''}`     // ❌ string name → wrong merge
+supabase migration up   # Apply pending DB migrations (SAFE)
+psql -h 127.0.0.1 -p 55422 -U postgres -d postgres
+npm run db:seed         # Seed master data (local only)
 ```
 
-**When adding new endpoint/composable with color aggregation:**
-1. Get `thread_color_id` from correct source per context (see table above)
-2. Use `??` (nullish) instead of `||` to keep `0` as valid ID
-3. Keep `thread_color` (string name) only for **display**, not as key
+## 4. Core Logic Summary
 
-## Architecture
+**Thread type identity:** 1 thread type = Supplier + Tex number + Color. Different supplier or different color = different thread type, separate inventory.
 
-```
-Supabase (PostgreSQL) → Hono API (server/) → Vite proxy → fetchApi() → composables → pages → App* components
-```
+**Cone-level inventory:** Every physical cone is a row in `thread_inventory` with a unique ID, status, and full audit trail via `thread_movements`.
 
-- Frontend NEVER calls Supabase directly for CRUD → always through Hono API
-- Exception: Realtime subscriptions use Supabase client directly
-- Auth: Supabase Auth → `fetchApi()` attaches Bearer → `authMiddleware` verifies JWT
+**Dual UoM:** Each cone tracks `quantity_meters` AND `weight_grams`. Both must be updated on every movement.
 
-## Karpathy Rules
+**FEFO allocation:** Cones allocated First-Expired First-Out via RPC `fn_dept_allocate`. AllocationStatus: PENDING → CONFIRMED → ISSUED.
 
-### Surgical Changes
-Only modify the exact lines requested. Do not reformat/refactor adjacent code.
+**Issue V2:** Multi-color issue flow. RPC `fn_issue_cones_with_movements`. Idempotency log prevents double-execute on retry.
 
-### Goal-Driven Execution
-"Fix bug" → "Write failing test → fix code → verify test passes". Do not claim "fixed" without evidence.
+**Recovery:** Cones returned from production → status transitions back to AVAILABLE. No dedicated RPC — handled in `server/routes/recovery.ts`.
 
-## Anti-patterns
+**Weekly order → reservation → loan:** Calculate needs → reserve stock (`fn_reserve_from_stock`) → optional loans between depts (`fn_batch_borrow_thread`) → transfer reserved across POs.
 
-**Strict (NEVER do):**
+## 5. Key Constraints
 
-| Don't | Do Instead |
-|-------|------------|
-| `<input type="date">` | `<DatePicker>` |
-| `fetch('/api/...')` | `fetchApi()` (exception: offline queue replay, SSE streaming, version check) |
-| `q-select`, `q-editor` | `AppSelect`, `AppEditor` |
-| `$q.dialog()` | `useConfirm()` |
-| `as any` / `@ts-ignore` | Fix types (exception: Web Serial / Supabase internal types) |
-| `createFoo(formData)` reactive | Spread: `createFoo({ ...formData })` |
-| Supabase `.select()` without `.limit()` | Add `.limit(N)` / `.single()` / `.maybeSingle()` |
-| Query N+1 | Batch: `.in('id', ids)` / RPC / view |
+- **`supabase db reset` — NEVER run.** Deletes all data. Use `supabase migration up` only.
+- **Never delete data rows.** Use soft-delete (`deleted_at` or status enum). No `DELETE`/`TRUNCATE`/`DROP` without explicit user confirmation.
+- **Never merge inventory** across supplier + tex + color boundary.
+- **`thread_types.color_id` is NULL for all records** — never use it as color source. Use `thread_inventory.color_id` for stock, `style_color_thread_specs.thread_color_id` for PO specs.
+- **Frontend CRUD always via Hono API** — never call Supabase directly for data mutations. Use `fetchApi()`, not raw `fetch()`.
+- **Use App* wrappers:** `AppSelect` (not `q-select`), `AppEditor` (not `q-editor`), `DatePicker` (not `<input type="date">`), `useConfirm()` (not `$q.dialog()`).
+- **Vietnamese for all user-facing text** — messages, labels, toasts, validation, buttons.
+- **Stock-changing actions need audit trail** — every inventory mutation must log to `thread_movements` or use an RPC that does so internally.
+- **Schema changes via migrations only** — new tables, enums, columns: create a `.sql` file in `supabase/migrations/`.
 
-**Either acceptable (context-dependent — see `frontend-conventions.md`):**
+## 6. Additional Documentation
 
-| Quasar | Wrapper | Use raw when |
-|--------|---------|--------------|
-| `q-input` | `AppInput` | Search field with icon slot |
-| `q-btn` | `AppButton` | Inline actions |
-| `q-table` | `DataTable` | Simple tables, no advanced filtering |
-
-## Conventions
-
-- **DB:** `snake_case`, soft delete (`deleted_at` HOẶC `status` enum cho lifecycle tables). See `db-conventions.md`
-- **API:** `{ data, error: string | null, message? }`. See `api-conventions.md`
-- **Frontend:** App* wrappers (strict for `q-select`/`q-editor`/`$q.dialog`/`DatePicker`); `q-input`/`q-btn`/`q-table` either acceptable. See `frontend-conventions.md`
-- **Rotating input placeholder:** For AppInput rotating helper text, use `.claude/skills/hieu-ung-nhay-chu-input/SKILL.md` when present. Key rules: render an overlay span after `AppInput`, set `hide-bottom-space`, keep `aria-label`, hide while focused or when value length > 0, center against `.q-field__control`, and verify with browser.
-- **Files:** Composables/services/utils max 200 lines. UI components max 300. Pages/routes max 500 (soft) — >800 cần lý do.
-- **Naming:** kebab-case preferred for new files. Existing camelCase files (`purchaseOrders.ts`, `useInventory.ts`) không rename — chỉ áp dụng cho file mới.
-
-## Rules & References
-
-Auto-load from `.claude/rules/`:
-- `development-rules.md` — Code patterns, Karpathy rules, pre-commit checklist
-- `anti-patterns-examples.md` — Before/after diffs (TypeScript/Vue)
-- `project-reference.md` — Pattern references, key files, commands
-- `primary-workflow.md` — Before/during/after code flow
-- `orchestration-protocol.md` — When to spawn subagents
-- `osf-workflow.md` — OpenSpec workflow
-- `notification-system.md` — Notification architecture
-- `large-dataset-pattern.md` — Pagination patterns
-- `security-rules.md` — RLS, JWT custom claims, permission naming
-- `server-patterns.md` — RPC, idempotency log, file upload patterns
-
-## Python Scripts
-
-Windows: `.claude\skills\.venv\Scripts\python.exe` | Linux/macOS: `.claude/skills/.venv/bin/python3`
+| File | When to read |
+|------|-------------|
+| `.claude/docs/architecture.md` | Understanding request flow, layer responsibilities, dir structure |
+| `.claude/docs/thread-domain.md` | Thread identity rules, cone lifecycle, FEFO, dual UoM, color ID gotchas |
+| `.claude/docs/database-rpcs-migrations.md` | Writing queries, calling RPCs, migration rules, PostgREST limits |
+| `.claude/docs/frontend-conventions.md` | Component wrappers, fetchApi, TypeScript rules, pagination |
+| `.claude/docs/backend-api.md` | Response format, route order, validation, error handling |
+| `.claude/docs/auth-permissions.md` | JWT claims, requirePermission, adding permissions, RLS |
+| `.claude/docs/weekly-order-issue-recovery.md` | Weekly order flow, Issue V2, recovery, loans, schema exceptions |
+| `.claude/docs/safety-and-workflow.md` | Dangerous commands, surgical changes, pre-commit checklist |

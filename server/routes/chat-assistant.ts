@@ -9,6 +9,8 @@ import {
   extractChatTex,
 } from '../utils/chat-assistant-parser'
 import { getChatStock, getChatUsage, resolveChatThreadRefs } from '../utils/chat-assistant-data'
+import { chatWithGemini, GeminiChatError, getGeminiChatConfig } from '../utils/chat-assistant-gemini'
+import { chatWithOpenAI, OpenAIChatError, getOpenAIChatConfig } from '../utils/chat-assistant-openai'
 
 const chatAssistant = new Hono()
 
@@ -171,6 +173,54 @@ chatAssistant.post('/query', requireAllPermissions('thread.inventory.view', 'thr
         return c.json({ data, error: null })
       } catch (err) {
         if (err instanceof ChatbotProxyError) {
+          return c.json({ data: null, error: err.message }, err.statusCode)
+        }
+        throw err
+      }
+    }
+
+    const openaiConfig = getOpenAIChatConfig()
+    if (openaiConfig) {
+      try {
+        const result = await chatWithOpenAI(openaiConfig, message)
+        const data: ChatAssistantResult = {
+          answer: result.answer,
+          term: null,
+          tex: null,
+          intents: [],
+          stock: [],
+          usage: [],
+          suggestions: CHAT_ASSISTANT_EXAMPLES,
+          source_endpoints: result.source_endpoints,
+          context: { tools_used: result.tools_used },
+        }
+        return c.json({ data, error: null })
+      } catch (err) {
+        if (err instanceof OpenAIChatError) {
+          return c.json({ data: null, error: err.message }, err.statusCode)
+        }
+        throw err
+      }
+    }
+
+    const geminiConfig = getGeminiChatConfig()
+    if (geminiConfig) {
+      try {
+        const result = await chatWithGemini(geminiConfig, message)
+        const data: ChatAssistantResult = {
+          answer: result.answer,
+          term: null,
+          tex: null,
+          intents: [],
+          stock: [],
+          usage: [],
+          suggestions: CHAT_ASSISTANT_EXAMPLES,
+          source_endpoints: result.source_endpoints,
+          context: { tools_used: result.tools_used },
+        }
+        return c.json({ data, error: null })
+      } catch (err) {
+        if (err instanceof GeminiChatError) {
           return c.json({ data: null, error: err.message }, err.statusCode)
         }
         throw err
