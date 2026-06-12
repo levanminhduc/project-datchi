@@ -143,53 +143,63 @@
                     </div>
                   </div>
                   <div class="col-auto row q-gutter-sm">
-                    <q-btn-dropdown
-                      flat
-                      dense
-                      color="primary"
-                      icon="file_download"
-                      label="Xuất Excel"
-                      no-caps
-                    >
-                      <q-list dense>
-                        <q-item
-                          v-close-popup
-                          clickable
-                          @click="handleExportAll(order)"
-                        >
-                          <q-item-section avatar>
-                            <q-icon
-                              name="o_list_alt"
-                              color="primary"
-                            />
-                          </q-item-section>
-                          <q-item-section>
-                            <q-item-label>Xuất tất cả</q-item-label>
-                            <q-item-label caption>
-                              {{ order.summary_all.length }} loại chỉ
-                            </q-item-label>
-                          </q-item-section>
-                        </q-item>
-                        <q-item
-                          v-close-popup
-                          clickable
-                          @click="handleExportFiltered(order)"
-                        >
-                          <q-item-section avatar>
-                            <q-icon
-                              name="o_filter_alt"
-                              color="positive"
-                            />
-                          </q-item-section>
-                          <q-item-section>
-                            <q-item-label>Xuất chỉ cần đặt</q-item-label>
-                            <q-item-label caption>
-                              {{ order.summary_preview.length }} loại chỉ
-                            </q-item-label>
-                          </q-item-section>
-                        </q-item>
-                      </q-list>
-                    </q-btn-dropdown>
+                    <span style="display: inline-block;">
+                      <q-btn-dropdown
+                        flat
+                        dense
+                        color="primary"
+                        icon="file_download"
+                        label="Xuất Excel"
+                        no-caps
+                        disable
+                      >
+                        <q-list dense>
+                          <q-item
+                            v-close-popup
+                            clickable
+                            @click="handleExportAll(order)"
+                          >
+                            <q-item-section avatar>
+                              <q-icon
+                                name="o_list_alt"
+                                color="primary"
+                              />
+                            </q-item-section>
+                            <q-item-section>
+                              <q-item-label>Xuất tất cả</q-item-label>
+                              <q-item-label caption>
+                                {{ order.summary_all.length }} loại chỉ
+                              </q-item-label>
+                            </q-item-section>
+                          </q-item>
+                          <q-item
+                            v-close-popup
+                            clickable
+                            @click="handleExportFiltered(order)"
+                          >
+                            <q-item-section avatar>
+                              <q-icon
+                                name="o_filter_alt"
+                                color="positive"
+                              />
+                            </q-item-section>
+                            <q-item-section>
+                              <q-item-label>Xuất chỉ cần đặt</q-item-label>
+                              <q-item-label caption>
+                                {{ order.summary_preview.length }} loại chỉ
+                              </q-item-label>
+                            </q-item-section>
+                          </q-item>
+                        </q-list>
+                      </q-btn-dropdown>
+                      <q-tooltip
+                        anchor="top middle"
+                        self="bottom middle"
+                        :offset="[0, 8]"
+                      >
+                        Lãnh đạo chưa ký duyệt nên chưa thể xuất Excel
+                      </q-tooltip>
+                    </span>
                     <AppButton
                       color="primary"
                       icon="o_approval"

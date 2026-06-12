@@ -146,13 +146,27 @@
               </div>
             </div>
             <div class="col-12 col-sm-3">
-              <AppButton
-                color="primary"
-                icon="file_download"
-                label="Xuất Excel"
-                :loading="calculationLoading"
-                @click="handleExportSummaryFromCard"
-              />
+              <span
+                class="export-tooltip-target"
+                style="display: inline-block;"
+              >
+                <AppButton
+                  color="primary"
+                  icon="file_download"
+                  label="Xuất Excel"
+                  :loading="calculationLoading"
+                  :disable="!isLeaderSigned"
+                  @click="handleExportSummaryFromCard"
+                />
+                <q-tooltip
+                  v-if="!isLeaderSigned"
+                  anchor="top middle"
+                  self="bottom middle"
+                  :offset="[0, 8]"
+                >
+                  Lãnh đạo chưa ký duyệt nên chưa thể xuất Excel
+                </q-tooltip>
+              </span>
             </div>
           </div>
         </q-card-section>
@@ -1132,7 +1146,10 @@ const supplierGroups = computed(() => {
   return getSupplierGroups(calculationResults.value.summary_data)
 })
 
+const isLeaderSigned = computed(() => Boolean(week.value?.leader_signed_at))
+
 const handleExportSummaryFromCard = async () => {
+  if (!isLeaderSigned.value) return
   if (!calculationResults.value) {
     await loadCalculationResults()
   }
