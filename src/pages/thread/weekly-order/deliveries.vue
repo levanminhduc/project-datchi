@@ -283,6 +283,12 @@
       <q-tab-panel name="receive">
         <!-- Filters -->
         <div class="row q-mb-md q-gutter-sm items-center">
+          <q-checkbox
+            v-model="showReceivedInReceive"
+            label="Hiện đã nhập đủ"
+            dense
+            @update:model-value="() => loadReceiveData()"
+          />
           <q-space />
           <q-input
             v-model="receiveSearch"
@@ -358,7 +364,7 @@
           <template #body-cell-actions="props">
             <q-td :props="props">
               <q-btn
-                v-if="getPendingQuantity(props.row) > 0"
+                v-if="getPendingQuantity(props.row) > 0 || showReceivedInReceive"
                 size="sm"
                 color="primary"
                 label="Nhập kho"
@@ -527,7 +533,7 @@
             type="number"
             label="Số lượng nhập *"
             :min="1"
-            :max="selectedReceiveDelivery ? getPendingQuantity(selectedReceiveDelivery) : 9999"
+            :max="selectedReceiveDelivery ? (showReceivedInReceive ? 9999 : getPendingQuantity(selectedReceiveDelivery)) : 9999"
             :rules="[(v: number) => v > 0 || 'Số lượng phải lớn hơn 0']"
             class="q-mt-md"
           />
@@ -649,6 +655,7 @@ const updating = ref(false)
 // Receive tab state
 const loadingReceive = ref(false)
 const receiveSearch = ref('')
+const showReceivedInReceive = ref(false)
 const pendingReceiveItems = ref<DeliveryRecord[]>([])
 const receivePagination = ref({
   page: 1,
@@ -928,7 +935,9 @@ async function loadReceiveData(searchOverride?: string) {
     const search = (searchOverride ?? receiveSearch.value ?? '').trim()
     const result = await deliveryService.getOverview({
       status: DeliveryStatus.DELIVERED,
-      inventory_status_not: InventoryReceiptStatus.RECEIVED,
+      ...(showReceivedInReceive.value
+        ? {}
+        : { inventory_status_not: InventoryReceiptStatus.RECEIVED }),
       page,
       limit: rowsPerPage,
       ...(search ? { search } : {}),
@@ -1056,7 +1065,7 @@ async function openReceiveDialog(delivery: DeliveryRecord) {
   const year = today.getFullYear()
   receiveForm.value = {
     warehouse_id: null,
-    quantity: getPendingQuantity(delivery),
+    quantity: Math.max(getPendingQuantity(delivery), 1),
     expiry_date: `${day}/${month}/${year}`,
   }
   try {
