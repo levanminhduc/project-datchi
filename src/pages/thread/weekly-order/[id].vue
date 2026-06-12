@@ -590,12 +590,23 @@
               v-if="calculationView === 'summary'"
               class="row q-gutter-sm q-mt-md"
             >
-              <AppButton
-                flat
-                icon="file_download"
-                label="Xuất Excel"
-                @click="handleExportSummary"
-              />
+              <span style="display: inline-block;">
+                <AppButton
+                  flat
+                  icon="file_download"
+                  label="Xuất Excel"
+                  :disable="!isLeaderSigned"
+                  @click="handleExportSummary"
+                />
+                <q-tooltip
+                  v-if="!isLeaderSigned"
+                  anchor="top middle"
+                  self="bottom middle"
+                  :offset="[0, 8]"
+                >
+                  Lãnh đạo chưa ký duyệt nên chưa thể xuất Excel
+                </q-tooltip>
+              </span>
             </div>
           </template>
 
@@ -1157,6 +1168,7 @@ const handleExportSummaryFromCard = async () => {
 }
 
 const handleExportSummary = () => {
+  if (!isLeaderSigned.value) return
   if (!calculationResults.value || !week.value) return
   if (supplierGroups.value.length <= 1) {
     exportFilteredOrders(supplierGroups.value)
