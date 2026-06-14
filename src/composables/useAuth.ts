@@ -1,15 +1,19 @@
 import { ref, computed, readonly } from 'vue'
 import { useRouter } from 'vue-router'
-import type { Session } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
 import { authService } from '@/services/authService'
 import {
   clearAuthSessionLocal,
   resetLogoutFlag,
   isLogoutInProgress,
+  getRefreshedAccessToken,
 } from '@/services/api'
-import { isAuthErrorPermanent } from '@/services/auth-error-utils'
-import { authorizeLogout, revokeLogout, getBackup, clearAll } from '@/lib/supabase-protected-storage'
+import {
+  hasTokens,
+  getAccessToken,
+  isTokenExpiringSoon,
+  getTokenExpiry,
+  ACCESS_TOKEN_KEY as ACCESS_TOKEN_STORAGE_KEY,
+} from '@/lib/auth-token-store'
 import { clearAllCache } from '@/lib/api-cache'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type {
@@ -84,8 +88,6 @@ let verifiedPermissionsSnapshot: string[] | null = cached?.permissions ?? null
 const tempPassword = ref<string | null>(null)
 
 const RETRY_DELAYS = [0, 500, 1000]
-const GET_USER_TIMEOUT = 8000
-const GET_SESSION_TIMEOUT = 8000
 const RESUME_REINIT_DEBOUNCE_MS = 1500
 const SESSION_NEAR_EXPIRY_MS = 15 * 60 * 1000
 
@@ -93,64 +95,46 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))
-  return Promise.race([promise, timeout])
-}
-
 async function retryGetUser(): Promise<{
   user: unknown | null
   errorType: 'auth' | 'network' | null
 }> {
+  if (!hasTokens()) {
+    return { user: null, errorType: 'auth' }
+  }
+
   for (let attempt = 0; attempt < RETRY_DELAYS.length; attempt++) {
     const delay = RETRY_DELAYS[attempt]
     if (attempt > 0 && delay) {
       await sleep(delay)
     }
 
-    const result = await withTimeout(supabase.auth.getUser(), GET_USER_TIMEOUT)
-
-    // Timeout - treat as network error
-    if (result === null) {
-      continue
-    }
-
-    const { data, error } = result
-
-    // No session = auth error (user needs to login)
-    if (!data.user && !error) {
+    let token = getAccessToken()
+    if (!token) {
       return { user: null, errorType: 'auth' }
     }
 
-    if (!error && data.user) {
-      return { user: data.user, errorType: null }
-    }
-
-    if (error) {
-      if (isAuthErrorPermanent(error)) {
+    if (isTokenExpiringSoon(token)) {
+      try {
+        token = await getRefreshedAccessToken()
+      } catch {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          continue
+        }
         return { user: null, errorType: 'auth' }
       }
+    }
+
+    if (token) {
+      return { user: { token }, errorType: null }
     }
   }
 
   return { user: null, errorType: 'network' }
 }
 
-async function getSessionSafe(timeoutMs = GET_SESSION_TIMEOUT): Promise<Session | null> {
-  try {
-    const result = await withTimeout(
-      supabase.auth.getSession(),
-      timeoutMs
-    )
-
-    if (!result) {
-      return null
-    }
-
-    return result.data.session ?? null
-  } catch {
-    return null
-  }
+function hasValidSession(): boolean {
+  return hasTokens() && !!getAccessToken()
 }
 
 function applyPermissionsSnapshot() {
@@ -232,9 +216,7 @@ export function useAuth() {
       }
 
       if (getUserErrorType === 'network') {
-        const session = await getSessionSafe()
-
-        if (session) {
+        if (hasValidSession()) {
           state.value.isAuthenticated = true
           state.value.error = 'network'
           state.value.isLoading = false
@@ -273,9 +255,7 @@ export function useAuth() {
       }
 
       if (empErrorType === 'network') {
-        const session = await getSessionSafe()
-
-        if (session) {
+        if (hasValidSession()) {
           state.value.isAuthenticated = true
           state.value.error = 'network'
           state.value.isLoading = false
@@ -351,8 +331,8 @@ export function useAuth() {
 
   function setupAuthListener() {
     if (authListenerUnsubscribe) return
+    if (typeof window === 'undefined') return
     let handlingTokenRefresh = false
-
     let handlingSignedOut = false
 
     const handleSignedOutEvent = async () => {
@@ -365,19 +345,8 @@ export function useAuth() {
           return
         }
 
-        const session = await getSessionSafe(2000)
-        if (session) {
+        if (hasValidSession()) {
           console.warn('[useAuth] SIGNED_OUT ignored — tokens preserved')
-          return
-        }
-
-        const backup = getBackup()
-        if (backup) {
-          console.warn('[useAuth] SIGNED_OUT — restoring from backup')
-          await supabase.auth.setSession({
-            access_token: backup.access_token,
-            refresh_token: backup.refresh_token,
-          })
           return
         }
 
@@ -397,12 +366,12 @@ export function useAuth() {
       }
     }
 
-    const handleTokenRefreshedEvent = async (session: Session | null) => {
+    const handleTokenRefreshedEvent = async () => {
       if (handlingTokenRefresh) return
       handlingTokenRefresh = true
 
       try {
-        if (!session?.access_token) {
+        if (!hasValidSession()) {
           return
         }
 
@@ -465,18 +434,21 @@ export function useAuth() {
       }
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== ACCESS_TOKEN_STORAGE_KEY) return
+
+      if (event.newValue === null) {
         void handleSignedOutEvent()
+        return
       }
 
-      if (event === 'TOKEN_REFRESHED') {
-        // Keep callback synchronous to avoid Supabase auth lock deadlocks.
-        void handleTokenRefreshedEvent(session)
+      if (event.oldValue !== event.newValue) {
+        void handleTokenRefreshedEvent()
       }
-    })
+    }
 
-    authListenerUnsubscribe = () => subscription.unsubscribe()
+    window.addEventListener('storage', onStorage)
+    authListenerUnsubscribe = () => window.removeEventListener('storage', onStorage)
   }
 
   function setupSessionResumeListener() {
@@ -493,25 +465,12 @@ export function useAuth() {
 
       lastResumeReinitAt = now
 
-      let session = await getSessionSafe(8000)
-
-      if (!session) {
-        const backup = getBackup()
-        if (backup) {
-          console.warn('[useAuth] Tab resume — restoring from backup')
-          const { data } = await supabase.auth.setSession({
-            access_token: backup.access_token,
-            refresh_token: backup.refresh_token,
-          })
-          session = data.session
-        }
-      }
-
-      if (!session) {
+      const token = getAccessToken()
+      if (!token) {
         return
       }
 
-      const expiresAt = session.expires_at ? session.expires_at * 1000 : 0
+      const expiresAt = getTokenExpiry(token) ?? 0
       if (expiresAt - now > SESSION_NEAR_EXPIRY_MS) {
         return
       }
@@ -595,7 +554,6 @@ export function useAuth() {
     signingOut = true
     loggedOut = true
     verifiedPermissionsSnapshot = null
-    authorizeLogout()
     try {
       try {
         await authService.signOut()
@@ -603,7 +561,6 @@ export function useAuth() {
       }
 
       await clearAuthSessionLocal()
-      clearAll()
       clearAllCache()
       clearAuthCache()
       snackbar.success('Đã đăng xuất')
@@ -614,7 +571,6 @@ export function useAuth() {
         window.location.replace('/login')
       })
     } finally {
-      revokeLogout()
       signingOut = false
     }
   }

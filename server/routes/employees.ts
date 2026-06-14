@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import bcrypt from 'bcryptjs'
+import { query, queryOne } from '../db/query'
+import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
@@ -13,6 +15,8 @@ import type {
 
 const employees = new Hono()
 
+const BCRYPT_ROUNDS = 10
+
 /**
  * GET /api/employees/unique-positions - Fetch all positions from positions table
  * Returns position objects with value (internal name) and label (display name)
@@ -22,13 +26,13 @@ employees.get('/unique-positions', requirePermission('employees.view'), async (c
   try {
     // Fetch ALL positions from the positions table (no filtering by is_active)
     // This ensures the dropdown shows all available positions regardless of status
-    const { data, error } = await supabase
-      .from('positions')
-      .select('name, display_name')
-      .order('display_name', { ascending: true })
-
-    // Fallback to default positions if table doesn't exist
-    if (error) {
+    let data: Array<{ name: string | null; display_name: string | null }>
+    try {
+      data = await from('positions')
+        .select('name, display_name')
+        .order({ column: 'display_name', ascending: true })
+        .list<{ name: string | null; display_name: string | null }>()
+    } catch (error) {
       console.error('Supabase error (falling back to defaults):', error)
       const defaultPositions = [
         { value: 'giam_doc', label: 'Giám Đốc' },
@@ -47,7 +51,7 @@ employees.get('/unique-positions', requirePermission('employees.view'), async (c
     // Return position objects with value (name) and label (display_name)
     // employees.chuc_vu stores the 'name' field, so value must be 'name'
     const uniquePositions = (data || [])
-      .filter(pos => pos.name && pos.display_name)
+      .filter((pos): pos is { name: string; display_name: string } => !!pos.name && !!pos.display_name)
       .map(pos => ({
         value: pos.name,
         label: pos.display_name,
@@ -72,13 +76,13 @@ employees.get('/unique-positions', requirePermission('employees.view'), async (c
  */
 employees.get('/count', requirePermission('employees.view'), async (c) => {
   try {
-    const { count, error } = await supabase
-      .from('employees')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_active', true)
-      .is('deleted_at', null)
-
-    if (error) {
+    let count: number
+    try {
+      count = await from('employees')
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .count()
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Lỗi khi lấy số lượng nhân viên' },
@@ -101,35 +105,40 @@ employees.get('/count', requirePermission('employees.view'), async (c) => {
 
 employees.get('/issue-departments', async (c) => {
   try {
-    const [empResult, settingResult] = await Promise.all([
-      supabase
-        .from('employees')
+    let empData: Array<{ department: string | null }>
+    try {
+      empData = await from('employees')
         .select('department')
-        .not('department', 'is', null)
+        .isNotNull('department')
         .eq('is_active', true)
-        .is('deleted_at', null),
-      supabase
-        .from('system_settings')
-        .select('value')
-        .eq('key', 'issue_department_options')
-        .maybeSingle(),
-    ])
-
-    if (empResult.error) {
-      console.error('Supabase error:', empResult.error)
+        .is('deleted_at', null)
+        .list<{ department: string | null }>()
+    } catch (error) {
+      console.error('Supabase error:', error)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Lỗi khi lấy danh sách bộ phận' },
         500
       )
     }
 
+    let settingValue: { hidden?: string[]; custom?: string[] } | null = null
+    try {
+      const setting = await from('system_settings')
+        .select('value')
+        .eq('key', 'issue_department_options')
+        .maybeSingle<{ value: { hidden?: string[]; custom?: string[] } }>()
+      settingValue = setting?.value ?? null
+    } catch (settingErr) {
+      console.warn('Failed to load issue_department_options setting:', settingErr)
+    }
+
     const uniqueDepts = [...new Set(
-      (empResult.data || [])
+      (empData || [])
         .map(e => e.department)
         .filter((d): d is string => !!d)
     )]
 
-    const config = (settingResult.data?.value as { hidden?: string[]; custom?: string[] }) ?? {}
+    const config = settingValue ?? {}
     const hidden = config.hidden ?? []
     const custom = config.custom ?? []
     const filtered = uniqueDepts.filter(d => !hidden.includes(d))
@@ -154,14 +163,15 @@ employees.get('/issue-departments', async (c) => {
  */
 employees.get('/departments', async (c) => {
   try {
-    const { data, error } = await supabase
-      .from('employees')
-      .select('department')
-      .not('department', 'is', null)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-
-    if (error) {
+    let data: Array<{ department: string | null }>
+    try {
+      data = await from('employees')
+        .select('department')
+        .isNotNull('department')
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .list<{ department: string | null }>()
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Lỗi khi lấy danh sách bộ phận' },
@@ -196,26 +206,33 @@ employees.get('/', requirePermission('employees.view'), async (c) => {
     const limit = limitParam === 'all' ? 0 : parseInt(limitParam, 10)
     const search = c.req.query('search') || ''
 
-    let query = supabase
-      .from('employees')
-      .select('id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at', { count: 'exact' })
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-
-    if (search) {
-      const s = sanitizeFilterValue(search)
-      query = query.or(
-        `full_name.ilike.%${s}%,employee_id.ilike.%${s}%,department.ilike.%${s}%`
-      )
-    }
+    const EMPLOYEE_LIST_COLUMNS = 'id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at'
 
     if (limit > 0) {
       const offset = (page - 1) * limit
-      query = query.range(offset, offset + limit - 1)
 
-      const { data, error, count } = await query
+      const builder = from('employees')
+        .select(EMPLOYEE_LIST_COLUMNS)
+        .is('deleted_at', null)
 
-      if (error) {
+      if (search) {
+        const s = sanitizeFilterValue(search)
+        builder.or([
+          { column: 'full_name', op: 'ilike', value: `%${s}%` },
+          { column: 'employee_id', op: 'ilike', value: `%${s}%` },
+          { column: 'department', op: 'ilike', value: `%${s}%` },
+        ])
+      }
+
+      let data: Employee[]
+      let count: number
+      try {
+        count = await builder.count()
+        data = await builder
+          .order({ column: 'created_at', ascending: false })
+          .range(offset, offset + limit - 1)
+          .list<Employee>()
+      } catch (error) {
         console.error('Supabase error:', error)
         return c.json<ApiResponse<null>>(
           { data: null, error: 'Lỗi khi tải danh sách nhân viên' },
@@ -244,28 +261,28 @@ employees.get('/', requirePermission('employees.view'), async (c) => {
       return c.json(response)
     }
 
-    const BATCH_SIZE = 1000
     const allData: Employee[] = []
-    let offset = 0
 
-    while (true) {
-      let batchQuery = supabase
-        .from('employees')
-        .select('id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at')
+    {
+      const batchBuilder = from('employees')
+        .select(EMPLOYEE_LIST_COLUMNS)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + BATCH_SIZE - 1)
 
       if (search) {
         const s = sanitizeFilterValue(search)
-        batchQuery = batchQuery.or(
-          `full_name.ilike.%${s}%,employee_id.ilike.%${s}%,department.ilike.%${s}%`
-        )
+        batchBuilder.or([
+          { column: 'full_name', op: 'ilike', value: `%${s}%` },
+          { column: 'employee_id', op: 'ilike', value: `%${s}%` },
+          { column: 'department', op: 'ilike', value: `%${s}%` },
+        ])
       }
 
-      const { data: batchData, error: batchError } = await batchQuery
-
-      if (batchError) {
+      let batchData: Employee[]
+      try {
+        batchData = await batchBuilder
+          .order({ column: 'created_at', ascending: false })
+          .list<Employee>()
+      } catch (batchError) {
         console.error('Supabase batch error:', batchError)
         return c.json<ApiResponse<null>>(
           { data: null, error: 'Lỗi khi tải danh sách nhân viên' },
@@ -273,9 +290,7 @@ employees.get('/', requirePermission('employees.view'), async (c) => {
         )
       }
 
-      if (!batchData || batchData.length === 0) break
-
-      for (const emp of batchData) {
+      for (const emp of batchData || []) {
         allData.push({
           id: emp.id,
           employee_id: emp.employee_id,
@@ -287,10 +302,6 @@ employees.get('/', requirePermission('employees.view'), async (c) => {
           updated_at: emp.updated_at,
         })
       }
-
-      if (batchData.length < BATCH_SIZE) break
-
-      offset += BATCH_SIZE
     }
 
     const response: PaginatedResponse<Employee> = {
@@ -329,23 +340,26 @@ employees.get('/:id', requirePermission('employees.view'), async (c) => {
       )
     }
 
-    const { data, error } = await supabase
-      .from('employees')
-      .select('id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at, last_login_at, must_change_password, password_changed_at, failed_login_attempts, locked_until')
-      .eq('id', id)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<ApiResponse<null>>(
-          { data: null, error: 'Không tìm thấy nhân viên' },
-          404
-        )
-      }
+    let data: EmployeeDetail | null
+    try {
+      data = await queryOne<EmployeeDetail>(
+        `SELECT id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at, last_login_at, must_change_password, password_changed_at, failed_login_attempts, locked_until
+         FROM employees
+         WHERE id = $1`,
+        [numericId]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Lỗi khi tải thông tin nhân viên' },
         500
+      )
+    }
+
+    if (!data) {
+      return c.json<ApiResponse<null>>(
+        { data: null, error: 'Không tìm thấy nhân viên' },
+        404
       )
     }
 
@@ -373,11 +387,10 @@ employees.post('/', requirePermission('employees.create'), async (c) => {
       )
     }
 
-    const { data: existing } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('employee_id', body.employee_id)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM employees WHERE employee_id = $1',
+      [body.employee_id]
+    )
 
     if (existing) {
       return c.json<ApiResponse<null>>(
@@ -387,40 +400,27 @@ employees.post('/', requirePermission('employees.create'), async (c) => {
     }
 
     const employeeCode = body.employee_id.trim()
-    const email = `${employeeCode.toLowerCase()}@internal.datchi.local`
     const defaultPassword = body.password || `${employeeCode}@123`
+    const passwordHash = await bcrypt.hash(defaultPassword, BCRYPT_ROUNDS)
 
-    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-      email,
-      password: defaultPassword,
-      email_confirm: true,
-    })
-
-    if (authError) {
-      console.error('Supabase Auth error:', authError)
-      return c.json<ApiResponse<null>>(
-        { data: null, error: 'Lỗi khi tạo tài khoản đăng nhập' },
-        500
+    let data: Employee | null
+    try {
+      data = await queryOne<Employee>(
+        `INSERT INTO employees (full_name, employee_id, department, chuc_vu, is_active, password_hash, must_change_password)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [
+          body.full_name.trim(),
+          employeeCode,
+          body.department.trim(),
+          body.chuc_vu.trim(),
+          true,
+          passwordHash,
+          true,
+        ]
       )
-    }
-
-    const { data, error } = await supabase
-      .from('employees')
-      .insert({
-        full_name: body.full_name.trim(),
-        employee_id: employeeCode,
-        department: body.department.trim(),
-        chuc_vu: body.chuc_vu.trim(),
-        is_active: true,
-        auth_user_id: authUser.user.id,
-        must_change_password: true,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Supabase error:', error)
-      await supabase.auth.admin.deleteUser(authUser.user.id)
+    } catch (error) {
+      console.error('Create employee error:', error)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Lỗi khi thêm nhân viên' },
         500
@@ -429,7 +429,7 @@ employees.post('/', requirePermission('employees.create'), async (c) => {
 
     return c.json<ApiResponse<Employee>>(
       {
-        data,
+        data: data as Employee,
         error: null,
         message: 'Thêm nhân viên thành công',
       },
@@ -459,13 +459,17 @@ employees.put('/:id', requirePermission('employees.edit'), async (c) => {
 
     const body = await c.req.json<UpdateEmployeeDTO>()
 
-    const { data: existing, error: findError } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('id', id)
-      .single()
+    let existing: { id: number } | null
+    try {
+      existing = await queryOne<{ id: number }>(
+        'SELECT id FROM employees WHERE id = $1',
+        [numericId]
+      )
+    } catch {
+      existing = null
+    }
 
-    if (findError || !existing) {
+    if (!existing) {
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Không tìm thấy nhân viên' },
         404
@@ -473,12 +477,10 @@ employees.put('/:id', requirePermission('employees.edit'), async (c) => {
     }
 
     if (body.employee_id) {
-      const { data: duplicate } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('employee_id', body.employee_id)
-        .neq('id', id)
-        .single()
+      const duplicate = await queryOne<{ id: number }>(
+        'SELECT id FROM employees WHERE employee_id = $1 AND id <> $2',
+        [body.employee_id, numericId]
+      )
 
       if (duplicate) {
         return c.json<ApiResponse<null>>(
@@ -494,23 +496,37 @@ employees.put('/:id', requirePermission('employees.edit'), async (c) => {
     if (body.department !== undefined) updateData.department = body.department.trim()
     if (body.chuc_vu !== undefined) updateData.chuc_vu = body.chuc_vu.trim()
 
-    const { data, error } = await supabase
-      .from('employees')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single()
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updateData)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
+    }
 
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<ApiResponse<null>>(
-        { data: null, error: 'Cập nhật thất bại. Vui lòng thử lại' },
-        500
+    let data: Employee | null
+    if (sets.length === 0) {
+      data = await queryOne<Employee>(
+        'SELECT * FROM employees WHERE id = $1',
+        [numericId]
       )
+    } else {
+      params.push(numericId)
+      try {
+        data = await queryOne<Employee>(
+          `UPDATE employees SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+          params
+        )
+      } catch (error) {
+        console.error('Supabase error:', error)
+        return c.json<ApiResponse<null>>(
+          { data: null, error: 'Cập nhật thất bại. Vui lòng thử lại' },
+          500
+        )
+      }
     }
 
     return c.json<ApiResponse<Employee>>({
-      data,
+      data: data as Employee,
       error: null,
       message: 'Cập nhật thành công',
     })
@@ -535,36 +551,43 @@ employees.delete('/:id', requirePermission('employees.delete'), async (c) => {
       )
     }
 
-    const { data: existing, error: findError } = await supabase
-      .from('employees')
-      .select('id, auth_user_id')
-      .eq('id', id)
-      .single()
+    let existing: { id: number } | null
+    try {
+      existing = await queryOne<{ id: number }>(
+        'SELECT id FROM employees WHERE id = $1',
+        [numericId]
+      )
+    } catch {
+      existing = null
+    }
 
-    if (findError || !existing) {
+    if (!existing) {
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Không tìm thấy nhân viên' },
         404
       )
     }
 
-    const { error } = await supabase
-      .from('employees')
-      .update({ deleted_at: new Date().toISOString(), is_active: false })
-      .eq('id', id)
-
-    if (error) {
-      console.error('Supabase error:', error)
+    try {
+      await query(
+        'UPDATE employees SET deleted_at = $1, is_active = $2 WHERE id = $3',
+        [new Date().toISOString(), false, numericId]
+      )
+    } catch (error) {
+      console.error('Delete employee error:', error)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Xóa thất bại. Vui lòng thử lại' },
         500
       )
     }
 
-    if (existing.auth_user_id) {
-      await supabase.auth.admin.updateUserById(existing.auth_user_id, {
-        ban_duration: '876000h',
-      })
+    try {
+      await query(
+        `UPDATE auth_refresh_tokens SET revoked_at = $1 WHERE employee_id = $2 AND revoked_at IS NULL`,
+        [new Date().toISOString(), numericId]
+      )
+    } catch (revokeErr) {
+      console.warn('Delete employee: failed to revoke refresh tokens:', revokeErr)
     }
 
     return c.json<ApiResponse<{ success: boolean }>>({

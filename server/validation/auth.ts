@@ -33,6 +33,22 @@ export const changePasswordSchema = z.object({
   newPassword: z.string().min(8, 'Mật khẩu mới phải có ít nhất 8 ký tự').max(128),
 })
 
+export const loginSchema = z.object({
+  employeeId: z.string().min(1, 'Vui lòng nhập mã nhân viên').max(50),
+  password: z.string().min(1, 'Vui lòng nhập mật khẩu').max(128),
+})
+
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(1, 'Thiếu refresh token'),
+})
+
+export const resetPasswordSchema = z.object({
+  newPassword: z.string().min(8, 'Mật khẩu mới phải có ít nhất 8 ký tự').max(128),
+})
+
 export type CreatePermissionDTO = z.infer<typeof createPermissionSchema>
 export type UpdatePermissionDTO = z.infer<typeof updatePermissionSchema>
 export type ChangePasswordDTO = z.infer<typeof changePasswordSchema>
+export type LoginDTO = z.infer<typeof loginSchema>
+export type RefreshDTO = z.infer<typeof refreshSchema>
+export type ResetPasswordDTO = z.infer<typeof resetPasswordSchema>

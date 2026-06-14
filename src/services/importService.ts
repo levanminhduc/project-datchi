@@ -1,5 +1,5 @@
-import { fetchApi, fetchApiRaw } from './api'
-import { supabase } from '@/lib/supabase'
+import { fetchApi, fetchApiRaw, getRefreshedAccessToken } from './api'
+import { getAccessToken, isTokenExpiringSoon } from '@/lib/auth-token-store'
 import type {
   ImportMappingConfig,
   ImportTexRow,
@@ -91,9 +91,15 @@ export const importService = {
     rows: ImportColorRow[],
     onProgress: (event: ImportStreamEvent) => void
   ): Promise<ImportColorResponse> {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData?.session?.access_token
+    let token = getAccessToken()
     if (!token) throw new Error('Chưa đăng nhập')
+    if (isTokenExpiringSoon(token)) {
+      try {
+        token = await getRefreshedAccessToken()
+      } catch {
+        throw new Error('Chưa đăng nhập')
+      }
+    }
 
     const response = await fetch('/api/import/supplier-colors/stream', {
       method: 'POST',
