@@ -1,6 +1,6 @@
 ############################################################
 # Đất Chỉ - Docker Compose (FE + BE only)
-# Supabase chạy sẵn bằng `supabase start`
+# Dùng PostgreSQL thuần (trỏ qua DATABASE_URL); không còn Supabase.
 #
 # Usage:
 #   docker compose --env-file .env.docker up --build -d
@@ -14,10 +14,6 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         VITE_API_URL: ${VITE_API_URL:-}
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-/supabase}
-        VITE_SUPABASE_ANON_KEY: ${ANON_KEY}
-        SUPABASE_HOST: ${SUPABASE_HOST:-host.docker.internal}
-        SUPABASE_API_PORT: ${SUPABASE_API_PORT:-55421}
     ports:
       - "${FRONTEND_PORT:-8080}:80"
     extra_hosts:
@@ -39,14 +35,18 @@ services:
     environment:
       PORT: 3000
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
-      NEXT_PUBLIC_SUPABASE_URL: http://${SUPABASE_HOST:-host.docker.internal}:${SUPABASE_API_PORT:-55421}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
-      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
-      SUPABASE_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: ${DATABASE_URL}
+      STORAGE_DIR: ${STORAGE_DIR:-/data/storage}
+      JWT_SIGNING_SECRET: ${JWT_SIGNING_SECRET}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
       CHATBOT_SERVICE_URL: ${CHATBOT_SERVICE_URL:-}
       CHATBOT_INTERNAL_TOKEN: ${CHATBOT_INTERNAL_TOKEN:-}
       CHATBOT_REQUEST_TIMEOUT_MS: ${CHATBOT_REQUEST_TIMEOUT_MS:-15000}
+    volumes:
+      - guide_storage:${STORAGE_DIR:-/data/storage}
     restart: unless-stopped
+
+volumes:
+  guide_storage:

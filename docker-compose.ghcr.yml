@@ -36,11 +36,15 @@ services:
     environment:
       PORT: 3000
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
-      NEXT_PUBLIC_SUPABASE_URL: http://${SUPABASE_HOST:-host.docker.internal}:${SUPABASE_API_PORT:-55421}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
-      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
-      SUPABASE_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: ${DATABASE_URL}
+      STORAGE_DIR: ${STORAGE_DIR:-/data/storage}
+      JWT_SIGNING_SECRET: ${JWT_SIGNING_SECRET}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
+    volumes:
+      - guide_storage:${STORAGE_DIR:-/data/storage}
     restart: unless-stopped
+
+volumes:
+  guide_storage:

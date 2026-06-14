@@ -52,7 +52,6 @@ import chatAssistantRouter from './routes/chat-assistant'
 import realtimeRouter from './realtime/stream'
 import { startRealtimeListener } from './realtime/listener'
 import { authMiddleware } from './middleware/auth'
-import { supabaseAdmin } from './db/supabase'
 
 const app = new Hono()
 
@@ -77,57 +76,11 @@ app.route('/api/public/guides', publicGuidesRouter)
 app.route('/api/telegram', telegramRouter)
 app.route('/api/realtime', realtimeRouter)
 
-app.post('/api/auth/ensure-auth-user', async (c) => {
-  try {
-    const { employeeId, password } = await c.req.json()
-
-    if (!employeeId || !password) {
-      return c.json({ error: true, message: 'Thiếu mã nhân viên hoặc mật khẩu' }, 400)
-    }
-
-    const { data: employee } = await supabaseAdmin
-      .from('employees')
-      .select('id, employee_id, auth_user_id, is_active, deleted_at')
-      .eq('employee_id', employeeId.trim().toUpperCase())
-      .is('deleted_at', null)
-      .maybeSingle()
-
-    if (!employee) {
-      return c.json({ error: true, message: 'Nhân viên không tồn tại' }, 404)
-    }
-
-    if (!employee.is_active) {
-      return c.json({ error: true, message: 'Tài khoản đã bị vô hiệu hóa' }, 403)
-    }
-
-    if (employee.auth_user_id) {
-      return c.json({ error: false, message: 'Tài khoản đã liên kết', created: false })
-    }
-
-    const email = `${employee.employee_id.toLowerCase()}@internal.datchi.local`
-
-    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    })
-
-    if (authError) {
-      console.error('ensure-auth-user: create auth user error:', authError)
-      return c.json({ error: true, message: 'Không thể tạo tài khoản đăng nhập' }, 500)
-    }
-
-    await supabaseAdmin
-      .from('employees')
-      .update({ auth_user_id: authUser.user.id })
-      .eq('id', employee.id)
-
-    return c.json({ error: false, message: 'Đã tạo tài khoản đăng nhập', created: true })
-  } catch (err) {
-    console.error('ensure-auth-user error:', err)
-    return c.json({ error: true, message: 'Lỗi hệ thống' }, 500)
-  }
-})
+const PUBLIC_AUTH_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/refresh',
+  '/api/auth/logout',
+])
 
 app.use(
   '/api/*',
@@ -135,7 +88,8 @@ app.use(
     if (
       c.req.path.startsWith('/api/guides/images/') ||
       c.req.path.startsWith('/api/public/') ||
-      c.req.path.startsWith('/api/realtime/')
+      c.req.path.startsWith('/api/realtime/') ||
+      PUBLIC_AUTH_PATHS.has(c.req.path)
     ) {
       return next()
     }
