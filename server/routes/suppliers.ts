@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
+import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
@@ -21,34 +22,29 @@ suppliers.get('/', requirePermission('thread.suppliers.view'), async (c) => {
     const search = c.req.query('search')
     const isActiveParam = c.req.query('is_active')
 
-    let query = supabase
-      .from('suppliers')
+    const builder = from('suppliers')
       .select('*')
       .is('deleted_at', null)
-      .order('name', { ascending: true })
 
     // Filter by is_active (default: only active)
     if (isActiveParam !== undefined) {
-      query = query.eq('is_active', isActiveParam === 'true')
+      builder.eq('is_active', isActiveParam === 'true')
     } else {
-      query = query.eq('is_active', true)
+      builder.eq('is_active', true)
     }
 
     // Search by name or code
     if (search) {
       const s = sanitizeFilterValue(search)
-      query = query.or(`name.ilike.%${s}%,code.ilike.%${s}%`)
+      builder.or([
+        { column: 'name', op: 'ilike', value: `%${s}%` },
+        { column: 'code', op: 'ilike', value: `%${s}%` }
+      ])
     }
 
-    const { data, error } = await query
+    builder.order({ column: 'name', ascending: true })
 
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<SupplierApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi tải danh sách nhà cung cấp'
-      }, 500)
-    }
+    const data = await builder.list<SupplierRow>()
 
     return c.json<SupplierApiResponse<SupplierRow[]>>({
       data: data as SupplierRow[],
@@ -72,37 +68,32 @@ suppliers.get('/:id', requirePermission('thread.suppliers.view'), async (c) => {
     const id = parseInt(c.req.param('id'))
 
     // Get supplier
-    const { data: supplier, error: supplierError } = await supabase
-      .from('suppliers')
-      .select('*')
-      .eq('id', id)
-      .single()
+    const supplier = await queryOne<SupplierRow>(
+      'SELECT * FROM suppliers WHERE id = $1',
+      [id]
+    )
 
-    if (supplierError) {
-      if (supplierError.code === 'PGRST116') {
-        return c.json<SupplierApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy nhà cung cấp'
-        }, 404)
-      }
-      console.error('Supabase error:', supplierError)
+    if (!supplier) {
       return c.json<SupplierApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi tải thông tin nhà cung cấp'
-      }, 500)
+        error: 'Không tìm thấy nhà cung cấp'
+      }, 404)
     }
 
     // Get linked colors
-    const { data: links } = await supabase
-      .from('color_supplier')
-      .select(`
-        color:colors(id, name, hex_code)
-      `)
-      .eq('supplier_id', id)
+    const links = await query<{ color: { id: number; name: string; hex_code: string } | null }>(
+      `SELECT json_build_object('id', c.id, 'name', c.name, 'hex_code', c.hex_code) AS color
+       FROM color_supplier cs
+       JOIN colors c ON c.id = cs.color_id
+       WHERE cs.supplier_id = $1`,
+      [id]
+    )
 
     // Get unique tex numbers for this supplier via raw SQL (DISTINCT ON)
-    const { data: uniqueTexTypes } = await supabase
-      .rpc('fn_get_supplier_unique_tex', { p_supplier_id: id })
+    const uniqueTexTypes = await query(
+      'SELECT * FROM fn_get_supplier_unique_tex($1)',
+      [id]
+    )
 
     const result = {
       ...supplier,
@@ -139,11 +130,10 @@ suppliers.post('/', requirePermission('thread.suppliers.manage'), async (c) => {
     }
 
     // Check for duplicate code
-    const { data: existing } = await supabase
-      .from('suppliers')
-      .select('id')
-      .ilike('code', body.code)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM suppliers WHERE code ILIKE $1',
+      [body.code]
+    )
 
     if (existing) {
       return c.json<SupplierApiResponse<null>>({
@@ -153,26 +143,28 @@ suppliers.post('/', requirePermission('thread.suppliers.manage'), async (c) => {
     }
 
     // Create supplier
-    const { data, error } = await supabase
-      .from('suppliers')
-      .insert({
-        code: body.code.toUpperCase(),
-        name: body.name,
-        contact_name: body.contact_name || null,
-        phone: body.phone || null,
-        email: body.email || null,
-        address: body.address || null,
-        lead_time_days: body.lead_time_days ?? 7,
-        is_active: true
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Supabase error:', error)
+    let data: SupplierRow | null
+    try {
+      data = await queryOne<SupplierRow>(
+        `INSERT INTO suppliers (code, name, contact_name, phone, email, address, lead_time_days, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [
+          body.code.toUpperCase(),
+          body.name,
+          body.contact_name || null,
+          body.phone || null,
+          body.email || null,
+          body.address || null,
+          body.lead_time_days ?? 7,
+          true
+        ]
+      )
+    } catch (insertErr) {
+      console.error('Insert error:', insertErr)
       return c.json<SupplierApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi tạo nhà cung cấp: ' + error.message
+        error: 'Lỗi khi tạo nhà cung cấp: ' + ((insertErr as Error).message ?? '')
       }, 500)
     }
 
@@ -218,12 +210,10 @@ suppliers.patch('/:id', requirePermission('thread.suppliers.manage'), async (c) 
 
     // Check code uniqueness if updating code
     if (body.code) {
-      const { data: existing } = await supabase
-        .from('suppliers')
-        .select('id')
-        .ilike('code', body.code)
-        .neq('id', id)
-        .single()
+      const existing = await queryOne<{ id: number }>(
+        'SELECT id FROM suppliers WHERE code ILIKE $1 AND id <> $2',
+        [body.code, id]
+      )
 
       if (existing) {
         return c.json<SupplierApiResponse<null>>({
@@ -233,25 +223,24 @@ suppliers.patch('/:id', requirePermission('thread.suppliers.manage'), async (c) 
       }
     }
 
-    const { data, error } = await supabase
-      .from('suppliers')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single()
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updateData)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
+    }
+    params.push(id)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<SupplierApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy nhà cung cấp'
-        }, 404)
-      }
-      console.error('Supabase error:', error)
+    const data = await queryOne<SupplierRow>(
+      `UPDATE suppliers SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
+    )
+
+    if (!data) {
       return c.json<SupplierApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi cập nhật nhà cung cấp'
-      }, 500)
+        error: 'Không tìm thấy nhà cung cấp'
+      }, 404)
     }
 
     return c.json<SupplierApiResponse<SupplierRow>>({
@@ -275,25 +264,16 @@ suppliers.delete('/:id', requirePermission('thread.suppliers.manage'), async (c)
   try {
     const id = parseInt(c.req.param('id'))
 
-    const { data, error } = await supabase
-      .from('suppliers')
-      .update({ is_active: false, deleted_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single()
+    const data = await queryOne<SupplierRow>(
+      `UPDATE suppliers SET is_active = false, deleted_at = $1 WHERE id = $2 RETURNING *`,
+      [new Date().toISOString(), id]
+    )
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<SupplierApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy nhà cung cấp'
-        }, 404)
-      }
-      console.error('Supabase error:', error)
+    if (!data) {
       return c.json<SupplierApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi xóa nhà cung cấp'
-      }, 500)
+        error: 'Không tìm thấy nhà cung cấp'
+      }, 404)
     }
 
     return c.json<SupplierApiResponse<SupplierRow>>({
@@ -317,35 +297,23 @@ suppliers.get('/:id/colors', requirePermission('thread.suppliers.view'), async (
   try {
     const id = parseInt(c.req.param('id'))
 
-    const BATCH_SIZE = 1000
-    let allData: unknown[] = []
-    let offset = 0
-    let hasMore = true
-
-    while (hasMore) {
-      const { data, error } = await supabase
-        .from('color_supplier')
-        .select(`
-          id,
-          is_active,
-          color:colors(id, name, hex_code, pantone_code, is_active)
-        `)
-        .eq('supplier_id', id)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + BATCH_SIZE - 1)
-
-      if (error) {
-        console.error('Supabase error:', error)
-        return c.json<SupplierApiResponse<null>>({
-          data: null,
-          error: 'Lỗi khi tải danh sách màu'
-        }, 500)
-      }
-
-      allData = allData.concat(data)
-      hasMore = data.length === BATCH_SIZE
-      offset += BATCH_SIZE
-    }
+    const allData = await query<Record<string, unknown>>(
+      `SELECT
+         cs.id,
+         cs.is_active,
+         json_build_object(
+           'id', c.id,
+           'name', c.name,
+           'hex_code', c.hex_code,
+           'pantone_code', c.pantone_code,
+           'is_active', c.is_active
+         ) AS color
+       FROM color_supplier cs
+       JOIN colors c ON c.id = cs.color_id
+       WHERE cs.supplier_id = $1
+       ORDER BY cs.created_at DESC`,
+      [id]
+    )
 
     return c.json<SupplierApiResponse<unknown[]>>({
       data: allData,
@@ -377,12 +345,10 @@ suppliers.post('/:id/colors', requirePermission('thread.suppliers.manage'), asyn
     }
 
     // Check if link already exists
-    const { data: existing } = await supabase
-      .from('color_supplier')
-      .select('id')
-      .eq('color_id', body.color_id)
-      .eq('supplier_id', supplierId)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM color_supplier WHERE color_id = $1 AND supplier_id = $2',
+      [body.color_id, supplierId]
+    )
 
     if (existing) {
       return c.json<SupplierApiResponse<null>>({
@@ -391,20 +357,19 @@ suppliers.post('/:id/colors', requirePermission('thread.suppliers.manage'), asyn
       }, 409)
     }
 
-    const { data, error } = await supabase
-      .from('color_supplier')
-      .insert({
-        color_id: body.color_id,
-        supplier_id: supplierId,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Supabase error:', error)
+    let data: Record<string, unknown> | null
+    try {
+      data = await queryOne<Record<string, unknown>>(
+        `INSERT INTO color_supplier (color_id, supplier_id)
+         VALUES ($1, $2)
+         RETURNING *`,
+        [body.color_id, supplierId]
+      )
+    } catch (insertErr) {
+      console.error('Insert error:', insertErr)
       return c.json<SupplierApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi liên kết màu: ' + error.message
+        error: 'Lỗi khi liên kết màu: ' + ((insertErr as Error).message ?? '')
       }, 500)
     }
 

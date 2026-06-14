@@ -1,6 +1,6 @@
 import type { Context } from 'hono'
 import { ZodError } from 'zod'
-import { supabaseAdmin as supabase } from '../../db/supabase'
+import { queryOne, query } from '../../db/query'
 import type { AppEnv } from '../../types/hono-env'
 import type { WeeklyOrderStatus } from '../../types/weeklyOrder'
 
@@ -23,11 +23,10 @@ export async function validateSubArtIds(
 
   const allSubArtIds = [...new Set(itemsWithSubArt.map((i) => i.sub_art_id!))]
 
-  const { data: subArts } = await supabase
-    .from('sub_arts')
-    .select('id, style_id')
-    .in('id', allSubArtIds)
-    .limit(10000)
+  const subArts = await query<{ id: number; style_id: number }>(
+    `SELECT id, style_id FROM sub_arts WHERE id = ANY($1) LIMIT 10000`,
+    [allSubArtIds],
+  )
 
   const subArtSet = new Set(
     (subArts || []).map((sa: any) => `${sa.id}-${sa.style_id}`),
@@ -61,23 +60,25 @@ export async function validatePOQuantityLimits(
 
   const poIds = [...new Set([...groups.values()].map((g) => g.po_id))]
 
-  const [{ data: allPoItems }, existingResult] = await Promise.all([
-    supabase
-      .from('po_items')
-      .select('po_id, style_id, quantity')
-      .in('po_id', poIds)
-      .is('deleted_at', null)
-      .limit(10000),
+  const [allPoItems, existingRows] = await Promise.all([
+    query<{ po_id: number; style_id: number; quantity: number }>(
+      `SELECT po_id, style_id, quantity FROM po_items
+       WHERE po_id = ANY($1) AND deleted_at IS NULL
+       LIMIT 10000`,
+      [poIds],
+    ),
     (() => {
-      let q = supabase
-        .from('thread_order_items')
-        .select('po_id, style_id, quantity, week:thread_order_weeks!inner(id, status)')
-        .in('po_id', poIds)
-        .neq('week.status', 'CANCELLED')
+      const params: unknown[] = [poIds]
+      let sql = `SELECT toi.po_id, toi.style_id, toi.quantity
+         FROM thread_order_items toi
+         INNER JOIN thread_order_weeks w ON w.id = toi.week_id
+         WHERE toi.po_id = ANY($1) AND w.status <> 'CANCELLED'`
       if (excludeWeekId) {
-        q = q.neq('week.id', excludeWeekId)
+        params.push(excludeWeekId)
+        sql += ` AND w.id <> $${params.length}`
       }
-      return q.limit(10000)
+      sql += ` LIMIT 10000`
+      return query<{ po_id: number; style_id: number; quantity: number }>(sql, params)
     })(),
   ])
 
@@ -87,7 +88,7 @@ export async function validatePOQuantityLimits(
   }
 
   const existingTotalMap = new Map<string, number>()
-  for (const row of (existingResult.data || []) as any[]) {
+  for (const row of (existingRows || []) as any[]) {
     const key = `${row.po_id}-${row.style_id}`
     existingTotalMap.set(key, (existingTotalMap.get(key) || 0) + (row.quantity || 0))
   }
@@ -116,9 +117,9 @@ export async function validatePOQuantityLimits(
   const errorPoIds = [...new Set(errorGroups.map((e) => e.po_id))]
   const errorStyleIds = [...new Set(errorGroups.map((e) => e.style_id))]
 
-  const [{ data: pos }, { data: styles }] = await Promise.all([
-    supabase.from('purchase_orders').select('id, po_number').in('id', errorPoIds),
-    supabase.from('styles').select('id, style_code').in('id', errorStyleIds),
+  const [pos, styles] = await Promise.all([
+    query<{ id: number; po_number: string }>(`SELECT id, po_number FROM purchase_orders WHERE id = ANY($1)`, [errorPoIds]),
+    query<{ id: number; style_code: string }>(`SELECT id, style_code FROM styles WHERE id = ANY($1)`, [errorStyleIds]),
   ])
 
   const poNumberMap = new Map((pos || []).map((p: any) => [p.id, p.po_number]))
@@ -141,11 +142,10 @@ export async function validatePOQuantityLimits(
 export async function getPerformerName(c: Context<AppEnv>): Promise<string> {
   const auth = c.get('auth')
   if (auth?.employeeId) {
-    const { data: emp } = await supabase
-      .from('employees')
-      .select('full_name')
-      .eq('id', auth.employeeId)
-      .single()
+    const emp = await queryOne<{ full_name: string }>(
+      `SELECT full_name FROM employees WHERE id = $1`,
+      [auth.employeeId],
+    )
     return emp?.full_name || auth.employeeCode || 'unknown'
   }
   return 'unknown'

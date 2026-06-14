@@ -1,12 +1,14 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
+import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import type {
   ColorRow,
   ColorWithSuppliers,
   CreateColorDTO,
   UpdateColorDTO,
-  ColorApiResponse
+  ColorApiResponse,
+  SupplierSummary
 } from '../types/color'
 
 const colors = new Hono()
@@ -20,33 +22,25 @@ colors.get('/', requirePermission('thread.colors.view'), async (c) => {
     const search = c.req.query('search')
     const isActiveParam = c.req.query('is_active')
 
-    let query = supabase
-      .from('colors')
+    const builder = from('colors')
       .select('*')
       .is('deleted_at', null)
-      .order('name', { ascending: true })
 
     // Filter by is_active (default: only active)
     if (isActiveParam !== undefined) {
-      query = query.eq('is_active', isActiveParam === 'true')
+      builder.eq('is_active', isActiveParam === 'true')
     } else {
-      query = query.eq('is_active', true)
+      builder.eq('is_active', true)
     }
 
     // Search by name
     if (search) {
-      query = query.ilike('name', `%${search}%`)
+      builder.ilike('name', `%${search}%`)
     }
 
-    const { data, error } = await query
+    builder.order({ column: 'name', ascending: true })
 
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<ColorApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi tải danh sách màu'
-      }, 500)
-    }
+    const data = await builder.list<ColorRow>()
 
     return c.json<ColorApiResponse<ColorRow[]>>({
       data: data as ColorRow[],
@@ -70,37 +64,30 @@ colors.get('/:id', requirePermission('thread.colors.view'), async (c) => {
     const id = parseInt(c.req.param('id'))
 
     // Get color with linked suppliers via junction table
-    const { data: color, error: colorError } = await supabase
-      .from('colors')
-      .select('*')
-      .eq('id', id)
-      .single()
+    const color = await queryOne<ColorRow>(
+      'SELECT * FROM colors WHERE id = $1',
+      [id]
+    )
 
-    if (colorError) {
-      if (colorError.code === 'PGRST116') {
-        return c.json<ColorApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy màu'
-        }, 404)
-      }
-      console.error('Supabase error:', colorError)
+    if (!color) {
       return c.json<ColorApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi tải thông tin màu'
-      }, 500)
+        error: 'Không tìm thấy màu'
+      }, 404)
     }
 
     // Get linked suppliers
-    const { data: links } = await supabase
-      .from('color_supplier')
-      .select(`
-        supplier:suppliers(id, code, name)
-      `)
-      .eq('color_id', id)
+    const links = await query<{ supplier: { id: number; code: string; name: string } | null }>(
+      `SELECT json_build_object('id', s.id, 'code', s.code, 'name', s.name) AS supplier
+       FROM color_supplier cs
+       JOIN suppliers s ON s.id = cs.supplier_id
+       WHERE cs.color_id = $1`,
+      [id]
+    )
 
     const result: ColorWithSuppliers = {
       ...color,
-      suppliers: links?.map(l => l.supplier).filter(Boolean) || []
+      suppliers: links?.map(l => l.supplier).filter((s): s is SupplierSummary => s !== null) || []
     }
 
     return c.json<ColorApiResponse<ColorWithSuppliers>>({
@@ -140,11 +127,10 @@ colors.post('/', requirePermission('thread.colors.manage'), async (c) => {
     }
 
     // Check for duplicate name
-    const { data: existing } = await supabase
-      .from('colors')
-      .select('id')
-      .ilike('name', body.name)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM colors WHERE name ILIKE $1',
+      [body.name]
+    )
 
     if (existing) {
       return c.json<ColorApiResponse<null>>({
@@ -154,23 +140,25 @@ colors.post('/', requirePermission('thread.colors.manage'), async (c) => {
     }
 
     // Create color
-    const { data, error } = await supabase
-      .from('colors')
-      .insert({
-        name: body.name,
-        hex_code: body.hex_code.toUpperCase(),
-        pantone_code: body.pantone_code || null,
-        ral_code: body.ral_code || null,
-        is_active: true
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Supabase error:', error)
+    let data: ColorRow | null
+    try {
+      data = await queryOne<ColorRow>(
+        `INSERT INTO colors (name, hex_code, pantone_code, ral_code, is_active)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [
+          body.name,
+          body.hex_code.toUpperCase(),
+          body.pantone_code || null,
+          body.ral_code || null,
+          true
+        ]
+      )
+    } catch (insertErr) {
+      console.error('Insert error:', insertErr)
       return c.json<ColorApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi tạo màu: ' + error.message
+        error: 'Lỗi khi tạo màu: ' + ((insertErr as Error).message ?? '')
       }, 500)
     }
 
@@ -221,12 +209,10 @@ colors.patch('/:id', requirePermission('thread.colors.manage'), async (c) => {
 
     // Check name uniqueness if updating name
     if (body.name) {
-      const { data: existing } = await supabase
-        .from('colors')
-        .select('id')
-        .ilike('name', body.name)
-        .neq('id', id)
-        .single()
+      const existing = await queryOne<{ id: number }>(
+        'SELECT id FROM colors WHERE name ILIKE $1 AND id <> $2',
+        [body.name, id]
+      )
 
       if (existing) {
         return c.json<ColorApiResponse<null>>({
@@ -236,25 +222,24 @@ colors.patch('/:id', requirePermission('thread.colors.manage'), async (c) => {
       }
     }
 
-    const { data, error } = await supabase
-      .from('colors')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single()
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updateData)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
+    }
+    params.push(id)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<ColorApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy màu'
-        }, 404)
-      }
-      console.error('Supabase error:', error)
+    const data = await queryOne<ColorRow>(
+      `UPDATE colors SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
+    )
+
+    if (!data) {
       return c.json<ColorApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi cập nhật màu'
-      }, 500)
+        error: 'Không tìm thấy màu'
+      }, 404)
     }
 
     return c.json<ColorApiResponse<ColorRow>>({
@@ -279,32 +264,22 @@ colors.delete('/:id', requirePermission('thread.colors.manage'), async (c) => {
     const id = parseInt(c.req.param('id'))
 
     // Check if color is in use by thread_types
-    const { data: usedBy } = await supabase
-      .from('thread_types')
-      .select('id')
-      .eq('color_id', id)
-      .limit(1)
+    const usedBy = await query<{ id: number }>(
+      'SELECT id FROM thread_types WHERE color_id = $1 LIMIT 1',
+      [id]
+    )
 
     if (usedBy && usedBy.length > 0) {
-      const { data, error } = await supabase
-        .from('colors')
-        .update({ is_active: false, deleted_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single()
+      const data = await queryOne<ColorRow>(
+        `UPDATE colors SET is_active = false, deleted_at = $1 WHERE id = $2 RETURNING *`,
+        [new Date().toISOString(), id]
+      )
 
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return c.json<ColorApiResponse<null>>({
-            data: null,
-            error: 'Không tìm thấy màu'
-          }, 404)
-        }
-        console.error('Supabase error:', error)
+      if (!data) {
         return c.json<ColorApiResponse<null>>({
           data: null,
-          error: 'Lỗi khi xóa màu'
-        }, 500)
+          error: 'Không tìm thấy màu'
+        }, 404)
       }
 
       return c.json<ColorApiResponse<ColorRow>>({
@@ -314,25 +289,16 @@ colors.delete('/:id', requirePermission('thread.colors.manage'), async (c) => {
       })
     }
 
-    const { data, error } = await supabase
-      .from('colors')
-      .update({ is_active: false, deleted_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single()
+    const data = await queryOne<ColorRow>(
+      `UPDATE colors SET is_active = false, deleted_at = $1 WHERE id = $2 RETURNING *`,
+      [new Date().toISOString(), id]
+    )
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<ColorApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy màu'
-        }, 404)
-      }
-      console.error('Supabase error:', error)
+    if (!data) {
       return c.json<ColorApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi xóa màu'
-      }, 500)
+        error: 'Không tìm thấy màu'
+      }, 404)
     }
 
     return c.json<ColorApiResponse<ColorRow>>({
@@ -356,29 +322,31 @@ colors.get('/:id/suppliers', requirePermission('thread.colors.view'), async (c) 
   try {
     const id = parseInt(c.req.param('id'))
 
-    const { data, error } = await supabase
-      .from('color_supplier')
-      .select(`
-        id,
-        color_id,
-        supplier_id,
-        price_per_kg,
-        min_order_qty,
-        is_active,
-        created_at,
-        updated_at,
-        supplier:suppliers(id, code, name, contact_name, phone, email, is_active)
-      `)
-      .eq('color_id', id)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<ColorApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi tải danh sách nhà cung cấp'
-      }, 500)
-    }
+    const data = await query<Record<string, unknown>>(
+      `SELECT
+         cs.id,
+         cs.color_id,
+         cs.supplier_id,
+         cs.price_per_kg,
+         cs.min_order_qty,
+         cs.is_active,
+         cs.created_at,
+         cs.updated_at,
+         json_build_object(
+           'id', s.id,
+           'code', s.code,
+           'name', s.name,
+           'contact_name', s.contact_name,
+           'phone', s.phone,
+           'email', s.email,
+           'is_active', s.is_active
+         ) AS supplier
+       FROM color_supplier cs
+       JOIN suppliers s ON s.id = cs.supplier_id
+       WHERE cs.color_id = $1
+       ORDER BY cs.created_at DESC`,
+      [id]
+    )
 
     return c.json<ColorApiResponse<unknown[]>>({
       data: data,
@@ -410,12 +378,10 @@ colors.post('/:id/suppliers', requirePermission('thread.colors.manage'), async (
     }
 
     // Check if link already exists
-    const { data: existing } = await supabase
-      .from('color_supplier')
-      .select('id')
-      .eq('color_id', colorId)
-      .eq('supplier_id', body.supplier_id)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM color_supplier WHERE color_id = $1 AND supplier_id = $2',
+      [colorId, body.supplier_id]
+    )
 
     if (existing) {
       return c.json<ColorApiResponse<null>>({
@@ -424,22 +390,24 @@ colors.post('/:id/suppliers', requirePermission('thread.colors.manage'), async (
       }, 409)
     }
 
-    const { data, error } = await supabase
-      .from('color_supplier')
-      .insert({
-        color_id: colorId,
-        supplier_id: body.supplier_id,
-        price_per_kg: body.price_per_kg || null,
-        min_order_qty: body.min_order_qty || null
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Supabase error:', error)
+    let data: Record<string, unknown> | null
+    try {
+      data = await queryOne<Record<string, unknown>>(
+        `INSERT INTO color_supplier (color_id, supplier_id, price_per_kg, min_order_qty)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [
+          colorId,
+          body.supplier_id,
+          body.price_per_kg || null,
+          body.min_order_qty || null
+        ]
+      )
+    } catch (insertErr) {
+      console.error('Insert error:', insertErr)
       return c.json<ColorApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi liên kết nhà cung cấp: ' + error.message
+        error: 'Lỗi khi liên kết nhà cung cấp: ' + ((insertErr as Error).message ?? '')
       }, 500)
     }
 
@@ -477,25 +445,24 @@ colors.patch('/:id/suppliers/:linkId', requirePermission('thread.colors.manage')
       }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('color_supplier')
-      .update(updateData)
-      .eq('id', linkId)
-      .select()
-      .single()
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updateData)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
+    }
+    params.push(linkId)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<ColorApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy liên kết'
-        }, 404)
-      }
-      console.error('Supabase error:', error)
+    const data = await queryOne<Record<string, unknown>>(
+      `UPDATE color_supplier SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
+    )
+
+    if (!data) {
       return c.json<ColorApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi cập nhật liên kết'
-      }, 500)
+        error: 'Không tìm thấy liên kết'
+      }, 404)
     }
 
     return c.json<ColorApiResponse<unknown>>({
@@ -519,23 +486,16 @@ colors.delete('/:id/suppliers/:linkId', requirePermission('thread.colors.manage'
   try {
     const linkId = parseInt(c.req.param('linkId'))
 
-    const { error } = await supabase
-      .from('color_supplier')
-      .delete()
-      .eq('id', linkId)
+    const deleted = await query<{ id: number }>(
+      'DELETE FROM color_supplier WHERE id = $1 RETURNING id',
+      [linkId]
+    )
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<ColorApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy liên kết'
-        }, 404)
-      }
-      console.error('Supabase error:', error)
+    if (!deleted || deleted.length === 0) {
       return c.json<ColorApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi xóa liên kết'
-      }, 500)
+        error: 'Không tìm thấy liên kết'
+      }, 404)
     }
 
     return c.json<ColorApiResponse<null>>({

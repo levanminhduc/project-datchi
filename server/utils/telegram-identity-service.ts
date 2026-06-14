@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../db/supabase'
+import { query } from '../db/query'
 
 export interface TelegramIdentityInput {
   telegramUserId: string
@@ -10,22 +10,32 @@ export interface TelegramIdentityInput {
 }
 
 export async function upsertTelegramIdentity(input: TelegramIdentityInput): Promise<void> {
-  const { error } = await supabaseAdmin
-    .from('telegram_identities')
-    .upsert({
-      telegram_user_id: input.telegramUserId,
-      chat_id: input.chatId,
-      username: input.username || null,
-      first_name: input.firstName || null,
-      last_name: input.lastName || null,
-      last_command: input.lastCommand,
-      last_seen_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }, {
-      onConflict: 'telegram_user_id',
-    })
-
-  if (error) {
+  try {
+    const now = new Date().toISOString()
+    await query(
+      `INSERT INTO telegram_identities (
+         telegram_user_id, chat_id, username, first_name, last_name, last_command, last_seen_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (telegram_user_id) DO UPDATE SET
+         chat_id = EXCLUDED.chat_id,
+         username = EXCLUDED.username,
+         first_name = EXCLUDED.first_name,
+         last_name = EXCLUDED.last_name,
+         last_command = EXCLUDED.last_command,
+         last_seen_at = EXCLUDED.last_seen_at,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        input.telegramUserId,
+        input.chatId,
+        input.username || null,
+        input.firstName || null,
+        input.lastName || null,
+        input.lastCommand,
+        now,
+        now,
+      ]
+    )
+  } catch (error) {
     console.error('[telegram-identity] upsert error:', error)
   }
 }

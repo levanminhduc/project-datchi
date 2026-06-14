@@ -1,4 +1,4 @@
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query } from '../db/query'
 import type { InventoryData } from './issue-v2-batch-lookups'
 import { compositeKey, type ThreadColorItem } from './issue-v2-batch-quota'
 
@@ -88,25 +88,35 @@ export async function batchGetStockBreakdownByWarehouse(
 
   const uniqueIds = [...new Set(items.map((i) => i.threadTypeId))]
 
-  const [reservedResult, freeResult] = await Promise.all([
-    weekIds.length > 0
-      ? supabase
-          .from('thread_inventory')
-          .select('thread_type_id, color_id, warehouse_id, is_partial, warehouses!inner(name)')
-          .in('thread_type_id', uniqueIds)
-          .eq('status', 'RESERVED_FOR_ORDER')
-          .in('reserved_week_id', weekIds)
-          .limit(1000000)
-      : Promise.resolve({ data: [] as any[] }),
-    supabase
-      .from('thread_inventory')
-      .select('thread_type_id, color_id, warehouse_id, is_partial, warehouses!inner(name)')
-      .in('thread_type_id', uniqueIds)
-      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-      .limit(1000000),
-  ])
+  type ConeRow = { thread_type_id: number; color_id: number | null; warehouse_id: number; is_partial: boolean; warehouses: { name: string } | null }
 
-  const allCones = [...(reservedResult.data || []), ...(freeResult.data || [])]
+  const reservedPromise: Promise<ConeRow[]> =
+    weekIds.length > 0
+      ? query<ConeRow>(
+          `SELECT ti.thread_type_id, ti.color_id, ti.warehouse_id, ti.is_partial,
+             json_build_object('name', w.name) AS warehouses
+           FROM thread_inventory ti
+           INNER JOIN warehouses w ON w.id = ti.warehouse_id
+           WHERE ti.thread_type_id = ANY($1) AND ti.status = 'RESERVED_FOR_ORDER'
+             AND ti.reserved_week_id = ANY($2)
+           LIMIT 1000000`,
+          [uniqueIds, weekIds]
+        ).catch(() => [] as ConeRow[])
+      : Promise.resolve([] as ConeRow[])
+
+  const freePromise: Promise<ConeRow[]> = query<ConeRow>(
+    `SELECT ti.thread_type_id, ti.color_id, ti.warehouse_id, ti.is_partial,
+       json_build_object('name', w.name) AS warehouses
+     FROM thread_inventory ti
+     INNER JOIN warehouses w ON w.id = ti.warehouse_id
+     WHERE ti.thread_type_id = ANY($1) AND ti.status IN ('AVAILABLE', 'RECEIVED', 'INSPECTED')
+     LIMIT 1000000`,
+    [uniqueIds]
+  ).catch(() => [] as ConeRow[])
+
+  const [reservedData, freeData] = await Promise.all([reservedPromise, freePromise])
+
+  const allCones = [...reservedData, ...freeData]
 
   for (const item of items) {
     const key = `${item.threadTypeId}-${item.colorId ?? 'null'}`
@@ -145,27 +155,26 @@ export async function batchGetConfirmedIssuedGross(
 
   const threadTypeIds = [...new Set(items.map((i) => i.threadTypeId))]
 
-  let query = supabase
-    .from('thread_issue_lines')
-    .select(
-      department
-        ? 'thread_type_id, thread_color_id, issued_full, issued_partial, thread_issues!inner(status, department)'
-        : 'thread_type_id, thread_color_id, issued_full, issued_partial, thread_issues!inner(status)'
-    )
-    .eq('po_id', poId)
-    .eq('style_id', styleId)
-    .eq('style_color_id', colorId)
-    .in('thread_type_id', threadTypeIds)
-    .eq('thread_issues.status', 'CONFIRMED')
-    .limit(10000)
+  const params: unknown[] = [poId, styleId, colorId, threadTypeIds]
+  let sql = `SELECT til.thread_type_id, til.thread_color_id, til.issued_full, til.issued_partial
+    FROM thread_issue_lines til
+    INNER JOIN thread_issues ti ON ti.id = til.issue_id
+    WHERE til.po_id = $1 AND til.style_id = $2 AND til.style_color_id = $3
+      AND til.thread_type_id = ANY($4) AND ti.status = 'CONFIRMED'`
 
   if (department) {
-    query = query.eq('thread_issues.department', department)
+    params.push(department)
+    sql += ` AND ti.department = $${params.length}`
   }
 
-  const { data, error } = await query
+  sql += ' LIMIT 10000'
 
-  if (error || !data) return result
+  let data: Array<{ thread_type_id: number; thread_color_id: number | null; issued_full: number; issued_partial: number }>
+  try {
+    data = await query<{ thread_type_id: number; thread_color_id: number | null; issued_full: number; issued_partial: number }>(sql, params)
+  } catch {
+    return result
+  }
 
   const rawSums = new Map<string, number>()
   for (const line of data) {

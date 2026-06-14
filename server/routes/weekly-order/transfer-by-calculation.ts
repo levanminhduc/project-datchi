@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../../db/supabase'
+import { query, queryOne } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import type { AppEnv } from '../../types/hono-env'
 import {
@@ -53,12 +53,11 @@ type InventoryAggRow = {
 }
 
 export async function fetchCalculationData(weekId: number) {
-  const { data, error } = await supabaseAdmin
-    .from('thread_order_results')
-    .select('calculation_data, summary_data')
-    .eq('week_id', weekId)
-    .maybeSingle()
-  if (error) throw error
+  const data = await queryOne<{ calculation_data: unknown; summary_data: unknown }>(
+    `SELECT calculation_data, summary_data FROM thread_order_results
+     WHERE week_id = $1 LIMIT 1`,
+    [weekId],
+  )
   const rawCalc = data?.calculation_data
   const rawSummary = data?.summary_data
   return {
@@ -80,24 +79,20 @@ export async function fetchCalculationData(weekId: number) {
 }
 
 export async function fetchOrderItems(weekId: number) {
-  const { data, error } = await supabaseAdmin
-    .from('thread_order_items')
-    .select('id, po_id, style_color_id, style_id, quantity')
-    .eq('week_id', weekId)
-    .order('id', { ascending: true })
-    .limit(10000)
-  if (error) throw error
+  const data = await query<ThreadOrderItem>(
+    `SELECT id, po_id, style_color_id, style_id, quantity FROM thread_order_items
+     WHERE week_id = $1 ORDER BY id ASC LIMIT 10000`,
+    [weekId],
+  )
   return (data ?? []) as ThreadOrderItem[]
 }
 
 export async function fetchColorNameToIdMap(threadColorIds: number[]) {
   if (threadColorIds.length === 0) return new Map<string, number>()
-  const { data, error } = await supabaseAdmin
-    .from('colors')
-    .select('id, name')
-    .in('id', threadColorIds)
-    .limit(threadColorIds.length)
-  if (error) throw error
+  const data = await query<{ id: number; name: string }>(
+    `SELECT id, name FROM colors WHERE id = ANY($1) LIMIT $2`,
+    [threadColorIds, threadColorIds.length],
+  )
   const map = new Map<string, number>()
   for (const row of (data ?? []) as Array<{ id: number; name: string }>) {
     map.set(row.name, row.id)
@@ -107,24 +102,21 @@ export async function fetchColorNameToIdMap(threadColorIds: number[]) {
 
 export async function fetchSpecsByStyleColors(styleColorIds: number[]) {
   if (styleColorIds.length === 0) return []
-  const { data, error } = await supabaseAdmin
-    .from('style_color_thread_specs')
-    .select('style_color_id, style_thread_spec_id, thread_type_id, thread_color_id')
-    .in('style_color_id', styleColorIds)
-    .limit(10000)
-  if (error) throw error
+  const data = await query<SpecRow>(
+    `SELECT style_color_id, style_thread_spec_id, thread_type_id, thread_color_id
+     FROM style_color_thread_specs WHERE style_color_id = ANY($1) LIMIT 10000`,
+    [styleColorIds],
+  )
   return (data ?? []) as SpecRow[]
 }
 
 async function fetchInventoryAgg(weekId: number, warehouseId: number) {
-  const { data, error } = await supabaseAdmin
-    .from('thread_inventory')
-    .select('thread_type_id, color_id')
-    .eq('reserved_week_id', weekId)
-    .eq('warehouse_id', warehouseId)
-    .eq('status', 'RESERVED_FOR_ORDER')
-    .limit(500000)
-  if (error) throw error
+  const data = await query<{ thread_type_id: number; color_id: number | null }>(
+    `SELECT thread_type_id, color_id FROM thread_inventory
+     WHERE reserved_week_id = $1 AND warehouse_id = $2 AND status = 'RESERVED_FOR_ORDER'
+     LIMIT 500000`,
+    [weekId, warehouseId],
+  )
   const map = new Map<string, InventoryAggRow>()
   for (const row of (data ?? []) as Array<{ thread_type_id: number; color_id: number | null }>) {
     const key = `${row.thread_type_id}_${row.color_id ?? ''}`
@@ -293,14 +285,17 @@ type LastTransferEntry = {
 async function fetchLastTransferMap(weekId: number) {
   // batch_transactions stores cone_ids[] — no per-thread table.
   // We join thread_inventory via unnest to get thread_type_id/color_id per cone.
-  const { data, error } = await supabaseAdmin
-    .from('batch_transactions')
-    .select('id, performed_at, performed_by, cone_ids')
-    .eq('operation_type', 'TRANSFER')
-    .like('notes', `%Tuần #${weekId}%`)
-    .order('performed_at', { ascending: false })
-    .limit(2000)
-  if (error) throw error
+  const data = await query<{
+    id: number
+    performed_at: string
+    performed_by: string | null
+    cone_ids: number[]
+  }>(
+    `SELECT id, performed_at, performed_by, cone_ids FROM batch_transactions
+     WHERE operation_type = 'TRANSFER' AND notes LIKE $1
+     ORDER BY performed_at DESC LIMIT 2000`,
+    [`%Tuần #${weekId}%`],
+  )
 
   if (!data || data.length === 0) return new Map<ThreadKey, LastTransferEntry>()
 
@@ -338,12 +333,16 @@ async function fetchLastTransferMap(weekId: number) {
   }> = []
   for (let i = 0; i < allConeIds.length; i += CHUNK) {
     const chunk = allConeIds.slice(i, i + CHUNK)
-    const { data: rows, error: rowErr } = await supabaseAdmin
-      .from('thread_inventory')
-      .select('id, thread_type_id, color_id, is_partial')
-      .in('id', chunk)
-      .limit(CHUNK)
-    if (rowErr) throw rowErr
+    const rows = await query<{
+      id: number
+      thread_type_id: number
+      color_id: number | null
+      is_partial: boolean
+    }>(
+      `SELECT id, thread_type_id, color_id, is_partial FROM thread_inventory
+       WHERE id = ANY($1) LIMIT $2`,
+      [chunk, CHUNK],
+    )
     coneDetails.push(
       ...((rows ?? []) as Array<{
         id: number
@@ -405,15 +404,13 @@ function buildSharedWithPosMap(
 async function fetchPoAttributionMap(weekId: number, toWarehouseId: number | null) {
   if (toWarehouseId == null) return { map: new Map<string, number>(), threadKeys: new Set<string>() }
 
-  const { data, error } = await supabaseAdmin
-    .from('batch_transactions')
-    .select('po_attribution')
-    .eq('operation_type', 'TRANSFER')
-    .eq('to_warehouse_id', toWarehouseId)
-    .like('notes', `%Tuần #${weekId}%`)
-    .not('po_attribution', 'is', null)
-    .limit(2000)
-  if (error) throw error
+  const data = await query<{ po_attribution: unknown }>(
+    `SELECT po_attribution FROM batch_transactions
+     WHERE operation_type = 'TRANSFER' AND to_warehouse_id = $1 AND notes LIKE $2
+       AND po_attribution IS NOT NULL
+     LIMIT 2000`,
+    [toWarehouseId, `%Tuần #${weekId}%`],
+  )
 
   const map = new Map<string, number>()
   const threadKeys = new Set<string>()
@@ -461,22 +458,18 @@ router.get(
         return c.json({ data: null, error: 'Kho nguồn và kho đích phải khác nhau' }, 400)
       }
 
-      const { data: weekRow, error: weekErr } = await supabaseAdmin
-        .from('thread_order_weeks')
-        .select('id, week_name, status')
-        .eq('id', weekId)
-        .maybeSingle()
-      if (weekErr) throw weekErr
+      const weekRow = await queryOne<{ id: number; week_name: string; status: string }>(
+        `SELECT id, week_name, status FROM thread_order_weeks WHERE id = $1 LIMIT 1`,
+        [weekId],
+      )
       if (!weekRow) return c.json({ data: null, error: 'Tuần không tồn tại' }, 404)
 
       const warehouseIds = [warehouse_id]
       if (to_warehouse_id != null) warehouseIds.push(to_warehouse_id)
-      const { data: warehouses, error: whErr } = await supabaseAdmin
-        .from('warehouses')
-        .select('id, code, name')
-        .in('id', warehouseIds)
-        .limit(2)
-      if (whErr) throw whErr
+      const warehouses = await query<{ id: number; code: string; name: string }>(
+        `SELECT id, code, name FROM warehouses WHERE id = ANY($1) LIMIT 2`,
+        [warehouseIds],
+      )
       const sourceWh = warehouses?.find(w => w.id === warehouse_id)
       const destWh = to_warehouse_id != null ? warehouses?.find(w => w.id === to_warehouse_id) : null
       if (!sourceWh) return c.json({ data: null, error: 'Kho nguồn không tồn tại' }, 404)
@@ -538,12 +531,10 @@ router.get(
       const poNumbersMap = new Map<number, string>()
       const poIdsToFetch = poOrder.map(p => p.po_id).filter((id): id is number => id != null)
       if (poIdsToFetch.length > 0) {
-        const { data: pos, error: posErr } = await supabaseAdmin
-          .from('purchase_orders')
-          .select('id, po_number')
-          .in('id', poIdsToFetch)
-          .limit(poIdsToFetch.length)
-        if (posErr) throw posErr
+        const pos = await query<{ id: number; po_number: string }>(
+          `SELECT id, po_number FROM purchase_orders WHERE id = ANY($1) LIMIT $2`,
+          [poIdsToFetch, poIdsToFetch.length],
+        )
         for (const p of (pos ?? []) as Array<{ id: number; po_number: string }>) {
           poNumbersMap.set(p.id, p.po_number)
         }
@@ -679,14 +670,20 @@ router.get(
       const { thread_type_id, thread_color_id } = queryParse.data
 
       // Step A: Fetch all TRANSFER transactions for this week
-      const { data: txs, error: txErr } = await supabaseAdmin
-        .from('batch_transactions')
-        .select('id, performed_at, performed_by, cone_ids, from_warehouse_id, to_warehouse_id')
-        .eq('operation_type', 'TRANSFER')
-        .like('notes', `%Tuần #${weekId}%`)
-        .order('performed_at', { ascending: false })
-        .limit(200)
-      if (txErr) throw txErr
+      const txs = await query<{
+        id: number
+        performed_at: string
+        performed_by: string | null
+        cone_ids: number[]
+        from_warehouse_id: number | null
+        to_warehouse_id: number | null
+      }>(
+        `SELECT id, performed_at, performed_by, cone_ids, from_warehouse_id, to_warehouse_id
+         FROM batch_transactions
+         WHERE operation_type = 'TRANSFER' AND notes LIKE $1
+         ORDER BY performed_at DESC LIMIT 200`,
+        [`%Tuần #${weekId}%`],
+      )
 
       if (!txs || txs.length === 0) {
         return c.json({ data: [], error: null })
@@ -701,12 +698,10 @@ router.get(
       const warehouseIds = Array.from(warehouseIdSet)
       const warehouseMap = new Map<number, { id: number; code: string; name: string }>()
       if (warehouseIds.length > 0) {
-        const { data: whs, error: whErr } = await supabaseAdmin
-          .from('warehouses')
-          .select('id, code, name')
-          .in('id', warehouseIds)
-          .limit(warehouseIds.length)
-        if (whErr) throw whErr
+        const whs = await query<{ id: number; code: string; name: string }>(
+          `SELECT id, code, name FROM warehouses WHERE id = ANY($1) LIMIT $2`,
+          [warehouseIds, warehouseIds.length],
+        )
         for (const wh of (whs ?? []) as Array<{ id: number; code: string; name: string }>) {
           warehouseMap.set(wh.id, wh)
         }
@@ -723,14 +718,11 @@ router.get(
       const coneMap = new Map<number, { is_partial: boolean }>()
       for (let i = 0; i < uniqueConeIds.length; i += CHUNK) {
         const chunk = uniqueConeIds.slice(i, i + CHUNK)
-        const { data: rows, error: rowErr } = await supabaseAdmin
-          .from('thread_inventory')
-          .select('id, is_partial')
-          .in('id', chunk)
-          .eq('thread_type_id', thread_type_id)
-          .eq('color_id', thread_color_id)
-          .limit(CHUNK)
-        if (rowErr) throw rowErr
+        const rows = await query<{ id: number; is_partial: boolean }>(
+          `SELECT id, is_partial FROM thread_inventory
+           WHERE id = ANY($1) AND thread_type_id = $2 AND color_id = $3 LIMIT $4`,
+          [chunk, thread_type_id, thread_color_id, CHUNK],
+        )
         for (const row of (rows ?? []) as Array<{ id: number; is_partial: boolean }>) {
           coneMap.set(row.id, { is_partial: row.is_partial })
         }
@@ -805,21 +797,27 @@ router.get(
       }
       const { po_id, to_warehouse_id } = queryParse.data
 
-      let query = supabaseAdmin
-        .from('batch_transactions')
-        .select('id, performed_at, performed_by, from_warehouse_id, to_warehouse_id, po_attribution')
-        .eq('operation_type', 'TRANSFER')
-        .like('notes', `%Tuần #${weekId}%`)
-        .not('po_attribution', 'is', null)
-        .order('performed_at', { ascending: false })
-        .limit(500)
-
+      const txParams: unknown[] = [`%Tuần #${weekId}%`]
+      let txWhere = `operation_type = 'TRANSFER' AND notes LIKE $1 AND po_attribution IS NOT NULL`
       if (to_warehouse_id != null) {
-        query = query.eq('to_warehouse_id', to_warehouse_id)
+        txParams.push(to_warehouse_id)
+        txWhere += ` AND to_warehouse_id = $${txParams.length}`
       }
 
-      const { data: txs, error: txErr } = await query
-      if (txErr) throw txErr
+      const txs = await query<{
+        id: number
+        performed_at: string
+        performed_by: string | null
+        from_warehouse_id: number | null
+        to_warehouse_id: number | null
+        po_attribution: Array<{ po_id: number; thread_type_id: number; color_id: number; cones: number }> | null
+      }>(
+        `SELECT id, performed_at, performed_by, from_warehouse_id, to_warehouse_id, po_attribution
+         FROM batch_transactions
+         WHERE ${txWhere}
+         ORDER BY performed_at DESC LIMIT 500`,
+        txParams,
+      )
 
       if (!txs || txs.length === 0) {
         return c.json({ data: [], error: null })
@@ -857,12 +855,10 @@ router.get(
       const warehouseIds = Array.from(warehouseIdSet)
       const warehouseMap = new Map<number, { id: number; code: string; name: string }>()
       if (warehouseIds.length > 0) {
-        const { data: whs, error: whErr } = await supabaseAdmin
-          .from('warehouses')
-          .select('id, code, name')
-          .in('id', warehouseIds)
-          .limit(warehouseIds.length)
-        if (whErr) throw whErr
+        const whs = await query<{ id: number; code: string; name: string }>(
+          `SELECT id, code, name FROM warehouses WHERE id = ANY($1) LIMIT $2`,
+          [warehouseIds, warehouseIds.length],
+        )
         for (const wh of (whs ?? []) as Array<{ id: number; code: string; name: string }>) {
           warehouseMap.set(wh.id, wh)
         }
@@ -879,16 +875,16 @@ router.get(
 
       const threadTypeMap = new Map<number, { supplier_name: string; tex_number: string }>()
       if (threadTypeIdSet.size > 0) {
-        const { data: tts, error: ttErr } = await supabaseAdmin
-          .from('thread_types')
-          .select('id, tex_number, suppliers(name)')
-          .in('id', Array.from(threadTypeIdSet))
-          .limit(threadTypeIdSet.size)
-        if (ttErr) throw ttErr
-        for (const tt of (tts ?? []) as unknown as Array<{ id: number; tex_number: string; suppliers: { name: string } | { name: string }[] | null }>) {
-          const supplier = Array.isArray(tt.suppliers) ? tt.suppliers[0] : tt.suppliers
+        const tts = await query<{ id: number; tex_number: string; supplier_name: string | null }>(
+          `SELECT tt.id, tt.tex_number, sup.name AS supplier_name
+           FROM thread_types tt
+           LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+           WHERE tt.id = ANY($1) LIMIT $2`,
+          [Array.from(threadTypeIdSet), threadTypeIdSet.size],
+        )
+        for (const tt of (tts ?? []) as Array<{ id: number; tex_number: string; supplier_name: string | null }>) {
           threadTypeMap.set(tt.id, {
-            supplier_name: supplier?.name ?? '',
+            supplier_name: tt.supplier_name ?? '',
             tex_number: tt.tex_number,
           })
         }
@@ -896,12 +892,10 @@ router.get(
 
       const colorMap = new Map<number, string>()
       if (colorIdSet.size > 0) {
-        const { data: cols, error: colErr } = await supabaseAdmin
-          .from('colors')
-          .select('id, name')
-          .in('id', Array.from(colorIdSet))
-          .limit(colorIdSet.size)
-        if (colErr) throw colErr
+        const cols = await query<{ id: number; name: string }>(
+          `SELECT id, name FROM colors WHERE id = ANY($1) LIMIT $2`,
+          [Array.from(colorIdSet), colorIdSet.size],
+        )
         for (const col of (cols ?? []) as Array<{ id: number; name: string }>) {
           colorMap.set(col.id, col.name)
         }

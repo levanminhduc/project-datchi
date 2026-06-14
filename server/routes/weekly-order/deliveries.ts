@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
-import { supabaseAdmin as supabase } from '../../db/supabase'
+import { query, queryOne } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
 import {
@@ -42,35 +42,54 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
     let offset = 0
 
     while (true) {
-      let query = supabase
-        .from('thread_order_deliveries')
-        .select(`
-          *,
-          supplier:suppliers(id, name),
-          thread_type:thread_types(id, name, tex_number, color_data:colors!color_id(name, hex_code)),
-          week:thread_order_weeks(id, week_name, status)
-        `)
-        .order('delivery_date', { ascending: true })
-        .range(offset, offset + BATCH_SIZE - 1)
+      const params: unknown[] = []
+      const conds: string[] = []
 
       if (status) {
-        query = query.eq('status', status)
+        params.push(status)
+        conds.push(`d.status = $${params.length}`)
       } else {
         // Mặc định ẩn deliveries đã hủy
-        query = query.neq('status', 'CANCELLED')
+        params.push('CANCELLED')
+        conds.push(`d.status <> $${params.length}`)
       }
       if (weekId) {
-        query = query.eq('week_id', parseInt(weekId))
+        params.push(parseInt(weekId))
+        conds.push(`d.week_id = $${params.length}`)
       }
       if (inventoryStatus) {
-        query = query.eq('inventory_status', inventoryStatus)
+        params.push(inventoryStatus)
+        conds.push(`d.inventory_status = $${params.length}`)
       }
       if (inventoryStatusNot) {
-        query = query.neq('inventory_status', inventoryStatusNot)
+        params.push(inventoryStatusNot)
+        conds.push(`d.inventory_status <> $${params.length}`)
       }
 
-      const { data, error } = await query
-      if (error) throw error
+      const whereClause = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : ''
+      params.push(BATCH_SIZE)
+      const limitPh = `$${params.length}`
+      params.push(offset)
+      const offsetPh = `$${params.length}`
+
+      const data = await query<any>(
+        `SELECT d.*,
+          CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('id', sup.id, 'name', sup.name) END AS supplier,
+          CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+            'id', tt.id, 'name', tt.name, 'tex_number', tt.tex_number,
+            'color_data', CASE WHEN co.id IS NULL THEN NULL ELSE json_build_object('name', co.name, 'hex_code', co.hex_code) END
+          ) END AS thread_type,
+          CASE WHEN w.id IS NULL THEN NULL ELSE json_build_object('id', w.id, 'week_name', w.week_name, 'status', w.status) END AS week
+         FROM thread_order_deliveries d
+         LEFT JOIN suppliers sup ON sup.id = d.supplier_id
+         LEFT JOIN thread_types tt ON tt.id = d.thread_type_id
+         LEFT JOIN colors co ON co.id = tt.color_id
+         LEFT JOIN thread_order_weeks w ON w.id = d.week_id
+         ${whereClause}
+         ORDER BY d.delivery_date ASC
+         LIMIT ${limitPh} OFFSET ${offsetPh}`,
+        params,
+      )
 
       if (!data || data.length === 0) break
       allDeliveries.push(...data)
@@ -86,12 +105,11 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
       const WEEK_IDS_BATCH_SIZE = 200
       for (let i = 0; i < weekIds.length; i += WEEK_IDS_BATCH_SIZE) {
         const chunk = weekIds.slice(i, i + WEEK_IDS_BATCH_SIZE)
-        const { data: chunkData, error: chunkError } = await supabase
-          .from('thread_order_results')
-          .select('week_id, summary_data')
-          .in('week_id', chunk)
+        const chunkData = await query<{ week_id: number; summary_data: unknown[] | null }>(
+          `SELECT week_id, summary_data FROM thread_order_results WHERE week_id = ANY($1)`,
+          [chunk],
+        )
 
-        if (chunkError) throw chunkError
         if (chunkData && chunkData.length > 0) {
           resultsData.push(...chunkData)
         }
@@ -188,12 +206,10 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
     const enriched = Array.from(dedupeMap.values())
       .sort((a, b) => String(a.delivery_date).localeCompare(String(b.delivery_date)))
 
-    const { data: loanAggs } = await supabase
-      .from('thread_order_loans')
-      .select('from_week_id, to_week_id, thread_type_id, quantity_cones')
-      .eq('status', 'ACTIVE')
-      .is('deleted_at', null)
-      .not('from_week_id', 'is', null)
+    const loanAggs = await query<{ from_week_id: number | null; to_week_id: number | null; thread_type_id: number; quantity_cones: number }>(
+      `SELECT from_week_id, to_week_id, thread_type_id, quantity_cones FROM thread_order_loans
+       WHERE status = 'ACTIVE' AND deleted_at IS NULL AND from_week_id IS NOT NULL`,
+    )
 
     const borrowedMap = new Map<string, number>()
     const lentMap = new Map<string, number>()
@@ -257,10 +273,10 @@ deliveries.get('/deliveries/receive-logs', requirePermission('thread.allocations
 
     let deliveryIdFilter: number[] | undefined
     if (weekId) {
-      const { data: weekDeliveries } = await supabase
-        .from('thread_order_deliveries')
-        .select('id')
-        .eq('week_id', weekId)
+      const weekDeliveries = await query<{ id: number }>(
+        `SELECT id FROM thread_order_deliveries WHERE week_id = $1`,
+        [weekId],
+      )
       deliveryIdFilter = (weekDeliveries || []).map((d: any) => d.id)
       if (deliveryIdFilter.length === 0) {
         return c.json({ data: [], total: 0, error: null })
@@ -270,40 +286,61 @@ deliveries.get('/deliveries/receive-logs', requirePermission('thread.allocations
     const allLogs: any[] = []
     let offset = 0
     while (true) {
-      let query = supabase
-        .from('delivery_receive_logs')
-        .select(`
-          id,
-          delivery_id,
-          quantity,
-          warehouse_id,
-          received_by,
-          notes,
-          created_at,
-          delivery:thread_order_deliveries!delivery_id(
-            thread_type_id,
-            week_id,
-            quantity_cones,
-            received_quantity,
-            thread_color,
-            thread_color_code,
-            thread_type:thread_types(name, tex_number, supplier:suppliers(name), color_data:colors!color_id(name, hex_code)),
-            week:thread_order_weeks(week_name)
-          ),
-          warehouse:warehouses!warehouse_id(name)
-        `)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + BATCH_SIZE - 1)
+      const params: unknown[] = []
+      const conds: string[] = []
 
       if (deliveryId) {
-        query = query.eq('delivery_id', deliveryId)
+        params.push(deliveryId)
+        conds.push(`l.delivery_id = $${params.length}`)
       }
       if (deliveryIdFilter) {
-        query = query.in('delivery_id', deliveryIdFilter)
+        params.push(deliveryIdFilter)
+        conds.push(`l.delivery_id = ANY($${params.length})`)
       }
 
-      const { data, error } = await query
-      if (error) throw error
+      const whereClause = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : ''
+      params.push(BATCH_SIZE)
+      const limitPh = `$${params.length}`
+      params.push(offset)
+      const offsetPh = `$${params.length}`
+
+      const data = await query<any>(
+        `SELECT
+          l.id,
+          l.delivery_id,
+          l.quantity,
+          l.warehouse_id,
+          l.received_by,
+          l.notes,
+          l.created_at,
+          CASE WHEN d.id IS NULL THEN NULL ELSE json_build_object(
+            'thread_type_id', d.thread_type_id,
+            'week_id', d.week_id,
+            'quantity_cones', d.quantity_cones,
+            'received_quantity', d.received_quantity,
+            'thread_color', d.thread_color,
+            'thread_color_code', d.thread_color_code,
+            'thread_type', CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+              'name', tt.name, 'tex_number', tt.tex_number,
+              'supplier', CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('name', sup.name) END,
+              'color_data', CASE WHEN co.id IS NULL THEN NULL ELSE json_build_object('name', co.name, 'hex_code', co.hex_code) END
+            ) END,
+            'week', CASE WHEN w.id IS NULL THEN NULL ELSE json_build_object('week_name', w.week_name) END
+          ) END AS delivery,
+          CASE WHEN wh.id IS NULL THEN NULL ELSE json_build_object('name', wh.name) END AS warehouse
+         FROM delivery_receive_logs l
+         LEFT JOIN thread_order_deliveries d ON d.id = l.delivery_id
+         LEFT JOIN thread_types tt ON tt.id = d.thread_type_id
+         LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+         LEFT JOIN colors co ON co.id = tt.color_id
+         LEFT JOIN thread_order_weeks w ON w.id = d.week_id
+         LEFT JOIN warehouses wh ON wh.id = l.warehouse_id
+         ${whereClause}
+         ORDER BY l.created_at DESC
+         LIMIT ${limitPh} OFFSET ${offsetPh}`,
+        params,
+      )
+
       if (!data || data.length === 0) break
       allLogs.push(...data)
       if (data.length < BATCH_SIZE) break
@@ -378,36 +415,43 @@ deliveries.patch('/deliveries/:deliveryId', requirePermission('thread.allocation
     if (validated.status !== undefined) updateFields.status = validated.status
     if (validated.notes !== undefined) updateFields.notes = validated.notes
 
-    const { data, error } = await supabase
-      .from('thread_order_deliveries')
-      .update(updateFields)
-      .eq('id', deliveryId)
-      .select(`
-        *,
-        supplier:suppliers(id, name),
-        thread_type:thread_types(id, name, tex_number)
-      `)
-      .single()
+    const setParams: unknown[] = []
+    const setParts: string[] = []
+    for (const [col, val] of Object.entries(updateFields)) {
+      setParams.push(val)
+      setParts.push(`${col} = $${setParams.length}`)
+    }
+    setParams.push(deliveryId)
+    const idPh = `$${setParams.length}`
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy bản ghi giao hàng' }, 404)
-      }
-      throw error
+    const data = await queryOne<any>(
+      `WITH upd AS (
+         UPDATE thread_order_deliveries SET ${setParts.join(', ')}
+         WHERE id = ${idPh}
+         RETURNING *
+       )
+       SELECT upd.*,
+         CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('id', sup.id, 'name', sup.name) END AS supplier,
+         CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object('id', tt.id, 'name', tt.name, 'tex_number', tt.tex_number) END AS thread_type
+       FROM upd
+       LEFT JOIN suppliers sup ON sup.id = upd.supplier_id
+       LEFT JOIN thread_types tt ON tt.id = upd.thread_type_id`,
+      setParams,
+    )
+
+    if (!data) {
+      return c.json({ data: null, error: 'Không tìm thấy bản ghi giao hàng' }, 404)
     }
 
     if (validated.delivery_date !== undefined) {
       const updatedDelivery = data as { week_id: number; thread_type_id: number }
 
-      const { data: resultRow, error: resultFetchError } = await supabase
-        .from('thread_order_results')
-        .select('id, summary_data')
-        .eq('week_id', updatedDelivery.week_id)
-        .maybeSingle()
+      const resultRow = await queryOne<{ id: number; summary_data: unknown }>(
+        `SELECT id, summary_data FROM thread_order_results WHERE week_id = $1 LIMIT 1`,
+        [updatedDelivery.week_id],
+      )
 
-      if (resultFetchError) {
-        console.warn('Error fetching weekly result for delivery-date sync:', resultFetchError)
-      } else if (resultRow?.summary_data && Array.isArray(resultRow.summary_data)) {
+      if (resultRow?.summary_data && Array.isArray(resultRow.summary_data)) {
         let changed = false
         const nextSummary = (resultRow.summary_data as Array<Record<string, unknown>>).map((row) => {
           if (row.thread_type_id === updatedDelivery.thread_type_id) {
@@ -418,12 +462,12 @@ deliveries.patch('/deliveries/:deliveryId', requirePermission('thread.allocation
         })
 
         if (changed) {
-          const { error: resultUpdateError } = await supabase
-            .from('thread_order_results')
-            .update({ summary_data: nextSummary })
-            .eq('id', resultRow.id)
-
-          if (resultUpdateError) {
+          try {
+            await query(
+              `UPDATE thread_order_results SET summary_data = $1::jsonb WHERE id = $2`,
+              [JSON.stringify(nextSummary), resultRow.id],
+            )
+          } catch (resultUpdateError) {
             console.warn('Error syncing delivery_date into summary_data:', resultUpdateError)
           }
         }
@@ -467,34 +511,29 @@ deliveries.post('/deliveries/:deliveryId/receive', requirePermission('thread.all
 
     const { warehouse_id, quantity, received_by, expiry_date } = validated
 
-    const { data: delivery, error: deliveryError } = await supabase
-      .from('thread_order_deliveries')
-      .select('id, status, week_id, thread_type_id')
-      .eq('id', deliveryId)
-      .single()
+    const delivery = await queryOne<{ id: number; status: string; week_id: number; thread_type_id: number }>(
+      `SELECT id, status, week_id, thread_type_id FROM thread_order_deliveries WHERE id = $1 LIMIT 1`,
+      [deliveryId],
+    )
 
-    if (deliveryError) {
-      if (deliveryError.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy delivery' }, 404)
-      }
-      throw deliveryError
+    if (!delivery) {
+      return c.json({ data: null, error: 'Không tìm thấy delivery' }, 404)
     }
 
     if (delivery.status !== 'DELIVERED') {
       return c.json({ data: null, error: 'Chỉ có thể nhập kho cho đơn đã giao' }, 400)
     }
 
-    const { data: result, error: rpcError } = await supabase.rpc('fn_receive_delivery', {
-      p_delivery_id: deliveryId,
-      p_received_qty: quantity,
-      p_warehouse_id: warehouse_id,
-      p_received_by: received_by,
-      p_expiry_date: expiry_date || null,
-    })
-
-    if (rpcError) {
+    let result: any
+    try {
+      const rows = await query<{ result: any }>(
+        `SELECT fn_receive_delivery($1, $2, $3, $4, $5) AS result`,
+        [deliveryId, quantity, warehouse_id, received_by, expiry_date || null],
+      )
+      result = rows.length > 0 ? rows[0].result : null
+    } catch (rpcError) {
       console.error('fn_receive_delivery error:', rpcError)
-      return c.json({ data: null, error: rpcError.message }, 500)
+      return c.json({ data: null, error: getErrorMessage(rpcError) }, 500)
     }
 
     return c.json({
@@ -537,26 +576,30 @@ deliveries.get('/:id/deliveries', requirePermission('thread.allocations.view'), 
     }
 
     const [deliveriesResult, loansResult, summaryResult] = await Promise.all([
-      supabase
-        .from('thread_order_deliveries')
-        .select(`
-          *,
-          supplier:suppliers(id, name),
-          thread_type:thread_types(id, name, tex_number, color_data:colors!color_id(name, hex_code))
-        `)
-        .eq('week_id', id)
-        .order('delivery_date', { ascending: true }),
-      supabase
-        .from('thread_order_loans')
-        .select('thread_type_id, from_week_id, to_week_id, quantity_cones')
-        .or(`from_week_id.eq.${id},to_week_id.eq.${id}`)
-        .eq('status', 'ACTIVE')
-        .is('deleted_at', null),
-      supabase
-        .from('thread_order_results')
-        .select('summary_data')
-        .eq('week_id', id)
-        .single(),
+      query<any>(
+        `SELECT d.*,
+           CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('id', sup.id, 'name', sup.name) END AS supplier,
+           CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+             'id', tt.id, 'name', tt.name, 'tex_number', tt.tex_number,
+             'color_data', CASE WHEN co.id IS NULL THEN NULL ELSE json_build_object('name', co.name, 'hex_code', co.hex_code) END
+           ) END AS thread_type
+         FROM thread_order_deliveries d
+         LEFT JOIN suppliers sup ON sup.id = d.supplier_id
+         LEFT JOIN thread_types tt ON tt.id = d.thread_type_id
+         LEFT JOIN colors co ON co.id = tt.color_id
+         WHERE d.week_id = $1
+         ORDER BY d.delivery_date ASC`,
+        [id],
+      ).then((data) => ({ data, error: null as unknown })).catch((error) => ({ data: null as any[] | null, error })),
+      query<{ thread_type_id: number; from_week_id: number | null; to_week_id: number | null; quantity_cones: number }>(
+        `SELECT thread_type_id, from_week_id, to_week_id, quantity_cones FROM thread_order_loans
+         WHERE (from_week_id = $1 OR to_week_id = $1) AND status = 'ACTIVE' AND deleted_at IS NULL`,
+        [id],
+      ).then((data) => ({ data })).catch(() => ({ data: [] as Array<{ thread_type_id: number; from_week_id: number | null; to_week_id: number | null; quantity_cones: number }> })),
+      queryOne<{ summary_data: unknown }>(
+        `SELECT summary_data FROM thread_order_results WHERE week_id = $1 LIMIT 1`,
+        [id],
+      ).then((data) => ({ data })).catch(() => ({ data: null as { summary_data: unknown } | null })),
     ])
 
     if (deliveriesResult.error) throw deliveriesResult.error

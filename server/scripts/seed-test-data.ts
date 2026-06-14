@@ -1,7 +1,47 @@
 import dotenv from 'dotenv'
 dotenv.config()
 
-import { supabaseAdmin } from '../db/supabase'
+import { query, queryOne, queryCount } from '../db/query'
+
+async function upsertRow(
+  table: string,
+  row: Record<string, unknown>,
+  conflictColumn: string
+): Promise<void> {
+  const keys = Object.keys(row)
+  const cols = keys.join(', ')
+  const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ')
+  const updates = keys
+    .filter((k) => k !== conflictColumn)
+    .map((k) => `${k} = EXCLUDED.${k}`)
+    .join(', ')
+  const sql = `INSERT INTO ${table} (${cols}) VALUES (${placeholders}) ON CONFLICT (${conflictColumn}) DO UPDATE SET ${updates}`
+  await query(sql, keys.map((k) => row[k]))
+}
+
+async function upsertRows(
+  table: string,
+  rows: ReadonlyArray<Record<string, unknown>>,
+  conflictColumn: string
+): Promise<void> {
+  if (rows.length === 0) return
+  const keys = Object.keys(rows[0])
+  const cols = keys.join(', ')
+  const params: unknown[] = []
+  const valueGroups = rows.map((row) => {
+    const ph = keys.map((k) => {
+      params.push(row[k])
+      return `$${params.length}`
+    })
+    return `(${ph.join(', ')})`
+  })
+  const updates = keys
+    .filter((k) => k !== conflictColumn)
+    .map((k) => `${k} = EXCLUDED.${k}`)
+    .join(', ')
+  const sql = `INSERT INTO ${table} (${cols}) VALUES ${valueGroups.join(', ')} ON CONFLICT (${conflictColumn}) DO UPDATE SET ${updates}`
+  await query(sql, params)
+}
 
 /**
  * Script để seed dữ liệu test
@@ -23,26 +63,25 @@ async function seedTestData() {
     ]
     
     for (const loc of locations) {
-      const { error } = await supabaseAdmin
-        .from('warehouses')
-        .upsert(loc, { onConflict: 'code' })
-      if (error) console.error(`  ❌ ${loc.code}:`, error.message)
-      else console.log(`  ✓ ${loc.name}`)
+      try {
+        await upsertRow('warehouses', loc, 'code')
+        console.log(`  ✓ ${loc.name}`)
+      } catch (error) {
+        console.error(`  ❌ ${loc.code}:`, (error as Error).message)
+      }
     }
-    
+
     // Get DB id for parent reference
-    const { data: dbData } = await supabaseAdmin
-      .from('warehouses')
-      .select('id')
-      .eq('code', 'DB')
-      .single()
+    const dbData = await queryOne<{ id: number }>(
+      'SELECT id FROM warehouses WHERE code = $1',
+      ['DB']
+    )
     const dbId = dbData?.id
-    
-    const { data: ptData } = await supabaseAdmin
-      .from('warehouses')
-      .select('id')
-      .eq('code', 'PT')
-      .single()
+
+    const ptData = await queryOne<{ id: number }>(
+      'SELECT id FROM warehouses WHERE code = $1',
+      ['PT']
+    )
     const ptId = ptData?.id
     
     // Insert STORAGES under Điện Bàn
@@ -54,11 +93,12 @@ async function seedTestData() {
     ]
     
     for (const storage of storages) {
-      const { error } = await supabaseAdmin
-        .from('warehouses')
-        .upsert(storage, { onConflict: 'code' })
-      if (error) console.error(`  ❌ ${storage.code}:`, error.message)
-      else console.log(`  ✓ ${storage.name}`)
+      try {
+        await upsertRow('warehouses', storage, 'code')
+        console.log(`  ✓ ${storage.name}`)
+      } catch (error) {
+        console.error(`  ❌ ${storage.code}:`, (error as Error).message)
+      }
     }
     
     // =============================================
@@ -82,11 +122,12 @@ async function seedTestData() {
     ]
     
     for (const sup of suppliers) {
-      const { error } = await supabaseAdmin
-        .from('suppliers')
-        .upsert(sup, { onConflict: 'code' })
-      if (error) console.error(`  ❌ ${sup.code}:`, error.message)
-      else console.log(`  ✓ ${sup.name}`)
+      try {
+        await upsertRow('suppliers', sup, 'code')
+        console.log(`  ✓ ${sup.name}`)
+      } catch (error) {
+        console.error(`  ❌ ${sup.code}:`, (error as Error).message)
+      }
     }
     
     // =============================================
@@ -123,11 +164,12 @@ async function seedTestData() {
     ]
     
     for (const color of colors) {
-      const { error } = await supabaseAdmin
-        .from('colors')
-        .upsert(color, { onConflict: 'name' })
-      if (error) console.error(`  ❌ ${color.name}:`, error.message)
-      else console.log(`  ✓ ${color.name}`)
+      try {
+        await upsertRow('colors', color, 'name')
+        console.log(`  ✓ ${color.name}`)
+      } catch (error) {
+        console.error(`  ❌ ${color.name}:`, (error as Error).message)
+      }
     }
     
     // =============================================
@@ -135,14 +177,14 @@ async function seedTestData() {
     // =============================================
     console.log('\n🧵 Đang tạo thread types (50 loại)...')
 
-    const { data: colorData } = await supabaseAdmin
-      .from('colors')
-      .select('id, name')
+    const colorData = await query<{ id: number; name: string }>(
+      'SELECT id, name FROM colors'
+    )
     const colorMap = new Map(colorData?.map(c => [c.name, c.id]) || [])
 
-    const { data: supplierData } = await supabaseAdmin
-      .from('suppliers')
-      .select('id, name')
+    const supplierData = await query<{ id: number; name: string }>(
+      'SELECT id, name FROM suppliers'
+    )
     const supplierMap = new Map(supplierData?.map(s => [s.name, s.id]) || [])
 
     const threadTypes = [
@@ -209,11 +251,12 @@ async function seedTestData() {
     
     let ttCount = 0
     for (const tt of threadTypes) {
-      const { error } = await supabaseAdmin
-        .from('thread_types')
-        .upsert(tt, { onConflict: 'code' })
-      if (error) console.error(`  ❌ ${tt.code}:`, error.message)
-      else ttCount++
+      try {
+        await upsertRow('thread_types', tt, 'code')
+        ttCount++
+      } catch (error) {
+        console.error(`  ❌ ${tt.code}:`, (error as Error).message)
+      }
     }
     console.log(`  ✓ Đã tạo ${ttCount} loại chỉ`)
     
@@ -223,26 +266,23 @@ async function seedTestData() {
     console.log('\n📦 Đang tạo thread inventory...')
     
     // Get all thread types and warehouses for reference
-    const { data: ttData } = await supabaseAdmin
-      .from('thread_types')
-      .select('id, code, meters_per_cone, density_grams_per_meter')
-      .like('code', 'CHI-%')
-    
-    const { data: whData } = await supabaseAdmin
-      .from('warehouses')
-      .select('id, code, name')
-      .in('code', ['DB-DK', 'DB-XN', 'DB-XT', 'PT-01'])
-    
-    if (!ttData || !whData) {
+    const ttData = await query<{ id: number; code: string; meters_per_cone: number; density_grams_per_meter: number }>(
+      "SELECT id, code, meters_per_cone, density_grams_per_meter FROM thread_types WHERE code LIKE $1",
+      ['CHI-%']
+    )
+
+    const whData = await query<{ id: number; code: string; name: string }>(
+      'SELECT id, code, name FROM warehouses WHERE code = ANY($1)',
+      [['DB-DK', 'DB-XN', 'DB-XT', 'PT-01']]
+    )
+
+    if (ttData.length === 0 || whData.length === 0) {
       console.error('  ❌ Không thể lấy dữ liệu thread types hoặc warehouses')
       return
     }
-    
+
     // Delete old test inventory
-    await supabaseAdmin
-      .from('thread_inventory')
-      .delete()
-      .like('cone_id', 'TST-%')
+    await query("DELETE FROM thread_inventory WHERE cone_id LIKE $1", ['TST-%'])
     
     const warehouses = new Map(whData.map(w => [w.code, w]))
     
@@ -413,11 +453,10 @@ async function seedTestData() {
     const batchSize = 50
     for (let i = 0; i < inventoryData.length; i += batchSize) {
       const batch = inventoryData.slice(i, i + batchSize)
-      const { error } = await supabaseAdmin
-        .from('thread_inventory')
-        .upsert(batch, { onConflict: 'cone_id' })
-      if (error) {
-        console.error(`  ❌ Batch ${i}-${i + batch.length}:`, error.message)
+      try {
+        await upsertRows('thread_inventory', batch, 'cone_id')
+      } catch (error) {
+        console.error(`  ❌ Batch ${i}-${i + batch.length}:`, (error as Error).message)
       }
     }
     
@@ -428,11 +467,11 @@ async function seedTestData() {
     // =============================================
     console.log('\n📊 THỐNG KÊ:')
     
-    const { count: whCount } = await supabaseAdmin.from('warehouses').select('*', { count: 'exact', head: true }).eq('is_active', true)
-    const { count: supCount } = await supabaseAdmin.from('suppliers').select('*', { count: 'exact', head: true }).eq('is_active', true)
-    const { count: colCount } = await supabaseAdmin.from('colors').select('*', { count: 'exact', head: true }).eq('is_active', true)
-    const { count: ttCount2 } = await supabaseAdmin.from('thread_types').select('*', { count: 'exact', head: true }).eq('is_active', true).like('code', 'CHI-%')
-    const { count: invCount } = await supabaseAdmin.from('thread_inventory').select('*', { count: 'exact', head: true }).like('cone_id', 'TST-%')
+    const whCount = await queryCount('SELECT count(*)::int AS count FROM warehouses WHERE is_active = $1', [true])
+    const supCount = await queryCount('SELECT count(*)::int AS count FROM suppliers WHERE is_active = $1', [true])
+    const colCount = await queryCount('SELECT count(*)::int AS count FROM colors WHERE is_active = $1', [true])
+    const ttCount2 = await queryCount("SELECT count(*)::int AS count FROM thread_types WHERE is_active = $1 AND code LIKE $2", [true, 'CHI-%'])
+    const invCount = await queryCount("SELECT count(*)::int AS count FROM thread_inventory WHERE cone_id LIKE $1", ['TST-%'])
     
     console.log(`  • Warehouses: ${whCount}`)
     console.log(`  • Suppliers: ${supCount}`)

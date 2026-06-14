@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
+import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 import { sanitizeFilterValue } from '../utils/sanitize'
@@ -13,50 +14,75 @@ const ALLOWED_SORT_COLUMNS = ['po_number', 'customer_name', 'status', 'priority'
 
 purchaseOrders.get('/', requirePermission('thread.purchase-orders.view'), async (c) => {
   try {
-    const query = c.req.query()
-    const includeItems = query.include === 'items'
+    const reqQuery = c.req.query()
+    const includeItems = reqQuery.include === 'items'
 
-    const page = Math.max(1, parseInt(query.page || '1'))
-    const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize || '25')))
-    const sortBy = ALLOWED_SORT_COLUMNS.includes(query.sortBy || '') ? query.sortBy : 'created_at'
-    const descending = query.descending !== 'false'
+    const page = Math.max(1, parseInt(reqQuery.page || '1'))
+    const pageSize = Math.min(100, Math.max(1, parseInt(reqQuery.pageSize || '25')))
+    const sortBy = ALLOWED_SORT_COLUMNS.includes(reqQuery.sortBy || '') ? reqQuery.sortBy : 'created_at'
+    const descending = reqQuery.descending !== 'false'
 
     const offset = (page - 1) * pageSize
 
-    const selectQuery = includeItems
-      ? `*, items:po_items!inner(id, po_id, style_id, quantity, finished_product_code, style:styles(id, style_code, style_name, description))`
-      : '*'
-
-    let dbQuery = supabase
-      .from('purchase_orders')
-      .select(selectQuery, { count: 'exact' })
-      .is('deleted_at', null)
-      .order(sortBy, { ascending: !descending })
-      .range(offset, offset + pageSize - 1)
+    const conditions: string[] = ['po.deleted_at IS NULL']
+    const params: unknown[] = []
 
     if (includeItems) {
-      dbQuery = dbQuery.is('items.deleted_at', null)
+      conditions.push('EXISTS (SELECT 1 FROM po_items pi2 WHERE pi2.po_id = po.id AND pi2.deleted_at IS NULL)')
     }
 
-    if (query.status) {
-      dbQuery = dbQuery.eq('status', query.status)
+    if (reqQuery.status) {
+      params.push(reqQuery.status)
+      conditions.push(`po.status = $${params.length}`)
     }
-    if (query.priority) {
-      dbQuery = dbQuery.eq('priority', query.priority)
+    if (reqQuery.priority) {
+      params.push(reqQuery.priority)
+      conditions.push(`po.priority = $${params.length}`)
     }
-    if (query.customer_name) {
-      dbQuery = dbQuery.eq('customer_name', query.customer_name)
+    if (reqQuery.customer_name) {
+      params.push(reqQuery.customer_name)
+      conditions.push(`po.customer_name = $${params.length}`)
     }
-    if (query.po_number) {
-      const s = sanitizeFilterValue(query.po_number)
-      dbQuery = dbQuery.ilike('po_number', `%${s}%`)
+    if (reqQuery.po_number) {
+      const s = sanitizeFilterValue(reqQuery.po_number)
+      params.push(`%${s}%`)
+      conditions.push(`po.po_number ILIKE $${params.length}`)
     }
 
-    const { data, error, count } = await dbQuery
+    const whereClause = `WHERE ${conditions.join(' AND ')}`
 
-    if (error) throw error
+    const countRow = await queryOne<{ count: number }>(
+      `SELECT count(*)::int AS count FROM purchase_orders po ${whereClause}`,
+      params
+    )
+    const count = countRow?.count ?? 0
 
-    return c.json({ data, count: count ?? 0, page, pageSize, error: null })
+    const itemsSelect = includeItems
+      ? `,
+         COALESCE((
+           SELECT json_agg(json_build_object(
+             'id', pi.id, 'po_id', pi.po_id, 'style_id', pi.style_id,
+             'quantity', pi.quantity, 'finished_product_code', pi.finished_product_code,
+             'style', CASE WHEN st.id IS NULL THEN NULL
+                           ELSE json_build_object('id', st.id, 'style_code', st.style_code, 'style_name', st.style_name, 'description', st.description) END
+           ))
+           FROM po_items pi
+           LEFT JOIN styles st ON st.id = pi.style_id
+           WHERE pi.po_id = po.id AND pi.deleted_at IS NULL
+         ), '[]'::json) AS items`
+      : ''
+
+    const dataParams = [...params, pageSize, offset]
+    const data = await query<Record<string, unknown>>(
+      `SELECT po.*${itemsSelect}
+       FROM purchase_orders po
+       ${whereClause}
+       ORDER BY po.${sortBy} ${descending ? 'DESC' : 'ASC'}
+       LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+      dataParams
+    )
+
+    return c.json({ data, count, page, pageSize, error: null })
   } catch (err) {
     console.error('Error fetching purchase orders:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -65,14 +91,12 @@ purchaseOrders.get('/', requirePermission('thread.purchase-orders.view'), async 
 
 purchaseOrders.get('/customers', requirePermission('thread.purchase-orders.view'), async (c) => {
   try {
-    const { data, error } = await supabase
-      .from('purchase_orders')
+    const data = await from('purchase_orders')
       .select('customer_name')
       .is('deleted_at', null)
-      .not('customer_name', 'is', null)
-      .order('customer_name', { ascending: true })
-
-    if (error) throw error
+      .isNotNull('customer_name')
+      .order({ column: 'customer_name', ascending: true })
+      .list<{ customer_name: string }>()
 
     const uniqueNames = [...new Set((data || []).map(r => r.customer_name as string))]
 
@@ -96,41 +120,33 @@ purchaseOrders.get('/:id/items/:itemId/history', requirePermission('thread.purch
       return c.json<POItemApiResponse<null>>({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: item, error: itemError } = await supabase
-      .from('po_items')
-      .select('id, po_id')
-      .eq('id', itemId)
-      .eq('po_id', poId)
-      .single()
-
-    if (itemError) {
-      if (itemError.code === 'PGRST116') {
-        return c.json<POItemApiResponse<null>>({ data: null, error: 'Không tìm thấy mặt hàng' }, 404)
-      }
-      throw itemError
-    }
+    const item = await queryOne<{ id: number; po_id: number }>(
+      'SELECT id, po_id FROM po_items WHERE id = $1 AND po_id = $2',
+      [itemId, poId]
+    )
 
     if (!item) {
       return c.json<POItemApiResponse<null>>({ data: null, error: 'Không tìm thấy mặt hàng' }, 404)
     }
 
-    const { data: history, error: historyError } = await supabase
-      .from('po_item_history')
-      .select(`
-        id,
-        po_item_id,
-        change_type,
-        previous_quantity,
-        new_quantity,
-        changed_by,
-        notes,
-        created_at,
-        employee:employees!po_item_history_changed_by_fkey(id, full_name)
-      `)
-      .eq('po_item_id', itemId)
-      .order('created_at', { ascending: false })
-
-    if (historyError) throw historyError
+    const history = await query<Record<string, unknown>>(
+      `SELECT
+         h.id,
+         h.po_item_id,
+         h.change_type,
+         h.previous_quantity,
+         h.new_quantity,
+         h.changed_by,
+         h.notes,
+         h.created_at,
+         CASE WHEN e.id IS NULL THEN NULL
+              ELSE json_build_object('id', e.id, 'full_name', e.full_name) END AS employee
+       FROM po_item_history h
+       LEFT JOIN employees e ON e.id = h.changed_by
+       WHERE h.po_item_id = $1
+       ORDER BY h.created_at DESC`,
+      [itemId]
+    )
 
     return c.json<POItemApiResponse<POItemHistory[]>>({
       data: history as unknown as POItemHistory[],
@@ -157,36 +173,46 @@ purchaseOrders.get('/:id', requirePermission('thread.purchase-orders.view'), asy
     const query = c.req.query()
     const includeItems = query.include === 'items'
 
-    const selectQuery = includeItems
-      ? `*, items:po_items(id, po_id, style_id, quantity, finished_product_code, notes, created_at, updated_at, deleted_at, style:styles(id, style_code, style_name, description))`
-      : '*'
-
-    const dbQuery = supabase
-      .from('purchase_orders')
-      .select(selectQuery)
-      .eq('id', id)
+    const itemsSelect = includeItems
+      ? `,
+         COALESCE((
+           SELECT json_agg(json_build_object(
+             'id', pi.id, 'po_id', pi.po_id, 'style_id', pi.style_id,
+             'quantity', pi.quantity, 'finished_product_code', pi.finished_product_code,
+             'notes', pi.notes, 'created_at', pi.created_at, 'updated_at', pi.updated_at,
+             'deleted_at', pi.deleted_at,
+             'style', CASE WHEN st.id IS NULL THEN NULL
+                           ELSE json_build_object('id', st.id, 'style_code', st.style_code, 'style_name', st.style_name, 'description', st.description) END
+           ))
+           FROM po_items pi
+           LEFT JOIN styles st ON st.id = pi.style_id
+           WHERE pi.po_id = po.id
+         ), '[]'::json) AS items`
+      : ''
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await dbQuery.single() as { data: any; error: any }
+    const data = await queryOne<any>(
+      `SELECT po.*${itemsSelect}
+       FROM purchase_orders po
+       WHERE po.id = $1`,
+      [id]
+    )
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy đơn hàng' }, 404)
-      }
-      throw error
+    if (!data) {
+      return c.json({ data: null, error: 'Không tìm thấy đơn hàng' }, 404)
     }
 
     if (includeItems && data?.items) {
       data.items = data.items.filter((item: { deleted_at: string | null }) => item.deleted_at === null)
 
-      const styleIds = [...new Set(data.items.map((item: { style_id: number }) => item.style_id))]
+      const styleIds = [...new Set(data.items.map((item: { style_id: number }) => item.style_id))] as number[]
       const subArtStyleIds = new Set<number>()
       const subArtCodesMap = new Map<number, Array<{ id: number; code: string }>>()
       if (styleIds.length > 0) {
-        const { data: subArtRows } = await supabase
-          .from('sub_arts')
+        const subArtRows = await from('sub_arts')
           .select('id, style_id, sub_art_code')
           .in('style_id', styleIds)
+          .list<{ id: number; style_id: number; sub_art_code: string }>()
         if (subArtRows) {
           for (const row of subArtRows) {
             subArtStyleIds.add(row.style_id)
@@ -221,26 +247,29 @@ purchaseOrders.post('/', requirePermission('thread.purchase-orders.create'), asy
       return c.json({ data: null, error: 'Số hiệu đơn hàng (po_number) là bắt buộc' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('purchase_orders')
-      .insert([{
-        po_number: body.po_number,
-        customer_name: body.customer_name,
-        week: body.week,
-        order_date: body.order_date,
-        delivery_date: body.delivery_date,
-        status: body.status || 'PENDING',
-        priority: body.priority || 'NORMAL',
-        notes: body.notes,
-      }])
-      .select()
-      .single()
-
-    if (error) {
-      if (error.code === '23505') {
+    let data: Record<string, unknown> | null
+    try {
+      data = await queryOne<Record<string, unknown>>(
+        `INSERT INTO purchase_orders
+           (po_number, customer_name, week, order_date, delivery_date, status, priority, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [
+          body.po_number,
+          body.customer_name,
+          body.week,
+          body.order_date,
+          body.delivery_date,
+          body.status || 'PENDING',
+          body.priority || 'NORMAL',
+          body.notes,
+        ]
+      )
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') {
         return c.json({ data: null, error: 'Số hiệu đơn hàng đã tồn tại' }, 400)
       }
-      throw error
+      throw err
     }
 
     return c.json({ data, error: null, message: 'Tạo đơn hàng thành công' })
@@ -274,37 +303,28 @@ purchaseOrders.post('/:id/items', requirePermission('thread.purchase-orders.crea
     const { style_id, quantity, finished_product_code, notes } = parseResult.data
     const auth = c.get('auth')
 
-    const { data: po, error: poError } = await supabase
-      .from('purchase_orders')
-      .select('id')
-      .eq('id', poId)
-      .is('deleted_at', null)
-      .single()
+    const po = await queryOne<{ id: number }>(
+      'SELECT id FROM purchase_orders WHERE id = $1 AND deleted_at IS NULL',
+      [poId]
+    )
 
-    if (poError || !po) {
+    if (!po) {
       return c.json<POItemApiResponse<null>>({ data: null, error: 'Không tìm thấy đơn hàng' }, 404)
     }
 
-    const { data: style, error: styleError } = await supabase
-      .from('styles')
-      .select('id')
-      .eq('id', style_id)
-      .is('deleted_at', null)
-      .single()
+    const style = await queryOne<{ id: number }>(
+      'SELECT id FROM styles WHERE id = $1 AND deleted_at IS NULL',
+      [style_id]
+    )
 
-    if (styleError || !style) {
+    if (!style) {
       return c.json<POItemApiResponse<null>>({ data: null, error: 'Mã hàng không tồn tại' }, 400)
     }
 
-    const { data: existingItem, error: existingError } = await supabase
-      .from('po_items')
-      .select('id')
-      .eq('po_id', poId)
-      .eq('style_id', style_id)
-      .is('deleted_at', null)
-      .maybeSingle()
-
-    if (existingError) throw existingError
+    const existingItem = await queryOne<{ id: number }>(
+      'SELECT id FROM po_items WHERE po_id = $1 AND style_id = $2 AND deleted_at IS NULL',
+      [poId, style_id]
+    )
 
     if (existingItem) {
       return c.json<POItemApiResponse<null>>({
@@ -313,36 +333,40 @@ purchaseOrders.post('/:id/items', requirePermission('thread.purchase-orders.crea
       }, 409)
     }
 
-    const { data: newItem, error: insertError } = await supabase
-      .from('po_items')
-      .insert({
-        po_id: poId,
-        style_id,
-        quantity,
-        finished_product_code: finished_product_code || null,
-        notes: notes || null
-      })
-      .select('*, style:styles(id, style_code, style_name, description)')
-      .single()
-
-    if (insertError) {
-      if (insertError.code === '23505') {
+    let inserted: { id: number }
+    try {
+      const ins = await queryOne<{ id: number }>(
+        `INSERT INTO po_items (po_id, style_id, quantity, finished_product_code, notes)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [poId, style_id, quantity, finished_product_code || null, notes || null]
+      )
+      inserted = ins as { id: number }
+    } catch (insertErr) {
+      if ((insertErr as { code?: string }).code === '23505') {
         return c.json<POItemApiResponse<null>>({
           data: null,
           error: 'Mã hàng này đã có trong đơn hàng'
         }, 409)
       }
-      throw insertError
+      throw insertErr
     }
 
-    await supabase.from('po_item_history').insert({
-      po_item_id: newItem.id,
-      change_type: 'CREATE',
-      previous_quantity: null,
-      new_quantity: quantity,
-      changed_by: auth.employeeId,
-      notes: 'Thêm mặt hàng mới'
-    })
+    const newItem = await queryOne<POItem>(
+      `SELECT pi.*,
+         CASE WHEN st.id IS NULL THEN NULL
+              ELSE json_build_object('id', st.id, 'style_code', st.style_code, 'style_name', st.style_name, 'description', st.description) END AS style
+       FROM po_items pi
+       LEFT JOIN styles st ON st.id = pi.style_id
+       WHERE pi.id = $1`,
+      [inserted.id]
+    ) as POItem
+
+    await query(
+      `INSERT INTO po_item_history (po_item_id, change_type, previous_quantity, new_quantity, changed_by, notes)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [inserted.id, 'CREATE', null, quantity, auth.employeeId, 'Thêm mặt hàng mới']
+    )
 
     return c.json<POItemApiResponse<POItem>>({
       data: newItem,
@@ -368,31 +392,36 @@ purchaseOrders.put('/:id', requirePermission('thread.purchase-orders.edit'), asy
 
     const body = await c.req.json()
 
-    const { data, error } = await supabase
-      .from('purchase_orders')
-      .update({
-        po_number: body.po_number,
-        customer_name: body.customer_name,
-        week: body.week,
-        order_date: body.order_date,
-        delivery_date: body.delivery_date,
-        status: body.status,
-        priority: body.priority,
-        notes: body.notes,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy đơn hàng' }, 404)
-      }
-      if (error.code === '23505') {
+    let data: Record<string, unknown> | null
+    try {
+      data = await queryOne<Record<string, unknown>>(
+        `UPDATE purchase_orders SET
+           po_number = $1, customer_name = $2, week = $3, order_date = $4,
+           delivery_date = $5, status = $6, priority = $7, notes = $8, updated_at = $9
+         WHERE id = $10
+         RETURNING *`,
+        [
+          body.po_number,
+          body.customer_name,
+          body.week,
+          body.order_date,
+          body.delivery_date,
+          body.status,
+          body.priority,
+          body.notes,
+          new Date().toISOString(),
+          id,
+        ]
+      )
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') {
         return c.json({ data: null, error: 'Số hiệu đơn hàng đã tồn tại' }, 400)
       }
-      throw error
+      throw err
+    }
+
+    if (!data) {
+      return c.json({ data: null, error: 'Không tìm thấy đơn hàng' }, 404)
     }
 
     return c.json({ data, error: null, message: 'Cập nhật đơn hàng thành công' })
@@ -427,26 +456,20 @@ purchaseOrders.put('/:id/items/:itemId', requirePermission('thread.purchase-orde
     const { quantity, finished_product_code, notes } = parseResult.data
     const auth = c.get('auth')
 
-    const { data: item, error: itemError } = await supabase
-      .from('po_items')
-      .select('id, po_id, style_id, quantity, finished_product_code')
-      .eq('id', itemId)
-      .eq('po_id', poId)
-      .is('deleted_at', null)
-      .single()
+    const item = await queryOne<{ id: number; po_id: number; style_id: number; quantity: number; finished_product_code: string | null }>(
+      'SELECT id, po_id, style_id, quantity, finished_product_code FROM po_items WHERE id = $1 AND po_id = $2 AND deleted_at IS NULL',
+      [itemId, poId]
+    )
 
-    if (itemError) {
-      if (itemError.code === 'PGRST116') {
-        return c.json<POItemApiResponse<null>>({ data: null, error: 'Không tìm thấy mặt hàng' }, 404)
-      }
-      throw itemError
+    if (!item) {
+      return c.json<POItemApiResponse<null>>({ data: null, error: 'Không tìm thấy mặt hàng' }, 404)
     }
 
-    const { data: orderedItems } = await supabase
-      .from('thread_order_items')
+    const orderedItems = await from('thread_order_items')
       .select('quantity')
       .eq('po_id', poId)
       .eq('style_id', item.style_id)
+      .list<{ quantity: number | null }>()
 
     const totalOrdered = orderedItems?.reduce((sum, row) => sum + (row.quantity || 0), 0) || 0
 
@@ -459,30 +482,50 @@ purchaseOrders.put('/:id/items/:itemId', requirePermission('thread.purchase-orde
 
     const previousQuantity = item.quantity
 
-    const { data: updatedItem, error: updateError } = await supabase
-      .from('po_items')
-      .update({
-        quantity,
-        finished_product_code:
-          finished_product_code !== undefined ? (finished_product_code || null) : undefined,
-        notes: notes !== undefined ? notes : undefined,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', itemId)
-      .select('*, style:styles(id, style_code, style_name, description)')
-      .single()
+    const setClauses: string[] = []
+    const updateParams: unknown[] = []
+    updateParams.push(quantity)
+    setClauses.push(`quantity = $${updateParams.length}`)
+    if (finished_product_code !== undefined) {
+      updateParams.push(finished_product_code || null)
+      setClauses.push(`finished_product_code = $${updateParams.length}`)
+    }
+    if (notes !== undefined) {
+      updateParams.push(notes)
+      setClauses.push(`notes = $${updateParams.length}`)
+    }
+    updateParams.push(new Date().toISOString())
+    setClauses.push(`updated_at = $${updateParams.length}`)
+    updateParams.push(itemId)
 
-    if (updateError) throw updateError
+    await query(
+      `UPDATE po_items SET ${setClauses.join(', ')} WHERE id = $${updateParams.length}`,
+      updateParams
+    )
+
+    const updatedItem = await queryOne<POItem>(
+      `SELECT pi.*,
+         CASE WHEN st.id IS NULL THEN NULL
+              ELSE json_build_object('id', st.id, 'style_code', st.style_code, 'style_name', st.style_name, 'description', st.description) END AS style
+       FROM po_items pi
+       LEFT JOIN styles st ON st.id = pi.style_id
+       WHERE pi.id = $1`,
+      [itemId]
+    ) as POItem
 
     if (previousQuantity !== quantity || finished_product_code !== undefined) {
-      await supabase.from('po_item_history').insert({
-        po_item_id: itemId,
-        change_type: 'UPDATE',
-        previous_quantity: previousQuantity,
-        new_quantity: quantity,
-        changed_by: auth.employeeId,
-        notes: notes || (finished_product_code !== undefined ? 'Cập nhật mã TP KT' : null)
-      })
+      await query(
+        `INSERT INTO po_item_history (po_item_id, change_type, previous_quantity, new_quantity, changed_by, notes)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          itemId,
+          'UPDATE',
+          previousQuantity,
+          quantity,
+          auth.employeeId,
+          notes || (finished_product_code !== undefined ? 'Cập nhật mã TP KT' : null),
+        ]
+      )
     }
 
     return c.json<POItemApiResponse<POItem>>({
@@ -507,18 +550,13 @@ purchaseOrders.delete('/:id', requirePermission('thread.purchase-orders.delete')
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('purchase_orders')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single()
+    const data = await queryOne<Record<string, unknown>>(
+      `UPDATE purchase_orders SET deleted_at = $1 WHERE id = $2 RETURNING *`,
+      [new Date().toISOString(), id]
+    )
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy đơn hàng' }, 404)
-      }
-      throw error
+    if (!data) {
+      return c.json({ data: null, error: 'Không tìm thấy đơn hàng' }, 404)
     }
 
     return c.json({ data, error: null, message: 'Xóa đơn hàng thành công' })
@@ -542,27 +580,21 @@ purchaseOrders.delete('/:id/items/:itemId', requirePermission('thread.purchase-o
 
     const auth = c.get('auth')
 
-    const { data: item, error: itemError } = await supabase
-      .from('po_items')
-      .select('id, po_id, style_id, quantity')
-      .eq('id', itemId)
-      .eq('po_id', poId)
-      .is('deleted_at', null)
-      .single()
+    const item = await queryOne<{ id: number; po_id: number; style_id: number; quantity: number }>(
+      'SELECT id, po_id, style_id, quantity FROM po_items WHERE id = $1 AND po_id = $2 AND deleted_at IS NULL',
+      [itemId, poId]
+    )
 
-    if (itemError) {
-      if (itemError.code === 'PGRST116') {
-        return c.json<POItemApiResponse<null>>({ data: null, error: 'Không tìm thấy mặt hàng' }, 404)
-      }
-      throw itemError
+    if (!item) {
+      return c.json<POItemApiResponse<null>>({ data: null, error: 'Không tìm thấy mặt hàng' }, 404)
     }
 
-    const { data: orderedItems } = await supabase
-      .from('thread_order_items')
+    const orderedItems = await from('thread_order_items')
       .select('id')
       .eq('po_id', poId)
       .eq('style_id', item.style_id)
       .limit(1)
+      .list<{ id: number }>()
 
     if (orderedItems && orderedItems.length > 0) {
       return c.json<POItemApiResponse<null>>({
@@ -571,21 +603,16 @@ purchaseOrders.delete('/:id/items/:itemId', requirePermission('thread.purchase-o
       }, 400)
     }
 
-    const { error: deleteError } = await supabase
-      .from('po_items')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', itemId)
+    await query(
+      `UPDATE po_items SET deleted_at = $1 WHERE id = $2`,
+      [new Date().toISOString(), itemId]
+    )
 
-    if (deleteError) throw deleteError
-
-    await supabase.from('po_item_history').insert({
-      po_item_id: itemId,
-      change_type: 'DELETE',
-      previous_quantity: item.quantity,
-      new_quantity: null,
-      changed_by: auth.employeeId,
-      notes: 'Xóa mặt hàng'
-    })
+    await query(
+      `INSERT INTO po_item_history (po_item_id, change_type, previous_quantity, new_quantity, changed_by, notes)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [itemId, 'DELETE', item.quantity, null, auth.employeeId, 'Xóa mặt hàng']
+    )
 
     return c.json<POItemApiResponse<{ id: number }>>({
       data: { id: itemId },

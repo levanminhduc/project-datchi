@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { queryOne } from '../db/query'
 
 const publicGuides = new Hono()
 
@@ -15,15 +15,33 @@ publicGuides.get('/:slug', async (c) => {
   try {
     const slug = c.req.param('slug')
 
-    const { data: guide, error } = await supabase
-      .from('guides')
-      .select('title, slug, content_html, cover_image_url, published_at, author_id, employees!author_id(full_name)')
-      .eq('slug', slug)
-      .eq('status', 'PUBLISHED')
-      .is('deleted_at', null)
-      .single()
+    const guide = await queryOne<{
+      title: string
+      slug: string
+      content_html: string | null
+      cover_image_url: string | null
+      published_at: string | null
+      author_id: number | null
+      employees: { full_name: string } | null
+    }>(
+      `SELECT
+         g.title,
+         g.slug,
+         g.content_html,
+         g.cover_image_url,
+         g.published_at,
+         g.author_id,
+         CASE WHEN e.id IS NULL THEN NULL
+              ELSE json_build_object('full_name', e.full_name) END AS employees
+       FROM guides g
+       LEFT JOIN employees e ON e.id = g.author_id
+       WHERE g.slug = $1
+         AND g.status = 'PUBLISHED'
+         AND g.deleted_at IS NULL`,
+      [slug]
+    )
 
-    if (error || !guide) {
+    if (!guide) {
       return c.json({ data: null, error: 'Không tìm thấy bài viết' }, 404)
     }
 

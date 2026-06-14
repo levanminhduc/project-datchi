@@ -13,7 +13,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { ZodError } from 'zod'
 import { createHash } from 'crypto'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne, queryCount } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 import { getPartialConeRatio } from '../utils/settings-helper'
@@ -83,18 +83,22 @@ function hashPayload(payload: unknown): string {
  * Get meters_per_cone from thread_types table
  */
 async function getMetersPerCone(threadTypeId: number): Promise<number | null> {
-  const { data, error } = await supabase
-    .from('thread_types')
-    .select('meters_per_cone')
-    .eq('id', threadTypeId)
-    .single()
+  try {
+    const data = await queryOne<{ meters_per_cone: number }>(
+      'SELECT meters_per_cone FROM thread_types WHERE id = $1',
+      [threadTypeId]
+    )
 
-  if (error || !data) {
-    console.error(`Failed to get meters_per_cone for thread_type_id ${threadTypeId}:`, error)
+    if (!data) {
+      console.error(`Failed to get meters_per_cone for thread_type_id ${threadTypeId}: not found`)
+      return null
+    }
+
+    return data.meters_per_cone
+  } catch (err) {
+    console.error(`Failed to get meters_per_cone for thread_type_id ${threadTypeId}:`, err)
     return null
   }
-
-  return data.meters_per_cone
 }
 
 /**
@@ -183,16 +187,14 @@ async function processReturnForLine(
     returnableFullConesRaw = prefetchedData.fullCones
     returnablePartialConesRaw = prefetchedData.partialCones
   } else {
-    const { data: fullData, error: fullConesError } = await supabase
-      .from('thread_inventory')
-      .select('id, quantity_meters, status')
-      .eq('issued_line_id', lineId)
-      .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
-      .eq('is_partial', false)
-      .order('id', { ascending: true })
-      .limit(10000)
-
-    if (fullConesError) {
+    try {
+      returnableFullConesRaw = await query<{ id: number; quantity_meters: number; status: string }>(
+        `SELECT id, quantity_meters, status FROM thread_inventory
+         WHERE issued_line_id = $1 AND status IN ('IN_PRODUCTION', 'HARD_ALLOCATED') AND is_partial = false
+         ORDER BY id ASC LIMIT 10000`,
+        [lineId]
+      )
+    } catch {
       return {
         success: false,
         line_id: lineId,
@@ -201,18 +203,15 @@ async function processReturnForLine(
         error: `Khong the tai cuon nguyen dang xuat cho dong ${lineId}`,
       }
     }
-    returnableFullConesRaw = fullData
 
-    const { data: partialData, error: partialConesError } = await supabase
-      .from('thread_inventory')
-      .select('id, status')
-      .eq('issued_line_id', lineId)
-      .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
-      .eq('is_partial', true)
-      .order('id', { ascending: true })
-      .limit(10000)
-
-    if (partialConesError) {
+    try {
+      returnablePartialConesRaw = await query<{ id: number; status: string }>(
+        `SELECT id, status FROM thread_inventory
+         WHERE issued_line_id = $1 AND status IN ('IN_PRODUCTION', 'HARD_ALLOCATED') AND is_partial = true
+         ORDER BY id ASC LIMIT 10000`,
+        [lineId]
+      )
+    } catch {
       return {
         success: false,
         line_id: lineId,
@@ -221,7 +220,6 @@ async function processReturnForLine(
         error: `Khong the tai cuon le dang xuat cho dong ${lineId}`,
       }
     }
-    returnablePartialConesRaw = partialData
   }
 
   const statusRank = (status: string): number => {
@@ -313,23 +311,25 @@ async function processReturnForLine(
     ...partialConesForReturn.map((c) => c.id),
   ]
 
-  const { data: rpcResultRaw, error: rpcError } = await supabase.rpc(
-    'fn_return_cones_with_movements',
-    {
-      p_cone_ids: coneIdsForDirectReturn.length > 0 ? coneIdsForDirectReturn : null,
-      p_line_id: lineId,
-      p_performed_by: performedBy,
-      p_partial_returns: partialReturnsPayload.length > 0 ? partialReturnsPayload : null,
-    }
-  )
-
-  if (rpcError) {
+  let rpcResultRaw: ReturnRpcResult | null
+  try {
+    const rpcRows = await query<{ result: ReturnRpcResult }>(
+      'SELECT fn_return_cones_with_movements($1, $2, $3, $4) AS result',
+      [
+        coneIdsForDirectReturn.length > 0 ? coneIdsForDirectReturn : null,
+        lineId,
+        performedBy,
+        partialReturnsPayload.length > 0 ? JSON.stringify(partialReturnsPayload) : null,
+      ]
+    )
+    rpcResultRaw = rpcRows.length > 0 ? rpcRows[0].result : null
+  } catch (err) {
     return {
       success: false,
       line_id: lineId,
       returned_full: 0,
       returned_partial: 0,
-      error: rpcError.message || 'Loi xu ly tra hang',
+      error: getErrorMessage(err) || 'Loi xu ly tra hang',
     }
   }
 
@@ -357,15 +357,12 @@ async function processReturnForLine(
   const newReturnedFull = (line.returned_full || 0) + actualReturnedFull
   const newReturnedPartial = (line.returned_partial || 0) + actualReturnedPartial
 
-  const { error: updateError } = await supabase
-    .from('thread_issue_lines')
-    .update({
-      returned_full: newReturnedFull,
-      returned_partial: newReturnedPartial,
-    })
-    .eq('id', lineId)
-
-  if (updateError) {
+  try {
+    await query(
+      'UPDATE thread_issue_lines SET returned_full = $1, returned_partial = $2 WHERE id = $3',
+      [newReturnedFull, newReturnedPartial, lineId]
+    )
+  } catch {
     return {
       success: false,
       line_id: lineId,
@@ -425,16 +422,18 @@ async function generateIssueCode(): Promise<string> {
   const prefix = `XK-${dateStr}-`
 
   // Find the latest issue code for today
-  const { data, error } = await supabase
-    .from('thread_issues')
-    .select('issue_code')
-    .like('issue_code', `${prefix}%`)
-    .order('issue_code', { ascending: false })
-    .limit(1)
-    .single()
+  let data: { issue_code: string } | null = null
+  try {
+    data = await queryOne<{ issue_code: string }>(
+      `SELECT issue_code FROM thread_issues WHERE issue_code LIKE $1 ORDER BY issue_code DESC LIMIT 1`,
+      [`${prefix}%`]
+    )
+  } catch {
+    data = null
+  }
 
   let sequence = 1
-  if (!error && data?.issue_code) {
+  if (data?.issue_code) {
     const lastSequence = parseInt(data.issue_code.slice(-3))
     if (!isNaN(lastSequence)) {
       sequence = lastSequence + 1
@@ -459,49 +458,48 @@ async function getStockAvailability(
   let partialCount = 0
 
   if (weekIds && weekIds.length > 0) {
-    let reservedQuery = supabase
-      .from('thread_inventory')
-      .select('is_partial')
-      .eq('thread_type_id', threadTypeId)
-      .eq('status', 'RESERVED_FOR_ORDER')
-      .in('reserved_week_id', weekIds)
+    const reservedParams: unknown[] = [threadTypeId, weekIds]
+    let reservedSql = `SELECT is_partial FROM thread_inventory
+      WHERE thread_type_id = $1 AND status = 'RESERVED_FOR_ORDER' AND reserved_week_id = ANY($2)`
 
     if (warehouseId) {
-      reservedQuery = reservedQuery.eq('warehouse_id', warehouseId)
+      reservedParams.push(warehouseId)
+      reservedSql += ` AND warehouse_id = $${reservedParams.length}`
     }
 
     if (colorId) {
-      reservedQuery = reservedQuery.eq('color_id', colorId)
+      reservedParams.push(colorId)
+      reservedSql += ` AND color_id = $${reservedParams.length}`
     }
 
-    const { data: reserved } = await reservedQuery.limit(1000000)
+    reservedSql += ' LIMIT 1000000'
 
-    if (reserved) {
-      fullCount += reserved.filter((r) => !r.is_partial).length
-      partialCount += reserved.filter((r) => r.is_partial).length
-    }
+    const reserved = await query<{ is_partial: boolean }>(reservedSql, reservedParams)
+
+    fullCount += reserved.filter((r) => !r.is_partial).length
+    partialCount += reserved.filter((r) => r.is_partial).length
   }
 
-  let freeQuery = supabase
-    .from('thread_inventory')
-    .select('is_partial')
-    .eq('thread_type_id', threadTypeId)
-    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
+  const freeParams: unknown[] = [threadTypeId]
+  let freeSql = `SELECT is_partial FROM thread_inventory
+    WHERE thread_type_id = $1 AND status IN ('AVAILABLE', 'RECEIVED', 'INSPECTED')`
 
   if (warehouseId) {
-    freeQuery = freeQuery.eq('warehouse_id', warehouseId)
+    freeParams.push(warehouseId)
+    freeSql += ` AND warehouse_id = $${freeParams.length}`
   }
 
   if (colorId) {
-    freeQuery = freeQuery.eq('color_id', colorId)
+    freeParams.push(colorId)
+    freeSql += ` AND color_id = $${freeParams.length}`
   }
 
-  const { data: free } = await freeQuery.limit(1000000)
+  freeSql += ' LIMIT 1000000'
 
-  if (free) {
-    fullCount += free.filter((r) => !r.is_partial).length
-    partialCount += free.filter((r) => r.is_partial).length
-  }
+  const free = await query<{ is_partial: boolean }>(freeSql, freeParams)
+
+  fullCount += free.filter((r) => !r.is_partial).length
+  partialCount += free.filter((r) => r.is_partial).length
 
   return { full_cones: fullCount, partial_cones: partialCount }
 }
@@ -515,11 +513,10 @@ async function validateSubArtId(
     return null
   }
 
-  const { data: subArts } = await supabase
-    .from('sub_arts')
-    .select('id')
-    .eq('style_id', styleId)
-    .limit(1)
+  const subArts = await query<{ id: number }>(
+    'SELECT id FROM sub_arts WHERE style_id = $1 LIMIT 1',
+    [styleId]
+  )
 
   const hasSubArts = subArts && subArts.length > 0
 
@@ -532,12 +529,10 @@ async function validateSubArtId(
   }
 
   if (subArtId) {
-    const { data: subArt } = await supabase
-      .from('sub_arts')
-      .select('id')
-      .eq('id', subArtId)
-      .eq('style_id', styleId)
-      .single()
+    const subArt = await queryOne<{ id: number }>(
+      'SELECT id FROM sub_arts WHERE id = $1 AND style_id = $2',
+      [subArtId, styleId]
+    )
 
     if (!subArt) {
       return 'Sub-art khong thuoc ma hang da chon'
@@ -549,11 +544,10 @@ async function validateSubArtId(
 
 async function getSubArtCode(subArtId: number | null | undefined): Promise<string | null> {
   if (!subArtId) return null
-  const { data } = await supabase
-    .from('sub_arts')
-    .select('sub_art_code')
-    .eq('id', subArtId)
-    .single()
+  const data = await queryOne<{ sub_art_code: string }>(
+    'SELECT sub_art_code FROM sub_arts WHERE id = $1',
+    [subArtId]
+  )
   return data?.sub_art_code || null
 }
 
@@ -563,14 +557,12 @@ async function lookupThreadColorId(
 ): Promise<number | undefined> {
   if (!styleColorId) return undefined
 
-  const { data } = await supabase
-    .from('style_color_thread_specs')
-    .select('thread_color_id')
-    .eq('thread_type_id', threadTypeId)
-    .eq('style_color_id', styleColorId)
-    .not('thread_color_id', 'is', null)
-    .limit(1)
-    .maybeSingle()
+  const data = await queryOne<{ thread_color_id: number }>(
+    `SELECT thread_color_id FROM style_color_thread_specs
+     WHERE thread_type_id = $1 AND style_color_id = $2 AND thread_color_id IS NOT NULL
+     LIMIT 1`,
+    [threadTypeId, styleColorId]
+  )
 
   return data?.thread_color_id ?? undefined
 }
@@ -583,33 +575,29 @@ async function getConfirmedIssuedEquivalent(
   ratio: number,
   threadColorId?: number | null
 ): Promise<number> {
-  let query = supabase
-    .from('thread_issue_lines')
-    .select(
-      `
-      issued_full,
-      issued_partial,
-      returned_full,
-      returned_partial,
-      thread_issues!inner(status)
-    `
-    )
-    .eq('po_id', poId)
-    .eq('style_id', styleId)
-    .eq('style_color_id', colorId)
-    .eq('thread_type_id', threadTypeId)
-    .eq('thread_issues.status', 'CONFIRMED')
+  const params: unknown[] = [poId, styleId, colorId, threadTypeId]
+  let sql = `SELECT til.issued_full, til.issued_partial, til.returned_full, til.returned_partial
+    FROM thread_issue_lines til
+    INNER JOIN thread_issues ti ON ti.id = til.issue_id
+    WHERE til.po_id = $1 AND til.style_id = $2 AND til.style_color_id = $3
+      AND til.thread_type_id = $4 AND ti.status = 'CONFIRMED'`
 
   if (threadColorId !== undefined) {
-    query = threadColorId === null
-      ? query.is('thread_color_id', null)
-      : query.eq('thread_color_id', threadColorId)
+    if (threadColorId === null) {
+      sql += ' AND til.thread_color_id IS NULL'
+    } else {
+      params.push(threadColorId)
+      sql += ` AND til.thread_color_id = $${params.length}`
+    }
   }
 
-  const { data: issuedLines, error } = await query.limit(10000)
+  sql += ' LIMIT 10000'
 
-  if (error) {
-    console.error('Error fetching confirmed issued lines:', error)
+  let issuedLines: Array<{ issued_full: number; issued_partial: number; returned_full: number; returned_partial: number }>
+  try {
+    issuedLines = await query(sql, params)
+  } catch (err) {
+    console.error('Error fetching confirmed issued lines:', err)
     return 0
   }
 
@@ -639,32 +627,29 @@ async function getConfirmedIssuedEquivalentByDept(
   ratio: number,
   threadColorId?: number | null
 ): Promise<number> {
-  let query = supabase
-    .from('thread_issue_lines')
-    .select(`
-      issued_full,
-      issued_partial,
-      returned_full,
-      returned_partial,
-      thread_issues!inner(status, department)
-    `)
-    .eq('po_id', poId)
-    .eq('style_id', styleId)
-    .eq('style_color_id', colorId)
-    .eq('thread_type_id', threadTypeId)
-    .eq('thread_issues.status', 'CONFIRMED')
-    .eq('thread_issues.department', department)
+  const params: unknown[] = [poId, styleId, colorId, threadTypeId, department]
+  let sql = `SELECT til.issued_full, til.issued_partial, til.returned_full, til.returned_partial
+    FROM thread_issue_lines til
+    INNER JOIN thread_issues ti ON ti.id = til.issue_id
+    WHERE til.po_id = $1 AND til.style_id = $2 AND til.style_color_id = $3
+      AND til.thread_type_id = $4 AND ti.status = 'CONFIRMED' AND ti.department = $5`
 
   if (threadColorId !== undefined) {
-    query = threadColorId === null
-      ? query.is('thread_color_id', null)
-      : query.eq('thread_color_id', threadColorId)
+    if (threadColorId === null) {
+      sql += ' AND til.thread_color_id IS NULL'
+    } else {
+      params.push(threadColorId)
+      sql += ` AND til.thread_color_id = $${params.length}`
+    }
   }
 
-  const { data: issuedLines, error } = await query.limit(10000)
+  sql += ' LIMIT 10000'
 
-  if (error) {
-    console.error('Error fetching dept confirmed issued lines:', error)
+  let issuedLines: Array<{ issued_full: number; issued_partial: number; returned_full: number; returned_partial: number }>
+  try {
+    issuedLines = await query(sql, params)
+  } catch (err) {
+    console.error('Error fetching dept confirmed issued lines:', err)
     return 0
   }
 
@@ -683,21 +668,17 @@ async function getDeptAllocation(
   colorId: number,
   department: string
 ): Promise<{ id: number; product_quantity: number } | null> {
-  const { data, error } = await supabase
-    .from('dept_product_allocations')
-    .select('id, product_quantity')
-    .eq('po_id', poId)
-    .eq('style_id', styleId)
-    .eq('style_color_id', colorId)
-    .eq('department', department)
-    .is('deleted_at', null)
-    .maybeSingle()
-
-  if (error) {
-    console.error('Error fetching dept allocation:', error)
+  try {
+    const data = await queryOne<{ id: number; product_quantity: number }>(
+      `SELECT id, product_quantity FROM dept_product_allocations
+       WHERE po_id = $1 AND style_id = $2 AND style_color_id = $3 AND department = $4 AND deleted_at IS NULL`,
+      [poId, styleId, colorId, department]
+    )
+    return data
+  } catch (err) {
+    console.error('Error fetching dept allocation:', err)
     return null
   }
-  return data
 }
 
 async function _getConfirmedIssuedGross(
@@ -708,31 +689,29 @@ async function _getConfirmedIssuedGross(
   ratio: number,
   threadColorId?: number | null
 ): Promise<number> {
-  let query = supabase
-    .from('thread_issue_lines')
-    .select(
-      `
-      issued_full,
-      issued_partial,
-      thread_issues!inner(status)
-    `
-    )
-    .eq('po_id', poId)
-    .eq('style_id', styleId)
-    .eq('style_color_id', colorId)
-    .eq('thread_type_id', threadTypeId)
-    .eq('thread_issues.status', 'CONFIRMED')
+  const params: unknown[] = [poId, styleId, colorId, threadTypeId]
+  let sql = `SELECT til.issued_full, til.issued_partial
+    FROM thread_issue_lines til
+    INNER JOIN thread_issues ti ON ti.id = til.issue_id
+    WHERE til.po_id = $1 AND til.style_id = $2 AND til.style_color_id = $3
+      AND til.thread_type_id = $4 AND ti.status = 'CONFIRMED'`
 
   if (threadColorId !== undefined) {
-    query = threadColorId === null
-      ? query.is('thread_color_id', null)
-      : query.eq('thread_color_id', threadColorId)
+    if (threadColorId === null) {
+      sql += ' AND til.thread_color_id IS NULL'
+    } else {
+      params.push(threadColorId)
+      sql += ` AND til.thread_color_id = $${params.length}`
+    }
   }
 
-  const { data: issuedLines, error } = await query.limit(10000)
+  sql += ' LIMIT 10000'
 
-  if (error) {
-    console.error('Error fetching confirmed issued gross:', error)
+  let issuedLines: Array<{ issued_full: number; issued_partial: number }>
+  try {
+    issuedLines = await query(sql, params)
+  } catch (err) {
+    console.error('Error fetching confirmed issued gross:', err)
     return 0
   }
 
@@ -750,16 +729,18 @@ async function _getBaseQuotaCones(
   threadTypeId: number,
   threadColorId?: number | null
 ): Promise<number | null> {
-  const { data: orderItems, error } = await supabase
-    .from('thread_order_items')
-    .select(`quantity, thread_order_weeks!inner(status)`)
-    .eq('po_id', poId)
-    .eq('style_id', styleId)
-    .eq('style_color_id', colorId)
-    .eq('thread_order_weeks.status', 'CONFIRMED')
-    .limit(10000)
-
-  if (error) return null
+  let orderItems: Array<{ quantity: number | null }>
+  try {
+    orderItems = await query<{ quantity: number | null }>(
+      `SELECT toi.quantity FROM thread_order_items toi
+       INNER JOIN thread_order_weeks tow ON tow.id = toi.week_id
+       WHERE toi.po_id = $1 AND toi.style_id = $2 AND toi.style_color_id = $3
+         AND tow.status = 'CONFIRMED' LIMIT 10000`,
+      [poId, styleId, colorId]
+    )
+  } catch {
+    return null
+  }
 
   const totalOrderedQuantity = (orderItems || []).reduce(
     (sum, item: { quantity: number | null }) => sum + (item.quantity || 0),
@@ -767,12 +748,20 @@ async function _getBaseQuotaCones(
   )
   if (totalOrderedQuantity <= 0) return null
 
-  const { data: specs } = await supabase
-    .from('style_color_thread_specs')
-    .select(`thread_type_id, thread_color_id, style_thread_specs:style_thread_spec_id(style_id, meters_per_unit)`)
-    .eq('style_color_id', colorId)
-    .eq('thread_type_id', threadTypeId)
-    .limit(10000)
+  const specs = await query<{
+    thread_type_id: number
+    thread_color_id: number | null
+    style_thread_specs: { style_id: number; meters_per_unit: number } | null
+  }>(
+    `SELECT scts.thread_type_id, scts.thread_color_id,
+       CASE WHEN sts.id IS NULL THEN NULL
+         ELSE json_build_object('style_id', sts.style_id, 'meters_per_unit', sts.meters_per_unit)
+       END AS style_thread_specs
+     FROM style_color_thread_specs scts
+     LEFT JOIN style_thread_specs sts ON sts.id = scts.style_thread_spec_id
+     WHERE scts.style_color_id = $1 AND scts.thread_type_id = $2 LIMIT 10000`,
+    [colorId, threadTypeId]
+  )
 
   const specFilter = (s: any) =>
     s.style_thread_specs?.style_id === styleId &&
@@ -785,11 +774,10 @@ async function _getBaseQuotaCones(
     (sum: number, s: any) => sum + (s.style_thread_specs.meters_per_unit as number), 0
   )
 
-  const { data: threadType } = await supabase
-    .from('thread_types')
-    .select('meters_per_cone')
-    .eq('id', threadTypeId)
-    .single()
+  const threadType = await queryOne<{ meters_per_cone: number }>(
+    'SELECT meters_per_cone FROM thread_types WHERE id = $1',
+    [threadTypeId]
+  )
 
   if (!threadType?.meters_per_cone) return null
 
@@ -823,16 +811,20 @@ async function getQuotaCones(
   if (department && poId && styleId && colorId) {
     const allocation = await getDeptAllocation(poId, styleId, colorId, department)
     if (allocation) {
-      const { data: specs } = await supabase
-        .from('style_color_thread_specs')
-        .select(`
-          thread_type_id,
-          thread_color_id,
-          style_thread_specs:style_thread_spec_id(style_id, meters_per_unit)
-        `)
-        .eq('style_color_id', colorId)
-        .eq('thread_type_id', threadTypeId)
-        .limit(10000)
+      const specs = await query<{
+        thread_type_id: number
+        thread_color_id: number | null
+        style_thread_specs: { style_id: number; meters_per_unit: number } | null
+      }>(
+        `SELECT scts.thread_type_id, scts.thread_color_id,
+           CASE WHEN sts.id IS NULL THEN NULL
+             ELSE json_build_object('style_id', sts.style_id, 'meters_per_unit', sts.meters_per_unit)
+           END AS style_thread_specs
+         FROM style_color_thread_specs scts
+         LEFT JOIN style_thread_specs sts ON sts.id = scts.style_thread_spec_id
+         WHERE scts.style_color_id = $1 AND scts.thread_type_id = $2 LIMIT 10000`,
+        [colorId, threadTypeId]
+      )
 
       const matchingSpecs = (specs || []).filter(specFilter) as any[]
       if (matchingSpecs.length === 0) return null
@@ -841,11 +833,10 @@ async function getQuotaCones(
         (sum: number, s: any) => sum + (s.style_thread_specs.meters_per_unit as number), 0
       )
 
-      const { data: threadType } = await supabase
-        .from('thread_types')
-        .select('meters_per_cone')
-        .eq('id', threadTypeId)
-        .single()
+      const threadType = await queryOne<{ meters_per_cone: number }>(
+        'SELECT meters_per_cone FROM thread_types WHERE id = $1',
+        [threadTypeId]
+      )
 
       if (!threadType?.meters_per_cone) return null
 
@@ -864,20 +855,17 @@ async function getQuotaCones(
     }
   }
 
-  const { data: orderItems, error } = await supabase
-    .from('thread_order_items')
-    .select(`
-      quantity,
-      thread_order_weeks!inner(status)
-    `)
-    .eq('po_id', poId)
-    .eq('style_id', styleId)
-    .eq('style_color_id', colorId)
-    .eq('thread_order_weeks.status', 'CONFIRMED')
-    .limit(10000)
-
-  if (error) {
-    console.error('Error fetching confirmed weekly-order items:', error)
+  let orderItems: Array<{ quantity: number | null }>
+  try {
+    orderItems = await query<{ quantity: number | null }>(
+      `SELECT toi.quantity FROM thread_order_items toi
+       INNER JOIN thread_order_weeks tow ON tow.id = toi.week_id
+       WHERE toi.po_id = $1 AND toi.style_id = $2 AND toi.style_color_id = $3
+         AND tow.status = 'CONFIRMED' LIMIT 10000`,
+      [poId, styleId, colorId]
+    )
+  } catch (err) {
+    console.error('Error fetching confirmed weekly-order items:', err)
     return null
   }
 
@@ -890,22 +878,24 @@ async function getQuotaCones(
     return null
   }
 
-  const { data: specs, error: specError } = await supabase
-    .from('style_color_thread_specs')
-    .select(`
-      thread_type_id,
-      thread_color_id,
-      style_thread_specs:style_thread_spec_id(
-        style_id,
-        meters_per_unit
-      )
-    `)
-    .eq('style_color_id', colorId)
-    .eq('thread_type_id', threadTypeId)
-    .limit(10000)
-
-  if (specError) {
-    console.error('Error fetching spec:', specError)
+  let specs: Array<{
+    thread_type_id: number
+    thread_color_id: number | null
+    style_thread_specs: { style_id: number; meters_per_unit: number } | null
+  }>
+  try {
+    specs = await query(
+      `SELECT scts.thread_type_id, scts.thread_color_id,
+         CASE WHEN sts.id IS NULL THEN NULL
+           ELSE json_build_object('style_id', sts.style_id, 'meters_per_unit', sts.meters_per_unit)
+         END AS style_thread_specs
+       FROM style_color_thread_specs scts
+       LEFT JOIN style_thread_specs sts ON sts.id = scts.style_thread_spec_id
+       WHERE scts.style_color_id = $1 AND scts.thread_type_id = $2 LIMIT 10000`,
+      [colorId, threadTypeId]
+    )
+  } catch (err) {
+    console.error('Error fetching spec:', err)
     return null
   }
 
@@ -918,11 +908,10 @@ async function getQuotaCones(
     (sum: number, s: any) => sum + (s.style_thread_specs.meters_per_unit as number), 0
   )
 
-  const { data: threadType } = await supabase
-    .from('thread_types')
-    .select('meters_per_cone')
-    .eq('id', threadTypeId)
-    .single()
+  const threadType = await queryOne<{ meters_per_cone: number }>(
+    'SELECT meters_per_cone FROM thread_types WHERE id = $1',
+    [threadTypeId]
+  )
 
   if (!threadType || !threadType.meters_per_cone) {
     return null
@@ -952,15 +941,18 @@ async function findConfirmedWeekIds(
 ): Promise<number[]> {
   if (!poId || !styleId || !styleColorId) return []
 
-  const { data: items, error } = await supabase
-    .from('thread_order_items')
-    .select('week_id, thread_order_weeks!inner(status)')
-    .eq('po_id', poId)
-    .eq('style_id', styleId)
-    .eq('style_color_id', styleColorId)
-    .eq('thread_order_weeks.status', 'CONFIRMED')
-
-  if (error || !items) return []
+  let items: Array<{ week_id: number }>
+  try {
+    items = await query<{ week_id: number }>(
+      `SELECT toi.week_id FROM thread_order_items toi
+       INNER JOIN thread_order_weeks tow ON tow.id = toi.week_id
+       WHERE toi.po_id = $1 AND toi.style_id = $2 AND toi.style_color_id = $3
+         AND tow.status = 'CONFIRMED'`,
+      [poId, styleId, styleColorId]
+    )
+  } catch {
+    return []
+  }
 
   return [...new Set(items.map((i: { week_id: number }) => i.week_id))]
 }
@@ -972,14 +964,20 @@ async function isComboCompletedInAllWeeks(
 ): Promise<boolean> {
   if (!poId || !styleId || !styleColorId) return false
 
-  const { data: items, error } = await supabase
-    .from('thread_order_items')
-    .select('week_id, thread_order_weeks!inner(status)')
-    .eq('po_id', poId)
-    .eq('style_id', styleId)
-    .eq('style_color_id', styleColorId)
+  let items: Array<{ thread_order_weeks: { status: string } | null }>
+  try {
+    items = await query<{ thread_order_weeks: { status: string } | null }>(
+      `SELECT json_build_object('status', tow.status) AS thread_order_weeks
+       FROM thread_order_items toi
+       INNER JOIN thread_order_weeks tow ON tow.id = toi.week_id
+       WHERE toi.po_id = $1 AND toi.style_id = $2 AND toi.style_color_id = $3`,
+      [poId, styleId, styleColorId]
+    )
+  } catch {
+    return false
+  }
 
-  if (error || !items || items.length === 0) return false
+  if (items.length === 0) return false
 
   return items.every((i: any) => i.thread_order_weeks?.status === 'COMPLETED')
 }
@@ -990,37 +988,36 @@ async function detectWarehouseForThread(
   colorId?: number
 ): Promise<number | undefined> {
   if (weekIds.length > 0) {
-    let reservedQuery = supabase
-      .from('thread_inventory')
-      .select('warehouse_id')
-      .eq('thread_type_id', threadTypeId)
-      .eq('status', 'RESERVED_FOR_ORDER')
-      .in('reserved_week_id', weekIds)
-      .limit(1)
+    const reservedParams: unknown[] = [threadTypeId, weekIds]
+    let reservedSql = `SELECT warehouse_id FROM thread_inventory
+      WHERE thread_type_id = $1 AND status = 'RESERVED_FOR_ORDER' AND reserved_week_id = ANY($2)`
 
     if (colorId) {
-      reservedQuery = reservedQuery.eq('color_id', colorId)
+      reservedParams.push(colorId)
+      reservedSql += ` AND color_id = $${reservedParams.length}`
     }
 
-    const { data: reserved } = await reservedQuery
+    reservedSql += ' LIMIT 1'
+
+    const reserved = await query<{ warehouse_id: number }>(reservedSql, reservedParams)
 
     if (reserved && reserved.length > 0) {
       return reserved[0].warehouse_id
     }
   }
 
-  let freeQuery = supabase
-    .from('thread_inventory')
-    .select('warehouse_id')
-    .eq('thread_type_id', threadTypeId)
-    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-    .limit(1000000)
+  const freeParams: unknown[] = [threadTypeId]
+  let freeSql = `SELECT warehouse_id FROM thread_inventory
+    WHERE thread_type_id = $1 AND status IN ('AVAILABLE', 'RECEIVED', 'INSPECTED')`
 
   if (colorId) {
-    freeQuery = freeQuery.eq('color_id', colorId)
+    freeParams.push(colorId)
+    freeSql += ` AND color_id = $${freeParams.length}`
   }
 
-  const { data: freeCones } = await freeQuery
+  freeSql += ' LIMIT 1000000'
+
+  const freeCones = await query<{ warehouse_id: number }>(freeSql, freeParams)
 
   if (!freeCones || freeCones.length === 0) return undefined
 
@@ -1049,49 +1046,26 @@ async function getStockBreakdownByWarehouse(
   const warehouseMap = new Map<number, { warehouse_name: string; full_cones: number; partial_cones: number }>()
 
   if (weekIds.length > 0) {
-    let reservedQuery = supabase
-      .from('thread_inventory')
-      .select('warehouse_id, is_partial, warehouses!inner(name)')
-      .eq('thread_type_id', threadTypeId)
-      .eq('status', 'RESERVED_FOR_ORDER')
-      .in('reserved_week_id', weekIds)
-      .limit(10000)
+    const reservedParams: unknown[] = [threadTypeId, weekIds]
+    let reservedSql = `SELECT ti.warehouse_id, ti.is_partial,
+        json_build_object('name', w.name) AS warehouses
+      FROM thread_inventory ti
+      INNER JOIN warehouses w ON w.id = ti.warehouse_id
+      WHERE ti.thread_type_id = $1 AND ti.status = 'RESERVED_FOR_ORDER' AND ti.reserved_week_id = ANY($2)`
 
     if (colorId) {
-      reservedQuery = reservedQuery.eq('color_id', colorId)
+      reservedParams.push(colorId)
+      reservedSql += ` AND ti.color_id = $${reservedParams.length}`
     }
 
-    const { data: reserved } = await reservedQuery
+    reservedSql += ' LIMIT 10000'
 
-    if (reserved) {
-      for (const cone of reserved) {
-        const whId = cone.warehouse_id
-        const whName = (cone.warehouses as any)?.name || ''
-        if (!warehouseMap.has(whId)) {
-          warehouseMap.set(whId, { warehouse_name: whName, full_cones: 0, partial_cones: 0 })
-        }
-        const entry = warehouseMap.get(whId)!
-        if (cone.is_partial) entry.partial_cones++
-        else entry.full_cones++
-      }
-    }
-  }
+    const reserved = await query<{ warehouse_id: number; is_partial: boolean; warehouses: { name: string } | null }>(
+      reservedSql,
+      reservedParams
+    )
 
-  let freeQuery = supabase
-    .from('thread_inventory')
-    .select('warehouse_id, is_partial, warehouses!inner(name)')
-    .eq('thread_type_id', threadTypeId)
-    .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-    .limit(10000)
-
-  if (colorId) {
-    freeQuery = freeQuery.eq('color_id', colorId)
-  }
-
-  const { data: free } = await freeQuery
-
-  if (free) {
-    for (const cone of free) {
+    for (const cone of reserved) {
       const whId = cone.warehouse_id
       const whName = (cone.warehouses as any)?.name || ''
       if (!warehouseMap.has(whId)) {
@@ -1101,6 +1075,36 @@ async function getStockBreakdownByWarehouse(
       if (cone.is_partial) entry.partial_cones++
       else entry.full_cones++
     }
+  }
+
+  const freeParams: unknown[] = [threadTypeId]
+  let freeSql = `SELECT ti.warehouse_id, ti.is_partial,
+      json_build_object('name', w.name) AS warehouses
+    FROM thread_inventory ti
+    INNER JOIN warehouses w ON w.id = ti.warehouse_id
+    WHERE ti.thread_type_id = $1 AND ti.status IN ('AVAILABLE', 'RECEIVED', 'INSPECTED')`
+
+  if (colorId) {
+    freeParams.push(colorId)
+    freeSql += ` AND ti.color_id = $${freeParams.length}`
+  }
+
+  freeSql += ' LIMIT 10000'
+
+  const free = await query<{ warehouse_id: number; is_partial: boolean; warehouses: { name: string } | null }>(
+    freeSql,
+    freeParams
+  )
+
+  for (const cone of free) {
+    const whId = cone.warehouse_id
+    const whName = (cone.warehouses as any)?.name || ''
+    if (!warehouseMap.has(whId)) {
+      warehouseMap.set(whId, { warehouse_name: whName, full_cones: 0, partial_cones: 0 })
+    }
+    const entry = warehouseMap.get(whId)!
+    if (cone.is_partial) entry.partial_cones++
+    else entry.full_cones++
   }
 
   return Array.from(warehouseMap.entries()).map(([warehouse_id, data]) => ({
@@ -1124,79 +1128,72 @@ async function transferConesForIssue(
   let transferredPartial = 0
 
   if (fullCount > 0) {
-    let fullQuery = supabase
-      .from('thread_inventory')
-      .select('id')
-      .eq('thread_type_id', threadTypeId)
-      .eq('warehouse_id', fromWarehouseId)
-      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-      .eq('is_partial', false)
-      .order('expiry_date', { ascending: true, nullsFirst: false })
-      .order('received_date', { ascending: true })
-      .limit(fullCount)
+    const fullParams: unknown[] = [threadTypeId, fromWarehouseId]
+    let fullSql = `SELECT id FROM thread_inventory
+      WHERE thread_type_id = $1 AND warehouse_id = $2
+        AND status IN ('AVAILABLE', 'RECEIVED', 'INSPECTED') AND is_partial = false`
 
     if (colorId) {
-      fullQuery = fullQuery.eq('color_id', colorId)
+      fullParams.push(colorId)
+      fullSql += ` AND color_id = $${fullParams.length}`
     }
 
-    const { data: fullCones } = await fullQuery
+    fullParams.push(fullCount)
+    fullSql += ` ORDER BY expiry_date ASC NULLS LAST, received_date ASC LIMIT $${fullParams.length}`
 
-    if (fullCones) {
-      coneIds.push(...fullCones.map((c) => c.id))
-      transferredFull = fullCones.length
-    }
+    const fullCones = await query<{ id: number }>(fullSql, fullParams)
+    coneIds.push(...fullCones.map((c) => c.id))
+    transferredFull = fullCones.length
   }
 
   if (partialCount > 0) {
-    let partialQuery = supabase
-      .from('thread_inventory')
-      .select('id')
-      .eq('thread_type_id', threadTypeId)
-      .eq('warehouse_id', fromWarehouseId)
-      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-      .eq('is_partial', true)
-      .order('expiry_date', { ascending: true, nullsFirst: false })
-      .order('received_date', { ascending: true })
-      .limit(partialCount)
+    const partialParams: unknown[] = [threadTypeId, fromWarehouseId]
+    let partialSql = `SELECT id FROM thread_inventory
+      WHERE thread_type_id = $1 AND warehouse_id = $2
+        AND status IN ('AVAILABLE', 'RECEIVED', 'INSPECTED') AND is_partial = true`
 
     if (colorId) {
-      partialQuery = partialQuery.eq('color_id', colorId)
+      partialParams.push(colorId)
+      partialSql += ` AND color_id = $${partialParams.length}`
     }
 
-    const { data: partialCones } = await partialQuery
+    partialParams.push(partialCount)
+    partialSql += ` ORDER BY expiry_date ASC NULLS LAST, received_date ASC LIMIT $${partialParams.length}`
 
-    if (partialCones) {
-      coneIds.push(...partialCones.map((c) => c.id))
-      transferredPartial = partialCones.length
-    }
+    const partialCones = await query<{ id: number }>(partialSql, partialParams)
+    coneIds.push(...partialCones.map((c) => c.id))
+    transferredPartial = partialCones.length
   }
 
   if (coneIds.length === 0) {
     return { success: false, transferred_full: 0, transferred_partial: 0 }
   }
 
-  const { error: updateError } = await supabase
-    .from('thread_inventory')
-    .update({ warehouse_id: toWarehouseId })
-    .in('id', coneIds)
-
-  if (updateError) {
+  try {
+    await query(
+      'UPDATE thread_inventory SET warehouse_id = $1 WHERE id = ANY($2)',
+      [toWarehouseId, coneIds]
+    )
+  } catch (updateError) {
     console.error('[transferConesForIssue] Update error:', updateError)
     return { success: false, transferred_full: 0, transferred_partial: 0 }
   }
 
-  await supabase
-    .from('batch_transactions')
-    .insert({
-      operation_type: 'TRANSFER',
-      from_warehouse_id: fromWarehouseId,
-      to_warehouse_id: toWarehouseId,
-      cone_ids: coneIds,
-      cone_count: coneIds.length,
-      notes: `Muon kho cho phieu xuat #${issueId}`,
-      performed_by: performedBy,
-      performed_at: new Date().toISOString(),
-    })
+  await query(
+    `INSERT INTO batch_transactions
+       (operation_type, from_warehouse_id, to_warehouse_id, cone_ids, cone_count, notes, performed_by, performed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      'TRANSFER',
+      fromWarehouseId,
+      toWarehouseId,
+      coneIds,
+      coneIds.length,
+      `Muon kho cho phieu xuat #${issueId}`,
+      performedBy,
+      new Date().toISOString(),
+    ]
+  )
 
   return { success: true, transferred_full: transferredFull, transferred_partial: transferredPartial }
 }
@@ -1228,26 +1225,25 @@ async function deductStock(
 
   if (weekIds.length > 0) {
     if (remainingFull > 0) {
-      let reservedFullQuery = supabase
-        .from('thread_inventory')
-        .select('id')
-        .eq('thread_type_id', threadTypeId)
-        .eq('status', 'RESERVED_FOR_ORDER')
-        .in('reserved_week_id', weekIds)
-        .eq('is_partial', false)
-        .order('expiry_date', { ascending: true, nullsFirst: false })
-        .order('received_date', { ascending: true })
-        .limit(remainingFull)
+      const rfParams: unknown[] = [threadTypeId, weekIds]
+      let rfSql = `SELECT id FROM thread_inventory
+        WHERE thread_type_id = $1 AND status = 'RESERVED_FOR_ORDER'
+          AND reserved_week_id = ANY($2) AND is_partial = false`
 
       if (warehouseId) {
-        reservedFullQuery = reservedFullQuery.eq('warehouse_id', warehouseId)
+        rfParams.push(warehouseId)
+        rfSql += ` AND warehouse_id = $${rfParams.length}`
       }
 
       if (colorId) {
-        reservedFullQuery = reservedFullQuery.eq('color_id', colorId)
+        rfParams.push(colorId)
+        rfSql += ` AND color_id = $${rfParams.length}`
       }
 
-      const { data: reservedFull } = await reservedFullQuery
+      rfParams.push(remainingFull)
+      rfSql += ` ORDER BY expiry_date ASC NULLS LAST, received_date ASC LIMIT $${rfParams.length}`
+
+      const reservedFull = await query<{ id: number }>(rfSql, rfParams)
 
       if (reservedFull?.length) {
         fullIds.push(...reservedFull.map((c) => c.id))
@@ -1256,26 +1252,25 @@ async function deductStock(
     }
 
     if (remainingPartial > 0) {
-      let reservedPartialQuery = supabase
-        .from('thread_inventory')
-        .select('id')
-        .eq('thread_type_id', threadTypeId)
-        .eq('status', 'RESERVED_FOR_ORDER')
-        .in('reserved_week_id', weekIds)
-        .eq('is_partial', true)
-        .order('expiry_date', { ascending: true, nullsFirst: false })
-        .order('received_date', { ascending: true })
-        .limit(remainingPartial)
+      const rpParams: unknown[] = [threadTypeId, weekIds]
+      let rpSql = `SELECT id FROM thread_inventory
+        WHERE thread_type_id = $1 AND status = 'RESERVED_FOR_ORDER'
+          AND reserved_week_id = ANY($2) AND is_partial = true`
 
       if (warehouseId) {
-        reservedPartialQuery = reservedPartialQuery.eq('warehouse_id', warehouseId)
+        rpParams.push(warehouseId)
+        rpSql += ` AND warehouse_id = $${rpParams.length}`
       }
 
       if (colorId) {
-        reservedPartialQuery = reservedPartialQuery.eq('color_id', colorId)
+        rpParams.push(colorId)
+        rpSql += ` AND color_id = $${rpParams.length}`
       }
 
-      const { data: reservedPartial } = await reservedPartialQuery
+      rpParams.push(remainingPartial)
+      rpSql += ` ORDER BY expiry_date ASC NULLS LAST, received_date ASC LIMIT $${rpParams.length}`
+
+      const reservedPartial = await query<{ id: number }>(rpSql, rpParams)
 
       if (reservedPartial?.length) {
         partialIds.push(...reservedPartial.map((c) => c.id))
@@ -1285,31 +1280,32 @@ async function deductStock(
   }
 
   if (remainingFull > 0) {
-    let availFullQuery = supabase
-      .from('thread_inventory')
-      .select('id')
-      .eq('thread_type_id', threadTypeId)
-      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-      .eq('is_partial', false)
-      .order('expiry_date', { ascending: true, nullsFirst: false })
-      .order('received_date', { ascending: true })
-      .limit(remainingFull)
+    const afParams: unknown[] = [threadTypeId]
+    let afSql = `SELECT id FROM thread_inventory
+      WHERE thread_type_id = $1 AND status IN ('AVAILABLE', 'RECEIVED', 'INSPECTED') AND is_partial = false`
 
     if (fullIds.length > 0) {
-      availFullQuery = availFullQuery.not('id', 'in', `(${fullIds.join(',')})`)
+      afParams.push(fullIds)
+      afSql += ` AND NOT (id = ANY($${afParams.length}))`
     }
 
     if (warehouseId) {
-      availFullQuery = availFullQuery.eq('warehouse_id', warehouseId)
+      afParams.push(warehouseId)
+      afSql += ` AND warehouse_id = $${afParams.length}`
     }
 
     if (colorId) {
-      availFullQuery = availFullQuery.eq('color_id', colorId)
+      afParams.push(colorId)
+      afSql += ` AND color_id = $${afParams.length}`
     }
 
-    const { data: availFull, error: fullError } = await availFullQuery
+    afParams.push(remainingFull)
+    afSql += ` ORDER BY expiry_date ASC NULLS LAST, received_date ASC LIMIT $${afParams.length}`
 
-    if (fullError) {
+    let availFull: Array<{ id: number }>
+    try {
+      availFull = await query<{ id: number }>(afSql, afParams)
+    } catch {
       return { success: false, message: 'Loi truy van ton kho cuon nguyen' }
     }
 
@@ -1324,31 +1320,32 @@ async function deductStock(
   }
 
   if (remainingPartial > 0) {
-    let availPartialQuery = supabase
-      .from('thread_inventory')
-      .select('id')
-      .eq('thread_type_id', threadTypeId)
-      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-      .eq('is_partial', true)
-      .order('expiry_date', { ascending: true, nullsFirst: false })
-      .order('received_date', { ascending: true })
-      .limit(remainingPartial)
+    const apParams: unknown[] = [threadTypeId]
+    let apSql = `SELECT id FROM thread_inventory
+      WHERE thread_type_id = $1 AND status IN ('AVAILABLE', 'RECEIVED', 'INSPECTED') AND is_partial = true`
 
     if (partialIds.length > 0) {
-      availPartialQuery = availPartialQuery.not('id', 'in', `(${partialIds.join(',')})`)
+      apParams.push(partialIds)
+      apSql += ` AND NOT (id = ANY($${apParams.length}))`
     }
 
     if (warehouseId) {
-      availPartialQuery = availPartialQuery.eq('warehouse_id', warehouseId)
+      apParams.push(warehouseId)
+      apSql += ` AND warehouse_id = $${apParams.length}`
     }
 
     if (colorId) {
-      availPartialQuery = availPartialQuery.eq('color_id', colorId)
+      apParams.push(colorId)
+      apSql += ` AND color_id = $${apParams.length}`
     }
 
-    const { data: availPartial, error: partialError } = await availPartialQuery
+    apParams.push(remainingPartial)
+    apSql += ` ORDER BY expiry_date ASC NULLS LAST, received_date ASC LIMIT $${apParams.length}`
 
-    if (partialError) {
+    let availPartial: Array<{ id: number }>
+    try {
+      availPartial = await query<{ id: number }>(apSql, apParams)
+    } catch {
       return { success: false, message: 'Loi truy van ton kho cuon le' }
     }
 
@@ -1368,15 +1365,14 @@ async function deductStock(
     return { success: true, allocatedConeIds: [] }
   }
 
-  const { error: rpcError } = await supabase.rpc('fn_issue_cones_with_movements', {
-    p_cone_ids: allConeIds,
-    p_line_id: issueLineId,
-    p_performed_by: performedBy,
-  })
-
-  if (rpcError) {
+  try {
+    await query(
+      'SELECT fn_issue_cones_with_movements($1, $2, $3) AS result',
+      [allConeIds, issueLineId, performedBy]
+    )
+  } catch (rpcError) {
     console.error('[deductStock] RPC error:', rpcError)
-    return { success: false, message: rpcError.message || 'Loi xu ly xuat kho' }
+    return { success: false, message: getErrorMessage(rpcError) || 'Loi xu ly xuat kho' }
   }
 
   return { success: true, allocatedConeIds: allConeIds }
@@ -1408,31 +1404,31 @@ issuesV2.get('/order-options', async (c) => {
 
     // Case 3: Return Colors for specific PO + Style
     if (po_id && style_id) {
-      const { data: weekIds } = await supabase
-        .from('thread_order_weeks')
-        .select('id')
-        .eq('status', 'CONFIRMED')
+      const weekIds = await query<{ id: number }>(
+        `SELECT id FROM thread_order_weeks WHERE status = 'CONFIRMED'`
+      )
 
       if (!weekIds || weekIds.length === 0) {
         return c.json({ data: [], error: null })
       }
 
-      const { data: colorItems, error: colorError } = await supabase
-        .from('thread_order_items')
-        .select(`
-          style_color_id,
-          style_colors:style_color_id (
-            id,
-            color_name,
-            hex_code
-          )
-        `)
-        .eq('po_id', po_id)
-        .eq('style_id', style_id)
-        .not('style_color_id', 'is', null)
-        .in('week_id', weekIds.map((w) => w.id))
-
-      if (colorError) {
+      let colorItems: Array<{
+        style_color_id: number | null
+        style_colors: { id: number; color_name: string; hex_code: string | null } | null
+      }>
+      try {
+        colorItems = await query(
+          `SELECT toi.style_color_id,
+             CASE WHEN sc.id IS NULL THEN NULL
+               ELSE json_build_object('id', sc.id, 'color_name', sc.color_name, 'hex_code', sc.hex_code)
+             END AS style_colors
+           FROM thread_order_items toi
+           LEFT JOIN style_colors sc ON sc.id = toi.style_color_id
+           WHERE toi.po_id = $1 AND toi.style_id = $2 AND toi.style_color_id IS NOT NULL
+             AND toi.week_id = ANY($3)`,
+          [po_id, style_id, weekIds.map((w) => w.id)]
+        )
+      } catch {
         return c.json({ data: null, error: 'Loi truy van mau sac' }, 500)
       }
 
@@ -1454,10 +1450,9 @@ issuesV2.get('/order-options', async (c) => {
     // Case 2: Return Styles for specific PO
     if (po_id) {
       // Get confirmed week IDs first
-      const { data: weekIds } = await supabase
-        .from('thread_order_weeks')
-        .select('id')
-        .eq('status', 'CONFIRMED')
+      const weekIds = await query<{ id: number }>(
+        `SELECT id FROM thread_order_weeks WHERE status = 'CONFIRMED'`
+      )
 
       if (!weekIds || weekIds.length === 0) {
         return c.json({
@@ -1466,24 +1461,22 @@ issuesV2.get('/order-options', async (c) => {
         })
       }
 
-      const { data: styleItems, error } = await supabase
-        .from('thread_order_items')
-        .select(`
-          style_id,
-          styles:style_id (
-            id,
-            style_code,
-            style_name
-          )
-        `)
-        .eq('po_id', po_id)
-        .not('style_id', 'is', null)
-        .in(
-          'week_id',
-          weekIds.map((w) => w.id)
+      let styleItems: Array<{
+        style_id: number | null
+        styles: { id: number; style_code: string; style_name: string } | null
+      }>
+      try {
+        styleItems = await query(
+          `SELECT toi.style_id,
+             CASE WHEN s.id IS NULL THEN NULL
+               ELSE json_build_object('id', s.id, 'style_code', s.style_code, 'style_name', s.style_name)
+             END AS styles
+           FROM thread_order_items toi
+           LEFT JOIN styles s ON s.id = toi.style_id
+           WHERE toi.po_id = $1 AND toi.style_id IS NOT NULL AND toi.week_id = ANY($2)`,
+          [po_id, weekIds.map((w) => w.id)]
         )
-
-      if (error) {
+      } catch {
         return c.json(
           {
             data: null,
@@ -1504,14 +1497,12 @@ issuesV2.get('/order-options', async (c) => {
       const styleIds = Array.from(uniqueStyles.keys())
       const subArtStyleIds = new Set<number>()
       if (styleIds.length > 0) {
-        const { data: subArtRows } = await supabase
-          .from('sub_arts')
-          .select('style_id')
-          .in('style_id', styleIds)
-        if (subArtRows) {
-          for (const row of subArtRows) {
-            subArtStyleIds.add(row.style_id)
-          }
+        const subArtRows = await query<{ style_id: number }>(
+          `SELECT style_id FROM sub_arts WHERE style_id = ANY($1)`,
+          [styleIds]
+        )
+        for (const row of subArtRows) {
+          subArtStyleIds.add(row.style_id)
         }
       }
 
@@ -1526,10 +1517,9 @@ issuesV2.get('/order-options', async (c) => {
 
     // Case 1: Return distinct POs (no params)
     // Get confirmed week IDs first
-    const { data: weekIds } = await supabase
-      .from('thread_order_weeks')
-      .select('id')
-      .eq('status', 'CONFIRMED')
+    const weekIds = await query<{ id: number }>(
+      `SELECT id FROM thread_order_weeks WHERE status = 'CONFIRMED'`
+    )
 
     if (!weekIds || weekIds.length === 0) {
       return c.json({
@@ -1538,22 +1528,22 @@ issuesV2.get('/order-options', async (c) => {
       })
     }
 
-    const { data: poItems, error } = await supabase
-      .from('thread_order_items')
-      .select(`
-        po_id,
-        purchase_orders:po_id (
-          id,
-          po_number
-        )
-      `)
-      .not('po_id', 'is', null)
-      .in(
-        'week_id',
-        weekIds.map((w) => w.id)
+    let poItems: Array<{
+      po_id: number | null
+      purchase_orders: { id: number; po_number: string } | null
+    }>
+    try {
+      poItems = await query(
+        `SELECT toi.po_id,
+           CASE WHEN po.id IS NULL THEN NULL
+             ELSE json_build_object('id', po.id, 'po_number', po.po_number)
+           END AS purchase_orders
+         FROM thread_order_items toi
+         LEFT JOIN purchase_orders po ON po.id = toi.po_id
+         WHERE toi.po_id IS NOT NULL AND toi.week_id = ANY($1)`,
+        [weekIds.map((w) => w.id)]
       )
-
-    if (error) {
+    } catch {
       return c.json(
         {
           data: null,
@@ -1627,24 +1617,20 @@ issuesV2.post('/', async (c) => {
     const issueCode = await generateIssueCode()
 
     // Insert new issue
-    const { data: issue, error } = await supabase
-      .from('thread_issues')
-      .insert({
-        issue_code: issueCode,
-        department: validated.department,
-        created_by: validated.created_by,
-        notes: validated.notes || null,
-        status: 'DRAFT',
-      })
-      .select('id, issue_code')
-      .single()
-
-    if (error) {
+    let issue: { id: number; issue_code: string }
+    try {
+      issue = await query<{ id: number; issue_code: string }>(
+        `INSERT INTO thread_issues (issue_code, department, created_by, notes, status)
+         VALUES ($1, $2, $3, $4, 'DRAFT')
+         RETURNING id, issue_code`,
+        [issueCode, validated.department, validated.created_by, validated.notes || null]
+      ).then((rows) => rows[0])
+    } catch (error) {
       console.error('Error creating issue:', error)
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tao phieu xuat: ' + error.message,
+          error: 'Khong the tao phieu xuat: ' + getErrorMessage(error),
         },
         500
       )
@@ -1841,83 +1827,111 @@ issuesV2.post('/create-with-lines', async (c) => {
 
     const issueCode = await generateIssueCode()
 
-    const { data: issue, error: issueError } = await supabase
-      .from('thread_issues')
-      .insert({
-        issue_code: issueCode,
-        department,
-        created_by,
-        notes: notes || null,
-        status: 'DRAFT',
-      })
-      .select('*')
-      .single()
-
-    if (issueError || !issue) {
+    let issue: Record<string, any> | null
+    try {
+      const issueRows = await query<Record<string, any>>(
+        `INSERT INTO thread_issues (issue_code, department, created_by, notes, status)
+         VALUES ($1, $2, $3, $4, 'DRAFT')
+         RETURNING *`,
+        [issueCode, department, created_by, notes || null]
+      )
+      issue = issueRows.length > 0 ? issueRows[0] : null
+    } catch (issueError) {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tao phieu xuat: ' + (issueError?.message || 'Loi khong xac dinh'),
+          error: 'Khong the tao phieu xuat: ' + (getErrorMessage(issueError) || 'Loi khong xac dinh'),
         },
         500
       )
     }
 
-    const { data: line, error: lineError } = await supabase
-      .from('thread_issue_lines')
-      .insert({
-        issue_id: issue.id,
-        po_id: po_id || null,
-        style_id: style_id || null,
-        style_color_id: style_color_id || null,
-        color_id: color_id || null,
-        sub_art_id: sub_art_id || null,
-        thread_type_id,
-        thread_color_id: createThreadColorId || null,
-        quota_cones: quotaCones,
-        issued_full: issued_full || 0,
-        issued_partial: issued_partial || 0,
-        returned_full: 0,
-        returned_partial: 0,
-        over_quota_notes: over_quota_notes || null,
-      })
-      .select('*')
-      .single()
-
-    if (lineError || !line) {
-      await supabase.from('thread_issues').delete().eq('id', issue.id)
+    if (!issue) {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the them dong: ' + (lineError?.message || 'Loi khong xac dinh'),
+          error: 'Khong the tao phieu xuat: Loi khong xac dinh',
         },
         500
       )
     }
 
-    const { data: threadType } = await supabase
-      .from('thread_types')
-      .select('code, name')
-      .eq('id', thread_type_id)
-      .single()
+    let line: Record<string, any> | null
+    try {
+      const lineRows = await query<Record<string, any>>(
+        `INSERT INTO thread_issue_lines
+           (issue_id, po_id, style_id, style_color_id, color_id, sub_art_id, thread_type_id,
+            thread_color_id, quota_cones, issued_full, issued_partial, returned_full, returned_partial, over_quota_notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12)
+         RETURNING *`,
+        [
+          issue.id,
+          po_id || null,
+          style_id || null,
+          style_color_id || null,
+          color_id || null,
+          sub_art_id || null,
+          thread_type_id,
+          createThreadColorId || null,
+          quotaCones,
+          issued_full || 0,
+          issued_partial || 0,
+          over_quota_notes || null,
+        ]
+      )
+      line = lineRows.length > 0 ? lineRows[0] : null
+    } catch (lineError) {
+      await query('DELETE FROM thread_issues WHERE id = $1', [issue.id])
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Khong the them dong: ' + (getErrorMessage(lineError) || 'Loi khong xac dinh'),
+        },
+        500
+      )
+    }
 
-    const { data: poData } = po_id
-      ? await supabase.from('purchase_orders').select('id, po_number').eq('id', po_id).single()
-      : { data: null }
+    if (!line) {
+      await query('DELETE FROM thread_issues WHERE id = $1', [issue.id])
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Khong the them dong: Loi khong xac dinh',
+        },
+        500
+      )
+    }
 
-    const { data: styleData } = style_id
-      ? await supabase
-          .from('styles')
-          .select('id, style_code, style_name')
-          .eq('id', style_id)
-          .single()
-      : { data: null }
+    const threadType = await queryOne<{ code: string; name: string }>(
+      'SELECT code, name FROM thread_types WHERE id = $1',
+      [thread_type_id]
+    )
 
-    const { data: colorData } = style_color_id
-      ? await supabase.from('style_colors').select('id, color_name').eq('id', style_color_id).single()
+    const poData = po_id
+      ? await queryOne<{ id: number; po_number: string }>(
+          'SELECT id, po_number FROM purchase_orders WHERE id = $1',
+          [po_id]
+        )
+      : null
+
+    const styleData = style_id
+      ? await queryOne<{ id: number; style_code: string; style_name: string }>(
+          'SELECT id, style_code, style_name FROM styles WHERE id = $1',
+          [style_id]
+        )
+      : null
+
+    const colorData = style_color_id
+      ? await queryOne<{ id: number; color_name: string }>(
+          'SELECT id, color_name FROM style_colors WHERE id = $1',
+          [style_color_id]
+        )
       : color_id
-        ? await supabase.from('colors').select('id, name').eq('id', color_id).single()
-        : { data: null }
+        ? await queryOne<{ id: number; name: string }>(
+            'SELECT id, name FROM colors WHERE id = $1',
+            [color_id]
+          )
+        : null
 
     const subArtCode = await getSubArtCode(sub_art_id)
 
@@ -1990,23 +2004,19 @@ issuesV2.post('/stock-refresh', async (c) => {
 
     let reservedRows: { thread_type_id: number; color_id: number | null; warehouse_id: number | null; is_partial: boolean }[] = []
     if (allWeekIds.size > 0) {
-      const { data } = await supabase
-        .from('thread_inventory')
-        .select('thread_type_id, color_id, warehouse_id, is_partial')
-        .in('thread_type_id', allThreadTypeIds)
-        .eq('status', 'RESERVED_FOR_ORDER')
-        .in('reserved_week_id', [...allWeekIds])
-        .limit(1000000)
-      reservedRows = (data as typeof reservedRows) || []
+      reservedRows = await query<typeof reservedRows[number]>(
+        `SELECT thread_type_id, color_id, warehouse_id, is_partial FROM thread_inventory
+         WHERE thread_type_id = ANY($1) AND status = 'RESERVED_FOR_ORDER'
+           AND reserved_week_id = ANY($2) LIMIT 1000000`,
+        [allThreadTypeIds, [...allWeekIds]]
+      )
     }
 
-    const { data: freeData } = await supabase
-      .from('thread_inventory')
-      .select('thread_type_id, color_id, warehouse_id, is_partial')
-      .in('thread_type_id', allThreadTypeIds)
-      .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-      .limit(1000000)
-    const freeRows = (freeData as typeof reservedRows) || []
+    const freeRows = await query<typeof reservedRows[number]>(
+      `SELECT thread_type_id, color_id, warehouse_id, is_partial FROM thread_inventory
+       WHERE thread_type_id = ANY($1) AND status IN ('AVAILABLE', 'RECEIVED', 'INSPECTED') LIMIT 1000000`,
+      [allThreadTypeIds]
+    )
 
     const allRows = [...reservedRows, ...freeRows]
 
@@ -2083,11 +2093,11 @@ issuesV2.post('/stock-refresh', async (c) => {
  */
 issuesV2.get('/form-data', async (c) => {
   try {
-    const query = c.req.query()
+    const reqQuery = c.req.query()
 
     let validated
     try {
-      validated = FormDataQuerySchema.parse(query)
+      validated = FormDataQuerySchema.parse(reqQuery)
     } catch (err) {
       if (err instanceof ZodError) {
         return c.json<ThreadApiResponse<null>>(
@@ -2107,25 +2117,30 @@ issuesV2.get('/form-data', async (c) => {
     // Get thread types from BOM (style_color_thread_specs -> style_thread_specs)
     // style_color_thread_specs has: style_thread_spec_id, color_id, thread_type_id
     // style_thread_specs has: style_id, meters_per_unit (consumption)
-    const { data: specs, error: specsError } = await supabase
-      .from('style_color_thread_specs')
-      .select(
-        `
-        thread_type_id,
-        thread_color_id,
-        style_color_id,
-        thread_color:colors!thread_color_id(name),
-        style_thread_specs:style_thread_spec_id(
-          id,
-          style_id,
-          meters_per_unit
-        ),
-        thread_types:thread_type_id(id, code, name, meters_per_cone, tex_number, tex_label, supplier_data:suppliers!supplier_id(name))
-      `
+    let specs: Array<Record<string, any>>
+    try {
+      specs = await query<Record<string, any>>(
+        `SELECT scts.thread_type_id, scts.thread_color_id, scts.style_color_id,
+           CASE WHEN tc.id IS NULL THEN NULL ELSE json_build_object('name', tc.name) END AS thread_color,
+           CASE WHEN sts.id IS NULL THEN NULL
+             ELSE json_build_object('id', sts.id, 'style_id', sts.style_id, 'meters_per_unit', sts.meters_per_unit)
+           END AS style_thread_specs,
+           CASE WHEN tt.id IS NULL THEN NULL
+             ELSE json_build_object(
+               'id', tt.id, 'code', tt.code, 'name', tt.name,
+               'meters_per_cone', tt.meters_per_cone, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label,
+               'supplier_data', CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('name', sup.name) END
+             )
+           END AS thread_types
+         FROM style_color_thread_specs scts
+         LEFT JOIN colors tc ON tc.id = scts.thread_color_id
+         LEFT JOIN style_thread_specs sts ON sts.id = scts.style_thread_spec_id
+         LEFT JOIN thread_types tt ON tt.id = scts.thread_type_id
+         LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+         WHERE scts.style_color_id = $1`,
+        [effectiveColorId]
       )
-      .eq('style_color_id', effectiveColorId)
-
-    if (specsError) {
+    } catch (specsError) {
       console.error('Error fetching thread specs:', specsError)
       return c.json<ThreadApiResponse<null>>(
         {
@@ -2233,11 +2248,11 @@ issuesV2.get('/form-data', async (c) => {
  */
 issuesV2.get('/return-list', requirePermission('thread.issues.return'), async (c) => {
   try {
-    const query = c.req.query()
+    const rawQuery = c.req.query()
 
     let validated
     try {
-      validated = ReturnListFiltersSchema.parse(query)
+      validated = ReturnListFiltersSchema.parse(rawQuery)
     } catch (err) {
       if (err instanceof ZodError) {
         return c.json<ThreadApiResponse<null>>(
@@ -2253,18 +2268,19 @@ issuesV2.get('/return-list', requirePermission('thread.issues.return'), async (c
     let matchingIssueIds: number[] | null = null
 
     if (search && search.length >= 2) {
-      const { data: ids, error: rpcError } = await supabase
-        .rpc('fn_search_return_issue_ids', { p_keyword: search })
-
-      if (rpcError) {
+      try {
+        const idRows = await query<{ result: number[] }>(
+          'SELECT fn_search_return_issue_ids($1) AS result',
+          [search]
+        )
+        matchingIssueIds = (idRows.length > 0 ? idRows[0].result : null) || []
+      } catch (rpcError) {
         console.error('Error searching return issues:', rpcError)
         return c.json<ThreadApiResponse<null>>(
           { data: null, error: 'Lỗi tìm kiếm' },
           500
         )
       }
-
-      matchingIssueIds = ids || []
 
       if (matchingIssueIds.length === 0) {
         return c.json({
@@ -2275,43 +2291,61 @@ issuesV2.get('/return-list', requirePermission('thread.issues.return'), async (c
     }
 
     // Step 2: Query thread_issues with filters
-    let dbQuery = supabase
-      .from('thread_issues')
-      .select('*, line_count:thread_issue_lines(count)', { count: 'exact' })
-      .eq('status', 'CONFIRMED')
-      .order('created_at', { ascending: false })
+    const conditions: string[] = [`ti.status = 'CONFIRMED'`]
+    const params: unknown[] = []
 
     // Permission filter: non-admin only sees own issues
     const auth = c.get('auth')
     if (auth && !auth.isAdmin) {
-      const { data: emp } = await supabase
-        .from('employees')
-        .select('full_name')
-        .eq('id', auth.employeeId)
-        .single()
+      const emp = await queryOne<{ full_name: string }>(
+        'SELECT full_name FROM employees WHERE id = $1',
+        [auth.employeeId]
+      )
 
       if (emp?.full_name) {
-        dbQuery = dbQuery.eq('created_by', emp.full_name)
+        params.push(emp.full_name)
+        conditions.push(`ti.created_by = $${params.length}`)
       }
     }
 
     if (matchingIssueIds) {
-      dbQuery = dbQuery.in('id', matchingIssueIds)
+      params.push(matchingIssueIds)
+      conditions.push(`ti.id = ANY($${params.length})`)
     }
 
     if (from) {
-      dbQuery = dbQuery.gte('created_at', `${from}T00:00:00`)
+      params.push(`${from}T00:00:00`)
+      conditions.push(`ti.created_at >= $${params.length}`)
     }
     if (to) {
-      dbQuery = dbQuery.lte('created_at', `${to}T23:59:59`)
+      params.push(`${to}T23:59:59`)
+      conditions.push(`ti.created_at <= $${params.length}`)
     }
 
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+    const count = await query<{ count: string }>(
+      `SELECT count(*)::int AS count FROM thread_issues ti ${whereClause}`,
+      params
+    ).then((rows) => (rows.length > 0 ? Number(rows[0].count) : 0))
+
     const offset = (page - 1) * limit
-    dbQuery = dbQuery.range(offset, offset + limit - 1)
-
-    const { data, error, count } = await dbQuery
-
-    if (error) {
+    const listParams = [...params, limit, offset]
+    let data: Array<Record<string, any>>
+    try {
+      data = await query<Record<string, any>>(
+        `SELECT ti.*,
+           COALESCE(
+             (SELECT json_agg(json_build_object('count', lc.cnt))
+              FROM (SELECT count(*) AS cnt FROM thread_issue_lines til WHERE til.issue_id = ti.id) lc),
+             '[]'::json
+           ) AS line_count
+         FROM thread_issues ti ${whereClause}
+         ORDER BY ti.created_at DESC
+         LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+        listParams
+      )
+    } catch (error) {
       console.error('Error listing return issues:', error)
       return c.json<ThreadApiResponse<null>>(
         { data: null, error: 'Không thể tải danh sách phiếu trả kho' },
@@ -2324,32 +2358,35 @@ issuesV2.get('/return-list', requirePermission('thread.issues.return'), async (c
     const lineSummaryMap: Record<number, { po_number?: string; style_code?: string; sub_art_code?: string; color_names: string[] }> = {}
 
     if (issueIds.length > 0) {
-      const { data: linesSummary } = await supabase
-        .from('thread_issue_lines')
-        .select(`
-          issue_id,
-          purchase_orders:po_id(po_number),
-          styles:style_id(style_code),
-          sub_arts:sub_art_id(sub_art_code),
-          style_colors:style_color_id(color_name),
-          colors:color_id(name)
-        `)
-        .in('issue_id', issueIds)
-        .order('created_at', { ascending: true })
+      const linesSummary = await query<Record<string, any>>(
+        `SELECT til.issue_id,
+           CASE WHEN po.id IS NULL THEN NULL ELSE json_build_object('po_number', po.po_number) END AS purchase_orders,
+           CASE WHEN s.id IS NULL THEN NULL ELSE json_build_object('style_code', s.style_code) END AS styles,
+           CASE WHEN sa.id IS NULL THEN NULL ELSE json_build_object('sub_art_code', sa.sub_art_code) END AS sub_arts,
+           CASE WHEN sc.id IS NULL THEN NULL ELSE json_build_object('color_name', sc.color_name) END AS style_colors,
+           CASE WHEN col.id IS NULL THEN NULL ELSE json_build_object('name', col.name) END AS colors
+         FROM thread_issue_lines til
+         LEFT JOIN purchase_orders po ON po.id = til.po_id
+         LEFT JOIN styles s ON s.id = til.style_id
+         LEFT JOIN sub_arts sa ON sa.id = til.sub_art_id
+         LEFT JOIN style_colors sc ON sc.id = til.style_color_id
+         LEFT JOIN colors col ON col.id = til.color_id
+         WHERE til.issue_id = ANY($1)
+         ORDER BY til.created_at ASC`,
+        [issueIds]
+      )
 
-      if (linesSummary) {
-        for (const line of linesSummary) {
-          const colorName = (line.style_colors as any)?.color_name ?? (line.colors as any)?.name
-          if (!lineSummaryMap[line.issue_id]) {
-            lineSummaryMap[line.issue_id] = {
-              po_number: (line.purchase_orders as any)?.po_number || undefined,
-              style_code: (line.styles as any)?.style_code || undefined,
-              sub_art_code: (line.sub_arts as any)?.sub_art_code || undefined,
-              color_names: colorName ? [colorName] : [],
-            }
-          } else if (colorName && !lineSummaryMap[line.issue_id].color_names.includes(colorName)) {
-            lineSummaryMap[line.issue_id].color_names.push(colorName)
+      for (const line of linesSummary) {
+        const colorName = (line.style_colors as any)?.color_name ?? (line.colors as any)?.name
+        if (!lineSummaryMap[line.issue_id]) {
+          lineSummaryMap[line.issue_id] = {
+            po_number: (line.purchase_orders as any)?.po_number || undefined,
+            style_code: (line.styles as any)?.style_code || undefined,
+            sub_art_code: (line.sub_arts as any)?.sub_art_code || undefined,
+            color_names: colorName ? [colorName] : [],
           }
+        } else if (colorName && !lineSummaryMap[line.issue_id].color_names.includes(colorName)) {
+          lineSummaryMap[line.issue_id].color_names.push(colorName)
         }
       }
     }
@@ -2517,13 +2554,12 @@ issuesV2.post('/:id/batch-lines', async (c) => {
       throw err
     }
 
-    const { data: issue, error: issueError } = await supabase
-      .from('thread_issues')
-      .select('id, status, department')
-      .eq('id', issueId)
-      .single()
+    const issue = await queryOne<{ id: number; status: string; department: string | null }>(
+      'SELECT id, status, department FROM thread_issues WHERE id = $1',
+      [issueId]
+    )
 
-    if (issueError || !issue) {
+    if (!issue) {
       return c.json<ThreadApiResponse<null>>(
         { data: null, error: 'Khong tim thay phieu xuat' },
         404
@@ -2643,34 +2679,51 @@ issuesV2.post('/:id/batch-lines', async (c) => {
       })
     }
 
-    const { data: insertedLines, error: insertError } = await supabase
-      .from('thread_issue_lines')
-      .insert(insertRows)
-      .select('*')
+    const insertCols = [
+      'issue_id', 'po_id', 'style_id', 'style_color_id', 'color_id', 'sub_art_id',
+      'thread_type_id', 'thread_color_id', 'quota_cones', 'issued_full', 'issued_partial',
+      'returned_full', 'returned_partial', 'over_quota_notes',
+    ]
+    const insertParams: unknown[] = []
+    const valueGroups = insertRows.map((row) => {
+      const placeholders = insertCols.map((col) => {
+        insertParams.push(row[col] ?? null)
+        return `$${insertParams.length}`
+      })
+      return `(${placeholders.join(', ')})`
+    })
 
-    if (insertError || !insertedLines) {
-      console.error('Error batch inserting lines:', insertError)
+    let insertedLines: Array<Record<string, unknown>>
+    try {
+      insertedLines = await query<Record<string, unknown>>(
+        `INSERT INTO thread_issue_lines (${insertCols.join(', ')}) VALUES ${valueGroups.join(', ')} RETURNING *`,
+        insertParams
+      )
+    } catch (insertErr) {
+      console.error('Error batch inserting lines:', insertErr)
       return c.json<ThreadApiResponse<null>>(
-        { data: null, error: 'Khong the them cac dong: ' + (insertError?.message || 'Loi khong xac dinh') },
+        { data: null, error: 'Khong the them cac dong: ' + getErrorMessage(insertErr) },
         500
       )
     }
 
-    const threadTypeIds = [...new Set(insertedLines.map((l: { thread_type_id: number }) => l.thread_type_id))]
-    const { data: threadTypes } = await supabase
-      .from('thread_types')
-      .select('id, code, name')
-      .in('id', threadTypeIds)
+    const threadTypeIds = [...new Set(insertedLines.map((l) => l.thread_type_id as number))]
+    const threadTypes = threadTypeIds.length > 0
+      ? await query<{ id: number; code: string; name: string }>(
+          'SELECT id, code, name FROM thread_types WHERE id = ANY($1)',
+          [threadTypeIds]
+        )
+      : []
 
     const ttMap = new Map((threadTypes || []).map((t: { id: number; code: string; name: string }) => [t.id, t]))
 
-    const subArtIds = [...new Set(insertedLines.map((l: { sub_art_id: number | null }) => l.sub_art_id).filter(Boolean))]
+    const subArtIds = [...new Set(insertedLines.map((l) => l.sub_art_id as number | null).filter(Boolean))] as number[]
     let subArtMap = new Map<number, string>()
     if (subArtIds.length > 0) {
-      const { data: subArts } = await supabase
-        .from('sub_arts')
-        .select('id, sub_art_code')
-        .in('id', subArtIds)
+      const subArts = await query<{ id: number; sub_art_code: string }>(
+        'SELECT id, sub_art_code FROM sub_arts WHERE id = ANY($1)',
+        [subArtIds]
+      )
       subArtMap = new Map((subArts || []).map((s: { id: number; sub_art_code: string }) => [s.id, s.sub_art_code]))
     }
 
@@ -2741,13 +2794,12 @@ issuesV2.post('/:id/lines', async (c) => {
     }
 
     // Check if issue exists and is in DRAFT status
-    const { data: issue, error: issueError } = await supabase
-      .from('thread_issues')
-      .select('id, status, department')
-      .eq('id', issueId)
-      .single()
+    const issue = await queryOne<{ id: number; status: string; department: string | null }>(
+      'SELECT id, status, department FROM thread_issues WHERE id = $1',
+      [issueId]
+    )
 
-    if (issueError || !issue) {
+    if (!issue) {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -2801,7 +2853,7 @@ issuesV2.post('/:id/lines', async (c) => {
     // Get partial cone ratio and calculate issued equivalent
     const ratio = await getPartialConeRatio()
     const addLineThreadColorId = thread_color_id !== undefined ? thread_color_id : await lookupThreadColorId(thread_type_id, effectiveColorId)
-    const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio, issue.department, addLineThreadColorId)
+    const quotaCones = await getQuotaCones(po_id, style_id, effectiveColorId, thread_type_id, ratio, issue.department ?? undefined, addLineThreadColorId)
     const issuedEquivalent = calculateIssuedEquivalent(issued_full || 0, issued_partial || 0, ratio)
 
     const isOverQuota = quotaCones !== null && issuedEquivalent > quotaCones
@@ -2835,33 +2887,36 @@ issuesV2.post('/:id/lines', async (c) => {
     }
 
     // Insert line
-    const { data: line, error: lineError } = await supabase
-      .from('thread_issue_lines')
-      .insert({
-        issue_id: issueId,
-        po_id: po_id || null,
-        style_id: style_id || null,
-        style_color_id: style_color_id || null,
-        color_id: color_id || null,
-        sub_art_id: sub_art_id || null,
-        thread_type_id,
-        thread_color_id: addLineThreadColorId || null,
-        quota_cones: quotaCones,
-        issued_full: issued_full || 0,
-        issued_partial: issued_partial || 0,
-        returned_full: 0,
-        returned_partial: 0,
-        over_quota_notes: over_quota_notes || null,
-      })
-      .select('*')
-      .single()
-
-    if (lineError) {
-      console.error('Error adding line:', lineError)
+    let line: Record<string, unknown>
+    try {
+      const inserted = await query<Record<string, unknown>>(
+        `INSERT INTO thread_issue_lines (
+          issue_id, po_id, style_id, style_color_id, color_id, sub_art_id,
+          thread_type_id, thread_color_id, quota_cones, issued_full, issued_partial,
+          returned_full, returned_partial, over_quota_notes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12) RETURNING *`,
+        [
+          issueId,
+          po_id || null,
+          style_id || null,
+          style_color_id || null,
+          color_id || null,
+          sub_art_id || null,
+          thread_type_id,
+          addLineThreadColorId || null,
+          quotaCones,
+          issued_full || 0,
+          issued_partial || 0,
+          over_quota_notes || null,
+        ]
+      )
+      line = inserted[0]
+    } catch (lineErr) {
+      console.error('Error adding line:', lineErr)
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the them dong: ' + lineError.message,
+          error: 'Khong the them dong: ' + getErrorMessage(lineErr),
         },
         500
       )
@@ -2869,11 +2924,10 @@ issuesV2.post('/:id/lines', async (c) => {
 
     // Stock already fetched above for validation, reuse it
     // Get thread type name
-    const { data: threadType } = await supabase
-      .from('thread_types')
-      .select('code, name')
-      .eq('id', thread_type_id)
-      .single()
+    const threadType = await queryOne<{ code: string; name: string }>(
+      'SELECT code, name FROM thread_types WHERE id = $1',
+      [thread_type_id]
+    )
 
     const lineSubArtCode = await getSubArtCode(sub_art_id)
 
@@ -2917,13 +2971,12 @@ issuesV2.get('/:id/return-logs', async (c) => {
       )
     }
 
-    const { data: issue, error: issueError } = await supabase
-      .from('thread_issues')
-      .select('id')
-      .eq('id', issueId)
-      .single()
+    const issue = await queryOne<{ id: number }>(
+      'SELECT id FROM thread_issues WHERE id = $1',
+      [issueId]
+    )
 
-    if (issueError || !issue) {
+    if (!issue) {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -2933,14 +2986,17 @@ issuesV2.get('/:id/return-logs', async (c) => {
       )
     }
 
-    const { data: logs, error: logsError } = await supabase
-      .from('thread_issue_return_logs')
-      .select('id, issue_id, line_id, returned_full, returned_partial, created_at')
-      .eq('issue_id', issueId)
-      .order('created_at', { ascending: false })
-
-    if (logsError) {
-      console.error('Error fetching return logs:', logsError)
+    let logs: Array<Record<string, any>>
+    try {
+      logs = await query<Record<string, any>>(
+        `SELECT id, issue_id, line_id, returned_full, returned_partial, created_at
+         FROM thread_issue_return_logs
+         WHERE issue_id = $1
+         ORDER BY created_at DESC`,
+        [issueId]
+      )
+    } catch (logsErr) {
+      console.error('Error fetching return logs:', logsErr)
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -2954,18 +3010,22 @@ issuesV2.get('/:id/return-logs', async (c) => {
     const linesMap: Record<number, any> = {}
 
     if (lineIds.length > 0) {
-      const { data: lines } = await supabase
-        .from('thread_issue_lines')
-        .select(`
-          id,
-          thread_type_id,
-          thread_types ( id, name, code ),
-          style_color_id,
-          style_colors:style_color_id ( id, color_name ),
-          color_id,
-          colors!color_id ( id, name )
-        `)
-        .in('id', lineIds)
+      const lines = await query<Record<string, any>>(
+        `SELECT
+           til.id,
+           til.thread_type_id,
+           CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object('id', tt.id, 'name', tt.name, 'code', tt.code) END AS thread_types,
+           til.style_color_id,
+           CASE WHEN sc.id IS NULL THEN NULL ELSE json_build_object('id', sc.id, 'color_name', sc.color_name) END AS style_colors,
+           til.color_id,
+           CASE WHEN co.id IS NULL THEN NULL ELSE json_build_object('id', co.id, 'name', co.name) END AS colors
+         FROM thread_issue_lines til
+         LEFT JOIN thread_types tt ON tt.id = til.thread_type_id
+         LEFT JOIN style_colors sc ON sc.id = til.style_color_id
+         LEFT JOIN colors co ON co.id = til.color_id
+         WHERE til.id = ANY($1)`,
+        [lineIds]
+      )
 
       if (lines) {
         for (const line of lines) {
@@ -3022,13 +3082,12 @@ issuesV2.get('/:id', async (c) => {
     }
 
     // Get issue
-    const { data: issue, error: issueError } = await supabase
-      .from('thread_issues')
-      .select('*')
-      .eq('id', issueId)
-      .single()
+    const issue = await queryOne<Record<string, unknown>>(
+      'SELECT * FROM thread_issues WHERE id = $1',
+      [issueId]
+    )
 
-    if (issueError || !issue) {
+    if (!issue) {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3039,24 +3098,30 @@ issuesV2.get('/:id', async (c) => {
     }
 
     // Get lines with joined data
-    const { data: lines, error: linesError } = await supabase
-      .from('thread_issue_lines')
-      .select(
-        `
-        *,
-        thread_types!inner(id, code, name, supplier_id, tex_number, tex_label),
-        purchase_orders(id, po_number),
-        styles(id, style_code, style_name),
-        style_colors:style_color_id(id, color_name),
-        colors!color_id(id, name),
-        sub_arts(id, sub_art_code)
-      `
+    let lines: Array<Record<string, any>>
+    try {
+      lines = await query<Record<string, any>>(
+        `SELECT
+           til.*,
+           json_build_object('id', tt.id, 'code', tt.code, 'name', tt.name, 'supplier_id', tt.supplier_id, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label) AS thread_types,
+           CASE WHEN po.id IS NULL THEN NULL ELSE json_build_object('id', po.id, 'po_number', po.po_number) END AS purchase_orders,
+           CASE WHEN st.id IS NULL THEN NULL ELSE json_build_object('id', st.id, 'style_code', st.style_code, 'style_name', st.style_name) END AS styles,
+           CASE WHEN sc.id IS NULL THEN NULL ELSE json_build_object('id', sc.id, 'color_name', sc.color_name) END AS style_colors,
+           CASE WHEN co.id IS NULL THEN NULL ELSE json_build_object('id', co.id, 'name', co.name) END AS colors,
+           CASE WHEN sa.id IS NULL THEN NULL ELSE json_build_object('id', sa.id, 'sub_art_code', sa.sub_art_code) END AS sub_arts
+         FROM thread_issue_lines til
+         INNER JOIN thread_types tt ON tt.id = til.thread_type_id
+         LEFT JOIN purchase_orders po ON po.id = til.po_id
+         LEFT JOIN styles st ON st.id = til.style_id
+         LEFT JOIN style_colors sc ON sc.id = til.style_color_id
+         LEFT JOIN colors co ON co.id = til.color_id
+         LEFT JOIN sub_arts sa ON sa.id = til.sub_art_id
+         WHERE til.issue_id = $1
+         ORDER BY til.created_at ASC`,
+        [issueId]
       )
-      .eq('issue_id', issueId)
-      .order('created_at', { ascending: true })
-
-    if (linesError) {
-      console.error('Error fetching lines:', linesError)
+    } catch (linesErr) {
+      console.error('Error fetching lines:', linesErr)
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3098,16 +3163,23 @@ issuesV2.get('/:id', async (c) => {
     const [inventoryData, supplierResult, threadColorResult] = await Promise.all([
       batchLoadInventoryData(allThreadTypeIds, allWeekIds),
       supplierIds.size > 0
-        ? supabase.from('suppliers').select('id, name').in('id', [...supplierIds])
+        ? query<{ id: number; name: string }>('SELECT id, name FROM suppliers WHERE id = ANY($1)', [[...supplierIds]])
         : null,
       allThreadTypeIds.length > 0
-        ? supabase.from('thread_inventory').select('thread_type_id, color_id, colors(name)').in('thread_type_id', allThreadTypeIds)
+        ? query<{ thread_type_id: number; color_id: number | null; colors: { name: string } | null }>(
+            `SELECT ti.thread_type_id, ti.color_id,
+               CASE WHEN co.id IS NULL THEN NULL ELSE json_build_object('name', co.name) END AS colors
+             FROM thread_inventory ti
+             LEFT JOIN colors co ON co.id = ti.color_id
+             WHERE ti.thread_type_id = ANY($1)`,
+            [allThreadTypeIds]
+          )
         : null,
     ])
 
-    const supplierMap = new Map((supplierResult?.data || []).map((s) => [s.id, s.name]))
+    const supplierMap = new Map((supplierResult || []).map((s) => [s.id, s.name]))
     const ttColorMap = new Map<number, string>()
-    for (const inv of threadColorResult?.data || []) {
+    for (const inv of threadColorResult || []) {
       const i = inv as any
       if (i.thread_type_id && !ttColorMap.has(i.thread_type_id)) {
         ttColorMap.set(i.thread_type_id, (i.colors as any)?.name || '')
@@ -3125,7 +3197,7 @@ issuesV2.get('/:id', async (c) => {
     }
     const colorNameMap = new Map<number, string>()
     if (allColorIds.size > 0) {
-      const { data: colorRows } = await supabase.from('colors').select('id, name').in('id', [...allColorIds])
+      const colorRows = await query<{ id: number; name: string }>('SELECT id, name FROM colors WHERE id = ANY($1)', [[...allColorIds]])
       for (const c of colorRows || []) colorNameMap.set(c.id, c.name)
     }
 
@@ -3201,11 +3273,11 @@ issuesV2.get('/:id', async (c) => {
  */
 issuesV2.get('/', async (c) => {
   try {
-    const query = c.req.query()
+    const rawQuery = c.req.query()
 
     let validated
     try {
-      validated = IssueV2FiltersSchema.parse(query)
+      validated = IssueV2FiltersSchema.parse(rawQuery)
     } catch (err) {
       if (err instanceof ZodError) {
         return c.json<ThreadApiResponse<null>>(
@@ -3221,33 +3293,51 @@ issuesV2.get('/', async (c) => {
 
     const { department, status, from, to, page = 1, limit = 20 } = validated
 
-    let dbQuery = supabase
-      .from('thread_issues')
-      .select('*, line_count:thread_issue_lines(count)', { count: 'exact' })
-      .order('created_at', { ascending: false })
+    const conditions: string[] = []
+    const params: unknown[] = []
 
-    // Apply filters
     if (department) {
-      dbQuery = dbQuery.eq('department', department)
+      params.push(department)
+      conditions.push(`department = $${params.length}`)
     }
     if (status) {
-      dbQuery = dbQuery.eq('status', status)
+      params.push(status)
+      conditions.push(`status = $${params.length}`)
     }
     if (from) {
-      dbQuery = dbQuery.gte('created_at', `${from}T00:00:00`)
+      params.push(`${from}T00:00:00`)
+      conditions.push(`created_at >= $${params.length}`)
     }
     if (to) {
-      dbQuery = dbQuery.lte('created_at', `${to}T23:59:59`)
+      params.push(`${to}T23:59:59`)
+      conditions.push(`created_at <= $${params.length}`)
     }
 
-    // Pagination
-    const offset = (page - 1) * limit
-    dbQuery = dbQuery.range(offset, offset + limit - 1)
+    const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : ''
 
-    const { data, error, count } = await dbQuery
+    let data: Array<Record<string, any>>
+    let count: number
+    try {
+      count = await queryCount(
+        `SELECT count(*)::int AS count FROM thread_issues${whereClause}`,
+        params
+      )
 
-    if (error) {
-      console.error('Error listing issues:', error)
+      const offset = (page - 1) * limit
+      const listParams = [...params, limit, offset]
+      data = await query<Record<string, any>>(
+        `SELECT ti.*,
+           COALESCE((
+             SELECT json_agg(json_build_object('count', sub.count))
+             FROM (SELECT count(*)::int AS count FROM thread_issue_lines til WHERE til.issue_id = ti.id) sub
+           ), '[]'::json) AS line_count
+         FROM thread_issues ti${whereClause}
+         ORDER BY ti.created_at DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        listParams
+      )
+    } catch (listErr) {
+      console.error('Error listing issues:', listErr)
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3261,18 +3351,24 @@ issuesV2.get('/', async (c) => {
     const lineSummaryMap: Record<number, { po_number?: string; style_code?: string; sub_art_code?: string; color_names: string[] }> = {}
 
     if (issueIds.length > 0) {
-      const { data: linesSummary } = await supabase
-        .from('thread_issue_lines')
-        .select(`
-          issue_id,
-          purchase_orders:po_id(po_number),
-          styles:style_id(style_code),
-          sub_arts:sub_art_id(sub_art_code),
-          style_colors:style_color_id(color_name),
-          colors:color_id(name)
-        `)
-        .in('issue_id', issueIds)
-        .order('created_at', { ascending: true })
+      const linesSummary = await query<Record<string, any>>(
+        `SELECT
+           til.issue_id,
+           CASE WHEN po.id IS NULL THEN NULL ELSE json_build_object('po_number', po.po_number) END AS purchase_orders,
+           CASE WHEN st.id IS NULL THEN NULL ELSE json_build_object('style_code', st.style_code) END AS styles,
+           CASE WHEN sa.id IS NULL THEN NULL ELSE json_build_object('sub_art_code', sa.sub_art_code) END AS sub_arts,
+           CASE WHEN sc.id IS NULL THEN NULL ELSE json_build_object('color_name', sc.color_name) END AS style_colors,
+           CASE WHEN co.id IS NULL THEN NULL ELSE json_build_object('name', co.name) END AS colors
+         FROM thread_issue_lines til
+         LEFT JOIN purchase_orders po ON po.id = til.po_id
+         LEFT JOIN styles st ON st.id = til.style_id
+         LEFT JOIN sub_arts sa ON sa.id = til.sub_art_id
+         LEFT JOIN style_colors sc ON sc.id = til.style_color_id
+         LEFT JOIN colors co ON co.id = til.color_id
+         WHERE til.issue_id = ANY($1)
+         ORDER BY til.created_at ASC`,
+        [issueIds]
+      )
 
       if (linesSummary) {
         for (const line of linesSummary) {
@@ -3364,14 +3460,12 @@ issuesV2.post('/:id/confirm', async (c) => {
     const performedBy = getPerformedBy(c, confirmed_by)
     const requestHash = hashPayload({ issueId, ...body })
 
-    const { data: existingOp, error: opCheckError } = await supabase
-      .from('issue_operations_log')
-      .select('*')
-      .eq('operation_type', 'CONFIRM')
-      .eq('idempotency_key', idempotency_key)
-      .single()
+    const existingOp = await queryOne<Record<string, any>>(
+      `SELECT * FROM issue_operations_log WHERE operation_type = $1 AND idempotency_key = $2`,
+      ['CONFIRM', idempotency_key]
+    )
 
-    if (existingOp && !opCheckError) {
+    if (existingOp) {
       if (existingOp.request_hash !== requestHash) {
         return c.json<ThreadApiResponse<null>>(
           {
@@ -3383,11 +3477,10 @@ issuesV2.post('/:id/confirm', async (c) => {
       }
 
       if (existingOp.status === 'COMPLETED') {
-        const { data: cachedIssue } = await supabase
-          .from('thread_issues')
-          .select('*')
-          .eq('id', issueId)
-          .single()
+        const cachedIssue = await queryOne<Record<string, unknown>>(
+          'SELECT * FROM thread_issues WHERE id = $1',
+          [issueId]
+        )
         return c.json({
           data: cachedIssue,
           error: null,
@@ -3406,34 +3499,32 @@ issuesV2.post('/:id/confirm', async (c) => {
       }
     }
 
-    const { error: insertOpError } = await supabase.from('issue_operations_log').upsert(
-      {
-        idempotency_key,
-        operation_type: 'CONFIRM',
-        request_hash: requestHash,
-        request_payload: body,
-        status: 'IN_PROGRESS',
-        succeeded_line_ids: [],
-      },
-      { onConflict: 'operation_type,idempotency_key' }
-    )
-
-    if (insertOpError) {
+    try {
+      await query(
+        `INSERT INTO issue_operations_log (idempotency_key, operation_type, request_hash, request_payload, status, succeeded_line_ids)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (operation_type, idempotency_key) DO UPDATE SET
+           request_hash = EXCLUDED.request_hash,
+           request_payload = EXCLUDED.request_payload,
+           status = EXCLUDED.status,
+           succeeded_line_ids = EXCLUDED.succeeded_line_ids`,
+        [idempotency_key, 'CONFIRM', requestHash, JSON.stringify(body), 'IN_PROGRESS', []]
+      )
+    } catch (insertOpError) {
       console.error('[confirm] Failed to create operation log:', insertOpError)
     }
 
-    const { data: issue, error: issueError } = await supabase
-      .from('thread_issues')
-      .select('*')
-      .eq('id', issueId)
-      .single()
+    const issue = await queryOne<Record<string, any>>(
+      'SELECT * FROM thread_issues WHERE id = $1',
+      [issueId]
+    )
 
-    if (issueError || !issue) {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: 'Khong tim thay phieu xuat', completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'CONFIRM')
+    if (!issue) {
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', 'Khong tim thay phieu xuat', new Date().toISOString(), idempotency_key, 'CONFIRM']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3444,11 +3535,11 @@ issuesV2.post('/:id/confirm', async (c) => {
     }
 
     if (issue.status !== 'DRAFT') {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'COMPLETED', completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'CONFIRM')
+      await query(
+        `UPDATE issue_operations_log SET status = $1, completed_at = $2
+         WHERE idempotency_key = $3 AND operation_type = $4`,
+        ['COMPLETED', new Date().toISOString(), idempotency_key, 'CONFIRM']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3458,17 +3549,18 @@ issuesV2.post('/:id/confirm', async (c) => {
       )
     }
 
-    const { data: lines, error: linesError } = await supabase
-      .from('thread_issue_lines')
-      .select('*')
-      .eq('issue_id', issueId)
-
-    if (linesError) {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: 'Khong the tai chi tiet phieu xuat', completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'CONFIRM')
+    let lines: Array<Record<string, any>>
+    try {
+      lines = await query<Record<string, any>>(
+        'SELECT * FROM thread_issue_lines WHERE issue_id = $1',
+        [issueId]
+      )
+    } catch {
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', 'Khong the tai chi tiet phieu xuat', new Date().toISOString(), idempotency_key, 'CONFIRM']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3479,11 +3571,11 @@ issuesV2.post('/:id/confirm', async (c) => {
     }
 
     if (!lines || lines.length === 0) {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: 'Phieu xuat khong co dong nao', completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'CONFIRM')
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', 'Phieu xuat khong co dong nao', new Date().toISOString(), idempotency_key, 'CONFIRM']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3502,11 +3594,10 @@ issuesV2.post('/:id/confirm', async (c) => {
       const lineColorId = line.style_color_id || line.color_id
 
       if (await isComboCompletedInAllWeeks(line.po_id, line.style_id, lineColorId)) {
-        const { data: threadType } = await supabase
-          .from('thread_types')
-          .select('name')
-          .eq('id', line.thread_type_id)
-          .single()
+        const threadType = await queryOne<{ name: string }>(
+          'SELECT name FROM thread_types WHERE id = $1',
+          [line.thread_type_id]
+        )
         errors.push(`${threadType?.name || 'Loại chỉ'}: PO-Style-Màu đã hoàn tất xuất trong tất cả tuần đặt hàng`)
       }
 
@@ -3561,11 +3652,10 @@ issuesV2.post('/:id/confirm', async (c) => {
         const isOverQuota = adjustedQuota !== null && issuedEquivalent > adjustedQuota
 
         if (isOverQuota && !line.over_quota_notes?.trim()) {
-          const { data: threadType } = await supabase
-            .from('thread_types')
-            .select('name')
-            .eq('id', line.thread_type_id)
-            .single()
+          const threadType = await queryOne<{ name: string }>(
+            'SELECT name FROM thread_types WHERE id = $1',
+            [line.thread_type_id]
+          )
           errors.push(`${threadType?.name || 'Loai chi'}: Vuot dinh muc nhung chua co ghi chu`)
         }
 
@@ -3577,11 +3667,11 @@ issuesV2.post('/:id/confirm', async (c) => {
     }
 
     if (errors.length > 0) {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: errors.join('. '), completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'CONFIRM')
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', errors.join('. '), new Date().toISOString(), idempotency_key, 'CONFIRM']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3602,11 +3692,10 @@ issuesV2.post('/:id/confirm', async (c) => {
         const shortPartial = Math.max(0, line.issued_partial - stock.partial_cones)
 
         if (shortFull > 0 || shortPartial > 0) {
-          const { data: threadType } = await supabase
-            .from('thread_types')
-            .select('name')
-            .eq('id', line.thread_type_id)
-            .single()
+          const threadType = await queryOne<{ name: string }>(
+            'SELECT name FROM thread_types WHERE id = $1',
+            [line.thread_type_id]
+          )
 
           const otherWarehouses = (await getStockBreakdownByWarehouse(line.thread_type_id, lineWeekIds, lineThreadColorId))
             .filter((w) => w.warehouse_id !== warehouse_id)
@@ -3626,11 +3715,11 @@ issuesV2.post('/:id/confirm', async (c) => {
       }
 
       if (shortages.length > 0) {
-        await supabase
-          .from('issue_operations_log')
-          .update({ status: 'FAILED', error_info: 'INSUFFICIENT_STOCK', completed_at: new Date().toISOString() })
-          .eq('idempotency_key', idempotency_key)
-          .eq('operation_type', 'CONFIRM')
+        await query(
+          `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+           WHERE idempotency_key = $4 AND operation_type = $5`,
+          ['FAILED', 'INSUFFICIENT_STOCK', new Date().toISOString(), idempotency_key, 'CONFIRM']
+        )
         return c.json({
           data: {
             status: 'INSUFFICIENT_STOCK' as const,
@@ -3648,11 +3737,10 @@ issuesV2.post('/:id/confirm', async (c) => {
         const lineWarehouseId = await getCachedWarehouse(line.thread_type_id, lineWeekIds, lineThreadColorId)
         const stock = await getStockAvailability(line.thread_type_id, lineWarehouseId, lineWeekIds, lineThreadColorId)
         if (line.issued_full > stock.full_cones || line.issued_partial > stock.partial_cones) {
-          const { data: threadType } = await supabase
-            .from('thread_types')
-            .select('name')
-            .eq('id', line.thread_type_id)
-            .single()
+          const threadType = await queryOne<{ name: string }>(
+            'SELECT name FROM thread_types WHERE id = $1',
+            [line.thread_type_id]
+          )
           const shortFull = Math.max(0, line.issued_full - stock.full_cones)
           const shortPartial = Math.max(0, line.issued_partial - stock.partial_cones)
           errors.push(
@@ -3662,11 +3750,11 @@ issuesV2.post('/:id/confirm', async (c) => {
       }
 
       if (errors.length > 0) {
-        await supabase
-          .from('issue_operations_log')
-          .update({ status: 'FAILED', error_info: errors.join('. '), completed_at: new Date().toISOString() })
-          .eq('idempotency_key', idempotency_key)
-          .eq('operation_type', 'CONFIRM')
+        await query(
+          `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+           WHERE idempotency_key = $4 AND operation_type = $5`,
+          ['FAILED', errors.join('. '), new Date().toISOString(), idempotency_key, 'CONFIRM']
+        )
         return c.json<ThreadApiResponse<null>>(
           {
             data: null,
@@ -3680,21 +3768,20 @@ issuesV2.post('/:id/confirm', async (c) => {
     for (const line of lines) {
       const adjustedQuota = quotaSnapshotMap.get(line.id)
       if (adjustedQuota !== undefined && adjustedQuota !== line.quota_cones) {
-        await supabase
-          .from('thread_issue_lines')
-          .update({ quota_cones: adjustedQuota })
-          .eq('id', line.id)
+        await query(
+          'UPDATE thread_issue_lines SET quota_cones = $1 WHERE id = $2',
+          [adjustedQuota, line.id]
+        )
       }
     }
 
     const transfers: { from_warehouse: string; to_warehouse: string; thread_name: string; count: number }[] = []
 
     if (warehouse_id && allow_transfer) {
-      const { data: targetWh } = await supabase
-        .from('warehouses')
-        .select('name')
-        .eq('id', warehouse_id)
-        .single()
+      const targetWh = await queryOne<{ name: string }>(
+        'SELECT name FROM warehouses WHERE id = $1',
+        [warehouse_id]
+      )
       const targetWarehouseName = targetWh?.name || ''
 
       for (const line of lines) {
@@ -3723,11 +3810,10 @@ issuesV2.post('/:id/confirm', async (c) => {
             )
 
             if (transferResult.success) {
-              const { data: threadType } = await supabase
-                .from('thread_types')
-                .select('name')
-                .eq('id', line.thread_type_id)
-                .single()
+              const threadType = await queryOne<{ name: string }>(
+                'SELECT name FROM thread_types WHERE id = $1',
+                [line.thread_type_id]
+              )
               transfers.push({
                 from_warehouse: source.warehouse_name,
                 to_warehouse: targetWarehouseName,
@@ -3747,16 +3833,11 @@ issuesV2.post('/:id/confirm', async (c) => {
       const execWarehouseId = await getCachedWarehouse(line.thread_type_id, weekIds, lineThreadColorId)
       const result = await deductStock(line.thread_type_id, line.issued_full, line.issued_partial, line.id, performedBy, weekIds, execWarehouseId, lineThreadColorId)
       if (!result.success) {
-        await supabase
-          .from('issue_operations_log')
-          .update({
-            status: 'FAILED',
-            succeeded_line_ids: succeededLineIds,
-            error_info: result.message || 'Loi tru ton kho',
-            completed_at: new Date().toISOString(),
-          })
-          .eq('idempotency_key', idempotency_key)
-          .eq('operation_type', 'CONFIRM')
+        await query(
+          `UPDATE issue_operations_log SET status = $1, succeeded_line_ids = $2, error_info = $3, completed_at = $4
+           WHERE idempotency_key = $5 AND operation_type = $6`,
+          ['FAILED', succeededLineIds, result.message || 'Loi tru ton kho', new Date().toISOString(), idempotency_key, 'CONFIRM']
+        )
         return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
           {
             data: { succeeded_line_ids: succeededLineIds },
@@ -3772,30 +3853,28 @@ issuesV2.post('/:id/confirm', async (c) => {
     const firstLineWeekIds = weekIdsMap.get(firstLine.id) || []
     const issueWarehouseId = warehouse_id || await getCachedWarehouse(firstLine.thread_type_id, firstLineWeekIds)
 
-    const { data: updatedIssue, error: updateError } = await supabase
-      .from('thread_issues')
-      .update({
-        status: 'CONFIRMED',
-        source_warehouse_id: issueWarehouseId || null,
-        updated_at: new Date().toISOString(),
-        notes: confirmed_by ? `${issue.notes || ''}\nXac nhan boi: ${confirmed_by}`.trim() : issue.notes,
-      })
-      .eq('id', issueId)
-      .select('*')
-      .single()
-
-    if (updateError) {
-      console.error('Error updating issue status:', updateError)
-      await supabase
-        .from('issue_operations_log')
-        .update({
-          status: 'FAILED',
-          succeeded_line_ids: succeededLineIds,
-          error_info: 'Khong the cap nhat trang thai phieu xuat',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'CONFIRM')
+    let updatedIssue: Record<string, unknown> | null
+    try {
+      const updateRows = await query<Record<string, unknown>>(
+        `UPDATE thread_issues
+         SET status = $1, source_warehouse_id = $2, updated_at = $3, notes = $4
+         WHERE id = $5 RETURNING *`,
+        [
+          'CONFIRMED',
+          issueWarehouseId || null,
+          new Date().toISOString(),
+          confirmed_by ? `${issue.notes || ''}\nXac nhan boi: ${confirmed_by}`.trim() : issue.notes,
+          issueId,
+        ]
+      )
+      updatedIssue = updateRows[0] ?? null
+    } catch (updateErr) {
+      console.error('Error updating issue status:', updateErr)
+      await query(
+        `UPDATE issue_operations_log SET status = $1, succeeded_line_ids = $2, error_info = $3, completed_at = $4
+         WHERE idempotency_key = $5 AND operation_type = $6`,
+        ['FAILED', succeededLineIds, 'Khong the cap nhat trang thai phieu xuat', new Date().toISOString(), idempotency_key, 'CONFIRM']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3805,15 +3884,11 @@ issuesV2.post('/:id/confirm', async (c) => {
       )
     }
 
-    await supabase
-      .from('issue_operations_log')
-      .update({
-        status: 'COMPLETED',
-        succeeded_line_ids: succeededLineIds,
-        completed_at: new Date().toISOString(),
-      })
-      .eq('idempotency_key', idempotency_key)
-      .eq('operation_type', 'CONFIRM')
+    await query(
+      `UPDATE issue_operations_log SET status = $1, succeeded_line_ids = $2, completed_at = $3
+       WHERE idempotency_key = $4 AND operation_type = $5`,
+      ['COMPLETED', succeededLineIds, new Date().toISOString(), idempotency_key, 'CONFIRM']
+    )
 
     return c.json({
       data: transfers.length > 0 ? { ...updatedIssue, transfers } : updatedIssue,
@@ -3878,14 +3953,12 @@ issuesV2.post('/:id/return', async (c) => {
     const performedBy = getPerformedBy(c)
     const requestHash = hashPayload({ issueId, ...body })
 
-    const { data: existingOp, error: opCheckError } = await supabase
-      .from('issue_operations_log')
-      .select('*')
-      .eq('operation_type', 'RETURN')
-      .eq('idempotency_key', idempotency_key)
-      .single()
+    const existingOp = await queryOne<Record<string, any>>(
+      `SELECT * FROM issue_operations_log WHERE operation_type = $1 AND idempotency_key = $2`,
+      ['RETURN', idempotency_key]
+    )
 
-    if (existingOp && !opCheckError) {
+    if (existingOp) {
       if (existingOp.request_hash !== requestHash) {
         return c.json<ThreadApiResponse<null>>(
           {
@@ -3897,11 +3970,10 @@ issuesV2.post('/:id/return', async (c) => {
       }
 
       if (existingOp.status === 'COMPLETED') {
-        const { data: cachedIssue } = await supabase
-          .from('thread_issues')
-          .select('*')
-          .eq('id', issueId)
-          .single()
+        const cachedIssue = await queryOne<Record<string, unknown>>(
+          'SELECT * FROM thread_issues WHERE id = $1',
+          [issueId]
+        )
         return c.json({
           data: cachedIssue,
           error: null,
@@ -3920,34 +3992,32 @@ issuesV2.post('/:id/return', async (c) => {
       }
     }
 
-    const { error: insertOpError } = await supabase.from('issue_operations_log').upsert(
-      {
-        idempotency_key,
-        operation_type: 'RETURN',
-        request_hash: requestHash,
-        request_payload: body,
-        status: 'IN_PROGRESS',
-        succeeded_line_ids: [],
-      },
-      { onConflict: 'operation_type,idempotency_key' }
-    )
-
-    if (insertOpError) {
+    try {
+      await query(
+        `INSERT INTO issue_operations_log (idempotency_key, operation_type, request_hash, request_payload, status, succeeded_line_ids)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (operation_type, idempotency_key) DO UPDATE SET
+           request_hash = EXCLUDED.request_hash,
+           request_payload = EXCLUDED.request_payload,
+           status = EXCLUDED.status,
+           succeeded_line_ids = EXCLUDED.succeeded_line_ids`,
+        [idempotency_key, 'RETURN', requestHash, JSON.stringify(body), 'IN_PROGRESS', []]
+      )
+    } catch (insertOpError) {
       console.error('[return] Failed to create operation log:', insertOpError)
     }
 
-    const { data: issue, error: issueError } = await supabase
-      .from('thread_issues')
-      .select('*')
-      .eq('id', issueId)
-      .single()
+    const issue = await queryOne<Record<string, any>>(
+      'SELECT * FROM thread_issues WHERE id = $1',
+      [issueId]
+    )
 
-    if (issueError || !issue) {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: 'Khong tim thay phieu xuat', completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'RETURN')
+    if (!issue) {
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', 'Khong tim thay phieu xuat', new Date().toISOString(), idempotency_key, 'RETURN']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3958,11 +4028,11 @@ issuesV2.post('/:id/return', async (c) => {
     }
 
     if (issue.status !== 'CONFIRMED') {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: 'Chi co the tra hang tu phieu da xac nhan', completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'RETURN')
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', 'Chi co the tra hang tu phieu da xac nhan', new Date().toISOString(), idempotency_key, 'RETURN']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3972,17 +4042,18 @@ issuesV2.post('/:id/return', async (c) => {
       )
     }
 
-    const { data: existingLines, error: linesError } = await supabase
-      .from('thread_issue_lines')
-      .select('*')
-      .eq('issue_id', issueId)
-
-    if (linesError) {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: 'Khong the tai chi tiet phieu xuat', completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'RETURN')
+    let existingLines: Array<Record<string, any>>
+    try {
+      existingLines = await query<Record<string, any>>(
+        'SELECT * FROM thread_issue_lines WHERE issue_id = $1',
+        [issueId]
+      )
+    } catch {
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', 'Khong the tai chi tiet phieu xuat', new Date().toISOString(), idempotency_key, 'RETURN']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -3998,11 +4069,11 @@ issuesV2.post('/:id/return', async (c) => {
 
     const validation = validateReturnQuantities(validated.lines, lineMap)
     if (!validation.valid) {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: validation.errors.join('. '), completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'RETURN')
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', validation.errors.join('. '), new Date().toISOString(), idempotency_key, 'RETURN']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -4014,15 +4085,11 @@ issuesV2.post('/:id/return', async (c) => {
 
     const partialConeRatio = await getPartialConeRatio()
     if (!partialConeRatio || partialConeRatio <= 0) {
-      await supabase
-        .from('issue_operations_log')
-        .update({
-          status: 'FAILED',
-          error_info: `Ty le cuon le khong hop le (${partialConeRatio})`,
-          completed_at: new Date().toISOString(),
-        })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'RETURN')
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', `Ty le cuon le khong hop le (${partialConeRatio})`, new Date().toISOString(), idempotency_key, 'RETURN']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -4037,23 +4104,27 @@ issuesV2.post('/:id/return', async (c) => {
 
     const allLineIds = validated.lines.map(l => l.line_id)
 
-    const [{ data: allFullCones }, { data: allPartialCones }] = await Promise.all([
-      supabase
-        .from('thread_inventory')
-        .select('id, quantity_meters, status, issued_line_id')
-        .in('issued_line_id', allLineIds)
-        .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
-        .eq('is_partial', false)
-        .order('id', { ascending: true })
-        .limit(10000),
-      supabase
-        .from('thread_inventory')
-        .select('id, status, issued_line_id')
-        .in('issued_line_id', allLineIds)
-        .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
-        .eq('is_partial', true)
-        .order('id', { ascending: true })
-        .limit(10000),
+    const [allFullCones, allPartialCones] = await Promise.all([
+      query<{ id: number; quantity_meters: number; status: string; issued_line_id: number }>(
+        `SELECT id, quantity_meters, status, issued_line_id
+         FROM thread_inventory
+         WHERE issued_line_id = ANY($1)
+           AND status = ANY($2)
+           AND is_partial = false
+         ORDER BY id ASC
+         LIMIT 10000`,
+        [allLineIds, ['IN_PRODUCTION', 'HARD_ALLOCATED']]
+      ),
+      query<{ id: number; status: string; issued_line_id: number }>(
+        `SELECT id, status, issued_line_id
+         FROM thread_inventory
+         WHERE issued_line_id = ANY($1)
+           AND status = ANY($2)
+           AND is_partial = true
+         ORDER BY id ASC
+         LIMIT 10000`,
+        [allLineIds, ['IN_PRODUCTION', 'HARD_ALLOCATED']]
+      ),
     ])
 
     const fullConesByLine = new Map<number, Array<{ id: number; quantity_meters: number; status: string }>>()
@@ -4074,10 +4145,10 @@ issuesV2.post('/:id/return', async (c) => {
     }
 
     const uniqueThreadTypeIds = [...new Set(validated.lines.map(l => lineMap.get(l.line_id)!.thread_type_id))]
-    const { data: threadTypesData } = await supabase
-      .from('thread_types')
-      .select('id, meters_per_cone')
-      .in('id', uniqueThreadTypeIds)
+    const threadTypesData = await query<{ id: number; meters_per_cone: number | null }>(
+      'SELECT id, meters_per_cone FROM thread_types WHERE id = ANY($1)',
+      [uniqueThreadTypeIds]
+    )
 
     const metersPerConeMap = new Map<number, number | null>()
     for (const tt of threadTypesData || []) {
@@ -4101,16 +4172,11 @@ issuesV2.post('/:id/return', async (c) => {
       )
 
       if (!result.success) {
-        await supabase
-          .from('issue_operations_log')
-          .update({
-            status: 'FAILED',
-            succeeded_line_ids: succeededLineIds,
-            error_info: result.error || 'Loi xu ly tra hang',
-            completed_at: new Date().toISOString(),
-          })
-          .eq('idempotency_key', idempotency_key)
-          .eq('operation_type', 'RETURN')
+        await query(
+          `UPDATE issue_operations_log SET status = $1, succeeded_line_ids = $2, error_info = $3, completed_at = $4
+           WHERE idempotency_key = $5 AND operation_type = $6`,
+          ['FAILED', succeededLineIds, result.error || 'Loi xu ly tra hang', new Date().toISOString(), idempotency_key, 'RETURN']
+        )
         return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
           {
             data: { succeeded_line_ids: succeededLineIds },
@@ -4133,15 +4199,11 @@ issuesV2.post('/:id/return', async (c) => {
     }
 
     if (succeededLineIds.length === 0) {
-      await supabase
-        .from('issue_operations_log')
-        .update({
-          status: 'FAILED',
-          error_info: 'Khong co so luong tra hop le',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'RETURN')
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', 'Khong co so luong tra hop le', new Date().toISOString(), idempotency_key, 'RETURN']
+      )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -4153,53 +4215,48 @@ issuesV2.post('/:id/return', async (c) => {
 
     try {
       if (returnLogRows.length > 0) {
-        await supabase
-          .from('thread_issue_return_logs')
-          .insert(returnLogRows.map((r) => ({
-            issue_id: issueId,
-            line_id: r.line_id,
-            returned_full: r.returned_full,
-            returned_partial: r.returned_partial,
-          })))
+        const logParams: unknown[] = []
+        const logGroups = returnLogRows.map((r) => {
+          logParams.push(issueId, r.line_id, r.returned_full, r.returned_partial)
+          const base = logParams.length
+          return `($${base - 3}, $${base - 2}, $${base - 1}, $${base})`
+        })
+        await query(
+          `INSERT INTO thread_issue_return_logs (issue_id, line_id, returned_full, returned_partial)
+           VALUES ${logGroups.join(', ')}`,
+          logParams
+        )
       }
     } catch (logError) {
       console.error('[return] Failed to insert return log:', logError)
     }
 
-    const { data: updatedLines } = await supabase
-      .from('thread_issue_lines')
-      .select('*')
-      .eq('issue_id', issueId)
+    const updatedLines = await query<{ returned_full: number; returned_partial: number; issued_full: number; issued_partial: number }>(
+      'SELECT * FROM thread_issue_lines WHERE issue_id = $1',
+      [issueId]
+    )
 
     const allReturned = updatedLines?.every(
       (l) => (l.returned_full + l.returned_partial) >= (l.issued_full + l.issued_partial)
     )
 
     if (allReturned) {
-      await supabase
-        .from('thread_issues')
-        .update({
-          status: 'RETURNED',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', issueId)
+      await query(
+        'UPDATE thread_issues SET status = $1, updated_at = $2 WHERE id = $3',
+        ['RETURNED', new Date().toISOString(), issueId]
+      )
     }
 
-    const { data: finalIssue } = await supabase
-      .from('thread_issues')
-      .select('*')
-      .eq('id', issueId)
-      .single()
+    const finalIssue = await queryOne<Record<string, unknown>>(
+      'SELECT * FROM thread_issues WHERE id = $1',
+      [issueId]
+    )
 
-    await supabase
-      .from('issue_operations_log')
-      .update({
-        status: 'COMPLETED',
-        succeeded_line_ids: succeededLineIds,
-        completed_at: new Date().toISOString(),
-      })
-      .eq('idempotency_key', idempotency_key)
-      .eq('operation_type', 'RETURN')
+    await query(
+      `UPDATE issue_operations_log SET status = $1, succeeded_line_ids = $2, completed_at = $3
+       WHERE idempotency_key = $4 AND operation_type = $5`,
+      ['COMPLETED', succeededLineIds, new Date().toISOString(), idempotency_key, 'RETURN']
+    )
 
     return c.json({
       data: finalIssue,
@@ -4232,13 +4289,12 @@ issuesV2.delete('/:id', async (c) => {
       )
     }
 
-    const { data: issue, error: issueError } = await supabase
-      .from('thread_issues')
-      .select('id, issue_code, status')
-      .eq('id', id)
-      .single()
+    const issue = await queryOne<{ id: number; issue_code: string; status: string }>(
+      'SELECT id, issue_code, status FROM thread_issues WHERE id = $1',
+      [id]
+    )
 
-    if (issueError || !issue) {
+    if (!issue) {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -4258,12 +4314,9 @@ issuesV2.delete('/:id', async (c) => {
       )
     }
 
-    const { error: deleteLinesError } = await supabase
-      .from('thread_issue_lines')
-      .delete()
-      .eq('issue_id', id)
-
-    if (deleteLinesError) {
+    try {
+      await query('DELETE FROM thread_issue_lines WHERE issue_id = $1', [id])
+    } catch {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -4273,12 +4326,9 @@ issuesV2.delete('/:id', async (c) => {
       )
     }
 
-    const { error: deleteIssueError } = await supabase
-      .from('thread_issues')
-      .delete()
-      .eq('id', id)
-
-    if (deleteIssueError) {
+    try {
+      await query('DELETE FROM thread_issues WHERE id = $1', [id])
+    } catch {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -4320,13 +4370,12 @@ issuesV2.delete('/:id/lines/:lineId', async (c) => {
     }
 
     // Check issue status
-    const { data: issue, error: issueError } = await supabase
-      .from('thread_issues')
-      .select('status')
-      .eq('id', issueId)
-      .single()
+    const issue = await queryOne<{ status: string }>(
+      'SELECT status FROM thread_issues WHERE id = $1',
+      [issueId]
+    )
 
-    if (issueError || !issue) {
+    if (!issue) {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -4347,13 +4396,9 @@ issuesV2.delete('/:id/lines/:lineId', async (c) => {
     }
 
     // Delete line
-    const { error: deleteError } = await supabase
-      .from('thread_issue_lines')
-      .delete()
-      .eq('id', lineId)
-      .eq('issue_id', issueId)
-
-    if (deleteError) {
+    try {
+      await query('DELETE FROM thread_issue_lines WHERE id = $1 AND issue_id = $2', [lineId, issueId])
+    } catch {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,

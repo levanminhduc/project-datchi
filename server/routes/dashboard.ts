@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryCount } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import type { ThreadApiResponse } from '../types/thread'
 
@@ -85,36 +85,30 @@ dashboard.get('/summary', async (c) => {
     const totalStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED', 'RESERVED_FOR_ORDER']
     const kdStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE']
 
-    const [totalResult, kdResult] = await Promise.all([
-      supabase.rpc('fn_cone_summary_filtered', {
-        p_statuses: totalStatuses,
-        p_warehouse_ids: null,
-        p_supplier_id: null,
-        p_material: null,
-        p_search: null,
-        p_only_unreserved: false,
-      }),
-      supabase.rpc('fn_cone_summary_filtered', {
-        p_statuses: kdStatuses,
-        p_warehouse_ids: null,
-        p_supplier_id: null,
-        p_material: null,
-        p_search: null,
-        p_only_unreserved: true,
-      }),
-    ])
+    type SummaryRow = { thread_type_id: number; supplier_id: number | null; total_full_cones: number; total_partial_cones: number; full_cones: number; partial_cones: number; partial_meters: number; meters_per_cone: number }
 
-    if (totalResult.error || kdResult.error) {
-      console.error('Dashboard summary - RPC error:', totalResult.error || kdResult.error)
+    let totalRows: SummaryRow[]
+    let kdRows: SummaryRow[]
+    try {
+      const [totalResult, kdResult] = await Promise.all([
+        query<SummaryRow>(
+          'SELECT * FROM fn_cone_summary_filtered($1, $2, $3, $4, $5, $6)',
+          [totalStatuses, null, null, null, null, false]
+        ),
+        query<SummaryRow>(
+          'SELECT * FROM fn_cone_summary_filtered($1, $2, $3, $4, $5, $6)',
+          [kdStatuses, null, null, null, null, true]
+        ),
+      ])
+      totalRows = totalResult
+      kdRows = kdResult
+    } catch (rpcErr) {
+      console.error('Dashboard summary - RPC error:', rpcErr)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải thống kê tổng quan'
       }, 500)
     }
-
-    type SummaryRow = { thread_type_id: number; supplier_id: number | null; total_full_cones: number; total_partial_cones: number; full_cones: number; partial_cones: number; partial_meters: number; meters_per_cone: number }
-    const totalRows = (totalResult.data || []) as SummaryRow[]
-    const kdRows = (kdResult.data || []) as SummaryRow[]
 
     const totalCones = totalRows.reduce((sum, r) => sum + Number(r.total_full_cones || 0), 0)
     const totalMeters = totalRows.reduce((sum, r) =>
@@ -132,11 +126,12 @@ dashboard.get('/summary', async (c) => {
     let totalInventoryValue = 0
     const threadTypeIds = [...new Set(totalRows.map(r => r.thread_type_id))]
     if (threadTypeIds.length > 0) {
-      const { data: prices } = await supabase
-        .from('thread_type_supplier')
-        .select('thread_type_id, supplier_id, unit_price')
-        .in('thread_type_id', threadTypeIds)
-        .eq('is_active', true)
+      const prices = await query<{ thread_type_id: number; supplier_id: number; unit_price: number | null }>(
+        `SELECT thread_type_id, supplier_id, unit_price
+         FROM thread_type_supplier
+         WHERE thread_type_id = ANY($1) AND is_active = TRUE`,
+        [threadTypeIds]
+      )
 
       if (prices) {
         const supplierMap = new Map<number, number | null>()
@@ -161,13 +156,15 @@ dashboard.get('/summary', async (c) => {
     }
 
     // Query 2: Get thread types with reorder levels
-    const { data: threadTypes, error: threadTypesError } = await supabase
-      .from('thread_types')
-      .select('id, reorder_level_meters')
-      .eq('is_active', true)
-      .limit(5000)
-
-    if (threadTypesError) {
+    let threadTypes: Array<{ id: number; reorder_level_meters: number | null }>
+    try {
+      threadTypes = await query<{ id: number; reorder_level_meters: number | null }>(
+        `SELECT id, reorder_level_meters FROM thread_types
+         WHERE is_active = TRUE
+         LIMIT 5000`,
+        []
+      )
+    } catch (threadTypesError) {
       console.error('Dashboard summary - thread types query error:', threadTypesError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -176,13 +173,15 @@ dashboard.get('/summary', async (c) => {
     }
 
     // Query 3: Get available stock grouped by thread type for low stock calculation
-    const { data: availableStock, error: availableStockError } = await supabase
-      .from('thread_inventory')
-      .select('thread_type_id, quantity_meters')
-      .eq('status', 'AVAILABLE')
-      .limit(30000)
-
-    if (availableStockError) {
+    let availableStock: Array<{ thread_type_id: number; quantity_meters: number | null }>
+    try {
+      availableStock = await query<{ thread_type_id: number; quantity_meters: number | null }>(
+        `SELECT thread_type_id, quantity_meters FROM thread_inventory
+         WHERE status = 'AVAILABLE'
+         LIMIT 30000`,
+        []
+      )
+    } catch (availableStockError) {
       console.error('Dashboard summary - available stock query error:', availableStockError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -251,13 +250,15 @@ dashboard.get('/summary', async (c) => {
 dashboard.get('/alerts', async (c) => {
   try {
     // Get all active thread types with reorder levels
-    const { data: threadTypes, error: threadTypesError } = await supabase
-      .from('thread_types')
-      .select('id, code, name, reorder_level_meters')
-      .eq('is_active', true)
-      .limit(5000)
-
-    if (threadTypesError) {
+    let threadTypes: Array<{ id: number; code: string; name: string; reorder_level_meters: number | null }>
+    try {
+      threadTypes = await query<{ id: number; code: string; name: string; reorder_level_meters: number | null }>(
+        `SELECT id, code, name, reorder_level_meters FROM thread_types
+         WHERE is_active = TRUE
+         LIMIT 5000`,
+        []
+      )
+    } catch (threadTypesError) {
       console.error('Dashboard alerts - thread types query error:', threadTypesError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -266,13 +267,15 @@ dashboard.get('/alerts', async (c) => {
     }
 
     // Get available stock grouped by thread type
-    const { data: availableStock, error: availableStockError } = await supabase
-      .from('thread_inventory')
-      .select('thread_type_id, quantity_meters')
-      .eq('status', 'AVAILABLE')
-      .limit(30000)
-
-    if (availableStockError) {
+    let availableStock: Array<{ thread_type_id: number; quantity_meters: number | null }>
+    try {
+      availableStock = await query<{ thread_type_id: number; quantity_meters: number | null }>(
+        `SELECT thread_type_id, quantity_meters FROM thread_inventory
+         WHERE status = 'AVAILABLE'
+         LIMIT 30000`,
+        []
+      )
+    } catch (availableStockError) {
       console.error('Dashboard alerts - available stock query error:', availableStockError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -341,25 +344,38 @@ dashboard.get('/alerts', async (c) => {
 dashboard.get('/conflicts', async (c) => {
   try {
     // Get all conflicts with thread type info
-    const { data: conflictsData, error: conflictsError } = await supabase
-      .from('thread_conflicts')
-      .select(`
-        id,
-        thread_type_id,
-        total_requested_meters,
-        total_available_meters,
-        shortage_meters,
-        status,
-        created_at,
-        thread_types (
-          code,
-          name
-        )
-      `)
-      .order('created_at', { ascending: false })
-      .limit(1000)
-
-    if (conflictsError) {
+    let conflictsData: Array<{
+      id: number
+      thread_type_id: number
+      total_requested_meters: number
+      total_available_meters: number
+      shortage_meters: number
+      status: string
+      created_at: string
+      thread_types: { code: string; name: string } | null
+    }>
+    try {
+      conflictsData = await query<{
+        id: number
+        thread_type_id: number
+        total_requested_meters: number
+        total_available_meters: number
+        shortage_meters: number
+        status: string
+        created_at: string
+        thread_types: { code: string; name: string } | null
+      }>(
+        `SELECT tc.id, tc.thread_type_id, tc.total_requested_meters,
+                tc.total_available_meters, tc.shortage_meters, tc.status, tc.created_at,
+                CASE WHEN tt.id IS NULL THEN NULL
+                     ELSE json_build_object('code', tt.code, 'name', tt.name) END AS thread_types
+         FROM thread_conflicts tc
+         LEFT JOIN thread_types tt ON tt.id = tc.thread_type_id
+         ORDER BY tc.created_at DESC
+         LIMIT 1000`,
+        []
+      )
+    } catch (conflictsError) {
       console.error('Dashboard conflicts - query error:', conflictsError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -414,12 +430,13 @@ dashboard.get('/conflicts', async (c) => {
 dashboard.get('/pending', async (c) => {
   try {
     // Query pending allocations (PENDING status)
-    const { count: pendingAllocationsCount, error: pendingError } = await supabase
-      .from('thread_allocations')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'PENDING')
-
-    if (pendingError) {
+    let pendingAllocationsCount: number
+    try {
+      pendingAllocationsCount = await queryCount(
+        `SELECT count(*)::int AS count FROM thread_allocations WHERE status = $1`,
+        ['PENDING']
+      )
+    } catch (pendingError) {
       console.error('Dashboard pending - allocations query error:', pendingError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -428,12 +445,13 @@ dashboard.get('/pending', async (c) => {
     }
 
     // Query waitlisted allocations
-    const { count: waitlistedCount, error: waitlistedError } = await supabase
-      .from('thread_allocations')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'WAITLISTED')
-
-    if (waitlistedError) {
+    let waitlistedCount: number
+    try {
+      waitlistedCount = await queryCount(
+        `SELECT count(*)::int AS count FROM thread_allocations WHERE status = $1`,
+        ['WAITLISTED']
+      )
+    } catch (waitlistedError) {
       console.error('Dashboard pending - waitlisted query error:', waitlistedError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -443,13 +461,14 @@ dashboard.get('/pending', async (c) => {
 
     // Query overdue allocations (past due_date and not completed)
     const today = new Date().toISOString().split('T')[0]
-    const { count: overdueCount, error: overdueError } = await supabase
-      .from('thread_allocations')
-      .select('id', { count: 'exact', head: true })
-      .lt('due_date', today)
-      .not('status', 'in', '("ISSUED","CANCELLED")')
-
-    if (overdueError) {
+    let overdueCount: number
+    try {
+      overdueCount = await queryCount(
+        `SELECT count(*)::int AS count FROM thread_allocations
+         WHERE due_date < $1 AND status NOT IN ('ISSUED', 'CANCELLED')`,
+        [today]
+      )
+    } catch (overdueError) {
       console.error('Dashboard pending - overdue query error:', overdueError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -458,12 +477,14 @@ dashboard.get('/pending', async (c) => {
     }
 
     // Query pending recovery (INITIATED, PENDING_WEIGH, WEIGHED statuses)
-    const { count: pendingRecoveryCount, error: recoveryError } = await supabase
-      .from('thread_recovery')
-      .select('id', { count: 'exact', head: true })
-      .in('status', ['INITIATED', 'PENDING_WEIGH', 'WEIGHED'])
-
-    if (recoveryError) {
+    let pendingRecoveryCount: number
+    try {
+      pendingRecoveryCount = await queryCount(
+        `SELECT count(*)::int AS count FROM thread_recovery
+         WHERE status = ANY($1)`,
+        [['INITIATED', 'PENDING_WEIGH', 'WEIGHED']]
+      )
+    } catch (recoveryError) {
       console.error('Dashboard pending - recovery query error:', recoveryError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -500,30 +521,42 @@ dashboard.get('/activity', async (c) => {
     const activities: ActivityItem[] = []
 
     // Query 1: Recent movements (RECEIVE, ISSUE, RETURN)
-    const { data: movementsData, error: movementsError } = await supabase
-      .from('thread_movements')
-      .select(`
-        id,
-        movement_type,
-        quantity_meters,
-        reference_id,
-        created_at,
-        thread_inventory (
-          cone_id,
-          thread_types (
-            code,
-            name
-          )
-        )
-      `)
-      .in('movement_type', ['RECEIVE', 'ISSUE', 'RETURN'])
-      .order('created_at', { ascending: false })
-      .limit(20)
-
-    if (movementsError) {
+    let movementsData: Array<{
+      id: number
+      movement_type: string
+      quantity_meters: number
+      reference_id: number | string | null
+      created_at: string
+      thread_inventory: { cone_id: string; thread_types: { code: string; name: string } | null } | null
+    }> = []
+    try {
+      movementsData = await query<{
+        id: number
+        movement_type: string
+        quantity_meters: number
+        reference_id: number | string | null
+        created_at: string
+        thread_inventory: { cone_id: string; thread_types: { code: string; name: string } | null } | null
+      }>(
+        `SELECT tm.id, tm.movement_type, tm.quantity_meters, tm.reference_id, tm.created_at,
+                CASE WHEN ti.id IS NULL THEN NULL ELSE json_build_object(
+                  'cone_id', ti.cone_id,
+                  'thread_types', CASE WHEN tt.id IS NULL THEN NULL
+                                       ELSE json_build_object('code', tt.code, 'name', tt.name) END
+                ) END AS thread_inventory
+         FROM thread_movements tm
+         LEFT JOIN thread_inventory ti ON ti.id = tm.cone_id
+         LEFT JOIN thread_types tt ON tt.id = ti.thread_type_id
+         WHERE tm.movement_type = ANY($1)
+         ORDER BY tm.created_at DESC
+         LIMIT 20`,
+        [['RECEIVE', 'ISSUE', 'RETURN']]
+      )
+    } catch (movementsError) {
       console.error('Dashboard activity - movements query error:', movementsError)
       // Continue with other queries even if this fails
-    } else {
+    }
+    {
       ;(movementsData || []).forEach(movement => {
         const inventory = getRelation(movement.thread_inventory)
         const threadType = inventory ? getRelation(inventory.thread_types) : null
@@ -557,27 +590,39 @@ dashboard.get('/activity', async (c) => {
     }
 
     // Query 2: Recent allocations
-    const { data: allocationsData, error: allocationsError } = await supabase
-      .from('thread_allocations')
-      .select(`
-        id,
-        order_id,
-        order_reference,
-        requested_meters,
-        status,
-        created_at,
-        thread_types (
-          code,
-          name
-        )
-      `)
-      .order('created_at', { ascending: false })
-      .limit(10)
-
-    if (allocationsError) {
+    let allocationsData: Array<{
+      id: number
+      order_id: number | string
+      order_reference: string | null
+      requested_meters: number
+      status: string
+      created_at: string
+      thread_types: { code: string; name: string } | null
+    }> = []
+    try {
+      allocationsData = await query<{
+        id: number
+        order_id: number | string
+        order_reference: string | null
+        requested_meters: number
+        status: string
+        created_at: string
+        thread_types: { code: string; name: string } | null
+      }>(
+        `SELECT ta.id, ta.order_id, ta.order_reference, ta.requested_meters, ta.status, ta.created_at,
+                CASE WHEN tt.id IS NULL THEN NULL
+                     ELSE json_build_object('code', tt.code, 'name', tt.name) END AS thread_types
+         FROM thread_allocations ta
+         LEFT JOIN thread_types tt ON tt.id = ta.thread_type_id
+         ORDER BY ta.created_at DESC
+         LIMIT 10`,
+        []
+      )
+    } catch (allocationsError) {
       console.error('Dashboard activity - allocations query error:', allocationsError)
       // Continue even if this fails
-    } else {
+    }
+    {
       ;(allocationsData || []).forEach(allocation => {
         const threadType = getRelation(allocation.thread_types)
         const description = `Yêu cầu phân bổ ${allocation.requested_meters}m ${threadType?.name || 'N/A'} cho đơn ${allocation.order_id}`
@@ -599,25 +644,35 @@ dashboard.get('/activity', async (c) => {
     }
 
     // Query 3: Recent conflicts
-    const { data: conflictsData, error: conflictsError } = await supabase
-      .from('thread_conflicts')
-      .select(`
-        id,
-        shortage_meters,
-        status,
-        created_at,
-        thread_types (
-          code,
-          name
-        )
-      `)
-      .order('created_at', { ascending: false })
-      .limit(5)
-
-    if (conflictsError) {
+    let conflictsData: Array<{
+      id: number
+      shortage_meters: number
+      status: string
+      created_at: string
+      thread_types: { code: string; name: string } | null
+    }> = []
+    try {
+      conflictsData = await query<{
+        id: number
+        shortage_meters: number
+        status: string
+        created_at: string
+        thread_types: { code: string; name: string } | null
+      }>(
+        `SELECT tc.id, tc.shortage_meters, tc.status, tc.created_at,
+                CASE WHEN tt.id IS NULL THEN NULL
+                     ELSE json_build_object('code', tt.code, 'name', tt.name) END AS thread_types
+         FROM thread_conflicts tc
+         LEFT JOIN thread_types tt ON tt.id = tc.thread_type_id
+         ORDER BY tc.created_at DESC
+         LIMIT 5`,
+        []
+      )
+    } catch (conflictsError) {
       console.error('Dashboard activity - conflicts query error:', conflictsError)
       // Continue even if this fails
-    } else {
+    }
+    {
       ;(conflictsData || []).forEach(conflict => {
         const threadType = getRelation(conflict.thread_types)
         const description = `Phát hiện xung đột: thiếu ${conflict.shortage_meters}m ${threadType?.name || 'N/A'}`

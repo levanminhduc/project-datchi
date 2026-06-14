@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import ExcelJS from 'exceljs'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query } from '../db/query'
+import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 import { SubArtQuerySchema } from '../validation/subArts'
@@ -11,12 +12,10 @@ subArts.use('*', requirePermission('thread.types.view'))
 
 subArts.get('/codes', async (c) => {
   try {
-    const { data, error } = await supabase
-      .from('sub_arts')
+    const data = await from('sub_arts')
       .select('sub_art_code')
-      .order('sub_art_code', { ascending: true })
-
-    if (error) throw error
+      .order({ column: 'sub_art_code', ascending: true })
+      .list<{ sub_art_code: string }>()
 
     const codes = [...new Set((data || []).map(r => r.sub_art_code))]
     return c.json({ data: codes, error: null })
@@ -38,37 +37,32 @@ subArts.get('/', async (c) => {
     const { style_id, po_id } = parsed.data
 
     if (po_id) {
-      const { data: orderSubArtIds, error: orderError } = await supabase
-        .from('thread_order_items')
+      const orderSubArtIds = await from('thread_order_items')
         .select('sub_art_id')
         .eq('po_id', po_id)
         .eq('style_id', style_id)
-        .not('sub_art_id', 'is', null)
-
-      if (orderError) throw orderError
+        .isNotNull('sub_art_id')
+        .list<{ sub_art_id: number }>()
 
       const uniqueIds = [...new Set((orderSubArtIds || []).map(r => r.sub_art_id))]
       if (uniqueIds.length === 0) {
         return c.json({ data: [], error: null })
       }
 
-      const { data, error } = await supabase
-        .from('sub_arts')
+      const data = await from('sub_arts')
         .select('id, sub_art_code')
         .in('id', uniqueIds)
-        .order('sub_art_code', { ascending: true })
+        .order({ column: 'sub_art_code', ascending: true })
+        .list()
 
-      if (error) throw error
       return c.json({ data, error: null })
     }
 
-    const { data, error } = await supabase
-      .from('sub_arts')
+    const data = await from('sub_arts')
       .select('id, sub_art_code')
       .eq('style_id', style_id)
-      .order('sub_art_code', { ascending: true })
-
-    if (error) throw error
+      .order({ column: 'sub_art_code', ascending: true })
+      .list()
 
     return c.json({ data, error: null })
   } catch (err) {
@@ -110,10 +104,10 @@ subArts.post('/import', async (c) => {
       return c.json({ data: null, error: 'Không có dữ liệu hợp lệ trong file' }, 400)
     }
 
-    const { data: styles } = await supabase
-      .from('styles')
+    const styles = await from('styles')
       .select('id, style_code')
       .is('deleted_at', null)
+      .list<{ id: number; style_code: string }>()
 
     const styleMap = new Map<string, number>()
     styles?.forEach(s => styleMap.set(s.style_code.toLowerCase(), s.id))
@@ -133,15 +127,17 @@ subArts.post('/import', async (c) => {
         continue
       }
 
-      const { error: insertError } = await supabase
-        .from('sub_arts')
-        .insert({ style_id: styleId, sub_art_code: subArtCode })
-
-      if (insertError) {
-        if (insertError.code === '23505') {
+      try {
+        await query(
+          'INSERT INTO sub_arts (style_id, sub_art_code) VALUES ($1, $2)',
+          [styleId, subArtCode]
+        )
+      } catch (insertError) {
+        const code = (insertError as { code?: string }).code
+        if (code === '23505') {
           skipped++
         } else {
-          warnings.push({ row: i + 1, style_code: styleCode, sub_art_code: subArtCode, reason: insertError.message })
+          warnings.push({ row: i + 1, style_code: styleCode, sub_art_code: subArtCode, reason: getErrorMessage(insertError) })
         }
         continue
       }

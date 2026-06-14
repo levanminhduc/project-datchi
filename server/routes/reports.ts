@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import type { ThreadApiResponse } from '../types/thread'
 
@@ -47,33 +47,56 @@ reports.get('/allocations', async (c) => {
     const status = c.req.query('status')
 
     // Build allocation query
-    let query = supabase
-      .from('thread_allocations')
-      .select(`
-        id, order_id, order_reference,
-        thread_type_id, requested_meters, allocated_meters,
-        status, priority, created_at,
-        thread_types(code, name)
-      `)
-      .order('created_at', { ascending: false })
+    const conditions: string[] = []
+    const params: unknown[] = []
 
     // Apply filters
     if (fromDate) {
-      query = query.gte('created_at', fromDate)
+      params.push(fromDate)
+      conditions.push(`ta.created_at >= $${params.length}`)
     }
     if (toDate) {
-      query = query.lte('created_at', toDate + 'T23:59:59')
+      params.push(toDate + 'T23:59:59')
+      conditions.push(`ta.created_at <= $${params.length}`)
     }
     if (threadTypeId) {
-      query = query.eq('thread_type_id', parseInt(threadTypeId))
+      params.push(parseInt(threadTypeId))
+      conditions.push(`ta.thread_type_id = $${params.length}`)
     }
     if (status) {
-      query = query.eq('status', status)
+      params.push(status)
+      conditions.push(`ta.status = $${params.length}`)
     }
 
-    const { data: allocations, error: allocError } = await query
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-    if (allocError) {
+    let allocations: Array<{
+      id: number
+      order_id: string
+      order_reference: string | null
+      thread_type_id: number
+      requested_meters: number
+      allocated_meters: number
+      status: string
+      priority: string
+      created_at: string
+      thread_types: { code?: string; name?: string } | null
+    }>
+    try {
+      allocations = await query(
+        `SELECT
+           ta.id, ta.order_id, ta.order_reference,
+           ta.thread_type_id, ta.requested_meters, ta.allocated_meters,
+           ta.status, ta.priority, ta.created_at,
+           CASE WHEN tt.id IS NULL THEN NULL
+                ELSE json_build_object('code', tt.code, 'name', tt.name) END AS thread_types
+         FROM thread_allocations ta
+         LEFT JOIN thread_types tt ON tt.id = ta.thread_type_id
+         ${whereClause}
+         ORDER BY ta.created_at DESC`,
+        params
+      )
+    } catch (allocError) {
       console.error('Allocation query error:', allocError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -83,29 +106,34 @@ reports.get('/allocations', async (c) => {
 
     // Get status transition times from audit log
     const allocationIds = (allocations || []).map(a => a.id)
-    
+
     const transitionMap = new Map<number, { soft_at: string | null; issued_at: string | null }>()
-    
+
     if (allocationIds.length > 0) {
-      const { data: auditData } = await supabase
-        .from('thread_audit_log')
-        .select('record_id, old_values, new_values, created_at')
-        .eq('table_name', 'thread_allocations')
-        .eq('action', 'UPDATE')
-        .in('record_id', allocationIds)
-        .order('created_at', { ascending: true })
+      const auditData = await query<{
+        record_id: number
+        old_values: Record<string, unknown> | null
+        new_values: Record<string, unknown> | null
+        created_at: string
+      }>(
+        `SELECT record_id, old_values, new_values, created_at
+         FROM thread_audit_log
+         WHERE table_name = $1 AND action = $2 AND record_id = ANY($3)
+         ORDER BY created_at ASC`,
+        ['thread_allocations', 'UPDATE', allocationIds]
+      )
 
       // Process audit log to find status transitions
       ;(auditData || []).forEach(entry => {
         const recordId = entry.record_id
         const newStatus = entry.new_values?.status
-        
+
         if (!transitionMap.has(recordId)) {
           transitionMap.set(recordId, { soft_at: null, issued_at: null })
         }
-        
+
         const record = transitionMap.get(recordId)!
-        
+
         if (newStatus === 'SOFT' && !record.soft_at) {
           record.soft_at = entry.created_at
         }

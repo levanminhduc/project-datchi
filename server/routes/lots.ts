@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
@@ -11,6 +11,20 @@ import type {
 } from '../types/batch'
 
 const lots = new Hono()
+
+const LOT_EMBED_FULL = `
+        CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+          'id', tt.id, 'code', tt.code, 'name', tt.name,
+          'color_data', CASE WHEN col.id IS NULL THEN NULL ELSE json_build_object('name', col.name, 'hex_code', col.hex_code) END
+        ) END AS thread_type,
+        CASE WHEN w.id IS NULL THEN NULL ELSE json_build_object('id', w.id, 'code', w.code, 'name', w.name) END AS warehouse,
+        CASE WHEN s.id IS NULL THEN NULL ELSE json_build_object('id', s.id, 'code', s.code, 'name', s.name) END AS supplier_data`
+
+const LOT_JOINS_FULL = `
+      LEFT JOIN thread_types tt ON tt.id = l.thread_type_id
+      LEFT JOIN colors col ON col.id = tt.color_id
+      LEFT JOIN warehouses w ON w.id = l.warehouse_id
+      LEFT JOIN suppliers s ON s.id = l.supplier_id`
 
 /**
  * POST /api/lots - Create new lot
@@ -28,11 +42,10 @@ lots.post('/', requirePermission('thread.lots.manage'), async (c) => {
     }
 
     // Check for duplicate lot_number
-    const { data: existing } = await supabase
-      .from('lots')
-      .select('id')
-      .eq('lot_number', body.lot_number)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM lots WHERE lot_number = $1',
+      [body.lot_number]
+    )
 
     if (existing) {
       return c.json<BatchApiResponse<null>>({
@@ -41,33 +54,36 @@ lots.post('/', requirePermission('thread.lots.manage'), async (c) => {
       }, 409)
     }
 
-    const { data, error } = await supabase
-      .from('lots')
-      .insert({
-        lot_number: body.lot_number,
-        thread_type_id: body.thread_type_id,
-        warehouse_id: body.warehouse_id,
-        production_date: body.production_date || null,
-        expiry_date: body.expiry_date || null,
-        supplier_id: body.supplier_id || null,
-        notes: body.notes || null,
-        status: 'ACTIVE',
-        total_cones: 0,
-        available_cones: 0
-      })
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, color_data:colors!color_id(name, hex_code)),
-        warehouse:warehouses(id, code, name),
-        supplier_data:suppliers(id, code, name)
-      `)
-      .single()
+    let data: LotRow | null
+    try {
+      const inserted = await queryOne<{ id: number }>(
+        `INSERT INTO lots (
+           lot_number, thread_type_id, warehouse_id, production_date,
+           expiry_date, supplier_id, notes, status, total_cones, available_cones
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE', 0, 0)
+         RETURNING id`,
+        [
+          body.lot_number,
+          body.thread_type_id,
+          body.warehouse_id,
+          body.production_date || null,
+          body.expiry_date || null,
+          body.supplier_id || null,
+          body.notes || null
+        ]
+      )
 
-    if (error) {
+      data = await queryOne<LotRow>(
+        `SELECT l.*, ${LOT_EMBED_FULL}
+         FROM lots l${LOT_JOINS_FULL}
+         WHERE l.id = $1`,
+        [inserted!.id]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi tạo lô: ' + error.message
+        error: 'Lỗi khi tạo lô: ' + ((error as Error).message ?? '')
       }, 500)
     }
 
@@ -98,25 +114,19 @@ lots.get('/', requirePermission('thread.lots.view'), async (c) => {
     const supplierId = c.req.query('supplier_id')
     const search = c.req.query('search')
 
-    // LEFT JOIN suppliers table for related data
-    let query = supabase
-      .from('lots')
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, color_data:colors!color_id(name, hex_code)),
-        warehouse:warehouses(id, code, name),
-        supplier_data:suppliers(id, code, name)
-      `)
+    const conditions: string[] = []
+    const params: unknown[] = []
 
     if (status) {
-      query = query.eq('status', status)
+      params.push(status)
+      conditions.push(`l.status = $${params.length}`)
     }
     if (warehouseId) {
-      const { data: conesInWarehouse } = await supabase
-        .from('thread_inventory')
-        .select('lot_id, lot_number')
-        .eq('warehouse_id', parseInt(warehouseId))
-        .in('status', ['AVAILABLE', 'RECEIVED'])
+      const conesInWarehouse = await query<{ lot_id: number | null; lot_number: string | null }>(
+        `SELECT lot_id, lot_number FROM thread_inventory
+         WHERE warehouse_id = $1 AND status = ANY($2)`,
+        [parseInt(warehouseId), ['AVAILABLE', 'RECEIVED']]
+      )
 
       const lotIds: number[] = []
       const lotNumbers: string[] = []
@@ -141,26 +151,44 @@ lots.get('/', requirePermission('thread.lots.view'), async (c) => {
       }
 
       if (uniqueLotIds.length > 0 && uniqueLotNumbers.length > 0) {
-        query = query.or(`id.in.(${uniqueLotIds.join(',')}),lot_number.in.(${uniqueLotNumbers.join(',')})`)
+        params.push(uniqueLotIds)
+        const idsPlaceholder = `$${params.length}`
+        params.push(uniqueLotNumbers)
+        const numbersPlaceholder = `$${params.length}`
+        conditions.push(`(l.id = ANY(${idsPlaceholder}) OR l.lot_number = ANY(${numbersPlaceholder}))`)
       } else if (uniqueLotIds.length > 0) {
-        query = query.in('id', uniqueLotIds)
+        params.push(uniqueLotIds)
+        conditions.push(`l.id = ANY($${params.length})`)
       } else {
-        query = query.in('lot_number', uniqueLotNumbers)
+        params.push(uniqueLotNumbers)
+        conditions.push(`l.lot_number = ANY($${params.length})`)
       }
     }
     if (threadTypeId) {
-      query = query.eq('thread_type_id', parseInt(threadTypeId))
+      params.push(parseInt(threadTypeId))
+      conditions.push(`l.thread_type_id = $${params.length}`)
     }
     if (supplierId) {
-      query = query.eq('supplier_id', parseInt(supplierId))
+      params.push(parseInt(supplierId))
+      conditions.push(`l.supplier_id = $${params.length}`)
     }
     if (search) {
-      query = query.ilike('lot_number', `%${sanitizeFilterValue(search)}%`)
+      params.push(`%${sanitizeFilterValue(search)}%`)
+      conditions.push(`l.lot_number ILIKE $${params.length}`)
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false })
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-    if (error) {
+    let data: LotRow[]
+    try {
+      data = await query<LotRow>(
+        `SELECT l.*, ${LOT_EMBED_FULL}
+         FROM lots l${LOT_JOINS_FULL}
+         ${whereClause}
+         ORDER BY l.created_at DESC`,
+        params
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
@@ -189,28 +217,35 @@ lots.get('/:id', requirePermission('thread.lots.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
-    const { data, error } = await supabase
-      .from('lots')
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, color_data:colors!color_id(name, hex_code)),
-        warehouse:warehouses(id, code, name)
-      `)
-      .eq('id', id)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<BatchApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy lô'
-        }, 404)
-      }
+    let data: LotRow | null
+    try {
+      data = await queryOne<LotRow>(
+        `SELECT l.*,
+           CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+             'id', tt.id, 'code', tt.code, 'name', tt.name,
+             'color_data', CASE WHEN col.id IS NULL THEN NULL ELSE json_build_object('name', col.name, 'hex_code', col.hex_code) END
+           ) END AS thread_type,
+           CASE WHEN w.id IS NULL THEN NULL ELSE json_build_object('id', w.id, 'code', w.code, 'name', w.name) END AS warehouse
+         FROM lots l
+         LEFT JOIN thread_types tt ON tt.id = l.thread_type_id
+         LEFT JOIN colors col ON col.id = tt.color_id
+         LEFT JOIN warehouses w ON w.id = l.warehouse_id
+         WHERE l.id = $1`,
+        [id]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải thông tin lô'
       }, 500)
+    }
+
+    if (!data) {
+      return c.json<BatchApiResponse<null>>({
+        data: null,
+        error: 'Không tìm thấy lô'
+      }, 404)
     }
 
     return c.json<BatchApiResponse<LotRow>>({
@@ -250,25 +285,35 @@ lots.patch('/:id', requirePermission('thread.lots.manage'), async (c) => {
       }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('lots')
-      .update(updateData)
-      .eq('id', id)
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, color_data:colors!color_id(name, hex_code)),
-        warehouse:warehouses(id, code, name),
-        supplier_data:suppliers(id, code, name)
-      `)
-      .single()
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updateData)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
+    }
+    params.push(id)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
+    let data: LotRow | null
+    try {
+      const updated = await queryOne<{ id: number }>(
+        `UPDATE lots SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id`,
+        params
+      )
+
+      if (!updated) {
         return c.json<BatchApiResponse<null>>({
           data: null,
           error: 'Không tìm thấy lô'
         }, 404)
       }
+
+      data = await queryOne<LotRow>(
+        `SELECT l.*, ${LOT_EMBED_FULL}
+         FROM lots l${LOT_JOINS_FULL}
+         WHERE l.id = $1`,
+        [updated.id]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
@@ -297,17 +342,24 @@ lots.get('/:id/cones', requirePermission('thread.lots.view'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
-    const { data, error } = await supabase
-      .from('thread_inventory')
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, color_data:colors!color_id(name, hex_code)),
-        warehouse:warehouses(id, code, name)
-      `)
-      .eq('lot_id', id)
-      .order('cone_id', { ascending: true })
-
-    if (error) {
+    let data: unknown[]
+    try {
+      data = await query<Record<string, unknown>>(
+        `SELECT ti.*,
+           CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+             'id', tt.id, 'code', tt.code, 'name', tt.name,
+             'color_data', CASE WHEN col.id IS NULL THEN NULL ELSE json_build_object('name', col.name, 'hex_code', col.hex_code) END
+           ) END AS thread_type,
+           CASE WHEN w.id IS NULL THEN NULL ELSE json_build_object('id', w.id, 'code', w.code, 'name', w.name) END AS warehouse
+         FROM thread_inventory ti
+         LEFT JOIN thread_types tt ON tt.id = ti.thread_type_id
+         LEFT JOIN colors col ON col.id = tt.color_id
+         LEFT JOIN warehouses w ON w.id = ti.warehouse_id
+         WHERE ti.lot_id = $1
+         ORDER BY ti.cone_id ASC`,
+        [id]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
@@ -336,18 +388,22 @@ lots.get('/:id/transactions', requirePermission('thread.lots.view'), async (c) =
   try {
     const id = parseInt(c.req.param('id'))
 
-    const { data, error } = await supabase
-      .from('batch_transactions')
-      .select(`
-        *,
-        lot:lots(id, lot_number),
-        from_warehouse:warehouses!batch_transactions_from_warehouse_id_fkey(id, code, name),
-        to_warehouse:warehouses!batch_transactions_to_warehouse_id_fkey(id, code, name)
-      `)
-      .eq('lot_id', id)
-      .order('performed_at', { ascending: false })
-
-    if (error) {
+    let data: unknown[]
+    try {
+      data = await query<Record<string, unknown>>(
+        `SELECT bt.*,
+           CASE WHEN l.id IS NULL THEN NULL ELSE json_build_object('id', l.id, 'lot_number', l.lot_number) END AS lot,
+           CASE WHEN fw.id IS NULL THEN NULL ELSE json_build_object('id', fw.id, 'code', fw.code, 'name', fw.name) END AS from_warehouse,
+           CASE WHEN tw.id IS NULL THEN NULL ELSE json_build_object('id', tw.id, 'code', tw.code, 'name', tw.name) END AS to_warehouse
+         FROM batch_transactions bt
+         LEFT JOIN lots l ON l.id = bt.lot_id
+         LEFT JOIN warehouses fw ON fw.id = bt.from_warehouse_id
+         LEFT JOIN warehouses tw ON tw.id = bt.to_warehouse_id
+         WHERE bt.lot_id = $1
+         ORDER BY bt.performed_at DESC`,
+        [id]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,

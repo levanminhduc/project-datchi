@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../db/supabase'
+import { query } from '../db/query'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || ''
 
@@ -151,16 +151,16 @@ export async function editMessageReplyMarkup(
 export async function sendToGroups(eventType: string, text: string): Promise<void> {
   if (!isTelegramEnabled()) return
 
-  const { data: groups, error } = await supabaseAdmin
-    .from('notification_channel_groups')
-    .select('channel_config')
-    .eq('channel_type', 'TELEGRAM')
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .contains('event_types', [eventType])
-    .limit(50)
-
-  if (error) {
+  let groups: Array<{ channel_config: { chat_id: string } }>
+  try {
+    groups = await query<{ channel_config: { chat_id: string } }>(
+      `SELECT channel_config FROM notification_channel_groups
+       WHERE channel_type = $1 AND is_active = true AND deleted_at IS NULL
+         AND event_types @> $2
+       LIMIT 50`,
+      ['TELEGRAM', [eventType]]
+    )
+  } catch (error) {
     console.error('[telegram-service] sendToGroups query error:', error)
     return
   }
@@ -174,16 +174,16 @@ export async function sendToGroups(eventType: string, text: string): Promise<voi
 export async function sendToSubscribers(eventType: string, text: string): Promise<void> {
   if (!isTelegramEnabled()) return
 
-  const { data: channels, error } = await supabaseAdmin
-    .from('notification_channels')
-    .select('channel_config')
-    .eq('channel_type', 'TELEGRAM')
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .contains('event_types', [eventType])
-    .limit(100)
-
-  if (error) {
+  let channels: Array<{ channel_config: { chat_id: string } }>
+  try {
+    channels = await query<{ channel_config: { chat_id: string } }>(
+      `SELECT channel_config FROM notification_channels
+       WHERE channel_type = $1 AND is_active = true AND deleted_at IS NULL
+         AND event_types @> $2
+       LIMIT 100`,
+      ['TELEGRAM', [eventType]]
+    )
+  } catch (error) {
     console.error('[telegram-service] sendToSubscribers query error:', error)
     return
   }

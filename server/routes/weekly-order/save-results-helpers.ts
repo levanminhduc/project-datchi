@@ -1,4 +1,4 @@
-import { SupabaseClient } from '@supabase/supabase-js'
+import { query } from '../../db/query'
 
 type SummaryRow = {
   thread_type_id: number
@@ -31,15 +31,23 @@ type CalculationResult = {
 }
 
 export async function syncDeliveries(
-  supabase: SupabaseClient,
   weekId: number,
   summaryRows: SummaryRow[],
 ): Promise<void> {
-  const { data: existingDeliveries } = await supabase
-    .from('thread_order_deliveries')
-    .select('id, thread_type_id, supplier_id, delivery_date, status, received_quantity, quantity_cones, thread_color')
-    .eq('week_id', weekId)
-    .limit(500000)
+  const existingDeliveries = await query<{
+    id: number
+    thread_type_id: number
+    supplier_id: number | null
+    delivery_date: string
+    status: string
+    received_quantity: number | null
+    quantity_cones: number | null
+    thread_color: string | null
+  }>(
+    `SELECT id, thread_type_id, supplier_id, delivery_date, status, received_quantity, quantity_cones, thread_color
+     FROM thread_order_deliveries WHERE week_id = $1 LIMIT 500000`,
+    [weekId],
+  )
 
   type DesiredDelivery = {
     week_id: number; thread_type_id: number; supplier_id: number
@@ -95,11 +103,22 @@ export async function syncDeliveries(
       console.info(`[saveResults] Creating delivery for week=${weekId} thread_type=${row.thread_type_id} color=${row.thread_color}: quantity_cones=${row.quantity_cones}`)
     }
 
-    const { error: deliveryError } = await supabase
-      .from('thread_order_deliveries')
-      .insert(newDeliveryRows)
-
-    if (deliveryError) {
+    try {
+      const cols = ['week_id', 'thread_type_id', 'supplier_id', 'delivery_date', 'status', 'quantity_cones', 'thread_color', 'thread_color_code']
+      const params: unknown[] = []
+      const valueClauses = newDeliveryRows.map((row) => {
+        const rowVals = [row.week_id, row.thread_type_id, row.supplier_id, row.delivery_date, row.status, row.quantity_cones, row.thread_color, row.thread_color_code]
+        const placeholders = rowVals.map((v) => {
+          params.push(v)
+          return `$${params.length}`
+        })
+        return `(${placeholders.join(', ')})`
+      })
+      await query(
+        `INSERT INTO thread_order_deliveries (${cols.join(', ')}) VALUES ${valueClauses.join(', ')}`,
+        params,
+      )
+    } catch (deliveryError) {
       console.warn('Error creating delivery records:', deliveryError)
     }
   }
@@ -136,18 +155,14 @@ export async function syncDeliveries(
 
       console.info(`[saveResults] Syncing delivery for week=${weekId} thread_type=${row.thread_type_id} color=${row.thread_color}: quantity_cones ${existing.quantity_cones ?? 0} -> ${row.quantity_cones}`)
 
-      const { error: syncError } = await supabase
-        .from('thread_order_deliveries')
-        .update({
-          supplier_id: row.supplier_id,
-          quantity_cones: row.quantity_cones,
-          thread_color: row.thread_color,
-          thread_color_code: row.thread_color_code,
-          updated_at: nowIso,
-        })
-        .eq('id', existing.id)
-
-      if (syncError) {
+      try {
+        await query(
+          `UPDATE thread_order_deliveries
+           SET supplier_id = $1, quantity_cones = $2, thread_color = $3, thread_color_code = $4, updated_at = $5
+           WHERE id = $6`,
+          [row.supplier_id, row.quantity_cones, row.thread_color, row.thread_color_code, nowIso, existing.id],
+        )
+      } catch (syncError) {
         console.warn('Error syncing existing pending delivery row:', syncError)
       }
     }
@@ -165,21 +180,19 @@ export async function syncDeliveries(
   }
 
   if (orphanIds.length > 0) {
-    const { error: orphanError } = await supabase
-      .from('thread_order_deliveries')
-      .delete()
-      .in('id', orphanIds)
-
-    if (orphanError) {
-      console.warn('Error deleting orphan deliveries:', orphanError)
-    } else {
+    try {
+      await query(
+        `DELETE FROM thread_order_deliveries WHERE id = ANY($1)`,
+        [orphanIds],
+      )
       console.info(`[saveResults] Deleted ${orphanIds.length} orphan PENDING deliveries for week=${weekId}`)
+    } catch (orphanError) {
+      console.warn('Error deleting orphan deliveries:', orphanError)
     }
   }
 }
 
 export async function createAllocations(
-  supabase: SupabaseClient,
   weekId: number,
   calculationData: CalculationResult[],
 ): Promise<void> {
@@ -227,11 +240,22 @@ export async function createAllocations(
   }
 
   if (allocationRows.length > 0) {
-    const { error: allocError } = await supabase
-      .from('thread_allocations')
-      .insert(allocationRows)
-
-    if (allocError) {
+    try {
+      const cols = ['order_id', 'order_reference', 'thread_type_id', 'requested_meters', 'priority', 'status', 'week_id']
+      const params: unknown[] = []
+      const valueClauses = (allocationRows as Array<Record<string, unknown>>).map((row) => {
+        const rowVals = [row.order_id, row.order_reference, row.thread_type_id, row.requested_meters, row.priority, row.status, row.week_id]
+        const placeholders = rowVals.map((v) => {
+          params.push(v)
+          return `$${params.length}`
+        })
+        return `(${placeholders.join(', ')})`
+      })
+      await query(
+        `INSERT INTO thread_allocations (${cols.join(', ')}) VALUES ${valueClauses.join(', ')}`,
+        params,
+      )
+    } catch (allocError) {
       console.warn('Error creating allocation records:', allocError)
     }
   }

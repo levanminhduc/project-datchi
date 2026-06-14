@@ -2,35 +2,22 @@ import assert from 'node:assert/strict'
 import { Hono } from 'hono'
 import transferReservedRoutes from './transfer-reserved'
 import type { AppEnv } from '../../types/hono-env'
-import { supabaseAdmin } from '../../db/supabase'
+import { pool } from '../../db/pool'
 
 async function testStoresPerformerFullName() {
-  const rpcCalls: Array<{ name: string; params: Record<string, unknown> }> = []
-  const originalRpc = supabaseAdmin.rpc
-  const originalFrom = supabaseAdmin.from
+  const rpcCalls: Array<{ text: string; params: unknown[] }> = []
+  const originalQuery = pool.query
 
-  supabaseAdmin.rpc = (async (name: string, params: Record<string, unknown>) => {
-    rpcCalls.push({ name, params })
-    return { data: { transaction_id: 1, total_cones: 1, per_item: [] }, error: null }
-  }) as unknown as typeof supabaseAdmin.rpc
-
-  supabaseAdmin.from = ((table: string) => {
-    if (table !== 'employees') return originalFrom.call(supabaseAdmin, table)
-
-    return {
-      select() {
-        return {
-          eq() {
-            return {
-              async single() {
-                return { data: { full_name: 'Nguyễn Văn A' }, error: null }
-              },
-            }
-          },
-        }
-      },
+  pool.query = (async (text: string, params?: unknown[]) => {
+    if (/FROM employees WHERE id/i.test(text) || text.includes('full_name')) {
+      return { rows: [{ full_name: 'Nguyễn Văn A' }] }
     }
-  }) as typeof supabaseAdmin.from
+    if (text.includes('fn_transfer_reserved_cones')) {
+      rpcCalls.push({ text, params: params ?? [] })
+      return { rows: [{ result: { transaction_id: 1, total_cones: 1, per_item: [] } }] }
+    }
+    return { rows: [] }
+  }) as unknown as typeof pool.query
 
   try {
     const app = new Hono<AppEnv>()
@@ -66,11 +53,9 @@ async function testStoresPerformerFullName() {
 
     assert.equal(response.status, 200)
     assert.equal(rpcCalls.length, 1)
-    assert.equal(rpcCalls[0].name, 'fn_transfer_reserved_cones')
-    assert.equal(rpcCalls[0].params.p_performed_by, 'Nguyễn Văn A')
+    assert.equal(rpcCalls[0].params[4], 'Nguyễn Văn A')
   } finally {
-    supabaseAdmin.rpc = originalRpc
-    supabaseAdmin.from = originalFrom
+    pool.query = originalQuery
   }
 }
 

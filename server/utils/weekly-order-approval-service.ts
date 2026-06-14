@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../db/supabase'
+import { query, queryOne, querySingle } from '../db/query'
 import { createNotification, getLeaderEmployeeIds } from './notificationService'
 import { dispatchExternalNotification } from './external-notification-dispatcher'
 import {
@@ -33,15 +33,6 @@ interface SignedWeeklyOrderRow extends ThreadOrderWeekForApproval {
   leader_signed_by: number | null
   leader_signed_at: string | null
   [key: string]: unknown
-}
-
-interface RolePermissionRow {
-  roles?: {
-    code?: string
-    role_permissions?: Array<{
-      permissions?: { code?: string }
-    }>
-  }
 }
 
 export interface WeeklyOrderApprovalSummaryRow {
@@ -206,56 +197,61 @@ export function buildWeeklyOrderApprovalMessages(
 }
 
 async function fetchOrderStats(weekId: number): Promise<{ itemCount: number; totalProductQuantity: number }> {
-  const { data, error } = await supabaseAdmin
-    .from('thread_order_items')
-    .select('quantity')
-    .eq('week_id', weekId)
-
-  if (error) {
+  let data: Array<{ quantity: number }>
+  try {
+    data = await query<{ quantity: number }>(
+      `SELECT quantity FROM thread_order_items WHERE week_id = $1`,
+      [weekId]
+    )
+  } catch (error) {
     console.error('[telegram-approval] fetchOrderStats error:', error)
     return { itemCount: 0, totalProductQuantity: 0 }
   }
 
   return {
     itemCount: data?.length || 0,
-    totalProductQuantity: (data || []).reduce((sum, item: { quantity: number }) => sum + Number(item.quantity || 0), 0),
+    totalProductQuantity: (data || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0),
   }
 }
 
 export async function employeeHasLeaderSignPermission(employeeId: number): Promise<boolean> {
-  const { data: roles, error: rolesError } = await supabaseAdmin
-    .from('employee_roles')
-    .select('roles!inner(code, role_permissions(permissions(code)))')
-    .eq('employee_id', employeeId)
-
-  if (rolesError) {
-    console.error('[telegram-approval] employeeHasLeaderSignPermission roles error:', rolesError)
+  let roleRows: Array<{ role_code: string | null; perm_code: string | null }>
+  try {
+    roleRows = await query<{ role_code: string | null; perm_code: string | null }>(
+      `SELECT r.code AS role_code, p.code AS perm_code
+       FROM employee_roles er
+       INNER JOIN roles r ON r.id = er.role_id
+       LEFT JOIN role_permissions rp ON rp.role_id = r.id
+       LEFT JOIN permissions p ON p.id = rp.permission_id
+       WHERE er.employee_id = $1`,
+      [employeeId]
+    )
+  } catch (error) {
+    console.error('[telegram-approval] employeeHasLeaderSignPermission roles error:', error)
     return false
   }
 
-  const roleRows = (roles || []) as unknown as RolePermissionRow[]
-  const hasRootRole = roleRows.some((row) => row.roles?.code === 'root')
+  const hasRootRole = roleRows.some((row) => row.role_code === 'root')
   if (hasRootRole) return true
 
-  const roleHasPermission = roleRows.some((row) => {
-    return (row.roles?.role_permissions || []).some(
-      (rp) => rp.permissions?.code === 'thread.leader.sign',
+  const roleHasPermission = roleRows.some((row) => row.perm_code === 'thread.leader.sign')
+
+  let directPerms: Array<{ granted: boolean; expires_at: string | null }>
+  try {
+    directPerms = await query<{ granted: boolean; expires_at: string | null }>(
+      `SELECT ep.granted, ep.expires_at
+       FROM employee_permissions ep
+       INNER JOIN permissions p ON p.id = ep.permission_id
+       WHERE ep.employee_id = $1 AND p.code = $2`,
+      [employeeId, 'thread.leader.sign']
     )
-  })
-
-  const { data: directPerms, error: directError } = await supabaseAdmin
-    .from('employee_permissions')
-    .select('granted, expires_at, permissions!inner(code)')
-    .eq('employee_id', employeeId)
-    .eq('permissions.code', 'thread.leader.sign')
-
-  if (directError) {
-    console.error('[telegram-approval] employeeHasLeaderSignPermission direct error:', directError)
+  } catch (error) {
+    console.error('[telegram-approval] employeeHasLeaderSignPermission direct error:', error)
     return roleHasPermission
   }
 
   const now = new Date().toISOString()
-  for (const row of (directPerms || []) as Array<{ granted: boolean; expires_at: string | null }>) {
+  for (const row of directPerms) {
     if (row.expires_at && row.expires_at < now) continue
     if (!row.granted) return false
     return true
@@ -274,45 +270,51 @@ export async function getLeaderCandidates(): Promise<Array<{
   const leaderIds = await getLeaderEmployeeIds()
   if (leaderIds.length === 0) return []
 
-  const { data, error } = await supabaseAdmin
-    .from('employees')
-    .select('id, employee_id, full_name, department, chuc_vu')
-    .in('id', leaderIds)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .order('employee_id', { ascending: true })
-
-  if (error) {
+  try {
+    const data = await query<{
+      id: number
+      employee_id: string
+      full_name: string
+      department: string | null
+      chuc_vu: string | null
+    }>(
+      `SELECT id, employee_id, full_name, department, chuc_vu
+       FROM employees
+       WHERE id = ANY($1) AND is_active = true AND deleted_at IS NULL
+       ORDER BY employee_id ASC`,
+      [leaderIds]
+    )
+    return data || []
+  } catch (error) {
     console.error('[telegram-approval] getLeaderCandidates error:', error)
     return []
   }
-
-  return data || []
 }
 
 async function fetchApprovalChannels(): Promise<NotificationChannelRow[]> {
-  const { data, error } = await supabaseAdmin
-    .from('notification_channels')
-    .select(`
-      id,
-      employee_id,
-      channel_config,
-      employees!inner(id, employee_id, full_name, department, chuc_vu, is_active, deleted_at)
-    `)
-    .eq('channel_type', 'TELEGRAM')
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .eq('employees.is_active', true)
-    .is('employees.deleted_at', null)
-    .contains('event_types', [ORDER_APPROVAL_REQUESTED_EVENT])
-    .limit(50)
-
-  if (error) {
+  try {
+    const data = await query<NotificationChannelRow>(
+      `SELECT nc.id, nc.employee_id, nc.channel_config,
+         json_build_object(
+           'id', e.id,
+           'employee_id', e.employee_id,
+           'full_name', e.full_name,
+           'department', e.department,
+           'chuc_vu', e.chuc_vu
+         ) AS employees
+       FROM notification_channels nc
+       INNER JOIN employees e ON e.id = nc.employee_id
+       WHERE nc.channel_type = 'TELEGRAM' AND nc.is_active = true AND nc.deleted_at IS NULL
+         AND e.is_active = true AND e.deleted_at IS NULL
+         AND nc.event_types @> $1
+       LIMIT 50`,
+      [[ORDER_APPROVAL_REQUESTED_EVENT]]
+    )
+    return data || []
+  } catch (error) {
     console.error('[telegram-approval] fetchApprovalChannels error:', error)
     return []
   }
-
-  return (data || []) as unknown as NotificationChannelRow[]
 }
 
 async function createOrReuseApprovalRequest(
@@ -320,15 +322,15 @@ async function createOrReuseApprovalRequest(
   employeeId: number,
   chatId: string,
 ): Promise<{ request: TelegramApprovalRequestRow | null; shouldSend: boolean }> {
-  const { data: existing, error: existingError } = await supabaseAdmin
-    .from('telegram_approval_requests')
-    .select('id, week_id, employee_id, telegram_chat_id, telegram_message_id, status, expires_at')
-    .eq('week_id', weekId)
-    .eq('employee_id', employeeId)
-    .eq('status', 'PENDING')
-    .maybeSingle()
-
-  if (existingError) {
+  let existing: TelegramApprovalRequestRow | null = null
+  try {
+    existing = await queryOne<TelegramApprovalRequestRow>(
+      `SELECT id, week_id, employee_id, telegram_chat_id, telegram_message_id, status, expires_at
+       FROM telegram_approval_requests
+       WHERE week_id = $1 AND employee_id = $2 AND status = 'PENDING'`,
+      [weekId, employeeId]
+    )
+  } catch (existingError) {
     console.error('[telegram-approval] fetch pending request error:', existingError)
   }
 
@@ -336,46 +338,39 @@ async function createOrReuseApprovalRequest(
     const expired = new Date(existing.expires_at).getTime() <= Date.now()
     if (!expired) {
       return {
-        request: existing as TelegramApprovalRequestRow,
+        request: existing,
         shouldSend: !existing.telegram_message_id,
       }
     }
 
-    await supabaseAdmin
-      .from('telegram_approval_requests')
-      .update({ status: 'EXPIRED', handled_at: new Date().toISOString() })
-      .eq('id', existing.id)
+    await query(
+      `UPDATE telegram_approval_requests SET status = 'EXPIRED', handled_at = $2 WHERE id = $1`,
+      [existing.id, new Date().toISOString()]
+    ).catch(() => [])
   }
 
   const expiresAt = new Date(Date.now() + APPROVAL_REQUEST_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
-  const { data, error } = await supabaseAdmin
-    .from('telegram_approval_requests')
-    .insert({
-      week_id: weekId,
-      employee_id: employeeId,
-      telegram_chat_id: chatId,
-      status: 'PENDING',
-      expires_at: expiresAt,
-    })
-    .select('id, week_id, employee_id, telegram_chat_id, telegram_message_id, status, expires_at')
-    .single()
-
-  if (error) {
-    if (error.code === '23505') {
-      const retry = await supabaseAdmin
-        .from('telegram_approval_requests')
-        .select('id, week_id, employee_id, telegram_chat_id, telegram_message_id, status, expires_at')
-        .eq('week_id', weekId)
-        .eq('employee_id', employeeId)
-        .eq('status', 'PENDING')
-        .maybeSingle()
-      return { request: (retry.data as TelegramApprovalRequestRow | null) || null, shouldSend: false }
+  try {
+    const data = await querySingle<TelegramApprovalRequestRow>(
+      `INSERT INTO telegram_approval_requests (week_id, employee_id, telegram_chat_id, status, expires_at)
+       VALUES ($1, $2, $3, 'PENDING', $4)
+       RETURNING id, week_id, employee_id, telegram_chat_id, telegram_message_id, status, expires_at`,
+      [weekId, employeeId, chatId, expiresAt]
+    )
+    return { request: data, shouldSend: true }
+  } catch (error) {
+    if ((error as { code?: string })?.code === '23505') {
+      const retry = await queryOne<TelegramApprovalRequestRow>(
+        `SELECT id, week_id, employee_id, telegram_chat_id, telegram_message_id, status, expires_at
+         FROM telegram_approval_requests
+         WHERE week_id = $1 AND employee_id = $2 AND status = 'PENDING'`,
+        [weekId, employeeId]
+      ).catch(() => null)
+      return { request: retry || null, shouldSend: false }
     }
     console.error('[telegram-approval] insert request error:', error)
     return { request: null, shouldSend: false }
   }
-
-  return { request: data as TelegramApprovalRequestRow, shouldSend: true }
 }
 
 export async function dispatchOrderApprovalRequests(params: DispatchOrderApprovalRequestsParams): Promise<void> {
@@ -422,17 +417,17 @@ export async function dispatchOrderApprovalRequests(params: DispatchOrderApprova
 
     if (!firstResult.success) {
       console.error(`[telegram-approval] send approval failed request=${request.id}:`, firstResult.error)
-      await supabaseAdmin
-        .from('telegram_approval_requests')
-        .update({ status: 'FAILED', handled_at: new Date().toISOString() })
-        .eq('id', request.id)
+      await query(
+        `UPDATE telegram_approval_requests SET status = 'FAILED', handled_at = $2 WHERE id = $1`,
+        [request.id, new Date().toISOString()]
+      ).catch(() => [])
       continue
     }
 
-    await supabaseAdmin
-      .from('telegram_approval_requests')
-      .update({ telegram_message_id: firstResult.messageId || null })
-      .eq('id', request.id)
+    await query(
+      `UPDATE telegram_approval_requests SET telegram_message_id = $2 WHERE id = $1`,
+      [request.id, firstResult.messageId || null]
+    ).catch(() => [])
 
     for (const extraMessage of messages.slice(1)) {
       sendMessage(chatId, extraMessage).catch((err) => {
@@ -450,31 +445,32 @@ async function markApprovalRequestsAfterSign(
   const now = new Date().toISOString()
 
   if (approvedRequestId) {
-    await supabaseAdmin
-      .from('telegram_approval_requests')
-      .update({ status: 'APPROVED', handled_at: now, handled_by: signerEmployeeId })
-      .eq('id', approvedRequestId)
+    await query(
+      `UPDATE telegram_approval_requests
+       SET status = 'APPROVED', handled_at = $2, handled_by = $3
+       WHERE id = $1`,
+      [approvedRequestId, now, signerEmployeeId]
+    ).catch(() => [])
   }
 
-  let query = supabaseAdmin
-    .from('telegram_approval_requests')
-    .update({ status: 'SUPERSEDED', handled_at: now, handled_by: signerEmployeeId })
-    .eq('week_id', weekId)
-    .eq('status', 'PENDING')
+  const params: unknown[] = [weekId, now, signerEmployeeId]
+  let sql = `UPDATE telegram_approval_requests
+    SET status = 'SUPERSEDED', handled_at = $2, handled_by = $3
+    WHERE week_id = $1 AND status = 'PENDING'`
 
   if (approvedRequestId) {
-    query = query.neq('id', approvedRequestId)
+    params.push(approvedRequestId)
+    sql += ` AND id <> $${params.length}`
   }
 
-  await query
+  await query(sql, params).catch(() => [])
 }
 
 async function fetchLeaderName(employeeId: number): Promise<string> {
-  const { data } = await supabaseAdmin
-    .from('employees')
-    .select('full_name')
-    .eq('id', employeeId)
-    .maybeSingle()
+  const data = await queryOne<{ full_name: string | null }>(
+    `SELECT full_name FROM employees WHERE id = $1`,
+    [employeeId]
+  ).catch(() => null)
 
   return data?.full_name || `#${employeeId}`
 }
@@ -490,28 +486,19 @@ export async function signWeeklyOrder(params: {
   }
 
   const signedAt = new Date().toISOString()
-  const { data: updated, error: updateError } = await supabaseAdmin
-    .from('thread_order_weeks')
-    .update({
-      leader_signed_by: params.employeeId,
-      leader_signed_at: signedAt,
-    })
-    .eq('id', params.weekId)
-    .eq('status', 'CONFIRMED')
-    .is('leader_signed_by', null)
-    .select()
-    .single()
+  const updated = await queryOne<SignedWeeklyOrderRow>(
+    `UPDATE thread_order_weeks
+     SET leader_signed_by = $2, leader_signed_at = $3
+     WHERE id = $1 AND status = 'CONFIRMED' AND leader_signed_by IS NULL
+     RETURNING *`,
+    [params.weekId, params.employeeId, signedAt]
+  )
 
-  if (updateError) {
-    if (updateError.code !== 'PGRST116') {
-      throw updateError
-    }
-
-    const { data: current } = await supabaseAdmin
-      .from('thread_order_weeks')
-      .select('id, status, leader_signed_by')
-      .eq('id', params.weekId)
-      .maybeSingle()
+  if (!updated) {
+    const current = await queryOne<{ id: number; status: string; leader_signed_by: number | null }>(
+      `SELECT id, status, leader_signed_by FROM thread_order_weeks WHERE id = $1`,
+      [params.weekId]
+    ).catch(() => null)
 
     if (!current) {
       throw new WeeklyOrderSignError('not_found', 'Không tìm thấy tuần đặt hàng', 404)
@@ -529,12 +516,10 @@ export async function signWeeklyOrder(params: {
   const weekName = updated.week_name || `#${params.weekId}`
 
   if (updated.created_by) {
-    const { data: creator } = await supabaseAdmin
-      .from('employees')
-      .select('id, full_name')
-      .eq('full_name', updated.created_by)
-      .limit(1)
-      .maybeSingle()
+    const creator = await queryOne<{ id: number; full_name: string }>(
+      `SELECT id, full_name FROM employees WHERE full_name = $1 LIMIT 1`,
+      [updated.created_by]
+    ).catch(() => null)
 
     if (creator?.id) {
       await createNotification({
@@ -574,21 +559,21 @@ export async function signWeeklyOrder(params: {
 }
 
 async function getMatchingApprovalChannel(employeeId: number, telegramUserId: string): Promise<NotificationChannelRow | null> {
-  const { data, error } = await supabaseAdmin
-    .from('notification_channels')
-    .select('id, employee_id, channel_config')
-    .eq('employee_id', employeeId)
-    .eq('channel_type', 'TELEGRAM')
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .contains('event_types', [ORDER_APPROVAL_REQUESTED_EVENT])
-
-  if (error) {
+  let data: NotificationChannelRow[]
+  try {
+    data = await query<NotificationChannelRow>(
+      `SELECT id, employee_id, channel_config
+       FROM notification_channels
+       WHERE employee_id = $1 AND channel_type = 'TELEGRAM' AND is_active = true
+         AND deleted_at IS NULL AND event_types @> $2`,
+      [employeeId, [ORDER_APPROVAL_REQUESTED_EVENT]]
+    )
+  } catch (error) {
     console.error('[telegram-approval] getMatchingApprovalChannel error:', error)
     return null
   }
 
-  return ((data || []) as NotificationChannelRow[]).find((channel) => (
+  return (data || []).find((channel) => (
     normalizePositiveInteger(channel.channel_config?.telegram_user_id) === telegramUserId
   )) || null
 }
@@ -614,13 +599,15 @@ export async function approveWeeklyOrderFromTelegram(params: {
   messageId?: number
   clearButtons?: boolean
 }> {
-  const { data: request, error } = await supabaseAdmin
-    .from('telegram_approval_requests')
-    .select('id, week_id, employee_id, telegram_chat_id, telegram_message_id, status, expires_at')
-    .eq('id', params.requestId)
-    .maybeSingle()
-
-  if (error) {
+  let request: TelegramApprovalRequestRow | null
+  try {
+    request = await queryOne<TelegramApprovalRequestRow>(
+      `SELECT id, week_id, employee_id, telegram_chat_id, telegram_message_id, status, expires_at
+       FROM telegram_approval_requests
+       WHERE id = $1`,
+      [params.requestId]
+    )
+  } catch (error) {
     console.error('[telegram-approval] approve fetch request error:', error)
     return { ok: false, userMessage: 'Không thể kiểm tra yêu cầu duyệt', alert: true }
   }
@@ -629,7 +616,7 @@ export async function approveWeeklyOrderFromTelegram(params: {
     return { ok: false, userMessage: 'Yêu cầu duyệt không tồn tại hoặc đã bị xóa', alert: true }
   }
 
-  const row = request as TelegramApprovalRequestRow
+  const row = request
   const messageTarget = {
     chatId: row.telegram_chat_id,
     messageId: row.telegram_message_id || undefined,
@@ -645,10 +632,10 @@ export async function approveWeeklyOrderFromTelegram(params: {
   }
 
   if (new Date(row.expires_at).getTime() <= Date.now()) {
-    await supabaseAdmin
-      .from('telegram_approval_requests')
-      .update({ status: 'EXPIRED', handled_at: new Date().toISOString() })
-      .eq('id', row.id)
+    await query(
+      `UPDATE telegram_approval_requests SET status = 'EXPIRED', handled_at = $2 WHERE id = $1`,
+      [row.id, new Date().toISOString()]
+    ).catch(() => [])
     return { ok: false, userMessage: 'Yêu cầu duyệt đã hết hạn', alert: true, clearButtons: true, ...messageTarget }
   }
 
@@ -657,11 +644,10 @@ export async function approveWeeklyOrderFromTelegram(params: {
     return { ok: false, userMessage: 'Telegram này không khớp với lãnh đạo được cấu hình', alert: true, ...messageTarget }
   }
 
-  const { data: employee } = await supabaseAdmin
-    .from('employees')
-    .select('id, is_active, deleted_at')
-    .eq('id', row.employee_id)
-    .maybeSingle()
+  const employee = await queryOne<{ id: number; is_active: boolean; deleted_at: string | null }>(
+    `SELECT id, is_active, deleted_at FROM employees WHERE id = $1`,
+    [row.employee_id]
+  ).catch(() => null)
 
   if (!employee || !employee.is_active || employee.deleted_at) {
     return { ok: false, userMessage: 'Tài khoản lãnh đạo không còn hoạt động', alert: true, ...messageTarget }
@@ -693,10 +679,10 @@ export async function approveWeeklyOrderFromTelegram(params: {
   } catch (err) {
     if (err instanceof WeeklyOrderSignError) {
       if (err.code === 'already_signed') {
-        await supabaseAdmin
-          .from('telegram_approval_requests')
-          .update({ status: 'SUPERSEDED', handled_at: new Date().toISOString() })
-          .eq('id', row.id)
+        await query(
+          `UPDATE telegram_approval_requests SET status = 'SUPERSEDED', handled_at = $2 WHERE id = $1`,
+          [row.id, new Date().toISOString()]
+        ).catch(() => [])
       }
       return {
         ok: false,

@@ -1,4 +1,4 @@
-import { supabaseAdmin as supabase } from '../../db/supabase'
+import { query } from '../../db/query'
 
 export interface DeliveryTraceLine {
   id: number
@@ -63,23 +63,24 @@ export function getDeliveryTraceKey(threadTypeId: number, colorName: string): st
 }
 
 export async function getWeeklyOrderDeliverySummary(weekId: number): Promise<WeeklyOrderDeliverySummary> {
-  const { data: rows, error } = await supabase
-    .from('thread_order_deliveries')
-    .select(`
-      id,
-      thread_type_id,
-      supplier_id,
-      quantity_cones,
-      received_quantity,
-      status,
-      thread_color,
-      thread_color_code,
-      supplier:suppliers(id, name),
-      thread_type:thread_types(id, name, tex_number, color_data:colors!color_id(name, hex_code))
-    `)
-    .eq('week_id', weekId)
-
-  if (error) throw error
+  const rows = await query<DeliverySummaryDbRow>(
+    `SELECT d.id, d.thread_type_id, d.supplier_id, d.quantity_cones, d.received_quantity,
+       d.status, d.thread_color, d.thread_color_code,
+       CASE WHEN sup.id IS NULL THEN NULL
+            ELSE json_build_object('id', sup.id, 'name', sup.name) END AS supplier,
+       CASE WHEN tt.id IS NULL THEN NULL
+            ELSE json_build_object(
+              'id', tt.id, 'name', tt.name, 'tex_number', tt.tex_number,
+              'color_data', CASE WHEN col.id IS NULL THEN NULL
+                                 ELSE json_build_object('name', col.name, 'hex_code', col.hex_code) END
+            ) END AS thread_type
+     FROM thread_order_deliveries d
+     LEFT JOIN suppliers sup ON sup.id = d.supplier_id
+     LEFT JOIN thread_types tt ON tt.id = d.thread_type_id
+     LEFT JOIN colors col ON col.id = tt.color_id
+     WHERE d.week_id = $1`,
+    [weekId],
+  )
 
   let total_ordered = 0
   let total_delivered = 0

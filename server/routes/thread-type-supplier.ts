@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import type {
   ThreadTypeSupplierRow,
@@ -11,6 +11,21 @@ import type {
 } from '../types/thread-type-supplier'
 
 const threadTypeSuppliers = new Hono()
+
+const TTS_THREAD_TYPE_EMBED = `
+        CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+          'id', tt.id, 'code', tt.code, 'name', tt.name, 'material', tt.material,
+          'tex_number', tt.tex_number, 'tex_label', tt.tex_label, 'color_id', tt.color_id,
+          'color_data', CASE WHEN col.id IS NULL THEN NULL ELSE json_build_object('id', col.id, 'name', col.name, 'hex_code', col.hex_code) END
+        ) END AS thread_type`
+
+const TTS_SUPPLIER_EMBED = `
+        CASE WHEN s.id IS NULL THEN NULL ELSE json_build_object('id', s.id, 'code', s.code, 'name', s.name) END AS supplier`
+
+const TTS_JOINS = `
+      LEFT JOIN thread_types tt ON tt.id = tts.thread_type_id
+      LEFT JOIN colors col ON col.id = tt.color_id
+      LEFT JOIN suppliers s ON s.id = tts.supplier_id`
 
 threadTypeSuppliers.use('*', requirePermission('thread.suppliers.view'))
 
@@ -25,38 +40,45 @@ threadTypeSuppliers.get('/', async (c) => {
     const isActiveParam = c.req.query('is_active')
     const search = c.req.query('search')
 
-    let query = supabase
-      .from('thread_type_supplier')
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, material, tex_number, tex_label, color_id, color_data:colors(id, name, hex_code)),
-        supplier:suppliers(id, code, name)
-      `)
-      .order('created_at', { ascending: false })
+    const conditions: string[] = []
+    const params: unknown[] = []
 
     // Filter by thread_type_id
     if (threadTypeId) {
-      query = query.eq('thread_type_id', parseInt(threadTypeId))
+      params.push(parseInt(threadTypeId))
+      conditions.push(`tts.thread_type_id = $${params.length}`)
     }
 
     // Filter by supplier_id
     if (supplierId) {
-      query = query.eq('supplier_id', parseInt(supplierId))
+      params.push(parseInt(supplierId))
+      conditions.push(`tts.supplier_id = $${params.length}`)
     }
 
     // Filter by is_active (default: all)
     if (isActiveParam !== undefined) {
-      query = query.eq('is_active', isActiveParam === 'true')
+      params.push(isActiveParam === 'true')
+      conditions.push(`tts.is_active = $${params.length}`)
     }
 
     // Search by supplier_item_code
     if (search) {
-      query = query.ilike('supplier_item_code', `%${search}%`)
+      params.push(`%${search}%`)
+      conditions.push(`tts.supplier_item_code ILIKE $${params.length}`)
     }
 
-    const { data, error } = await query
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-    if (error) {
+    let data: ThreadTypeSupplierWithRelations[]
+    try {
+      data = await query<ThreadTypeSupplierWithRelations>(
+        `SELECT tts.*, ${TTS_THREAD_TYPE_EMBED}, ${TTS_SUPPLIER_EMBED}
+         FROM thread_type_supplier tts${TTS_JOINS}
+         ${whereClause}
+         ORDER BY tts.created_at DESC`,
+        params
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
@@ -85,28 +107,27 @@ threadTypeSuppliers.get('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
-    const { data, error } = await supabase
-      .from('thread_type_supplier')
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, material, tex_number, tex_label, color_id, color_data:colors(id, name, hex_code)),
-        supplier:suppliers(id, code, name)
-      `)
-      .eq('id', id)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<ThreadTypeSupplierApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy liên kết'
-        }, 404)
-      }
+    let data: ThreadTypeSupplierWithRelations | null
+    try {
+      data = await queryOne<ThreadTypeSupplierWithRelations>(
+        `SELECT tts.*, ${TTS_THREAD_TYPE_EMBED}, ${TTS_SUPPLIER_EMBED}
+         FROM thread_type_supplier tts${TTS_JOINS}
+         WHERE tts.id = $1`,
+        [id]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải thông tin liên kết'
       }, 500)
+    }
+
+    if (!data) {
+      return c.json<ThreadTypeSupplierApiResponse<null>>({
+        data: null,
+        error: 'Không tìm thấy liên kết'
+      }, 404)
     }
 
     return c.json<ThreadTypeSupplierApiResponse<ThreadTypeSupplierWithRelations>>({
@@ -138,12 +159,10 @@ threadTypeSuppliers.post('/', async (c) => {
     }
 
     // Check if link already exists
-    const { data: existing } = await supabase
-      .from('thread_type_supplier')
-      .select('id')
-      .eq('thread_type_id', body.thread_type_id)
-      .eq('supplier_id', body.supplier_id)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM thread_type_supplier WHERE thread_type_id = $1 AND supplier_id = $2',
+      [body.thread_type_id, body.supplier_id]
+    )
 
     if (existing) {
       return c.json<ThreadTypeSupplierApiResponse<null>>({
@@ -153,12 +172,10 @@ threadTypeSuppliers.post('/', async (c) => {
     }
 
     // Check if supplier_item_code is unique for this supplier
-    const { data: existingCode } = await supabase
-      .from('thread_type_supplier')
-      .select('id')
-      .eq('supplier_id', body.supplier_id)
-      .eq('supplier_item_code', body.supplier_item_code)
-      .single()
+    const existingCode = await queryOne<{ id: number }>(
+      'SELECT id FROM thread_type_supplier WHERE supplier_id = $1 AND supplier_item_code = $2',
+      [body.supplier_id, body.supplier_item_code]
+    )
 
     if (existingCode) {
       return c.json<ThreadTypeSupplierApiResponse<null>>({
@@ -168,28 +185,32 @@ threadTypeSuppliers.post('/', async (c) => {
     }
 
     // Create link
-    const { data, error } = await supabase
-      .from('thread_type_supplier')
-      .insert({
-        thread_type_id: body.thread_type_id,
-        supplier_id: body.supplier_id,
-        supplier_item_code: body.supplier_item_code,
-        unit_price: body.unit_price ?? null,
-        notes: body.notes || null,
-        is_active: true
-      })
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, material, tex_number, tex_label, color_id, color_data:colors(id, name, hex_code)),
-        supplier:suppliers(id, code, name)
-      `)
-      .single()
+    let data: ThreadTypeSupplierWithRelations | null
+    try {
+      const inserted = await queryOne<{ id: number }>(
+        `INSERT INTO thread_type_supplier (thread_type_id, supplier_id, supplier_item_code, unit_price, notes, is_active)
+         VALUES ($1, $2, $3, $4, $5, true)
+         RETURNING id`,
+        [
+          body.thread_type_id,
+          body.supplier_id,
+          body.supplier_item_code,
+          body.unit_price ?? null,
+          body.notes || null
+        ]
+      )
 
-    if (error) {
+      data = await queryOne<ThreadTypeSupplierWithRelations>(
+        `SELECT tts.*, ${TTS_THREAD_TYPE_EMBED}, ${TTS_SUPPLIER_EMBED}
+         FROM thread_type_supplier tts${TTS_JOINS}
+         WHERE tts.id = $1`,
+        [inserted!.id]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi tạo liên kết: ' + error.message
+        error: 'Lỗi khi tạo liên kết: ' + ((error as Error).message ?? '')
       }, 500)
     }
 
@@ -231,20 +252,16 @@ threadTypeSuppliers.patch('/:id', async (c) => {
 
     // If updating supplier_item_code, check uniqueness
     if (body.supplier_item_code) {
-      const { data: current } = await supabase
-        .from('thread_type_supplier')
-        .select('supplier_id')
-        .eq('id', id)
-        .single()
+      const current = await queryOne<{ supplier_id: number }>(
+        'SELECT supplier_id FROM thread_type_supplier WHERE id = $1',
+        [id]
+      )
 
       if (current) {
-        const { data: existingCode } = await supabase
-          .from('thread_type_supplier')
-          .select('id')
-          .eq('supplier_id', current.supplier_id)
-          .eq('supplier_item_code', body.supplier_item_code)
-          .neq('id', id)
-          .single()
+        const existingCode = await queryOne<{ id: number }>(
+          'SELECT id FROM thread_type_supplier WHERE supplier_id = $1 AND supplier_item_code = $2 AND id <> $3',
+          [current.supplier_id, body.supplier_item_code, id]
+        )
 
         if (existingCode) {
           return c.json<ThreadTypeSupplierApiResponse<null>>({
@@ -255,24 +272,35 @@ threadTypeSuppliers.patch('/:id', async (c) => {
       }
     }
 
-    const { data, error } = await supabase
-      .from('thread_type_supplier')
-      .update(updateData)
-      .eq('id', id)
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, material, tex_number, tex_label, color_id, color_data:colors(id, name, hex_code)),
-        supplier:suppliers(id, code, name)
-      `)
-      .single()
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updateData)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
+    }
+    params.push(id)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
+    let data: ThreadTypeSupplierWithRelations | null
+    try {
+      const updated = await queryOne<{ id: number }>(
+        `UPDATE thread_type_supplier SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id`,
+        params
+      )
+
+      if (!updated) {
         return c.json<ThreadTypeSupplierApiResponse<null>>({
           data: null,
           error: 'Không tìm thấy liên kết'
         }, 404)
       }
+
+      data = await queryOne<ThreadTypeSupplierWithRelations>(
+        `SELECT tts.*, ${TTS_THREAD_TYPE_EMBED}, ${TTS_SUPPLIER_EMBED}
+         FROM thread_type_supplier tts${TTS_JOINS}
+         WHERE tts.id = $1`,
+        [updated.id]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
@@ -301,25 +329,25 @@ threadTypeSuppliers.delete('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
-    const { data, error } = await supabase
-      .from('thread_type_supplier')
-      .delete()
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<ThreadTypeSupplierApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy liên kết'
-        }, 404)
-      }
+    let data: ThreadTypeSupplierRow | null
+    try {
+      data = await queryOne<ThreadTypeSupplierRow>(
+        'DELETE FROM thread_type_supplier WHERE id = $1 RETURNING *',
+        [id]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
         error: 'Lỗi khi xóa liên kết'
       }, 500)
+    }
+
+    if (!data) {
+      return c.json<ThreadTypeSupplierApiResponse<null>>({
+        data: null,
+        error: 'Không tìm thấy liên kết'
+      }, 404)
     }
 
     return c.json<ThreadTypeSupplierApiResponse<ThreadTypeSupplierRow>>({
@@ -346,24 +374,26 @@ threadTypeSuppliers.get('/by-thread/:threadTypeId', async (c) => {
     const threadTypeId = parseInt(c.req.param('threadTypeId'))
     const isActiveParam = c.req.query('is_active')
 
-    let query = supabase
-      .from('thread_type_supplier')
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, material, tex_number, tex_label, color_id, color_data:colors(id, name, hex_code)),
-        supplier:suppliers(id, code, name, is_active)
-      `)
-      .eq('thread_type_id', threadTypeId)
-      .order('supplier_item_code', { ascending: true })
+    const conditions: string[] = ['tts.thread_type_id = $1']
+    const params: unknown[] = [threadTypeId]
 
     // Filter by is_active
     if (isActiveParam !== undefined) {
-      query = query.eq('is_active', isActiveParam === 'true')
+      params.push(isActiveParam === 'true')
+      conditions.push(`tts.is_active = $${params.length}`)
     }
 
-    const { data, error } = await query
-
-    if (error) {
+    let data: ThreadTypeSupplierWithRelations[]
+    try {
+      data = await query<ThreadTypeSupplierWithRelations>(
+        `SELECT tts.*, ${TTS_THREAD_TYPE_EMBED},
+           CASE WHEN s.id IS NULL THEN NULL ELSE json_build_object('id', s.id, 'code', s.code, 'name', s.name, 'is_active', s.is_active) END AS supplier
+         FROM thread_type_supplier tts${TTS_JOINS}
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY tts.supplier_item_code ASC`,
+        params
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
@@ -401,12 +431,10 @@ threadTypeSuppliers.post('/by-thread/:threadTypeId', async (c) => {
     }
 
     // Check if link already exists
-    const { data: existing } = await supabase
-      .from('thread_type_supplier')
-      .select('id')
-      .eq('thread_type_id', threadTypeId)
-      .eq('supplier_id', body.supplier_id)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM thread_type_supplier WHERE thread_type_id = $1 AND supplier_id = $2',
+      [threadTypeId, body.supplier_id]
+    )
 
     if (existing) {
       return c.json<ThreadTypeSupplierApiResponse<null>>({
@@ -416,12 +444,10 @@ threadTypeSuppliers.post('/by-thread/:threadTypeId', async (c) => {
     }
 
     // Check if supplier_item_code is unique for this supplier
-    const { data: existingCode } = await supabase
-      .from('thread_type_supplier')
-      .select('id')
-      .eq('supplier_id', body.supplier_id)
-      .eq('supplier_item_code', body.supplier_item_code)
-      .single()
+    const existingCode = await queryOne<{ id: number }>(
+      'SELECT id FROM thread_type_supplier WHERE supplier_id = $1 AND supplier_item_code = $2',
+      [body.supplier_id, body.supplier_item_code]
+    )
 
     if (existingCode) {
       return c.json<ThreadTypeSupplierApiResponse<null>>({
@@ -430,28 +456,32 @@ threadTypeSuppliers.post('/by-thread/:threadTypeId', async (c) => {
       }, 409)
     }
 
-    const { data, error } = await supabase
-      .from('thread_type_supplier')
-      .insert({
-        thread_type_id: threadTypeId,
-        supplier_id: body.supplier_id,
-        supplier_item_code: body.supplier_item_code,
-        unit_price: body.unit_price ?? null,
-        notes: body.notes || null,
-        is_active: true
-      })
-      .select(`
-        *,
-        thread_type:thread_types(id, code, name, material, tex_number, tex_label, color_id, color_data:colors(id, name, hex_code)),
-        supplier:suppliers(id, code, name)
-      `)
-      .single()
+    let data: ThreadTypeSupplierWithRelations | null
+    try {
+      const inserted = await queryOne<{ id: number }>(
+        `INSERT INTO thread_type_supplier (thread_type_id, supplier_id, supplier_item_code, unit_price, notes, is_active)
+         VALUES ($1, $2, $3, $4, $5, true)
+         RETURNING id`,
+        [
+          threadTypeId,
+          body.supplier_id,
+          body.supplier_item_code,
+          body.unit_price ?? null,
+          body.notes || null
+        ]
+      )
 
-    if (error) {
+      data = await queryOne<ThreadTypeSupplierWithRelations>(
+        `SELECT tts.*, ${TTS_THREAD_TYPE_EMBED}, ${TTS_SUPPLIER_EMBED}
+         FROM thread_type_supplier tts${TTS_JOINS}
+         WHERE tts.id = $1`,
+        [inserted!.id]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi liên kết nhà cung cấp: ' + error.message
+        error: 'Lỗi khi liên kết nhà cung cấp: ' + ((error as Error).message ?? '')
       }, 500)
     }
 

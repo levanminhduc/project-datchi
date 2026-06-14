@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../../db/supabase'
+import { query } from '../../db/query'
 
 export type IssuedRow = {
   po_id: number | null
@@ -387,36 +387,46 @@ export async function fetchIssuedByPoStyleMultiWeek(
 ): Promise<IssuedRow[]> {
   if (weekIds.length === 0) return []
 
-  let itemQuery = supabaseAdmin
-    .from('thread_order_items')
-    .select('po_id, style_id, style_color_id')
-    .in('week_id', weekIds)
-    .not('po_id', 'is', null)
+  const itemParams: unknown[] = [weekIds]
+  let itemSql = `SELECT po_id, style_id, style_color_id FROM thread_order_items
+     WHERE week_id = ANY($1) AND po_id IS NOT NULL`
   if (scopedPoIds && scopedPoIds.length > 0) {
-    itemQuery = itemQuery.in('po_id', scopedPoIds)
+    itemParams.push(scopedPoIds)
+    itemSql += ` AND po_id = ANY($${itemParams.length})`
   }
-  const { data: items, error: itemsErr } = await itemQuery.limit(50000)
-  if (itemsErr) throw itemsErr
+  itemSql += ` LIMIT 50000`
+  const items = await query<{ po_id: number | null; style_id: number | null; style_color_id: number | null }>(
+    itemSql,
+    itemParams,
+  )
   if (!items || items.length === 0) return []
 
   const poIds = scopedPoIds ?? Array.from(new Set(items.map(i => i.po_id).filter((v): v is number => v != null)))
   const styleColorIds = Array.from(new Set(items.map(i => i.style_color_id).filter((v): v is number => v != null)))
   if (poIds.length === 0 || styleColorIds.length === 0) return []
 
-  let query = supabaseAdmin
-    .from('thread_issue_lines')
-    .select('po_id, style_id, style_color_id, thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status, department)')
-    .in('po_id', poIds)
-    .in('style_color_id', styleColorIds)
-    .eq('thread_issues.status', 'CONFIRMED')
-    .limit(100000)
-
+  const lineParams: unknown[] = [poIds, styleColorIds]
+  let lineSql = `SELECT l.po_id, l.style_id, l.style_color_id, l.thread_type_id, l.thread_color_id,
+       l.issued_full, l.issued_partial, l.returned_full, l.returned_partial
+     FROM thread_issue_lines l
+     INNER JOIN thread_issues ti ON ti.id = l.issue_id
+     WHERE l.po_id = ANY($1) AND l.style_color_id = ANY($2) AND ti.status = 'CONFIRMED'`
   if (department) {
-    query = query.eq('thread_issues.department', department)
+    lineParams.push(department)
+    lineSql += ` AND ti.department = $${lineParams.length}`
   }
-
-  const { data: lines, error: linesErr } = await query
-  if (linesErr) throw linesErr
+  lineSql += ` LIMIT 100000`
+  const lines = await query<{
+    po_id: number | null
+    style_id: number | null
+    style_color_id: number | null
+    thread_type_id: number
+    thread_color_id: number | null
+    issued_full: number | null
+    issued_partial: number | null
+    returned_full: number | null
+    returned_partial: number | null
+  }>(lineSql, lineParams)
   if (!lines || lines.length === 0) return []
 
   const validKeys = new Set<string>()
@@ -464,14 +474,13 @@ export async function fetchOrderItemsForWeeks(
 ): Promise<Array<{ id: number; week_id: number; po_id: number | null; style_color_id: number; style_id: number | null; quantity: number }>> {
   if (weekIds.length === 0) return []
 
-  const { data, error } = await supabaseAdmin
-    .from('thread_order_items')
-    .select('id, week_id, po_id, style_color_id, style_id, quantity')
-    .in('week_id', weekIds)
-    .not('po_id', 'is', null)
-    .limit(50000)
+  const data = await query<{ id: number; week_id: number; po_id: number | null; style_color_id: number; style_id: number | null; quantity: number }>(
+    `SELECT id, week_id, po_id, style_color_id, style_id, quantity FROM thread_order_items
+     WHERE week_id = ANY($1) AND po_id IS NOT NULL
+     LIMIT 50000`,
+    [weekIds],
+  )
 
-  if (error) throw error
   return (data ?? []) as Array<{ id: number; week_id: number; po_id: number | null; style_color_id: number; style_id: number | null; quantity: number }>
 }
 
@@ -481,26 +490,23 @@ export async function fetchLastIssuedAtByPo(
 ): Promise<Map<number, string>> {
   if (poIds.length === 0) return new Map()
 
-  let query = supabaseAdmin
-    .from('thread_issue_lines')
-    .select('po_id, thread_issues!inner(created_at, status, department)')
-    .in('po_id', poIds)
-    .eq('thread_issues.status', 'CONFIRMED')
-    .order('created_at', { ascending: false, referencedTable: 'thread_issues' })
-    .limit(50000)
-
+  const lastParams: unknown[] = [poIds]
+  let lastSql = `SELECT l.po_id, ti.created_at
+     FROM thread_issue_lines l
+     INNER JOIN thread_issues ti ON ti.id = l.issue_id
+     WHERE l.po_id = ANY($1) AND ti.status = 'CONFIRMED'`
   if (department) {
-    query = query.eq('thread_issues.department', department)
+    lastParams.push(department)
+    lastSql += ` AND ti.department = $${lastParams.length}`
   }
-
-  const { data, error } = await query
-  if (error) throw error
+  lastSql += ` ORDER BY ti.created_at DESC LIMIT 50000`
+  const data = await query<{ po_id: number | null; created_at: string }>(lastSql, lastParams)
 
   const map = new Map<number, string>()
-  for (const row of (data ?? []) as unknown as Array<{ po_id: number | null; thread_issues: { created_at: string } }>) {
+  for (const row of (data ?? []) as Array<{ po_id: number | null; created_at: string }>) {
     if (row.po_id == null) continue
     if (!map.has(row.po_id)) {
-      map.set(row.po_id, row.thread_issues.created_at)
+      map.set(row.po_id, row.created_at)
     }
   }
   return map
@@ -616,27 +622,37 @@ export async function fetchIssuedByPoStyleColorMultiWeek(
 ): Promise<IssuedByStyleColorRow[]> {
   if (weekIds.length === 0) return []
 
-  const { data: items, error: itemsErr } = await supabaseAdmin
-    .from('thread_order_items')
-    .select('po_id, style_id, style_color_id')
-    .in('week_id', weekIds)
-    .not('po_id', 'is', null)
-    .limit(50000)
-  if (itemsErr) throw itemsErr
+  const items = await query<{ po_id: number | null; style_id: number | null; style_color_id: number | null }>(
+    `SELECT po_id, style_id, style_color_id FROM thread_order_items
+     WHERE week_id = ANY($1) AND po_id IS NOT NULL
+     LIMIT 50000`,
+    [weekIds],
+  )
   if (!items || items.length === 0) return []
 
   const poIds = Array.from(new Set(items.map(i => i.po_id).filter((v): v is number => v != null)))
   const styleColorIds = Array.from(new Set(items.map(i => i.style_color_id).filter((v): v is number => v != null)))
   if (poIds.length === 0 || styleColorIds.length === 0) return []
 
-  const { data: lines, error: linesErr } = await supabaseAdmin
-    .from('thread_issue_lines')
-    .select('po_id, style_id, style_color_id, thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status)')
-    .in('po_id', poIds)
-    .in('style_color_id', styleColorIds)
-    .eq('thread_issues.status', 'CONFIRMED')
-    .limit(100000)
-  if (linesErr) throw linesErr
+  const lines = await query<{
+    po_id: number | null
+    style_id: number | null
+    style_color_id: number
+    thread_type_id: number
+    thread_color_id: number | null
+    issued_full: number | null
+    issued_partial: number | null
+    returned_full: number | null
+    returned_partial: number | null
+  }>(
+    `SELECT l.po_id, l.style_id, l.style_color_id, l.thread_type_id, l.thread_color_id,
+       l.issued_full, l.issued_partial, l.returned_full, l.returned_partial
+     FROM thread_issue_lines l
+     INNER JOIN thread_issues ti ON ti.id = l.issue_id
+     WHERE l.po_id = ANY($1) AND l.style_color_id = ANY($2) AND ti.status = 'CONFIRMED'
+     LIMIT 100000`,
+    [poIds, styleColorIds],
+  )
   if (!lines || lines.length === 0) return []
 
   const validKeys = new Set<string>()

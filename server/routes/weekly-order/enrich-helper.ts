@@ -1,4 +1,4 @@
-import { supabaseAdmin as supabase } from '../../db/supabase'
+import { query } from '../../db/query'
 import { getPartialConeRatio } from '../../utils/settings-helper'
 
 type SummaryRow = {
@@ -48,11 +48,10 @@ export async function enrichWithInventory(
 
   const colorNameToId = new Map<string, number>()
   if (unresolvedColorNames.length > 0) {
-    const { data: colorRows } = await supabase
-      .from('colors')
-      .select('id, name')
-      .in('name', unresolvedColorNames)
-      .limit(unresolvedColorNames.length + 10)
+    const colorRows = await query<{ id: number; name: string }>(
+      `SELECT id, name FROM colors WHERE name = ANY($1) LIMIT $2`,
+      [unresolvedColorNames, unresolvedColorNames.length + 10],
+    )
     for (const c of colorRows || []) {
       colorNameToId.set(c.name, c.id)
     }
@@ -82,16 +81,15 @@ export async function enrichWithInventory(
   const inventoryMap = new Map<string, { full: number; partial: number }>()
 
   if (uniqueColoredTypeIds.length > 0 && uniqueColoredColorIds.length > 0) {
-    const { data: coloredCounts, error: coloredError } = await supabase.rpc(
-      'fn_count_colored_cones_v2',
-      {
-        p_thread_type_ids: uniqueColoredTypeIds,
-        p_color_ids: uniqueColoredColorIds,
-        p_warehouse_ids: warehouseIdsParam,
-      },
+    const coloredCounts = await query<{
+      thread_type_id: number
+      color_id: number
+      is_partial: boolean
+      cone_count: number | string
+    }>(
+      `SELECT * FROM fn_count_colored_cones_v2($1, $2, $3)`,
+      [uniqueColoredTypeIds, uniqueColoredColorIds, warehouseIdsParam],
     )
-
-    if (coloredError) throw coloredError
 
     for (const inv of coloredCounts || []) {
       const key = `${inv.thread_type_id}_${inv.color_id}`
@@ -106,15 +104,14 @@ export async function enrichWithInventory(
   }
 
   if (uniqueNonColoredTypeIds.length > 0) {
-    const { data: inventoryCounts, error: invError } = await supabase.rpc(
-      'fn_count_available_cones_v2',
-      {
-        p_thread_type_ids: uniqueNonColoredTypeIds,
-        p_warehouse_ids: warehouseIdsParam,
-      },
+    const inventoryCounts = await query<{
+      thread_type_id: number
+      is_partial: boolean
+      cone_count: number | string
+    }>(
+      `SELECT * FROM fn_count_available_cones_v2($1, $2)`,
+      [uniqueNonColoredTypeIds, warehouseIdsParam],
     )
-
-    if (invError) throw invError
 
     for (const row of inventoryCounts || []) {
       const key = `${row.thread_type_id}_`

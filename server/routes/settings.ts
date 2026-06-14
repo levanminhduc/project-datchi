@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
 import {
   UpdateSettingSchema,
   EmployeeDetailFieldsConfigSchema,
@@ -24,12 +24,12 @@ const rootOnlySettingsKeys = new Set([
  */
 settings.get('/', async (c) => {
   try {
-    const { data, error } = await supabase
-      .from('system_settings')
-      .select('*')
-      .order('key', { ascending: true })
-
-    if (error) {
+    let data: SystemSettingRow[]
+    try {
+      data = await query<SystemSettingRow>(
+        'SELECT * FROM system_settings ORDER BY key ASC'
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<SettingsApiResponse<null>>(
         {
@@ -80,22 +80,13 @@ settings.get('/:key', async (c) => {
       if (denied) return denied
     }
 
-    const { data, error } = await supabase
-      .from('system_settings')
-      .select('*')
-      .eq('key', key)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<SettingsApiResponse<null>>(
-          {
-            data: null,
-            error: `Không tìm thấy cài đặt với key: ${key}`,
-          },
-          404
-        )
-      }
+    let data: SystemSettingRow | null
+    try {
+      data = await queryOne<SystemSettingRow>(
+        'SELECT * FROM system_settings WHERE key = $1',
+        [key]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<SettingsApiResponse<null>>(
         {
@@ -103,6 +94,16 @@ settings.get('/:key', async (c) => {
           error: 'Lỗi khi tải cài đặt',
         },
         500
+      )
+    }
+
+    if (!data) {
+      return c.json<SettingsApiResponse<null>>(
+        {
+          data: null,
+          error: `Không tìm thấy cài đặt với key: ${key}`,
+        },
+        404
       )
     }
 
@@ -173,22 +174,13 @@ settings.put('/:key', async (c, next) => {
       }
     }
 
-    const { data: existing, error: findError } = await supabase
-      .from('system_settings')
-      .select('id')
-      .eq('key', key)
-      .single()
-
-    if (findError) {
-      if (findError.code === 'PGRST116') {
-        return c.json<SettingsApiResponse<null>>(
-          {
-            data: null,
-            error: `Không tìm thấy cài đặt với key: ${key}`,
-          },
-          404
-        )
-      }
+    let existing: { id: number } | null
+    try {
+      existing = await queryOne<{ id: number }>(
+        'SELECT id FROM system_settings WHERE key = $1',
+        [key]
+      )
+    } catch (findError) {
       console.error('Supabase error:', findError)
       return c.json<SettingsApiResponse<null>>(
         {
@@ -209,17 +201,16 @@ settings.put('/:key', async (c, next) => {
       )
     }
 
-    const { data, error } = await supabase
-      .from('system_settings')
-      .update({
-        value: parseResult.data.value,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('key', key)
-      .select()
-      .single()
-
-    if (error) {
+    let data: SystemSettingRow | null
+    try {
+      data = await queryOne<SystemSettingRow>(
+        `UPDATE system_settings
+         SET value = $1, updated_at = $2
+         WHERE key = $3
+         RETURNING *`,
+        [parseResult.data.value, new Date().toISOString(), key]
+      )
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<SettingsApiResponse<null>>(
         {

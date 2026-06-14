@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
-import { supabaseAdmin as supabase } from '../../db/supabase'
+import { queryOne, querySingle, query } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
 import { SaveResultsSchema } from '../../validation/weeklyOrder'
@@ -19,17 +19,13 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: week, error: fetchError } = await supabase
-      .from('thread_order_weeks')
-      .select('id, status')
-      .eq('id', id)
-      .single()
+    const week = await queryOne<{ id: number; status: string }>(
+      `SELECT id, status FROM thread_order_weeks WHERE id = $1`,
+      [id],
+    )
 
-    if (fetchError) {
-      if (fetchError.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
-      }
-      throw fetchError
+    if (!week) {
+      return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
 
     const isConfirmed = week.status === 'CONFIRMED'
@@ -58,13 +54,13 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
 
       const threadTypeIds = [...new Set(summaryRows.map((r) => r.thread_type_id))]
 
-      const { data: threadTypes, error: threadError } = await supabase
-        .from('thread_types')
-        .select('id, meters_per_cone')
-        .in('id', threadTypeIds)
-        .limit(threadTypeIds.length)
-
-      if (threadError) {
+      let threadTypes: Array<{ id: number; meters_per_cone: number | null }> = []
+      try {
+        threadTypes = await query<{ id: number; meters_per_cone: number | null }>(
+          `SELECT id, meters_per_cone FROM thread_types WHERE id = ANY($1) LIMIT $2`,
+          [threadTypeIds, threadTypeIds.length],
+        )
+      } catch (threadError) {
         console.warn('Error fetching thread types for quota calculation:', threadError)
       }
 
@@ -92,11 +88,10 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
         }
       })
 
-      const { data: warehouseRows } = await supabase
-        .from('thread_order_week_warehouses')
-        .select('warehouse_id')
-        .eq('week_id', id)
-        .limit(100)
+      const warehouseRows = await query<{ warehouse_id: number }>(
+        `SELECT warehouse_id FROM thread_order_week_warehouses WHERE week_id = $1 LIMIT 100`,
+        [id],
+      )
 
       warehouseIds = (warehouseRows || []).map((r: { warehouse_id: number }) => r.warehouse_id)
       console.info(`[saveResults] week=${id} warehouseIds=${JSON.stringify(warehouseIds)}`)
@@ -111,29 +106,30 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
       )
     }
 
-    const { data, error } = await supabase
-      .from('thread_order_results')
-      .upsert(
-        {
-          week_id: id,
-          calculation_data: validated.calculation_data,
-          summary_data: enrichedSummaryData,
-          calculated_at: new Date().toISOString(),
-          warehouse_ids: warehouseIds,
-        },
-        { onConflict: 'week_id' },
-      )
-      .select()
-      .single()
-
-    if (error) throw error
+    const data = await querySingle<Record<string, unknown>>(
+      `INSERT INTO thread_order_results (week_id, calculation_data, summary_data, calculated_at, warehouse_ids)
+       VALUES ($1, $2::jsonb, $3::jsonb, $4, $5)
+       ON CONFLICT (week_id) DO UPDATE SET
+         calculation_data = EXCLUDED.calculation_data,
+         summary_data = EXCLUDED.summary_data,
+         calculated_at = EXCLUDED.calculated_at,
+         warehouse_ids = EXCLUDED.warehouse_ids
+       RETURNING *`,
+      [
+        id,
+        JSON.stringify(validated.calculation_data ?? null),
+        JSON.stringify(enrichedSummaryData ?? null),
+        new Date().toISOString(),
+        warehouseIds,
+      ],
+    )
 
     if (isConfirmed && enrichedSummaryData && Array.isArray(enrichedSummaryData)) {
-      await syncDeliveries(supabase, id, enrichedSummaryData as any)
+      await syncDeliveries(id, enrichedSummaryData as any)
     }
 
     if (isConfirmed && validated.calculation_data && Array.isArray(validated.calculation_data)) {
-      await createAllocations(supabase, id, validated.calculation_data as any)
+      await createAllocations(id, validated.calculation_data as any)
     }
 
     return c.json({ data, error: null, message: 'Lưu kết quả tính toán thành công' })

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne, tx } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import { broadcastNotification, getWarehouseEmployeeIds } from '../utils/notificationService'
 import type {
@@ -63,6 +63,32 @@ function calculateMetersFromWeight(
   return netWeight / densityGramsPerMeter
 }
 
+// ============ SHARED SQL FRAGMENTS ============
+
+// Embed: thread_recovery → thread_inventory (to-one via cone_id) → thread_types (to-one)
+const RECOVERY_EMBED_SELECT = `
+  tr.*,
+  CASE WHEN ti.id IS NULL THEN NULL
+    ELSE json_build_object(
+      'id', ti.id,
+      'cone_id', ti.cone_id,
+      'quantity_meters', ti.quantity_meters,
+      'weight_grams', ti.weight_grams,
+      'status', ti.status,
+      'is_partial', ti.is_partial,
+      'warehouse_id', ti.warehouse_id,
+      'thread_type_id', ti.thread_type_id,
+      'thread_types', CASE WHEN tt.id IS NULL THEN NULL
+        ELSE json_build_object('id', tt.id, 'code', tt.code, 'name', tt.name, 'density_grams_per_meter', tt.density_grams_per_meter) END
+    ) END AS thread_inventory`
+
+const RECOVERY_EMBED_JOINS = `
+  LEFT JOIN thread_inventory ti ON ti.id = tr.cone_id
+  LEFT JOIN thread_types tt ON tt.id = ti.thread_type_id`
+
+const RECOVERY_EMBED_FROM = `
+  FROM thread_recovery tr${RECOVERY_EMBED_JOINS}`
+
 // ============ ROUTES ============
 
 /**
@@ -76,38 +102,24 @@ recovery.get('/', requirePermission('thread.recovery.view'), async (c) => {
     const status = c.req.query('status') as RecoveryStatus | undefined
     const coneBarcode = c.req.query('cone_id')
 
-    let query = supabase
-      .from('thread_recovery')
-      .select(`
-        *,
-        thread_inventory(
-          id,
-          cone_id,
-          quantity_meters,
-          weight_grams,
-          status,
-          is_partial,
-          warehouse_id,
-          thread_type_id,
-          thread_types(id, code, name, density_grams_per_meter)
-        )
-      `)
-      .order('created_at', { ascending: false })
+    const conditions: string[] = []
+    const params: unknown[] = []
 
     if (status) {
-      query = query.eq('status', status)
+      params.push(status)
+      conditions.push(`tr.status = $${params.length}`)
     }
 
     // If cone_id (barcode) is provided, first find the inventory ID
     if (coneBarcode) {
-      const { data: cone } = await supabase
-        .from('thread_inventory')
-        .select('id')
-        .eq('cone_id', coneBarcode)
-        .single()
+      const cone = await queryOne<{ id: number }>(
+        'SELECT id FROM thread_inventory WHERE cone_id = $1',
+        [coneBarcode]
+      )
 
       if (cone) {
-        query = query.eq('cone_id', cone.id)
+        params.push(cone.id)
+        conditions.push(`tr.cone_id = $${params.length}`)
       } else {
         // No cone found, return empty result
         return c.json<ThreadApiResponse<RecoveryWithCone[]>>({
@@ -117,9 +129,16 @@ recovery.get('/', requirePermission('thread.recovery.view'), async (c) => {
       }
     }
 
-    const { data, error } = await query
+    const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : ''
 
-    if (error) {
+    let data: RecoveryWithCone[]
+    try {
+      data = await query<Record<string, unknown>>(
+        `SELECT ${RECOVERY_EMBED_SELECT} ${RECOVERY_EMBED_FROM}${whereClause}
+         ORDER BY tr.created_at DESC`,
+        params
+      ) as unknown as RecoveryWithCone[]
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -128,7 +147,7 @@ recovery.get('/', requirePermission('thread.recovery.view'), async (c) => {
     }
 
     return c.json<ThreadApiResponse<RecoveryWithCone[]>>({
-      data: data as RecoveryWithCone[],
+      data,
       error: null,
     })
   } catch (err) {
@@ -160,32 +179,14 @@ recovery.get('/:id', requirePermission('thread.recovery.view'), async (c) => {
       }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('thread_recovery')
-      .select(`
-        *,
-        thread_inventory(
-          id,
-          cone_id,
-          quantity_meters,
-          weight_grams,
-          status,
-          is_partial,
-          warehouse_id,
-          thread_type_id,
-          thread_types(id, code, name, density_grams_per_meter)
-        )
-      `)
-      .eq('id', parsedId)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<ThreadApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy bản ghi thu hồi',
-        }, 404)
-      }
+    let data: RecoveryWithCone | null
+    try {
+      data = await queryOne<Record<string, unknown>>(
+        `SELECT ${RECOVERY_EMBED_SELECT} ${RECOVERY_EMBED_FROM}
+         WHERE tr.id = $1`,
+        [parsedId]
+      ) as unknown as RecoveryWithCone | null
+    } catch (error) {
       console.error('Supabase error:', error)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -193,8 +194,15 @@ recovery.get('/:id', requirePermission('thread.recovery.view'), async (c) => {
       }, 500)
     }
 
+    if (!data) {
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Không tìm thấy bản ghi thu hồi',
+      }, 404)
+    }
+
     return c.json<ThreadApiResponse<RecoveryWithCone>>({
-      data: data as RecoveryWithCone,
+      data,
       error: null,
     })
   } catch (err) {
@@ -223,23 +231,28 @@ recovery.post('/initiate', requirePermission('thread.recovery.manage'), async (c
     }
 
     // Find cone by barcode
-    const { data: cone, error: coneError } = await supabase
-      .from('thread_inventory')
-      .select(`
-        id,
-        cone_id,
-        quantity_meters,
-        weight_grams,
-        status,
-        is_partial,
-        warehouse_id,
-        thread_type_id,
-        thread_types(id, code, name, density_grams_per_meter)
-      `)
-      .eq('cone_id', body.cone_id)
-      .single()
+    const cone = await queryOne<{
+      id: number
+      cone_id: string
+      quantity_meters: number
+      weight_grams: number | null
+      status: ConeStatus
+      is_partial: boolean
+      warehouse_id: number
+      thread_type_id: number
+      thread_types: { id: number; code: string; name: string; density_grams_per_meter: number } | null
+    }>(
+      `SELECT ti.id, ti.cone_id, ti.quantity_meters, ti.weight_grams, ti.status,
+         ti.is_partial, ti.warehouse_id, ti.thread_type_id,
+         CASE WHEN tt.id IS NULL THEN NULL
+           ELSE json_build_object('id', tt.id, 'code', tt.code, 'name', tt.name, 'density_grams_per_meter', tt.density_grams_per_meter) END AS thread_types
+       FROM thread_inventory ti
+       LEFT JOIN thread_types tt ON tt.id = ti.thread_type_id
+       WHERE ti.cone_id = $1`,
+      [body.cone_id]
+    )
 
-    if (coneError || !cone) {
+    if (!cone) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Không tìm thấy cuộn chỉ với mã vạch này',
@@ -256,12 +269,11 @@ recovery.post('/initiate', requirePermission('thread.recovery.manage'), async (c
     }
 
     // Check if there's already an active recovery for this cone
-    const { data: existingRecovery } = await supabase
-      .from('thread_recovery')
-      .select('id, status')
-      .eq('cone_id', cone.id)
-      .in('status', ['INITIATED', 'PENDING_WEIGH', 'WEIGHED'])
-      .single()
+    const existingRecovery = await queryOne<{ id: number; status: RecoveryStatus }>(
+      `SELECT id, status FROM thread_recovery
+       WHERE cone_id = $1 AND status = ANY($2)`,
+      [cone.id, ['INITIATED', 'PENDING_WEIGH', 'WEIGHED']]
+    )
 
     if (existingRecovery) {
       return c.json<ThreadApiResponse<null>>({
@@ -270,36 +282,27 @@ recovery.post('/initiate', requirePermission('thread.recovery.manage'), async (c
       }, 409)
     }
 
-    // Create recovery record
-    const insertData = {
-      cone_id: cone.id,
-      original_meters: cone.quantity_meters,
-      status: 'INITIATED' as RecoveryStatus,
-      initiated_by: body.initiated_by || null,
-      notes: body.notes || null,
-      tare_weight_grams: DEFAULT_TARE_WEIGHT_GRAMS,
-    }
-
-    const { data: recovery, error: insertError } = await supabase
-      .from('thread_recovery')
-      .insert(insertData)
-      .select(`
-        *,
-        thread_inventory(
-          id,
-          cone_id,
-          quantity_meters,
-          weight_grams,
-          status,
-          is_partial,
-          warehouse_id,
-          thread_type_id,
-          thread_types(id, code, name, density_grams_per_meter)
-        )
-      `)
-      .single()
-
-    if (insertError) {
+    // Create recovery record + fetch with embed
+    let recovery: RecoveryWithCone | null
+    try {
+      recovery = await queryOne<Record<string, unknown>>(
+        `WITH ins AS (
+           INSERT INTO thread_recovery (cone_id, original_meters, status, initiated_by, notes, tare_weight_grams)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING *
+         )
+         SELECT ${RECOVERY_EMBED_SELECT}
+         FROM ins tr${RECOVERY_EMBED_JOINS}`,
+        [
+          cone.id,
+          cone.quantity_meters,
+          'INITIATED' as RecoveryStatus,
+          body.initiated_by || null,
+          body.notes || null,
+          DEFAULT_TARE_WEIGHT_GRAMS,
+        ]
+      ) as unknown as RecoveryWithCone | null
+    } catch (insertError) {
       console.error('Insert error:', insertError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -308,15 +311,12 @@ recovery.post('/initiate', requirePermission('thread.recovery.manage'), async (c
     }
 
     // Update cone status to PARTIAL_RETURN
-    const { error: updateError } = await supabase
-      .from('thread_inventory')
-      .update({
-        status: 'PARTIAL_RETURN' as ConeStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', cone.id)
-
-    if (updateError) {
+    try {
+      await query(
+        `UPDATE thread_inventory SET status = $1, updated_at = $2 WHERE id = $3`,
+        ['PARTIAL_RETURN' as ConeStatus, new Date().toISOString(), cone.id]
+      )
+    } catch (updateError) {
       console.error('Cone update error:', updateError)
     }
 
@@ -369,24 +369,17 @@ recovery.post('/:id/weigh', requirePermission('thread.recovery.manage'), async (
     }
 
     // Fetch recovery with cone and thread type details
-    const { data: existingRecovery, error: fetchError } = await supabase
-      .from('thread_recovery')
-      .select(`
-        *,
-        thread_inventory(
-          id,
-          cone_id,
-          quantity_meters,
-          weight_grams,
-          status,
-          thread_type_id,
-          thread_types(id, density_grams_per_meter)
-        )
-      `)
-      .eq('id', id)
-      .single()
+    const existingRecovery = await queryOne<RecoveryWithCone & {
+      status: RecoveryStatus
+      original_meters: number
+      tare_weight_grams: number | null
+    }>(
+      `SELECT ${RECOVERY_EMBED_SELECT} ${RECOVERY_EMBED_FROM}
+       WHERE tr.id = $1`,
+      [id]
+    ) as unknown as (RecoveryWithCone & { status: RecoveryStatus; original_meters: number; tare_weight_grams: number | null }) | null
 
-    if (fetchError || !existingRecovery) {
+    if (!existingRecovery) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Không tìm thấy bản ghi thu hồi',
@@ -428,37 +421,30 @@ recovery.post('/:id/weigh', requirePermission('thread.recovery.manage'), async (
     const suggestWriteOff = netWeight < WRITE_OFF_THRESHOLD_GRAMS
 
     // Update recovery record
-    const updateData = {
-      returned_weight_grams: body.weight_grams,
-      calculated_meters: calculatedMeters,
-      tare_weight_grams: tareWeight,
-      consumption_meters: consumptionMeters,
-      status: 'WEIGHED' as RecoveryStatus,
-      weighed_by: body.weighed_by || null,
-      updated_at: new Date().toISOString(),
-    }
-
-    const { data: updatedRecovery, error: updateError } = await supabase
-      .from('thread_recovery')
-      .update(updateData)
-      .eq('id', id)
-      .select(`
-        *,
-        thread_inventory(
+    let updatedRecovery: RecoveryWithCone | null
+    try {
+      updatedRecovery = await queryOne<Record<string, unknown>>(
+        `WITH upd AS (
+           UPDATE thread_recovery
+           SET returned_weight_grams = $1, calculated_meters = $2, tare_weight_grams = $3,
+               consumption_meters = $4, status = $5, weighed_by = $6, updated_at = $7
+           WHERE id = $8
+           RETURNING *
+         )
+         SELECT ${RECOVERY_EMBED_SELECT}
+         FROM upd tr${RECOVERY_EMBED_JOINS}`,
+        [
+          body.weight_grams,
+          calculatedMeters,
+          tareWeight,
+          consumptionMeters,
+          'WEIGHED' as RecoveryStatus,
+          body.weighed_by || null,
+          new Date().toISOString(),
           id,
-          cone_id,
-          quantity_meters,
-          weight_grams,
-          status,
-          is_partial,
-          warehouse_id,
-          thread_type_id,
-          thread_types(id, code, name, density_grams_per_meter)
-        )
-      `)
-      .single()
-
-    if (updateError) {
+        ]
+      ) as unknown as RecoveryWithCone | null
+    } catch (updateError) {
       console.error('Update error:', updateError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -505,24 +491,19 @@ recovery.post('/:id/confirm', requirePermission('thread.recovery.manage'), async
     }
 
     // Fetch recovery with cone details
-    const { data: existingRecovery, error: fetchError } = await supabase
-      .from('thread_recovery')
-      .select(`
-        *,
-        thread_inventory(
-          id,
-          cone_id,
-          quantity_meters,
-          weight_grams,
-          status,
-          warehouse_id,
-          thread_type_id
-        )
-      `)
-      .eq('id', id)
-      .single()
+    const existingRecovery = await queryOne<RecoveryWithCone & {
+      status: RecoveryStatus
+      original_meters: number
+      calculated_meters: number | null
+      returned_weight_grams: number | null
+      notes: string | null
+    }>(
+      `SELECT ${RECOVERY_EMBED_SELECT} ${RECOVERY_EMBED_FROM}
+       WHERE tr.id = $1`,
+      [id]
+    ) as unknown as (RecoveryWithCone & { status: RecoveryStatus; original_meters: number; calculated_meters: number | null; returned_weight_grams: number | null; notes: string | null }) | null
 
-    if (fetchError || !existingRecovery) {
+    if (!existingRecovery) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Không tìm thấy bản ghi thu hồi',
@@ -548,87 +529,71 @@ recovery.post('/:id/confirm', requirePermission('thread.recovery.manage'), async
     const calculatedMeters = existingRecovery.calculated_meters || 0
     const returnedWeight = existingRecovery.returned_weight_grams || 0
 
-    // Update cone: status = AVAILABLE, is_partial = true, update quantity
-    const { error: coneUpdateError } = await supabase
-      .from('thread_inventory')
-      .update({
-        status: 'AVAILABLE' as ConeStatus,
-        is_partial: true,
-        quantity_meters: calculatedMeters,
-        weight_grams: returnedWeight,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', coneData.id)
-
-    if (coneUpdateError) {
-      console.error('Cone update error:', coneUpdateError)
-      return c.json<ThreadApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi cập nhật trạng thái cuộn chỉ',
-      }, 500)
-    }
-
-    // Update recovery record
     const recoveryNotes = body.notes
       ? `${existingRecovery.notes || ''}\n[Xác nhận]: ${body.notes}`.trim()
       : existingRecovery.notes
 
-    const { data: updatedRecovery, error: updateError } = await supabase
-      .from('thread_recovery')
-      .update({
-        status: 'CONFIRMED' as RecoveryStatus,
-        confirmed_by: body.confirmed_by || null,
-        notes: recoveryNotes,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .select(`
-        *,
-        thread_inventory(
-          id,
-          cone_id,
-          quantity_meters,
-          weight_grams,
-          status,
-          is_partial,
-          warehouse_id,
-          thread_type_id,
-          thread_types(id, code, name, density_grams_per_meter)
+    // Atomic: cone → AVAILABLE + recovery → CONFIRMED + movement audit, one logical op
+    let updatedRecovery: RecoveryWithCone | null
+    try {
+      updatedRecovery = await tx(async (client) => {
+        await client.query(
+          `UPDATE thread_inventory
+           SET status = $1, is_partial = true, quantity_meters = $2, weight_grams = $3, updated_at = $4
+           WHERE id = $5`,
+          ['AVAILABLE' as ConeStatus, calculatedMeters, returnedWeight, new Date().toISOString(), coneData.id]
         )
-      `)
-      .single()
 
-    if (updateError) {
-      console.error('Recovery update error:', updateError)
+        const updRes = await client.query(
+          `WITH upd AS (
+             UPDATE thread_recovery
+             SET status = $1, confirmed_by = $2, notes = $3, updated_at = $4
+             WHERE id = $5
+             RETURNING *
+           )
+           SELECT ${RECOVERY_EMBED_SELECT}
+           FROM upd tr${RECOVERY_EMBED_JOINS}`,
+          ['CONFIRMED' as RecoveryStatus, body.confirmed_by || null, recoveryNotes, new Date().toISOString(), id]
+        )
+
+        // Log movement (best-effort: failure must not abort the recovery confirmation)
+        try {
+          await client.query('SAVEPOINT mv')
+          await client.query(
+            `INSERT INTO thread_movements
+               (cone_id, movement_type, quantity_meters, weight_grams, meters_before, meters_after,
+                status_before, status_after, reference_type, reference_id, performed_by, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [
+              coneData.id,
+              'RETURN' as MovementType,
+              calculatedMeters,
+              returnedWeight,
+              existingRecovery.original_meters,
+              calculatedMeters,
+              'PARTIAL_RETURN' as ConeStatus,
+              'AVAILABLE' as ConeStatus,
+              'RECOVERY',
+              id,
+              body.confirmed_by || null,
+              `Thu hồi cuộn chỉ ${coneData.cone_id}. Còn lại: ${calculatedMeters.toFixed(2)}m`,
+            ]
+          )
+          await client.query('RELEASE SAVEPOINT mv')
+        } catch (movementError) {
+          await client.query('ROLLBACK TO SAVEPOINT mv')
+          console.error('Movement log error:', movementError)
+          // Don't fail the request, recovery was confirmed
+        }
+
+        return (updRes.rows[0] ?? null) as unknown as RecoveryWithCone | null
+      })
+    } catch (confirmError) {
+      console.error('Recovery confirm error:', confirmError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi cập nhật bản ghi thu hồi',
+        error: 'Lỗi khi cập nhật trạng thái cuộn chỉ',
       }, 500)
-    }
-
-    // Log movement
-    const movementData = {
-      cone_id: coneData.id,
-      movement_type: 'RETURN' as MovementType,
-      quantity_meters: calculatedMeters,
-      weight_grams: returnedWeight,
-      meters_before: existingRecovery.original_meters,
-      meters_after: calculatedMeters,
-      status_before: 'PARTIAL_RETURN' as ConeStatus,
-      status_after: 'AVAILABLE' as ConeStatus,
-      reference_type: 'RECOVERY',
-      reference_id: id,
-      performed_by: body.confirmed_by || null,
-      notes: `Thu hồi cuộn chỉ ${coneData.cone_id}. Còn lại: ${calculatedMeters.toFixed(2)}m`,
-    }
-
-    const { error: movementError } = await supabase
-      .from('thread_movements')
-      .insert(movementData)
-
-    if (movementError) {
-      console.error('Movement log error:', movementError)
-      // Don't fail the request, recovery was confirmed
     }
 
     return c.json<ThreadApiResponse<RecoveryWithCone>>({
@@ -670,24 +635,19 @@ recovery.post('/:id/writeoff', requirePermission('thread.recovery.manage'), asyn
     }
 
     // Fetch recovery with cone details
-    const { data: existingRecovery, error: fetchError } = await supabase
-      .from('thread_recovery')
-      .select(`
-        *,
-        thread_inventory(
-          id,
-          cone_id,
-          quantity_meters,
-          weight_grams,
-          status,
-          warehouse_id,
-          thread_type_id
-        )
-      `)
-      .eq('id', id)
-      .single()
+    const existingRecovery = await queryOne<RecoveryWithCone & {
+      status: RecoveryStatus
+      original_meters: number
+      consumption_meters: number | null
+      returned_weight_grams: number | null
+      notes: string | null
+    }>(
+      `SELECT ${RECOVERY_EMBED_SELECT} ${RECOVERY_EMBED_FROM}
+       WHERE tr.id = $1`,
+      [id]
+    ) as unknown as (RecoveryWithCone & { status: RecoveryStatus; original_meters: number; consumption_meters: number | null; returned_weight_grams: number | null; notes: string | null }) | null
 
-    if (fetchError || !existingRecovery) {
+    if (!existingRecovery) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Không tìm thấy bản ghi thu hồi',
@@ -711,84 +671,68 @@ recovery.post('/:id/writeoff', requirePermission('thread.recovery.manage'), asyn
       }, 500)
     }
 
-    // Update cone status to WRITTEN_OFF
-    const { error: coneUpdateError } = await supabase
-      .from('thread_inventory')
-      .update({
-        status: 'WRITTEN_OFF' as ConeStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', coneData.id)
-
-    if (coneUpdateError) {
-      console.error('Cone update error:', coneUpdateError)
-      return c.json<ThreadApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi cập nhật trạng thái cuộn chỉ',
-      }, 500)
-    }
-
-    // Update recovery record
     const writeOffNotes = `${existingRecovery.notes || ''}\n[Loại bỏ]: ${body.reason}`.trim()
+    const writeOffConsumption = existingRecovery.consumption_meters ?? existingRecovery.original_meters
 
-    const { data: updatedRecovery, error: updateError } = await supabase
-      .from('thread_recovery')
-      .update({
-        status: 'WRITTEN_OFF' as RecoveryStatus,
-        confirmed_by: body.approved_by,
-        notes: writeOffNotes,
-        // If not weighed yet, set consumption to original meters (all consumed/lost)
-        consumption_meters: existingRecovery.consumption_meters ?? existingRecovery.original_meters,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .select(`
-        *,
-        thread_inventory(
-          id,
-          cone_id,
-          quantity_meters,
-          weight_grams,
-          status,
-          is_partial,
-          warehouse_id,
-          thread_type_id,
-          thread_types(id, code, name, density_grams_per_meter)
+    // Atomic: cone → WRITTEN_OFF + recovery → WRITTEN_OFF + movement audit, one logical op
+    let updatedRecovery: RecoveryWithCone | null
+    try {
+      updatedRecovery = await tx(async (client) => {
+        await client.query(
+          `UPDATE thread_inventory SET status = $1, updated_at = $2 WHERE id = $3`,
+          ['WRITTEN_OFF' as ConeStatus, new Date().toISOString(), coneData.id]
         )
-      `)
-      .single()
 
-    if (updateError) {
-      console.error('Recovery update error:', updateError)
+        const updRes = await client.query(
+          `WITH upd AS (
+             UPDATE thread_recovery
+             SET status = $1, confirmed_by = $2, notes = $3, consumption_meters = $4, updated_at = $5
+             WHERE id = $6
+             RETURNING *
+           )
+           SELECT ${RECOVERY_EMBED_SELECT}
+           FROM upd tr${RECOVERY_EMBED_JOINS}`,
+          ['WRITTEN_OFF' as RecoveryStatus, body.approved_by, writeOffNotes, writeOffConsumption, new Date().toISOString(), id]
+        )
+
+        // Log movement for write-off (best-effort: failure must not abort the write-off)
+        try {
+          await client.query('SAVEPOINT mv')
+          await client.query(
+            `INSERT INTO thread_movements
+               (cone_id, movement_type, quantity_meters, weight_grams, meters_before, meters_after,
+                status_before, status_after, reference_type, reference_id, performed_by, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [
+              coneData.id,
+              'WRITE_OFF' as MovementType,
+              -(existingRecovery.original_meters),
+              existingRecovery.returned_weight_grams || 0,
+              existingRecovery.original_meters,
+              0,
+              coneData.status as ConeStatus,
+              'WRITTEN_OFF' as ConeStatus,
+              'RECOVERY',
+              id,
+              body.approved_by,
+              `Loại bỏ cuộn chỉ ${coneData.cone_id}. Lý do: ${body.reason}`,
+            ]
+          )
+          await client.query('RELEASE SAVEPOINT mv')
+        } catch (movementError) {
+          await client.query('ROLLBACK TO SAVEPOINT mv')
+          console.error('Movement log error:', movementError)
+          // Don't fail the request, write-off was recorded
+        }
+
+        return (updRes.rows[0] ?? null) as unknown as RecoveryWithCone | null
+      })
+    } catch (writeOffError) {
+      console.error('Recovery write-off error:', writeOffError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi cập nhật bản ghi thu hồi',
       }, 500)
-    }
-
-    // Log movement for write-off
-    const movementData = {
-      cone_id: coneData.id,
-      movement_type: 'WRITE_OFF' as MovementType,
-      quantity_meters: -(existingRecovery.original_meters),
-      weight_grams: existingRecovery.returned_weight_grams || 0,
-      meters_before: existingRecovery.original_meters,
-      meters_after: 0,
-      status_before: coneData.status as ConeStatus,
-      status_after: 'WRITTEN_OFF' as ConeStatus,
-      reference_type: 'RECOVERY',
-      reference_id: id,
-      performed_by: body.approved_by,
-      notes: `Loại bỏ cuộn chỉ ${coneData.cone_id}. Lý do: ${body.reason}`,
-    }
-
-    const { error: movementError } = await supabase
-      .from('thread_movements')
-      .insert(movementData)
-
-    if (movementError) {
-      console.error('Movement log error:', movementError)
-      // Don't fail the request, write-off was recorded
     }
 
     return c.json<ThreadApiResponse<RecoveryWithCone>>({
@@ -828,20 +772,21 @@ recovery.post('/:id/reject', requirePermission('thread.recovery.manage'), async 
     }
 
     // Fetch recovery with cone details
-    const { data: existingRecovery, error: fetchError } = await supabase
-      .from('thread_recovery')
-      .select(`
-        *,
-        thread_inventory(
-          id,
-          cone_id,
-          status
-        )
-      `)
-      .eq('id', id)
-      .single()
+    const existingRecovery = await queryOne<RecoveryRow & {
+      status: RecoveryStatus
+      notes: string | null
+      thread_inventory: { id: number; cone_id: string; status: ConeStatus } | null
+    }>(
+      `SELECT tr.*,
+         CASE WHEN ti.id IS NULL THEN NULL
+           ELSE json_build_object('id', ti.id, 'cone_id', ti.cone_id, 'status', ti.status) END AS thread_inventory
+       FROM thread_recovery tr
+       LEFT JOIN thread_inventory ti ON ti.id = tr.cone_id
+       WHERE tr.id = $1`,
+      [id]
+    )
 
-    if (fetchError || !existingRecovery) {
+    if (!existingRecovery) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Không tìm thấy bản ghi thu hồi',
@@ -857,19 +802,16 @@ recovery.post('/:id/reject', requirePermission('thread.recovery.manage'), async 
       }, 400)
     }
 
-    const coneData = existingRecovery.thread_inventory as RecoveryWithCone['thread_inventory']
+    const coneData = existingRecovery.thread_inventory
 
     // Revert cone status back to IN_PRODUCTION (or previous state)
     if (coneData) {
-      const { error: coneUpdateError } = await supabase
-        .from('thread_inventory')
-        .update({
-          status: 'IN_PRODUCTION' as ConeStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', coneData.id)
-
-      if (coneUpdateError) {
+      try {
+        await query(
+          `UPDATE thread_inventory SET status = $1, updated_at = $2 WHERE id = $3`,
+          ['IN_PRODUCTION' as ConeStatus, new Date().toISOString(), coneData.id]
+        )
+      } catch (coneUpdateError) {
         console.error('Cone update error:', coneUpdateError)
         // Continue with rejection
       }
@@ -878,32 +820,20 @@ recovery.post('/:id/reject', requirePermission('thread.recovery.manage'), async 
     // Update recovery record
     const rejectNotes = `${existingRecovery.notes || ''}\n[Từ chối]: ${body.reason}`.trim()
 
-    const { data: updatedRecovery, error: updateError } = await supabase
-      .from('thread_recovery')
-      .update({
-        status: 'REJECTED' as RecoveryStatus,
-        confirmed_by: body.rejected_by || null,
-        notes: rejectNotes,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .select(`
-        *,
-        thread_inventory(
-          id,
-          cone_id,
-          quantity_meters,
-          weight_grams,
-          status,
-          is_partial,
-          warehouse_id,
-          thread_type_id,
-          thread_types(id, code, name, density_grams_per_meter)
-        )
-      `)
-      .single()
-
-    if (updateError) {
+    let updatedRecovery: RecoveryWithCone | null
+    try {
+      updatedRecovery = await queryOne<Record<string, unknown>>(
+        `WITH upd AS (
+           UPDATE thread_recovery
+           SET status = $1, confirmed_by = $2, notes = $3, updated_at = $4
+           WHERE id = $5
+           RETURNING *
+         )
+         SELECT ${RECOVERY_EMBED_SELECT}
+         FROM upd tr${RECOVERY_EMBED_JOINS}`,
+        ['REJECTED' as RecoveryStatus, body.rejected_by || null, rejectNotes, new Date().toISOString(), id]
+      ) as unknown as RecoveryWithCone | null
+    } catch (updateError) {
       console.error('Recovery update error:', updateError)
       return c.json<ThreadApiResponse<null>>({
         data: null,

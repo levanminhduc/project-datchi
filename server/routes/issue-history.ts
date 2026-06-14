@@ -7,7 +7,7 @@
  */
 
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import type { AppEnv } from '../types/hono-env'
 import { getErrorMessage } from '../utils/errorHelper'
@@ -120,63 +120,63 @@ issueHistory.get('/aggregated', async (c) => {
     const aggregated = new Map<string, AggregatedRow>()
     let lastId = 0
 
-    const summarySelect = `
-          id,
-          issued_full,
-          thread_types!inner (
-            tex_number,
-            tex_label,
-            supplier_id,
-            suppliers!inner ( id, name )
-          ),
-          thread_issues!inner (
-            status,
-            updated_at,
-            source_warehouse_id
-          )
-          `
-    const detailedSelect = `
-          id,
-          issued_full,
-          thread_types!inner (
-            tex_number,
-            tex_label,
-            supplier_id,
-            suppliers!inner ( id, name )
-          ),
-          thread_issues!inner (
-            status,
-            updated_at,
-            source_warehouse_id,
-            department
-          ),
-          styles ( style_code )
-          `
-    const selectString = mode === 'detailed' ? detailedSelect : summarySelect
+    const threadTypesEmbed = `
+          json_build_object(
+            'tex_number', tt.tex_number,
+            'tex_label', tt.tex_label,
+            'supplier_id', tt.supplier_id,
+            'suppliers', json_build_object('id', sup.id, 'name', sup.name)
+          )`
+    const issuesSummaryEmbed = `
+          json_build_object(
+            'status', ti.status,
+            'updated_at', ti.updated_at,
+            'source_warehouse_id', ti.source_warehouse_id
+          )`
+    const issuesDetailedEmbed = `
+          json_build_object(
+            'status', ti.status,
+            'updated_at', ti.updated_at,
+            'source_warehouse_id', ti.source_warehouse_id,
+            'department', ti.department
+          )`
+    const stylesSelect =
+      mode === 'detailed'
+        ? `,
+          CASE WHEN s.id IS NULL THEN NULL ELSE json_build_object('style_code', s.style_code) END AS styles`
+        : ''
+    const stylesJoin =
+      mode === 'detailed' ? '\n      LEFT JOIN styles s ON s.id = til.style_id' : ''
 
     while (true) {
-      let query = supabase
-        .from('thread_issue_lines')
-        .select(selectString)
-        .eq('thread_issues.status', 'CONFIRMED')
-        .gte('thread_issues.updated_at', lowerBound)
-        .lt('thread_issues.updated_at', upperBound)
-        .gt('issued_full', 0)
-        .gt('id', lastId)
-        .order('id', { ascending: true })
-        .limit(BATCH_SIZE)
-
+      const params: unknown[] = ['CONFIRMED', lowerBound, upperBound, lastId]
+      let whereWarehouse = ''
       if (warehouse_id) {
-        query = query.eq('thread_issues.source_warehouse_id', warehouse_id)
+        params.push(warehouse_id)
+        whereWarehouse = ` AND ti.source_warehouse_id = $${params.length}`
       }
+      params.push(BATCH_SIZE)
+      const limitPlaceholder = `$${params.length}`
 
-      const { data, error } = await query
-      if (error) {
-        console.error('[issue-history.aggregated] query failed:', error)
-        return c.json({ data: null, error: error.message }, 500)
-      }
+      const sql = `
+        SELECT
+          til.id,
+          til.issued_full,
+          ${threadTypesEmbed} AS thread_types,
+          ${mode === 'detailed' ? issuesDetailedEmbed : issuesSummaryEmbed} AS thread_issues${stylesSelect}
+        FROM thread_issue_lines til
+        INNER JOIN thread_types tt ON tt.id = til.thread_type_id
+        INNER JOIN suppliers sup ON sup.id = tt.supplier_id
+        INNER JOIN thread_issues ti ON ti.id = til.issue_id${stylesJoin}
+        WHERE ti.status = $1
+          AND ti.updated_at >= $2
+          AND ti.updated_at < $3
+          AND til.issued_full > 0
+          AND til.id > $4${whereWarehouse}
+        ORDER BY til.id ASC
+        LIMIT ${limitPlaceholder}`
 
-      const batch = (data ?? []) as unknown as RawLine[]
+      const batch = (await query<RawLine & Record<string, unknown>>(sql, params)) as unknown as RawLine[]
       if (batch.length === 0) break
 
       for (const row of batch) {
@@ -237,47 +237,47 @@ issueHistory.get('/aggregated', async (c) => {
 
 issueHistory.get('/by-thread-type', async (c) => {
   try {
-    const query = c.req.query()
-    const threadTypeId = Number(query.thread_type_id)
+    const reqQuery = c.req.query()
+    const threadTypeId = Number(reqQuery.thread_type_id)
     if (!threadTypeId || Number.isNaN(threadTypeId)) {
       return c.json({ data: null, error: 'thread_type_id là bắt buộc' }, 400)
     }
 
-    const threadColorId = query.thread_color_id ? Number(query.thread_color_id) : null
+    const threadColorId = reqQuery.thread_color_id ? Number(reqQuery.thread_color_id) : null
 
-    let dataQuery = supabase
-      .from('thread_issue_lines')
-      .select(`
-        id,
-        issued_full,
-        issued_partial,
-        returned_full,
-        returned_partial,
-        po_id,
-        thread_issues!inner (
-          issue_code,
-          created_by,
-          status,
-          updated_at
-        ),
-        purchase_orders ( po_number ),
-        styles ( style_code ),
-        style_colors ( color_name )
-      `)
-      .eq('thread_type_id', threadTypeId)
-      .eq('thread_issues.status', 'CONFIRMED')
-      .order('id', { ascending: true })
-      .limit(2000)
-
+    const params: unknown[] = [threadTypeId, 'CONFIRMED']
+    let whereColor = ''
     if (threadColorId != null) {
-      dataQuery = dataQuery.eq('thread_color_id', threadColorId)
+      params.push(threadColorId)
+      whereColor = ` AND til.thread_color_id = $${params.length}`
     }
 
-    const { data, error: dataErr } = await dataQuery
-    if (dataErr) {
-      console.error('[issue-history.by-thread-type] query failed:', dataErr)
-      return c.json({ data: null, error: dataErr.message }, 500)
-    }
+    const dataSql = `
+      SELECT
+        til.id,
+        til.issued_full,
+        til.issued_partial,
+        til.returned_full,
+        til.returned_partial,
+        til.po_id,
+        json_build_object(
+          'issue_code', ti.issue_code,
+          'created_by', ti.created_by,
+          'status', ti.status,
+          'updated_at', ti.updated_at
+        ) AS thread_issues,
+        CASE WHEN po.id IS NULL THEN NULL ELSE json_build_object('po_number', po.po_number) END AS purchase_orders,
+        CASE WHEN s.id IS NULL THEN NULL ELSE json_build_object('style_code', s.style_code) END AS styles,
+        CASE WHEN sc.id IS NULL THEN NULL ELSE json_build_object('color_name', sc.color_name) END AS style_colors
+      FROM thread_issue_lines til
+      INNER JOIN thread_issues ti ON ti.id = til.issue_id
+      LEFT JOIN purchase_orders po ON po.id = til.po_id
+      LEFT JOIN styles s ON s.id = til.style_id
+      LEFT JOIN style_colors sc ON sc.id = til.style_color_id
+      WHERE til.thread_type_id = $1
+        AND ti.status = $2${whereColor}
+      ORDER BY til.id ASC
+      LIMIT 2000`
 
     type RawRow = {
       id: number
@@ -292,7 +292,7 @@ issueHistory.get('/by-thread-type', async (c) => {
       style_colors: { color_name: string } | null
     }
 
-    const rows = (data ?? []) as unknown as RawRow[]
+    const rows = (await query<RawRow & Record<string, unknown>>(dataSql, params)) as unknown as RawRow[]
 
     const poGroups = new Map<string, {
       po_number: string | null
