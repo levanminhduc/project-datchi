@@ -49,6 +49,8 @@ import announcementsRouter from './routes/announcements'
 import overQuotaRouter from './routes/over-quota'
 import threadConeSummaryRouter from './routes/thread/cone-summary'
 import chatAssistantRouter from './routes/chat-assistant'
+import realtimeRouter from './realtime/stream'
+import { startRealtimeListener } from './realtime/listener'
 import { authMiddleware } from './middleware/auth'
 import { supabaseAdmin } from './db/supabase'
 
@@ -72,6 +74,7 @@ app.use(
 app.route('/api/guides/images', guideImages)
 app.route('/api/public/guides', publicGuidesRouter)
 app.route('/api/telegram', telegramRouter)
+app.route('/api/realtime', realtimeRouter)
 
 app.post('/api/auth/ensure-auth-user', async (c) => {
   try {
@@ -128,7 +131,11 @@ app.post('/api/auth/ensure-auth-user', async (c) => {
 app.use(
   '/api/*',
   async (c, next) => {
-    if (c.req.path.startsWith('/api/guides/images/') || c.req.path.startsWith('/api/public/')) {
+    if (
+      c.req.path.startsWith('/api/guides/images/') ||
+      c.req.path.startsWith('/api/public/') ||
+      c.req.path.startsWith('/api/realtime/')
+    ) {
       return next()
     }
     return authMiddleware(c, next)
@@ -218,6 +225,10 @@ if (HAS_DIST) console.log('Serving static files from dist/')
 serve({
   fetch: app.fetch,
   port: PORT,
+})
+
+startRealtimeListener().catch((err) => {
+  console.error('Failed to start realtime listener:', err)
 })
 
 console.log(`Server is running at http://localhost:${PORT}`)
