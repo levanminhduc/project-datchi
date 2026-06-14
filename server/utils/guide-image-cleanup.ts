@@ -1,16 +1,19 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { query } from '../db/query'
+import { from } from '../db/sql-builder'
+import { removeObjects } from '../storage/local-storage'
 
-export async function cleanupOrphans(supabase: SupabaseClient): Promise<{ deleted: number }> {
+export async function cleanupOrphans(): Promise<{ deleted: number }> {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
-  const { data: rows, error: selectError } = await supabase
-    .from('guide_images')
-    .select('id, storage_path')
-    .eq('status', 'PENDING')
-    .lt('uploaded_at', cutoff)
-    .limit(500)
-
-  if (selectError) {
+  let rows: { id: string; storage_path: string }[]
+  try {
+    rows = await from('guide_images')
+      .select('id, storage_path')
+      .eq('status', 'PENDING')
+      .lt('uploaded_at', cutoff)
+      .limit(500)
+      .list<{ id: string; storage_path: string }>()
+  } catch (selectError) {
     console.error('cleanupOrphans: select error:', selectError)
     return { deleted: 0 }
   }
@@ -22,20 +25,18 @@ export async function cleanupOrphans(supabase: SupabaseClient): Promise<{ delete
   const paths = rows.map((r: { storage_path: string }) => r.storage_path)
   const ids = rows.map((r: { id: string }) => r.id)
 
-  const { error: storageError } = await supabase.storage
-    .from('guide-images')
-    .remove(paths)
-
-  if (storageError) {
+  try {
+    await removeObjects(paths)
+  } catch (storageError) {
     console.error('cleanupOrphans: storage remove error:', storageError)
   }
 
-  const { error: deleteError } = await supabase
-    .from('guide_images')
-    .delete()
-    .in('id', ids)
-
-  if (deleteError) {
+  try {
+    await query(
+      `DELETE FROM guide_images WHERE id = ANY($1)`,
+      [ids]
+    )
+  } catch (deleteError) {
     console.error('cleanupOrphans: delete rows error:', deleteError)
     return { deleted: 0 }
   }

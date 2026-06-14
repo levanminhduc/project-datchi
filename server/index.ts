@@ -42,7 +42,7 @@ import importRouter from './routes/import'
 import subArtsRouter from './routes/subArts'
 import styleColorsRouter from './routes/styleColors'
 import deptAllocationsRouter from './routes/deptAllocations'
-import guidesRouter, { guideImages } from './routes/guides'
+import guidesRouter, { guideImages, publicGuideImages } from './routes/guides'
 import adminGuidesRouter from './routes/admin-guides'
 import publicGuidesRouter from './routes/public-guides'
 import announcementsRouter from './routes/announcements'
@@ -72,6 +72,7 @@ app.use(
 )
 
 app.route('/api/guides/images', guideImages)
+app.route('/storage/v1/object/public/guide-images', publicGuideImages)
 app.route('/api/public/guides', publicGuidesRouter)
 app.route('/api/telegram', telegramRouter)
 app.route('/api/realtime', realtimeRouter)

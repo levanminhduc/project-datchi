@@ -1,5 +1,4 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../db/supabase'
 import { requirePermission } from '../middleware/auth'
 import { cleanupOrphans } from '../utils/guide-image-cleanup'
 import type { AppEnv } from '../types/hono-env'
@@ -8,7 +7,7 @@ const adminGuides = new Hono<AppEnv>()
 
 adminGuides.post('/cleanup-orphans', requirePermission('guides.edit'), async (c) => {
   try {
-    const result = await cleanupOrphans(supabaseAdmin)
+    const result = await cleanupOrphans()
     return c.json({
       data: { deleted: result.deleted },
       error: null,
