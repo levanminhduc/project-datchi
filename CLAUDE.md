@@ -18,10 +18,12 @@ Core invariant: a thread type identity = exact combination of Supplier (NCC) + T
 | Language | TypeScript | 5.9.2 |
 | Build | Vite | 8.0.11 |
 | Backend | Hono on Node.js (tsx) | 4.11.5 + 4.21.0 |
-| Database | Supabase PostgreSQL | cloud + local |
+| Database | PostgreSQL 17 (pg driver) | local `127.0.0.1:5432/datchi` |
 | Validation | Zod | 4.3.6 |
 | State | Pinia | 3.0.4 |
-| Auth | jose (JWT) | 6.1.3 |
+| Auth | jose (JWT HS256) + bcrypt | self-signed, no external auth service |
+| Realtime | LISTEN/NOTIFY + SSE | PostgreSQL native |
+| Storage | Filesystem (STORAGE_DIR) | guide images saved locally |
 | Testing | Playwright | 1.58.2 |
 
 ## 3. Dev Commands
@@ -40,8 +42,7 @@ npm run e2e             # Playwright headless
 npm run e2e:ui          # Playwright UI mode
 npm run e2e:headed      # Playwright headed
 
-supabase migration up   # Apply pending DB migrations (SAFE)
-psql -h 127.0.0.1 -p 55422 -U postgres -d postgres
+psql -h 127.0.0.1 -p 5432 -U postgres -d datchi   # Connect to DB
 npm run db:seed         # Seed master data (local only)
 ```
 
@@ -57,17 +58,16 @@ npm run db:seed         # Seed master data (local only)
 
 **Issue V2:** Multi-color issue flow. RPC `fn_issue_cones_with_movements`. Idempotency log prevents double-execute on retry.
 
-**Recovery:** Cones returned from production → status transitions back to AVAILABLE. No dedicated RPC — handled in `server/routes/recovery.ts`.
+**Recovery:** Cones returned from production → status transitions back to AVAILABLE. Handled in `server/routes/recovery.ts`.
 
 **Weekly order → reservation → loan:** Calculate needs → reserve stock (`fn_reserve_from_stock`) → optional loans between depts (`fn_batch_borrow_thread`) → transfer reserved across POs.
 
 ## 5. Key Constraints
 
-- **`supabase db reset` — NEVER run.** Deletes all data. Use `supabase migration up` only.
 - **Never delete data rows.** Use soft-delete (`deleted_at` or status enum). No `DELETE`/`TRUNCATE`/`DROP` without explicit user confirmation.
 - **Never merge inventory** across supplier + tex + color boundary.
 - **`thread_types.color_id` is NULL for all records** — never use it as color source. Use `thread_inventory.color_id` for stock, `style_color_thread_specs.thread_color_id` for PO specs.
-- **Frontend CRUD always via Hono API** — never call Supabase directly for data mutations. Use `fetchApi()`, not raw `fetch()`.
+- **Frontend CRUD always via Hono API** — never call database directly. Use `fetchApi()`, not raw `fetch()`.
 - **Use App* wrappers:** `AppSelect` (not `q-select`), `AppEditor` (not `q-editor`), `DatePicker` (not `<input type="date">`), `useConfirm()` (not `$q.dialog()`).
 - **Vietnamese for all user-facing text** — messages, labels, toasts, validation, buttons.
 - **Stock-changing actions need audit trail** — every inventory mutation must log to `thread_movements` or use an RPC that does so internally.
@@ -77,11 +77,11 @@ npm run db:seed         # Seed master data (local only)
 
 | File | When to read |
 |------|-------------|
-| `.claude/docs/architecture.md` | Understanding request flow, layer responsibilities, dir structure |
+| `.claude/docs/architecture.md` | Request flow, layer responsibilities, DB client, dir structure |
 | `.claude/docs/thread-domain.md` | Thread identity rules, cone lifecycle, FEFO, dual UoM, color ID gotchas |
-| `.claude/docs/database-rpcs-migrations.md` | Writing queries, calling RPCs, migration rules, PostgREST limits |
-| `.claude/docs/frontend-conventions.md` | Component wrappers, fetchApi, TypeScript rules, pagination |
-| `.claude/docs/backend-api.md` | Response format, route order, validation, error handling |
-| `.claude/docs/auth-permissions.md` | JWT claims, requirePermission, adding permissions, RLS |
+| `.claude/docs/database-rpcs-migrations.md` | Writing queries, calling RPCs, migration rules |
+| `.claude/docs/frontend-conventions.md` | Component wrappers, fetchApi, TypeScript rules, pagination, realtime (SSE) |
+| `.claude/docs/backend-api.md` | Response format, route order, validation, error handling, pg query patterns |
+| `.claude/docs/auth-permissions.md` | JWT sign/verify (jose), requirePermission, adding permissions |
 | `.claude/docs/weekly-order-issue-recovery.md` | Weekly order flow, Issue V2, recovery, loans, schema exceptions |
 | `.claude/docs/safety-and-workflow.md` | Dangerous commands, surgical changes, pre-commit checklist |

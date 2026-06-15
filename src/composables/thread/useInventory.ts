@@ -11,7 +11,7 @@ import { inventoryService } from '@/services/inventoryService'
 import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { getErrorMessage } from '@/utils/errorMessages'
-import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
+import { getCacheEntry, setCacheEntry, invalidateCache } from '@/lib/api-cache'
 import type { Cone, InventoryFilters, ReceiveStockDTO } from '@/types/thread'
 import { ConeStatus } from '@/types/thread/enums'
 
@@ -203,14 +203,13 @@ export function useInventory() {
 
   /**
    * Debounced refresh to batch rapid changes
-   * @param delay - Debounce delay in milliseconds (default: 100ms)
+   * @param delay - Debounce delay in milliseconds (default: 300ms)
    */
-  const debouncedRefresh = (delay: number = 100): void => {
+  const debouncedRefresh = (delay: number = 300): void => {
     if (debounceTimer.value) {
       clearTimeout(debounceTimer.value)
     }
     debounceTimer.value = setTimeout(() => {
-      currentPage.value = 1
       fetchInventory()
       debounceTimer.value = null
     }, delay)
@@ -268,7 +267,8 @@ export function useInventory() {
         }
 
         if (shouldRefresh()) {
-          debouncedRefresh(100)
+          invalidateCache('/api/inventory')
+          debouncedRefresh()
         }
       }
     )

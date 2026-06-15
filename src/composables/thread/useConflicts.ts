@@ -11,6 +11,7 @@ import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { useRealtime } from '../useRealtime'
 import { getErrorMessage } from '@/utils/errorMessages'
+import { invalidateCache } from '@/lib/api-cache'
 import type { AllocationConflict, Allocation } from '@/types/thread'
 import { AllocationPriority } from '@/types/thread/enums'
 
@@ -116,6 +117,7 @@ export function useConflicts() {
   const selectedConflict = ref<ThreadConflict | null>(null)
   const realtimeEnabled = ref(false)
   const realtimeChannelName = ref<string | null>(null)
+  const debounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
   // Composables
   const snackbar = useSnackbar()
@@ -359,6 +361,16 @@ export function useConflicts() {
     }
   }
 
+  const debouncedRefresh = (delay: number = 300): void => {
+    if (debounceTimer.value) {
+      clearTimeout(debounceTimer.value)
+    }
+    debounceTimer.value = setTimeout(() => {
+      fetchConflicts()
+      debounceTimer.value = null
+    }, delay)
+  }
+
   /**
    * Enable real-time updates for conflicts
    */
@@ -377,12 +389,15 @@ export function useConflicts() {
         switch (payload.eventType) {
           case 'INSERT':
             snackbar.warning(MESSAGES.NEW_CONFLICT)
-            fetchConflicts() // Refresh to get full data with joins
+            invalidateCache('/api/conflicts')
+            debouncedRefresh()
             break
           case 'UPDATE':
-            fetchConflicts() // Refresh to get updated data
+            invalidateCache('/api/conflicts')
+            debouncedRefresh()
             break
           case 'DELETE':
+            invalidateCache('/api/conflicts')
             // Remove from local state
             if (payload.old && typeof payload.old === 'object' && 'id' in payload.old) {
               const deletedId = (payload.old as { id: number }).id
@@ -406,6 +421,11 @@ export function useConflicts() {
     realtime.unsubscribe(realtimeChannelName.value)
     realtimeChannelName.value = null
     realtimeEnabled.value = false
+
+    if (debounceTimer.value) {
+      clearTimeout(debounceTimer.value)
+      debounceTimer.value = null
+    }
   }
 
   /**
