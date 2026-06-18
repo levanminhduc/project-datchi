@@ -41,6 +41,12 @@ async function testConcurrentRefreshDoesNotKillSession() {
       if (text.includes('INSERT INTO auth_refresh_tokens')) {
         return { rows: [] }
       }
+      if (/FROM employees WHERE id/i.test(text)) {
+        return { rows: [{ id: 17, employee_id: 'NV017', is_active: true, deleted_at: null }] }
+      }
+      if (/FROM employee_roles/i.test(text)) {
+        return { rows: [{ code: 'admin' }] }
+      }
       return { rows: [] }
     }),
     release: () => {},

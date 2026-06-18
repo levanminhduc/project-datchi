@@ -52,6 +52,7 @@ import chatAssistantRouter from './routes/chat-assistant'
 import realtimeRouter from './realtime/stream'
 import { startRealtimeListener } from './realtime/listener'
 import { authMiddleware } from './middleware/auth'
+import { assertSigningKeyConfigured } from './auth/jwt'
 
 const app = new Hono()
 
@@ -176,6 +177,8 @@ app.notFound((c) => {
 console.log(`Starting server on port ${PORT}...`)
 console.log(`CORS enabled for: ${FRONTEND_URL}`)
 if (HAS_DIST) console.log('Serving static files from dist/')
+
+assertSigningKeyConfigured()
 
 serve({
   fetch: app.fetch,

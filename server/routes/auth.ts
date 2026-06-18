@@ -189,7 +189,7 @@ auth.post('/refresh', async (c) => {
 
       const stored = claimRes.rows[0]
 
-      const employee = await queryOne<{
+      const employeeRes = await client.query<{
         id: number
         employee_id: string
         is_active: boolean
@@ -199,6 +199,8 @@ auth.post('/refresh', async (c) => {
         [stored.employee_id]
       )
 
+      const employee = employeeRes.rows[0]
+
       if (!employee || employee.deleted_at) {
         return { kind: 'account_gone' as const }
       }
@@ -206,7 +208,12 @@ auth.post('/refresh', async (c) => {
         return { kind: 'account_inactive' as const }
       }
 
-      const { roles, isRoot } = await getRoleCodesAndRoot(employee.id)
+      const rolesRes = await client.query<{ code: string | null }>(
+        `SELECT r.code FROM employee_roles er JOIN roles r ON r.id = er.role_id WHERE er.employee_id = $1`,
+        [employee.id]
+      )
+      const roles = rolesRes.rows.map(r => r.code).filter((c): c is string => typeof c === 'string')
+      const isRoot = roles.includes('root')
       const access = await signAccessToken({
         employeeId: employee.id,
         employeeCode: employee.employee_id,
