@@ -471,6 +471,16 @@ auth.post('/change-password', async (c) => {
       return c.json({ error: true, message: 'Không thể đổi mật khẩu' }, 500)
     }
 
+    try {
+      await query(
+        `UPDATE auth_refresh_tokens SET revoked_at = now()
+         WHERE employee_id = $1 AND revoked_at IS NULL`,
+        [employeeId]
+      )
+    } catch (revokeErr) {
+      console.warn('Change password: failed to revoke refresh tokens:', revokeErr)
+    }
+
     return c.json({
       message: 'Đổi mật khẩu thành công',
       error: false,
