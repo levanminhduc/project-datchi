@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import bcrypt from 'bcryptjs'
-import { query, queryOne } from '../db/query'
+import { query, queryOne, tx } from '../db/query'
 import { from } from '../db/sql-builder'
 import {
   requireAdmin,
@@ -11,6 +11,7 @@ import {
   generateRefreshToken,
   hashRefreshToken,
 } from '../auth/jwt'
+import { recordRotation, getGraceChild } from '../auth/refresh-grace-cache'
 import {
   createPermissionSchema,
   updatePermissionSchema,
@@ -173,12 +174,97 @@ auth.post('/refresh', async (c) => {
   const tokenHash = hashRefreshToken(parsed.data.refreshToken)
 
   try {
-    const stored = await queryOne<{
-      id: string
-      employee_id: number
-      expires_at: string
-      revoked_at: string | null
-    }>(
+    const claimed = await tx(async (client) => {
+      const claimRes = await client.query<{ id: string; employee_id: number }>(
+        `UPDATE auth_refresh_tokens
+         SET revoked_at = now()
+         WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+         RETURNING id, employee_id`,
+        [tokenHash]
+      )
+
+      if (claimRes.rows.length === 0) {
+        return null
+      }
+
+      const stored = claimRes.rows[0]
+
+      const employee = await queryOne<{
+        id: number
+        employee_id: string
+        is_active: boolean
+        deleted_at: string | null
+      }>(
+        `SELECT id, employee_id, is_active, deleted_at FROM employees WHERE id = $1 LIMIT 1`,
+        [stored.employee_id]
+      )
+
+      if (!employee || employee.deleted_at) {
+        return { kind: 'account_gone' as const }
+      }
+      if (!employee.is_active) {
+        return { kind: 'account_inactive' as const }
+      }
+
+      const { roles, isRoot } = await getRoleCodesAndRoot(employee.id)
+      const access = await signAccessToken({
+        employeeId: employee.id,
+        employeeCode: employee.employee_id,
+        roles,
+        isRoot,
+      })
+      const newRefresh = generateRefreshToken()
+
+      await client.query(
+        `INSERT INTO auth_refresh_tokens (token_hash, employee_id, expires_at, rotated_from)
+         VALUES ($1, $2, $3, $4)`,
+        [newRefresh.tokenHash, employee.id, newRefresh.expiresAt.toISOString(), stored.id]
+      )
+
+      return {
+        kind: 'rotated' as const,
+        accessToken: access.token,
+        refreshToken: newRefresh.token,
+        expiresAt: access.expiresAt,
+      }
+    })
+
+    if (claimed && claimed.kind === 'rotated') {
+      recordRotation(tokenHash, {
+        token: claimed.accessToken,
+        refreshToken: claimed.refreshToken,
+        expiresAt: claimed.expiresAt,
+      })
+      return c.json({
+        data: {
+          accessToken: claimed.accessToken,
+          refreshToken: claimed.refreshToken,
+          expiresAt: claimed.expiresAt,
+        },
+        error: false,
+      })
+    }
+
+    if (claimed && claimed.kind === 'account_gone') {
+      return c.json({ error: true, message: 'Tài khoản không tồn tại hoặc đã bị xóa' }, 403)
+    }
+    if (claimed && claimed.kind === 'account_inactive') {
+      return c.json({ error: true, message: 'Tài khoản đã bị vô hiệu hóa' }, 403)
+    }
+
+    const grace = getGraceChild(tokenHash)
+    if (grace) {
+      return c.json({
+        data: {
+          accessToken: grace.token,
+          refreshToken: grace.refreshToken,
+          expiresAt: grace.expiresAt,
+        },
+        error: false,
+      })
+    }
+
+    const stored = await queryOne<{ id: string; employee_id: number; expires_at: string; revoked_at: string | null }>(
       `SELECT id, employee_id, expires_at, revoked_at
        FROM auth_refresh_tokens
        WHERE token_hash = $1
@@ -190,70 +276,29 @@ auth.post('/refresh', async (c) => {
       return c.json({ error: true, message: 'Phiên đăng nhập đã hết hạn' }, 401)
     }
 
-    if (stored.revoked_at) {
-      try {
-        await query(
-          `UPDATE auth_refresh_tokens SET revoked_at = $1 WHERE employee_id = $2 AND revoked_at IS NULL`,
-          [new Date().toISOString(), stored.employee_id]
-        )
-      } catch (reuseErr) {
-        console.warn('Refresh: failed to revoke tokens after reuse detection:', reuseErr)
-      }
-      return c.json({ error: true, message: 'Phiên đăng nhập không hợp lệ, vui lòng đăng nhập lại' }, 401)
-    }
-
     if (new Date(stored.expires_at) <= new Date()) {
       return c.json({ error: true, message: 'Phiên đăng nhập đã hết hạn' }, 401)
     }
 
-    const employee = await queryOne<{
-      id: number
-      employee_id: string
-      is_active: boolean
-      deleted_at: string | null
-    }>(
-      `SELECT id, employee_id, is_active, deleted_at FROM employees WHERE id = $1 LIMIT 1`,
+    const recentChild = await queryOne<{ id: string }>(
+      `SELECT id FROM auth_refresh_tokens
+       WHERE rotated_from = $1 AND revoked_at IS NULL
+         AND created_at > now() - interval '30 seconds'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [stored.id]
+    )
+
+    if (recentChild) {
+      return c.json({ error: true, message: 'Đang làm mới phiên, vui lòng thử lại' }, 409)
+    }
+
+    await query(
+      `UPDATE auth_refresh_tokens SET revoked_at = now()
+       WHERE employee_id = $1 AND revoked_at IS NULL`,
       [stored.employee_id]
     )
-
-    if (!employee || employee.deleted_at) {
-      return c.json({ error: true, message: 'Tài khoản không tồn tại hoặc đã bị xóa' }, 403)
-    }
-
-    if (!employee.is_active) {
-      return c.json({ error: true, message: 'Tài khoản đã bị vô hiệu hóa' }, 403)
-    }
-
-    const { roles, isRoot } = await getRoleCodesAndRoot(employee.id)
-
-    const access = await signAccessToken({
-      employeeId: employee.id,
-      employeeCode: employee.employee_id,
-      roles,
-      isRoot,
-    })
-
-    const newRefresh = generateRefreshToken()
-
-    await query(
-      `INSERT INTO auth_refresh_tokens (token_hash, employee_id, expires_at, rotated_from)
-       VALUES ($1, $2, $3, $4)`,
-      [newRefresh.tokenHash, employee.id, newRefresh.expiresAt.toISOString(), stored.id]
-    )
-
-    await query(
-      `UPDATE auth_refresh_tokens SET revoked_at = $1 WHERE id = $2`,
-      [new Date().toISOString(), stored.id]
-    )
-
-    return c.json({
-      data: {
-        accessToken: access.token,
-        refreshToken: newRefresh.token,
-        expiresAt: access.expiresAt,
-      },
-      error: false,
-    })
+    return c.json({ error: true, message: 'Phiên đăng nhập không hợp lệ, vui lòng đăng nhập lại' }, 401)
   } catch (err) {
     console.error('Refresh error:', err)
     return c.json({ error: true, message: 'Lỗi hệ thống' }, 500)
