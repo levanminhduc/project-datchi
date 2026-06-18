@@ -323,6 +323,22 @@ auth.post('/logout', async (c) => {
   return c.json({ error: false, message: 'Đã đăng xuất' })
 })
 
+auth.post('/logout-all-devices', async (c) => {
+  const { employeeId } = c.get('auth')
+
+  try {
+    await query(
+      `UPDATE auth_refresh_tokens SET revoked_at = now()
+       WHERE employee_id = $1 AND revoked_at IS NULL`,
+      [employeeId]
+    )
+  } catch (revokeErr) {
+    console.warn('Logout all devices: failed to revoke refresh tokens:', revokeErr)
+    return c.json({ error: true, message: 'Không thể đăng xuất khỏi các thiết bị' }, 500)
+  }
+
+  return c.json({ error: false, message: 'Đã đăng xuất khỏi tất cả thiết bị' })
+})
 
 auth.get('/health', async (c) => {
   const authContext = c.get('auth')
