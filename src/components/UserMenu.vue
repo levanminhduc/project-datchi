@@ -82,6 +82,22 @@
         <q-item
           v-close-popup
           clickable
+          @click="handleLogoutAllDevices"
+        >
+          <q-item-section avatar>
+            <q-icon
+              name="devices"
+              color="warning"
+            />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>Đăng xuất mọi thiết bị</q-item-label>
+          </q-item-section>
+        </q-item>
+
+        <q-item
+          v-close-popup
+          clickable
           @click="handleLogout"
         >
           <q-item-section avatar>
@@ -105,9 +121,14 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { authService } from '@/services/authService'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
 
 const route = useRoute()
 const { employee, isAuthenticated, signOut } = useAuth()
+const { confirm } = useConfirm()
+const snackbar = useSnackbar()
 
 const isPublicPage = computed(() => route.path.startsWith('/g/'))
 
@@ -126,6 +147,23 @@ const avatarInitials = computed(() => {
 })
 
 async function handleLogout() {
+  await signOut()
+}
+
+async function handleLogoutAllDevices() {
+  const ok = await confirm({
+    title: 'Đăng xuất mọi thiết bị',
+    message: 'Bạn sẽ bị đăng xuất khỏi tất cả thiết bị đang đăng nhập, kể cả thiết bị này. Tiếp tục?',
+    type: 'warning',
+    confirmText: 'Đăng xuất tất cả',
+  })
+  if (!ok) return
+
+  const { error } = await authService.logoutAllDevices()
+  if (error) {
+    snackbar.error(error)
+    return
+  }
   await signOut()
 }
 </script>
