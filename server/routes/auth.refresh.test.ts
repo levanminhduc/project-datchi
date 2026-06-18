@@ -58,7 +58,10 @@ async function testConcurrentRefreshDoesNotKillSession() {
       return { rows: [{ code: 'admin' }] }
     }
     if (/rotated_from/i.test(text)) {
-      return revokedAll.length ? { rows: [] } : { rows: [] }
+      return { rows: [{ id: 'child-1' }] }
+    }
+    if (/SELECT[\s\S]*expires_at[\s\S]*revoked_at[\s\S]*FROM auth_refresh_tokens[\s\S]*WHERE token_hash/i.test(text)) {
+      return { rows: [{ id: 'tok-1', employee_id: 17, expires_at: '2099-01-01T00:00:00Z', revoked_at: '2026-06-18T00:00:00Z' }] }
     }
     return { rows: [] }
   }) as unknown as typeof pool.query
