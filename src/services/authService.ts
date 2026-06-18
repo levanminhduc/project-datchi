@@ -86,6 +86,27 @@ class AuthService {
     await clearAuthSessionLocal()
   }
 
+  async logoutAllDevices(): Promise<{ error: string | null }> {
+    try {
+      const response = await fetchApi<AuthActionResponse>('/api/auth/logout-all-devices', {
+        method: 'POST',
+      })
+
+      if (response.error === true || typeof response.error === 'string') {
+        return {
+          error:
+            response.message ||
+            (typeof response.error === 'string' ? response.error : 'Đăng xuất tất cả thiết bị thất bại'),
+        }
+      }
+
+      return { error: null }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Không thể kết nối đến máy chủ'
+      return { error: message }
+    }
+  }
+
   async fetchCurrentEmployee(): Promise<FetchResult<EmployeeAuth>> {
     try {
       const response = await fetchApi<AuthDataResponse<EmployeeAuth>>('/api/auth/me')
