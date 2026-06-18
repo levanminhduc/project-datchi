@@ -223,10 +223,17 @@ export async function getRefreshedAccessToken(): Promise<string> {
           if (cachedToken && !isTokenExpiringSoon(cachedToken)) return cachedToken
           const refreshToken2 = getRefreshToken()
           if (!refreshToken2) throw new SessionExpiredError()
-          const data = await requestTokenRefresh(refreshToken2)
-          setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken })
-          scheduleRefresh(data.expiresAt)
-          return data.accessToken
+          try {
+            const data = await requestTokenRefresh(refreshToken2)
+            setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken })
+            scheduleRefresh(data.expiresAt)
+            return data.accessToken
+          } catch (retryError) {
+            if (retryError instanceof RefreshInProgressError) {
+              throw new SessionExpiredError()
+            }
+            throw retryError
+          }
         }
         if (error instanceof SessionExpiredError) {
           if (!navigator.onLine) {
