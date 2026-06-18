@@ -38,6 +38,13 @@ export class NetworkError extends Error {
   }
 }
 
+export class RefreshInProgressError extends Error {
+  constructor() {
+    super('Đang làm mới phiên, vui lòng thử lại')
+    this.name = 'RefreshInProgressError'
+  }
+}
+
 const WAIT_FOR_NETWORK_TIMEOUT_MS = 300_000
 
 function waitForNetwork(timeoutMs = WAIT_FOR_NETWORK_TIMEOUT_MS): Promise<void> {
@@ -163,6 +170,9 @@ async function requestTokenRefresh(refreshToken: string): Promise<RefreshRespons
   const payload = await response.json().catch(() => null)
 
   if (!response.ok) {
+    if (response.status === 409) {
+      throw new RefreshInProgressError()
+    }
     if (response.status === 401 || response.status === 403) {
       throw new SessionExpiredError()
     }
@@ -207,6 +217,17 @@ export async function getRefreshedAccessToken(): Promise<string> {
         scheduleRefresh(data.expiresAt)
         return data.accessToken
       } catch (error) {
+        if (error instanceof RefreshInProgressError) {
+          await new Promise(r => setTimeout(r, CROSS_TAB_WAIT_MS))
+          const cachedToken = getAccessToken()
+          if (cachedToken && !isTokenExpiringSoon(cachedToken)) return cachedToken
+          const refreshToken2 = getRefreshToken()
+          if (!refreshToken2) throw new SessionExpiredError()
+          const data = await requestTokenRefresh(refreshToken2)
+          setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken })
+          scheduleRefresh(data.expiresAt)
+          return data.accessToken
+        }
         if (error instanceof SessionExpiredError) {
           if (!navigator.onLine) {
             throw new NetworkError()
