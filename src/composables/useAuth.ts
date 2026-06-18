@@ -14,6 +14,7 @@ import {
   getTokenExpiry,
   ACCESS_TOKEN_KEY as ACCESS_TOKEN_STORAGE_KEY,
 } from '@/lib/auth-token-store'
+import { cancelRefresh, rescheduleFromCurrentToken } from '@/lib/auth-refresh-scheduler'
 import { clearAllCache } from '@/lib/api-cache'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type {
@@ -89,7 +90,6 @@ const tempPassword = ref<string | null>(null)
 
 const RETRY_DELAYS = [0, 500, 1000]
 const RESUME_REINIT_DEBOUNCE_MS = 1500
-const SESSION_NEAR_EXPIRY_MS = 15 * 60 * 1000
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -322,6 +322,7 @@ export function useAuth() {
         error: permsErrorType === 'network' ? 'network' : null,
       }
       saveAuthCache(state.value)
+      rescheduleFromCurrentToken()
     } catch {
       resetState()
       state.value.error = 'Không thể khởi tạo phiên đăng nhập'
@@ -471,12 +472,13 @@ export function useAuth() {
       }
 
       const expiresAt = getTokenExpiry(token) ?? 0
-      if (expiresAt - now > SESSION_NEAR_EXPIRY_MS) {
+      if (expiresAt <= now) {
+        initialized = false
+        void init()
         return
       }
 
-      initialized = false
-      void init()
+      rescheduleFromCurrentToken()
     }
 
     document.addEventListener('visibilitychange', revalidateAuthOnResume)
@@ -538,6 +540,7 @@ export function useAuth() {
       setupAuthListener()
       setupSessionResumeListener()
       initialized = true
+      rescheduleFromCurrentToken()
 
       return true
     } catch (err: unknown) {
@@ -553,6 +556,7 @@ export function useAuth() {
   async function signOut() {
     signingOut = true
     loggedOut = true
+    cancelRefresh()
     verifiedPermissionsSnapshot = null
     try {
       try {

@@ -1,6 +1,13 @@
 import { existsSync } from 'fs'
 import dotenv from 'dotenv'
-import { Pool, type PoolConfig } from 'pg'
+import { Pool, types, type PoolConfig } from 'pg'
+
+const DATE_OID = 1082
+const TIMESTAMP_OID = 1114
+const TIMESTAMPTZ_OID = 1184
+types.setTypeParser(DATE_OID, (val) => val)
+types.setTypeParser(TIMESTAMP_OID, (val) => val)
+types.setTypeParser(TIMESTAMPTZ_OID, (val) => val)
 
 if (existsSync('.env')) {
   dotenv.config({ override: true })

@@ -936,7 +936,7 @@ async function loadReceiveData(searchOverride?: string) {
     const result = await deliveryService.getOverview({
       status: DeliveryStatus.DELIVERED,
       ...(showReceivedInReceive.value
-        ? {}
+        ? { inventory_status: InventoryReceiptStatus.RECEIVED }
         : { inventory_status_not: InventoryReceiptStatus.RECEIVED }),
       page,
       limit: rowsPerPage,

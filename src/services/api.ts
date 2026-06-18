@@ -5,6 +5,7 @@ import {
   clearTokens,
   isTokenExpiringSoon,
 } from '@/lib/auth-token-store'
+import { scheduleRefresh } from '@/lib/auth-refresh-scheduler'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 const REQUEST_TIMEOUT_MS = 10000
@@ -203,6 +204,7 @@ export async function getRefreshedAccessToken(): Promise<string> {
       try {
         const data = await requestTokenRefresh(refreshToken)
         setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken })
+        scheduleRefresh(data.expiresAt)
         return data.accessToken
       } catch (error) {
         if (error instanceof SessionExpiredError) {

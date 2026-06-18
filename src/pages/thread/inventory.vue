@@ -112,6 +112,16 @@
           <div class="col-12 col-sm-auto">
             <div class="row q-gutter-sm">
               <q-btn
+                v-if="activeTab === 'summary'"
+                color="green-7"
+                icon="download"
+                label="Xuất Excel"
+                outline
+                :loading="exporting"
+                class="full-width-xs"
+                @click="openExportDialog"
+              />
+              <q-btn
                 v-if="canReceive"
                 color="teal"
                 icon="edit_note"
@@ -763,6 +773,67 @@
       v-model="showIssueHistoryDialog"
       :thread-type="issueHistoryRow"
     />
+
+    <!-- Export Excel Dialog -->
+    <AppDialog
+      :model-value="showExportDialog"
+      @update:model-value="showExportDialog = $event"
+    >
+      <template #header>
+        Xuất Excel tồn kho theo NCC
+      </template>
+
+      <div style="min-width: min(420px, 80vw)">
+        <div class="text-caption text-grey-7 q-mb-md">
+          Chọn NCC cần xuất. Tất cả NCC sẽ nằm trong 1 file Excel.
+        </div>
+
+        <div class="q-mb-sm">
+          <AppCheckbox
+            :model-value="allSuppliersSelected"
+            label="Chọn tất cả"
+            dense
+            @update:model-value="toggleAllExportSuppliers"
+          />
+        </div>
+
+        <q-separator class="q-mb-sm" />
+
+        <div class="column q-gutter-xs" style="max-height: 300px; overflow-y: auto">
+          <AppCheckbox
+            v-for="s in suppliers"
+            :key="s.id"
+            :model-value="selectedExportSuppliers.includes(s.id)"
+            :label="s.name"
+            dense
+            @update:model-value="
+              $event
+                ? selectedExportSuppliers.push(s.id)
+                : (selectedExportSuppliers = selectedExportSuppliers.filter((id: number) => id !== s.id))
+            "
+          />
+        </div>
+
+        <div class="text-caption text-grey-7 q-mt-md">
+          Đã chọn: {{ selectedExportSuppliers.length }}/{{ suppliers.length }} NCC
+        </div>
+      </div>
+
+      <template #actions>
+        <AppButton
+          flat
+          label="Hủy"
+          @click="showExportDialog = false"
+        />
+        <AppButton
+          color="primary"
+          :label="`Xuất (${selectedExportSuppliers.length} NCC)`"
+          :disable="selectedExportSuppliers.length === 0"
+          :loading="exporting"
+          @click="handleExportConfirm"
+        />
+      </template>
+    </AppDialog>
   </q-page>
 </template>
 
@@ -770,6 +841,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useQuasar, type QTableColumn } from 'quasar'
 import { useInventory, useThreadTypes, useSnackbar, useWarehouses, useConeSummary, useSuppliers } from '@/composables'
+import { useInventoryExport } from '@/composables/thread/useInventoryExport'
 import { useAuth } from '@/composables/useAuth'
 import { ConeStatus } from '@/types/thread/enums'
 import type { Cone, ReceiveStockDTO, ConeSummaryRow } from '@/types/thread/inventory'
@@ -779,6 +851,9 @@ import ConeSummaryTable from '@/components/thread/ConeSummaryTable.vue'
 import ConeWarehouseBreakdownDialog from '@/components/thread/ConeWarehouseBreakdownDialog.vue'
 import ManualEntryHistoryDialog from '@/components/thread/ManualEntryHistoryDialog.vue'
 import IssueHistoryByThreadDialog from '@/components/thread/IssueHistoryByThreadDialog.vue'
+import AppDialog from '@/components/ui/dialogs/AppDialog.vue'
+import AppButton from '@/components/ui/buttons/AppButton.vue'
+import AppCheckbox from '@/components/ui/inputs/AppCheckbox.vue'
 import type { ConeLabelData } from '@/types/qr-label'
 import { threadService } from '@/services/threadService'
 import { stockService } from '@/services/stockService'
@@ -830,6 +905,36 @@ const summaryWarehouseOptions = computed(() => {
 })
 
 const { suppliers, fetchSuppliers, loading: suppliersLoading } = useSuppliers()
+
+// Export Excel
+const { exporting, exportBySuppliers } = useInventoryExport()
+const showExportDialog = ref(false)
+const selectedExportSuppliers = ref<number[]>([])
+
+const allSuppliersSelected = computed(() =>
+  suppliers.value.length > 0 && selectedExportSuppliers.value.length === suppliers.value.length,
+)
+
+function toggleAllExportSuppliers() {
+  if (allSuppliersSelected.value) {
+    selectedExportSuppliers.value = []
+  } else {
+    selectedExportSuppliers.value = suppliers.value.map((s) => s.id)
+  }
+}
+
+function openExportDialog() {
+  selectedExportSuppliers.value = suppliers.value.map((s) => s.id)
+  showExportDialog.value = true
+}
+
+async function handleExportConfirm() {
+  const selected = suppliers.value.filter((s) =>
+    selectedExportSuppliers.value.includes(s.id),
+  )
+  showExportDialog.value = false
+  await exportBySuppliers(selected)
+}
 
 // Cone Summary Composable
 const {

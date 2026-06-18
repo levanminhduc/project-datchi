@@ -61,6 +61,9 @@ export default defineConfig({
       },
     },
   },
+  optimizeDeps: {
+    include: ['exceljs'],
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('src', import.meta.url)),

@@ -1,5 +1,6 @@
 import { ref, onUnmounted, readonly } from 'vue'
-import { getAccessToken } from '@/lib/auth-token-store'
+import { getAccessToken, isTokenExpiringSoon } from '@/lib/auth-token-store'
+import { getRefreshedAccessToken } from '@/services/api'
 
 export type RealtimeStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -99,14 +100,24 @@ function dispatch(event: ServerEvent): void {
   }
 }
 
-function openConnection(): void {
+async function openConnection(): Promise<void> {
   if (source || registrations.size === 0) return
 
-  const token = getAccessToken()
+  let token = getAccessToken()
   if (!token) {
     sharedStatus.value = 'error'
     sharedError.value = MESSAGES.SUBSCRIBE_ERROR
     return
+  }
+
+  if (isTokenExpiringSoon(token)) {
+    try {
+      token = await getRefreshedAccessToken()
+    } catch {
+      sharedStatus.value = 'error'
+      sharedError.value = MESSAGES.SUBSCRIBE_ERROR
+      return
+    }
   }
 
   sharedStatus.value = 'connecting'
@@ -156,7 +167,7 @@ function scheduleReconnect(): void {
   console.log(`[useRealtime] ${MESSAGES.RECONNECTING} (attempt ${reconnectCount}/${MAX_RECONNECT})`)
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
-    openConnection()
+    void openConnection()
   }, delay)
 }
 
@@ -173,7 +184,7 @@ export function useRealtime() {
     const channelName = generateChannelName(options)
     registrations.set(channelName, { options, callback: callback as RealtimeCallback })
     localChannels.value.add(channelName)
-    openConnection()
+    void openConnection()
     return channelName
   }
 

@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-06-16T09:46:17Z",
+  "timestamp_local": "2026-06-16 16:46:17",
+  "session": "20260616_164605",
+  "hostname": "DESKTOP-8UHUUH9",
+  "db_container": "supabase-db",
+  "postgres_version": "PostgreSQL 15.8 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 13.2.0, 64-bit",
+  "schemas": ["public","auth","storage"],
+  "db_only": false,
+  "files": {"datchi_public.dump":{"size_bytes":12227046,"sha256":"bb219f600a3c899321141b8c4d523ddd0df93d7d383e3d88bb4fd246e7a4e429"},"datchi_auth.dump":{"size_bytes":728122,"sha256":"db7f9fbe3100d37554f81c0d104928289c9c1c18f0756365e053abae8d24f43c"},"datchi_storage.dump":{"size_bytes":73362,"sha256":"912ef57b236b4f1860497794345f5266a56ca67fc2227daee2970e5375568399"}},
+  "storage_file_count": 7,
+  "config_files": [".env.docker","docker-compose.ghcr.yml","nginx.conf","update.sh","post-restore.sh"]
+}

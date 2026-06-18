@@ -1,0 +1,57 @@
+############################################################
+# Đất Chỉ - Docker Compose (Pull từ GHCR)
+# Dùng cho máy deploy — KHÔNG cần clone source
+#
+# Setup:
+#   1. docker login ghcr.io -u <GITHUB_USER> -p <PAT>
+#   2. Copy file này + tạo .env.docker (xem .env.docker.example)
+#   3. docker compose -f docker-compose.ghcr.yml --env-file .env.docker up -d
+#
+# Update:
+#   docker compose -f docker-compose.ghcr.yml pull
+#   docker compose -f docker-compose.ghcr.yml --env-file .env.docker up -d
+#
+# Pin version (thay latest bằng tag cụ thể):
+#   IMAGE_TAG=v1.2.0 docker compose -f docker-compose.ghcr.yml --env-file .env.docker up -d
+############################################################
+
+services:
+  frontend:
+    image: ghcr.io/levanminhduc/datchi-frontend:${IMAGE_TAG:-latest}
+    ports:
+      - "${FRONTEND_PORT:-8081}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - supabase_default
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/levanminhduc/datchi-backend:${IMAGE_TAG:-latest}
+    container_name: backend
+    ports:
+      - "${BACKEND_PORT:-3011}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      supabase_default:
+        aliases:
+          - backend
+    environment:
+      PORT: 3000
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8081}
+      NEXT_PUBLIC_SUPABASE_URL: http://supabase-kong:8000
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET: ${JWT_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    restart: unless-stopped
+
+networks:
+  supabase_default:
+    external: true
