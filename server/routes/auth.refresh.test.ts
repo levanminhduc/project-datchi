@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { Hono } from 'hono'
 import { pool } from '../db/pool'
-import { generateRefreshToken, hashRefreshToken } from '../auth/jwt'
 import authRoutes from './auth'
 
 process.env.JWT_SIGNING_SECRET = process.env.JWT_SIGNING_SECRET || 'test-secret-min-32-characters-long-aaaaaa'
@@ -27,9 +26,7 @@ async function testConcurrentRefreshDoesNotKillSession() {
   const originalConnect = pool.connect
 
   const raw = 'concurrent-raw-token'
-  const hash = hashRefreshToken(raw)
   let claimed = false
-  const revokedAll: number[] = []
 
   const fakeClient = {
     query: (async (text: string, params?: unknown[]) => {
