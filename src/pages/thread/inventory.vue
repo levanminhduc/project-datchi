@@ -799,7 +799,10 @@
 
         <q-separator class="q-mb-sm" />
 
-        <div class="column q-gutter-xs" style="max-height: 300px; overflow-y: auto">
+        <div
+          class="column q-gutter-xs"
+          style="max-height: 300px; overflow-y: auto"
+        >
           <AppCheckbox
             v-for="s in suppliers"
             :key="s.id"
