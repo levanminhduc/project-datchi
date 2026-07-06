@@ -13,7 +13,6 @@ import { formatZodError } from './helpers'
 import { getWeeklyOrderDeliverySummary } from './delivery-summary-helper'
 
 const deliveries = new Hono<AppEnv>()
-const BATCH_SIZE = 1000
 
 deliveries.get('/deliveries/overview', requirePermission('thread.allocations.view'), async (c) => {
   try {
@@ -139,121 +138,71 @@ deliveries.get('/deliveries/receive-logs', requirePermission('thread.allocations
 
     const deliveryId = parsed.delivery_id ? parseInt(parsed.delivery_id) : undefined
     const weekId = parsed.week_id ? parseInt(parsed.week_id) : undefined
-    const search = (parsed.search || '').trim().toLowerCase()
+    const search = (parsed.search || '').trim()
     const page = Math.max(1, parsed.page ? parseInt(parsed.page) : 1)
     const limit = Math.min(parsed.limit ? parseInt(parsed.limit) : 25, 100)
 
-    let deliveryIdFilter: number[] | undefined
+    const params: unknown[] = []
+    const conds: string[] = []
+
+    if (deliveryId) {
+      params.push(deliveryId)
+      conds.push(`l.delivery_id = $${params.length}`)
+    }
     if (weekId) {
-      const weekDeliveries = await query<{ id: number }>(
-        `SELECT id FROM thread_order_deliveries WHERE week_id = $1`,
-        [weekId],
-      )
-      deliveryIdFilter = (weekDeliveries || []).map((d: any) => d.id)
-      if (deliveryIdFilter.length === 0) {
-        return c.json({ data: [], total: 0, error: null })
-      }
+      params.push(weekId)
+      conds.push(`d.week_id = $${params.length}`)
     }
-
-    const allLogs: any[] = []
-    let offset = 0
-    while (true) {
-      const params: unknown[] = []
-      const conds: string[] = []
-
-      if (deliveryId) {
-        params.push(deliveryId)
-        conds.push(`l.delivery_id = $${params.length}`)
-      }
-      if (deliveryIdFilter) {
-        params.push(deliveryIdFilter)
-        conds.push(`l.delivery_id = ANY($${params.length})`)
-      }
-
-      const whereClause = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : ''
-      params.push(BATCH_SIZE)
-      const limitPh = `$${params.length}`
-      params.push(offset)
-      const offsetPh = `$${params.length}`
-
-      const data = await query<any>(
-        `SELECT
-          l.id,
-          l.delivery_id,
-          l.quantity,
-          l.warehouse_id,
-          l.received_by,
-          l.notes,
-          l.created_at,
-          CASE WHEN d.id IS NULL THEN NULL ELSE json_build_object(
-            'thread_type_id', d.thread_type_id,
-            'week_id', d.week_id,
-            'quantity_cones', d.quantity_cones,
-            'received_quantity', d.received_quantity,
-            'thread_color', d.thread_color,
-            'thread_color_code', d.thread_color_code,
-            'thread_type', CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
-              'name', tt.name, 'tex_number', tt.tex_number,
-              'supplier', CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('name', sup.name) END,
-              'color_data', CASE WHEN co.id IS NULL THEN NULL ELSE json_build_object('name', co.name, 'hex_code', co.hex_code) END
-            ) END,
-            'week', CASE WHEN w.id IS NULL THEN NULL ELSE json_build_object('week_name', w.week_name) END
-          ) END AS delivery,
-          CASE WHEN wh.id IS NULL THEN NULL ELSE json_build_object('name', wh.name) END AS warehouse
-         FROM delivery_receive_logs l
-         LEFT JOIN thread_order_deliveries d ON d.id = l.delivery_id
-         LEFT JOIN thread_types tt ON tt.id = d.thread_type_id
-         LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
-         LEFT JOIN colors co ON co.id = tt.color_id
-         LEFT JOIN thread_order_weeks w ON w.id = d.week_id
-         LEFT JOIN warehouses wh ON wh.id = l.warehouse_id
-         ${whereClause}
-         ORDER BY l.created_at DESC
-         LIMIT ${limitPh} OFFSET ${offsetPh}`,
-        params,
-      )
-
-      if (!data || data.length === 0) break
-      allLogs.push(...data)
-      if (data.length < BATCH_SIZE) break
-      offset += BATCH_SIZE
-    }
-
-    let enriched = allLogs.map((row: any) => ({
-      id: row.id,
-      delivery_id: row.delivery_id,
-      quantity: row.quantity,
-      warehouse_id: row.warehouse_id,
-      received_by: row.received_by,
-      notes: row.notes,
-      created_at: row.created_at,
-      thread_type_name: row.delivery?.thread_type?.name || '',
-      tex_number: row.delivery?.thread_type?.tex_number || '',
-      supplier_name: row.delivery?.thread_type?.supplier?.name || '',
-      color_name: row.delivery?.thread_color || row.delivery?.thread_type?.color_data?.name || '',
-      color_hex: row.delivery?.thread_color_code || row.delivery?.thread_type?.color_data?.hex_code || '',
-      week_name: row.delivery?.week?.week_name || '',
-      warehouse_name: row.warehouse?.name || '',
-      quantity_cones: row.delivery?.quantity_cones || 0,
-      received_quantity: row.delivery?.received_quantity || 0,
-    }))
-
     if (search) {
-      enriched = enriched.filter(row =>
-        row.supplier_name.toLowerCase().includes(search)
-        || row.tex_number.toLowerCase().includes(search)
-        || row.color_name.toLowerCase().includes(search)
-        || row.week_name.toLowerCase().includes(search)
-        || row.warehouse_name.toLowerCase().includes(search)
-        || row.received_by.toLowerCase().includes(search),
-      )
+      params.push(`%${search}%`)
+      const ph = `$${params.length}`
+      conds.push(`(sup.name ILIKE ${ph} OR tt.tex_number ILIKE ${ph} OR COALESCE(d.thread_color, '') ILIKE ${ph} OR w.week_name ILIKE ${ph} OR COALESCE(wh.name, '') ILIKE ${ph} OR l.received_by ILIKE ${ph})`)
     }
 
-    const total = enriched.length
-    const start = (page - 1) * limit
-    const paginated = enriched.slice(start, start + limit)
+    const whereClause = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : ''
+    params.push(limit)
+    const limitPh = `$${params.length}`
+    params.push((page - 1) * limit)
+    const offsetPh = `$${params.length}`
 
-    return c.json({ data: paginated, total, error: null })
+    const rows = await query<any>(
+      `SELECT
+         l.id,
+         l.delivery_id,
+         l.quantity,
+         l.warehouse_id,
+         l.received_by,
+         l.notes,
+         l.created_at,
+         COALESCE(tt.name, '') AS thread_type_name,
+         COALESCE(tt.tex_number, '') AS tex_number,
+         COALESCE(sup.name, '') AS supplier_name,
+         COALESCE(d.thread_color, '') AS color_name,
+         COALESCE(d.thread_color_code, '') AS color_hex,
+         COALESCE(w.week_name, '') AS week_name,
+         COALESCE(wh.name, '') AS warehouse_name,
+         COALESCE(d.quantity_cones, 0) AS quantity_cones,
+         COALESCE(d.received_quantity, 0) AS received_quantity,
+         COUNT(*) OVER() AS total_count
+       FROM delivery_receive_logs l
+       LEFT JOIN thread_order_deliveries d ON d.id = l.delivery_id
+       LEFT JOIN thread_types tt ON tt.id = d.thread_type_id
+       LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+       LEFT JOIN thread_order_weeks w ON w.id = d.week_id
+       LEFT JOIN warehouses wh ON wh.id = l.warehouse_id
+       ${whereClause}
+       ORDER BY l.created_at DESC, l.id DESC
+       LIMIT ${limitPh} OFFSET ${offsetPh}`,
+      params,
+    )
+
+    const total = rows.length > 0 ? Number(rows[0].total_count) : 0
+    const data = rows.map((row: any) => {
+      const { total_count, ...rest } = row
+      return rest
+    })
+
+    return c.json({ data, total, error: null })
   } catch (err) {
     console.error('Error fetching receive logs:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
