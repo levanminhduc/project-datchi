@@ -6,6 +6,7 @@ import {
   requireAdmin,
   canManageEmployee,
 } from '../middleware/auth'
+import { rateLimit } from '../middleware/rate-limit'
 import {
   signAccessToken,
   generateRefreshToken,
@@ -19,6 +20,8 @@ import {
   loginSchema,
   refreshSchema,
   resetPasswordSchema,
+  updateEmployeeRolesSchema,
+  updateEmployeePermissionsSchema,
 } from '../validation/auth'
 import { sanitizeFilterValue } from '../utils/sanitize'
 import type { AppEnv } from '../types/hono-env'
@@ -28,6 +31,18 @@ const auth = new Hono<AppEnv>()
 const BCRYPT_ROUNDS = 10
 const MAX_FAILED_LOGIN_ATTEMPTS = 5
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000
+
+const loginRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: 'Quá nhiều lần thử đăng nhập, vui lòng thử lại sau 1 phút',
+})
+
+const refreshRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: 'Quá nhiều yêu cầu làm mới phiên, vui lòng thử lại sau',
+})
 
 async function getRoleCodesAndRoot(employeeId: number): Promise<{ roles: string[]; isRoot: boolean }> {
   const rows = await query<{ code: string | null }>(
@@ -71,7 +86,7 @@ async function issueTokensForEmployee(employee: {
   }
 }
 
-auth.post('/login', async (c) => {
+auth.post('/login', loginRateLimit, async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const parsed = loginSchema.safeParse(body)
 
@@ -163,7 +178,7 @@ auth.post('/login', async (c) => {
   }
 })
 
-auth.post('/refresh', async (c) => {
+auth.post('/refresh', refreshRateLimit, async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const parsed = refreshSchema.safeParse(body)
 
@@ -582,7 +597,22 @@ auth.post('/reset-password/:id', requireAdmin, async (c) => {
 auth.put('/employees/:id/roles', requireAdmin, async (c) => {
   const authContext = c.get('auth')
   const targetId = parseInt(c.req.param('id'))
-  const { roleIds } = await c.req.json()
+
+  if (Number.isNaN(targetId)) {
+    return c.json({ error: true, message: 'ID nhân viên không hợp lệ' }, 400)
+  }
+
+  const body = await c.req.json().catch(() => ({}))
+  const parsed = updateEmployeeRolesSchema.safeParse(body)
+
+  if (!parsed.success) {
+    return c.json(
+      { error: true, message: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') },
+      400
+    )
+  }
+
+  const { roleIds } = parsed.data
 
   if (!(await canManageEmployee(authContext, targetId))) {
     return c.json(
@@ -597,7 +627,7 @@ auth.put('/employees/:id/roles', requireAdmin, async (c) => {
       ['root']
     )
 
-    if (rootRole && roleIds?.includes(rootRole.id)) {
+    if (rootRole && roleIds.includes(rootRole.id)) {
       return c.json(
         { error: true, message: 'Chỉ ROOT mới có thể gán vai trò ROOT' },
         403
@@ -606,29 +636,23 @@ auth.put('/employees/:id/roles', requireAdmin, async (c) => {
   }
 
   try {
-    try {
-      await query('DELETE FROM employee_roles WHERE employee_id = $1', [targetId])
-    } catch (deleteErr) {
-      console.warn('Update employee roles: delete failed:', deleteErr)
-    }
+    await tx(async (client) => {
+      await client.query('DELETE FROM employee_roles WHERE employee_id = $1', [targetId])
 
-    if (roleIds?.length > 0) {
-      const valueRows: string[] = []
-      const params: unknown[] = []
-      for (const roleId of roleIds as number[]) {
-        const base = params.length
-        valueRows.push(`($${base + 1}, $${base + 2}, $${base + 3})`)
-        params.push(targetId, roleId, authContext.employeeId)
-      }
-      try {
-        await query(
+      if (roleIds.length > 0) {
+        const valueRows: string[] = []
+        const params: unknown[] = []
+        for (const roleId of roleIds) {
+          const base = params.length
+          valueRows.push(`($${base + 1}, $${base + 2}, $${base + 3})`)
+          params.push(targetId, roleId, authContext.employeeId)
+        }
+        await client.query(
           `INSERT INTO employee_roles (employee_id, role_id, assigned_by) VALUES ${valueRows.join(', ')}`,
           params
         )
-      } catch (insertErr) {
-        console.warn('Update employee roles: insert failed:', insertErr)
       }
-    }
+    })
 
     return c.json({
       message: 'Cập nhật vai trò thành công',
@@ -636,14 +660,29 @@ auth.put('/employees/:id/roles', requireAdmin, async (c) => {
     })
   } catch (err) {
     console.error('Update employee roles error:', err)
-    return c.json({ error: true, message: 'Lỗi hệ thống' }, 500)
+    return c.json({ error: true, message: 'Không thể cập nhật vai trò, vui lòng thử lại' }, 500)
   }
 })
 
 auth.put('/employees/:id/permissions', requireAdmin, async (c) => {
   const authContext = c.get('auth')
   const targetId = parseInt(c.req.param('id'))
-  const { permissions } = await c.req.json()
+
+  if (Number.isNaN(targetId)) {
+    return c.json({ error: true, message: 'ID nhân viên không hợp lệ' }, 400)
+  }
+
+  const body = await c.req.json().catch(() => ({}))
+  const parsed = updateEmployeePermissionsSchema.safeParse(body)
+
+  if (!parsed.success) {
+    return c.json(
+      { error: true, message: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') },
+      400
+    )
+  }
+
+  const { permissions } = parsed.data
 
   if (!(await canManageEmployee(authContext, targetId))) {
     return c.json(
@@ -653,36 +692,29 @@ auth.put('/employees/:id/permissions', requireAdmin, async (c) => {
   }
 
   try {
-    try {
-      await query('DELETE FROM employee_permissions WHERE employee_id = $1', [targetId])
-    } catch (deleteErr) {
-      console.warn('Update employee permissions: delete failed:', deleteErr)
-    }
+    await tx(async (client) => {
+      await client.query('DELETE FROM employee_permissions WHERE employee_id = $1', [targetId])
 
-    if (permissions?.length > 0) {
-      const valueRows: string[] = []
-      const params: unknown[] = []
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const p of permissions as any[]) {
-        const base = params.length
-        valueRows.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`)
-        params.push(
-          targetId,
-          p.permissionId,
-          p.granted ?? true,
-          p.expiresAt || null,
-          authContext.employeeId
-        )
-      }
-      try {
-        await query(
+      if (permissions.length > 0) {
+        const valueRows: string[] = []
+        const params: unknown[] = []
+        for (const p of permissions) {
+          const base = params.length
+          valueRows.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`)
+          params.push(
+            targetId,
+            p.permissionId,
+            p.granted,
+            p.expiresAt || null,
+            authContext.employeeId
+          )
+        }
+        await client.query(
           `INSERT INTO employee_permissions (employee_id, permission_id, granted, expires_at, assigned_by) VALUES ${valueRows.join(', ')}`,
           params
         )
-      } catch (insertErr) {
-        console.warn('Update employee permissions: insert failed:', insertErr)
       }
-    }
+    })
 
     return c.json({
       message: 'Cập nhật quyền thành công',
@@ -690,7 +722,7 @@ auth.put('/employees/:id/permissions', requireAdmin, async (c) => {
     })
   } catch (err) {
     console.error('Update employee permissions error:', err)
-    return c.json({ error: true, message: 'Lỗi hệ thống' }, 500)
+    return c.json({ error: true, message: 'Không thể cập nhật quyền, vui lòng thử lại' }, 500)
   }
 })
 

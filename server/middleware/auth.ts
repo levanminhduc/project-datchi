@@ -52,8 +52,6 @@ export async function authMiddleware(c: Context, next: Next) {
 
     const resolvedEmployeeId = jwtPayload.employee_id
     const resolvedEmployeeCode = jwtPayload.employee_code
-    let roles = Array.isArray(jwtPayload.roles) ? jwtPayload.roles : []
-    let isRoot = jwtPayload.is_root
 
     if (!resolvedEmployeeId || !resolvedEmployeeCode) {
       return c.json({ error: true, message: 'Token không hợp lệ' }, 401)
@@ -83,10 +81,17 @@ export async function authMiddleware(c: Context, next: Next) {
       return c.json({ error: true, message: 'Tài khoản đã bị vô hiệu hóa' }, 403)
     }
 
-    if (roles.length === 0) {
-      roles = await getEmployeeRoleCodes(resolvedEmployeeId)
-      isRoot = roles.includes('root')
+    let roles: string[]
+    try {
+      roles = await retryOnDbError(() => getEmployeeRoleCodes(resolvedEmployeeId))
+    } catch (roleErr) {
+      console.error('Auth middleware: failed to fetch role codes:', roleErr)
+      return c.json(
+        { error: true, message: 'Hệ thống đang khởi động lại, vui lòng thử lại sau' },
+        503
+      )
     }
+    const isRoot = roles.includes('root')
 
     let permissions: string[]
     if (isRoot) {
@@ -259,22 +264,17 @@ async function getEmployeePermissions(employeeId: number): Promise<string[]> {
 }
 
 async function getEmployeeRoleCodes(employeeId: number): Promise<string[]> {
-  try {
-    const employeeRoles = await query<{ code: string | null }>(
-      `SELECT r.code
-       FROM employee_roles er
-       JOIN roles r ON r.id = er.role_id
-       WHERE er.employee_id = $1`,
-      [employeeId]
-    )
+  const employeeRoles = await query<{ code: string | null }>(
+    `SELECT r.code
+     FROM employee_roles er
+     JOIN roles r ON r.id = er.role_id
+     WHERE er.employee_id = $1`,
+    [employeeId]
+  )
 
-    return employeeRoles
-      .map((er) => er.code)
-      .filter((code: unknown): code is string => typeof code === 'string')
-  } catch (err) {
-    console.error('Auth middleware: failed to fetch role codes:', err)
-    return []
-  }
+  return employeeRoles
+    .map((er) => er.code)
+    .filter((code: unknown): code is string => typeof code === 'string')
 }
 
 export async function canManageEmployee(

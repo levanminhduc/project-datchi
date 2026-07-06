@@ -5,7 +5,7 @@ import type { JwtPayload } from '../types/auth'
 const ISSUER = 'datchi-auth'
 
 const ACCESS_TTL_SECONDS = parseInt(process.env.JWT_ACCESS_TTL_SECONDS || '3600', 10)
-const REFRESH_TTL_SECONDS = parseInt(process.env.JWT_REFRESH_TTL_SECONDS || '7776000', 10)
+const REFRESH_TTL_SECONDS = parseInt(process.env.JWT_REFRESH_TTL_SECONDS || '2592000', 10)
 
 function getSigningKey(): Uint8Array {
   const secret = process.env.JWT_SIGNING_SECRET
