@@ -28,6 +28,10 @@ const poolConfig: PoolConfig = {
   connectionTimeoutMillis: Number(
     process.env.DATABASE_POOL_CONNECTION_TIMEOUT_MS ?? 10000
   ),
+  keepAlive: true,
+  keepAliveInitialDelayMillis: Number(
+    process.env.DATABASE_KEEPALIVE_DELAY_MS ?? 30000
+  ),
 }
 
 export const pool = new Pool(poolConfig)

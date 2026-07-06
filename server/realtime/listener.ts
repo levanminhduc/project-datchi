@@ -52,7 +52,13 @@ async function connect(): Promise<void> {
     throw new Error('DATABASE_URL is not set; realtime listener cannot start.')
   }
 
-  client = new Client({ connectionString })
+  client = new Client({
+    connectionString,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: Number(
+      process.env.DATABASE_KEEPALIVE_DELAY_MS ?? 30000
+    ),
+  })
 
   client.on('notification', (msg) => {
     if (msg.channel === CHANNEL && msg.payload) {
