@@ -114,7 +114,7 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
 
     const total = rows.length > 0 ? Number(rows[0].total_count) : 0
     const data = rows.map((row: any) => {
-      const { total_count, ...rest } = row
+      const { total_count: _total_count, ...rest } = row
       return rest
     })
 
@@ -198,7 +198,7 @@ deliveries.get('/deliveries/receive-logs', requirePermission('thread.allocations
 
     const total = rows.length > 0 ? Number(rows[0].total_count) : 0
     const data = rows.map((row: any) => {
-      const { total_count, ...rest } = row
+      const { total_count: _total_count, ...rest } = row
       return rest
     })
 
