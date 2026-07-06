@@ -42,7 +42,8 @@ npm run e2e             # Playwright headless
 npm run e2e:ui          # Playwright UI mode
 npm run e2e:headed      # Playwright headed
 
-psql -h 127.0.0.1 -p 5432 -U postgres -d datchi   # Connect to DB
+psql -h 127.0.0.1 -p 5432 -U postgres -d datchi   # Connect to DB (local credentials: postgres:postgres)
+PGPASSWORD=postgres psql -h 127.0.0.1 -p 5432 -U postgres -d datchi -c "SELECT 1;"   # Non-interactive DB query example
 npm run db:seed         # Seed master data (local only)
 ```
 
