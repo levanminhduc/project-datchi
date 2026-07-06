@@ -55,6 +55,7 @@ export default [
         EventTarget: 'readonly',
         AbortController: 'readonly',
         AbortSignal: 'readonly',
+        crypto: 'readonly',
         Element: 'readonly',
         KeyboardEvent: 'readonly',
         ClipboardEvent: 'readonly',

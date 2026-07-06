@@ -209,6 +209,7 @@ export interface ReceiveDeliveryDTO {
   quantity: number
   received_by: string
   expiry_date?: string
+  idempotency_key?: string
 }
 
 export interface UpdateDeliveryDTO {
