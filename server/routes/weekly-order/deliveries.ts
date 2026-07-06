@@ -21,7 +21,8 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
     const weekId = c.req.query('week_id')
     const inventoryStatus = c.req.query('inventory_status')
     const inventoryStatusNot = c.req.query('inventory_status_not')
-    const search = (c.req.query('search') || '').trim().toLowerCase()
+    const search = (c.req.query('search') || '').trim()
+    const hasPage = Boolean(c.req.query('page'))
     const page = Math.max(1, parseInt(c.req.query('page') || '1'))
     const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '20')))
     const showCancelled = status === 'CANCELLED'
@@ -38,216 +39,87 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
       return c.json({ data: null, error: 'Trạng thái nhập kho không hợp lệ' }, 400)
     }
 
-    const allDeliveries: any[] = []
-    let offset = 0
+    const params: unknown[] = []
+    const conds: string[] = []
 
-    while (true) {
-      const params: unknown[] = []
-      const conds: string[] = []
-
-      if (status) {
-        params.push(status)
-        conds.push(`d.status = $${params.length}`)
-      } else {
-        // Mặc định ẩn deliveries đã hủy
-        params.push('CANCELLED')
-        conds.push(`d.status <> $${params.length}`)
-      }
-      if (weekId) {
-        params.push(parseInt(weekId))
-        conds.push(`d.week_id = $${params.length}`)
-      }
-      if (inventoryStatus) {
-        params.push(inventoryStatus)
-        conds.push(`d.inventory_status = $${params.length}`)
-      }
-      if (inventoryStatusNot) {
-        params.push(inventoryStatusNot)
-        conds.push(`d.inventory_status <> $${params.length}`)
-      }
-
-      const whereClause = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : ''
-      params.push(BATCH_SIZE)
-      const limitPh = `$${params.length}`
-      params.push(offset)
-      const offsetPh = `$${params.length}`
-
-      const data = await query<any>(
-        `SELECT d.*,
-          CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('id', sup.id, 'name', sup.name) END AS supplier,
-          CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
-            'id', tt.id, 'name', tt.name, 'tex_number', tt.tex_number,
-            'color_data', CASE WHEN co.id IS NULL THEN NULL ELSE json_build_object('name', co.name, 'hex_code', co.hex_code) END
-          ) END AS thread_type,
-          CASE WHEN w.id IS NULL THEN NULL ELSE json_build_object('id', w.id, 'week_name', w.week_name, 'status', w.status) END AS week
-         FROM thread_order_deliveries d
-         LEFT JOIN suppliers sup ON sup.id = d.supplier_id
-         LEFT JOIN thread_types tt ON tt.id = d.thread_type_id
-         LEFT JOIN colors co ON co.id = tt.color_id
-         LEFT JOIN thread_order_weeks w ON w.id = d.week_id
-         ${whereClause}
-         ORDER BY d.delivery_date ASC
-         LIMIT ${limitPh} OFFSET ${offsetPh}`,
-        params,
-      )
-
-      if (!data || data.length === 0) break
-      allDeliveries.push(...data)
-
-      if (data.length < BATCH_SIZE) break
-      offset += BATCH_SIZE
+    if (status) {
+      params.push(status)
+      conds.push(`d.status = $${params.length}`)
+    } else {
+      params.push('CANCELLED')
+      conds.push(`d.status <> $${params.length}`)
+    }
+    if (!showCancelled) {
+      conds.push(`w.status <> 'CANCELLED'`)
+    }
+    if (weekId) {
+      params.push(parseInt(weekId))
+      conds.push(`d.week_id = $${params.length}`)
+    }
+    if (inventoryStatus) {
+      params.push(inventoryStatus)
+      conds.push(`d.inventory_status = $${params.length}`)
+    }
+    if (inventoryStatusNot) {
+      params.push(inventoryStatusNot)
+      conds.push(`d.inventory_status <> $${params.length}`)
+    }
+    conds.push(`(d.quantity_cones >= 1 OR d.status = 'DELIVERED' OR d.received_quantity > 0)`)
+    if (search) {
+      params.push(`%${search}%`)
+      const ph = `$${params.length}`
+      conds.push(`(sup.name ILIKE ${ph} OR tt.tex_number ILIKE ${ph} OR COALESCE(d.thread_color, '') ILIKE ${ph} OR tt.name ILIKE ${ph} OR w.week_name ILIKE ${ph})`)
     }
 
-    const weekIds = [...new Set(allDeliveries.map((row: any) => row.week_id))]
-    const resultsData: Array<{ week_id: number; summary_data: unknown[] | null }> = []
-
-    if (weekIds.length > 0) {
-      const WEEK_IDS_BATCH_SIZE = 200
-      for (let i = 0; i < weekIds.length; i += WEEK_IDS_BATCH_SIZE) {
-        const chunk = weekIds.slice(i, i + WEEK_IDS_BATCH_SIZE)
-        const chunkData = await query<{ week_id: number; summary_data: unknown[] | null }>(
-          `SELECT week_id, summary_data FROM thread_order_results WHERE week_id = ANY($1)`,
-          [chunk],
-        )
-
-        if (chunkData && chunkData.length > 0) {
-          resultsData.push(...chunkData)
-        }
-      }
+    let pagination = ''
+    if (hasPage) {
+      params.push(limit)
+      pagination = ` LIMIT $${params.length}`
+      params.push((page - 1) * limit)
+      pagination += ` OFFSET $${params.length}`
     }
 
-    const summaryMap = new Map<number, Map<string, { total_final: number; thread_color?: string; thread_color_code?: string }>>()
-    for (const result of resultsData || []) {
-      if (result.summary_data && Array.isArray(result.summary_data)) {
-        const threadMap = new Map<string, { total_final: number; thread_color?: string; thread_color_code?: string }>()
-        for (const row of result.summary_data as Array<{ thread_type_id: number; total_final?: number; thread_color?: string; thread_color_code?: string }>) {
-          if (row.thread_type_id && row.total_final !== undefined) {
-            const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
-            threadMap.set(key, {
-              total_final: row.total_final,
-              thread_color: row.thread_color || undefined,
-              thread_color_code: row.thread_color_code || undefined,
-            })
-          }
-        }
-        summaryMap.set(result.week_id, threadMap)
-      }
-    }
-
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-    const enrichedRows = allDeliveries
-      .map((row: any) => {
-        const deliveryDate = new Date(row.delivery_date)
-        deliveryDate.setHours(0, 0, 0, 0)
-        const days_remaining = Math.ceil((deliveryDate.getTime() - now.getTime()) / 86400000)
-
-        const threadMap = summaryMap.get(row.week_id)
-        const compositeKey = `${row.thread_type_id}_${row.thread_color ?? ''}`
-        let summaryInfo = threadMap?.get(compositeKey)
-        if (!summaryInfo && !row.thread_color && threadMap) {
-          let fallbackTotal = 0
-          for (const [key, val] of threadMap) {
-            if (key.startsWith(`${row.thread_type_id}_`)) fallbackTotal += val.total_final
-          }
-          if (fallbackTotal > 0) summaryInfo = { total_final: fallbackTotal }
-        }
-        const total_cones = summaryInfo?.total_final ?? null
-
-        return {
-          ...row,
-          supplier_name: row.supplier?.name || '',
-          thread_type_name: row.thread_type?.name || '',
-          tex_number: row.thread_type?.tex_number || '',
-          color_name: row.thread_color || row.thread_type?.color_data?.name || summaryInfo?.thread_color || '',
-          color_hex: row.thread_color_code || row.thread_type?.color_data?.hex_code || summaryInfo?.thread_color_code || '',
-          week_name: row.week?.week_name || '',
-          days_remaining,
-          is_overdue: days_remaining < 0 && row.status === 'PENDING',
-          total_cones,
-        }
-      })
-      .filter((row: any) => {
-        // Ẩn deliveries của đơn hàng tuần đã hủy (trừ khi đang xem CANCELLED)
-        if (!showCancelled && row.week?.status === 'CANCELLED') return false
-
-        const quantityCones = Number(row.quantity_cones || 0)
-        const receivedQuantity = Number(row.received_quantity || 0)
-        const hasSupplier = row.supplier_id !== null && row.supplier_id !== undefined
-
-        if (hasSupplier && quantityCones >= 1) return true
-        return row.status === 'DELIVERED' || receivedQuantity > 0
-      })
-
-    const dedupeMap = new Map<string, any>()
-    const toTimestamp = (value: unknown) => {
-      const ts = new Date(String(value || '')).getTime()
-      return Number.isNaN(ts) ? 0 : ts
-    }
-
-    for (const row of enrichedRows) {
-      const key = `${row.week_id}_${row.thread_type_id}_${row.thread_color ?? ''}_${row.supplier_id ?? ''}`
-      const existing = dedupeMap.get(key)
-      if (!existing) {
-        dedupeMap.set(key, row)
-        continue
-      }
-
-      const existingDelivered = existing.status === 'DELIVERED'
-      const currentDelivered = row.status === 'DELIVERED'
-      const existingUpdatedAt = toTimestamp(existing.updated_at ?? existing.created_at)
-      const currentUpdatedAt = toTimestamp(row.updated_at ?? row.created_at)
-
-      if ((!existingDelivered && currentDelivered) || currentUpdatedAt > existingUpdatedAt) {
-        dedupeMap.set(key, row)
-      }
-    }
-
-    const enriched = Array.from(dedupeMap.values())
-      .sort((a, b) => String(a.delivery_date).localeCompare(String(b.delivery_date)))
-
-    const loanAggs = await query<{ from_week_id: number | null; to_week_id: number | null; thread_type_id: number; quantity_cones: number }>(
-      `SELECT from_week_id, to_week_id, thread_type_id, quantity_cones FROM thread_order_loans
-       WHERE status = 'ACTIVE' AND deleted_at IS NULL AND from_week_id IS NOT NULL`,
+    const rows = await query<any>(
+      `SELECT d.*,
+         sup.name AS supplier_name,
+         tt.name AS thread_type_name,
+         tt.tex_number,
+         w.week_name,
+         COALESCE(d.thread_color, '') AS color_name,
+         COALESCE(d.thread_color_code, '') AS color_hex,
+         (d.delivery_date - (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date) AS days_remaining,
+         (d.delivery_date < (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AND d.status = 'PENDING') AS is_overdue,
+         COALESCE(bl.borrowed_in, 0)::int AS borrowed_in,
+         COALESCE(ll.lent_out, 0)::int AS lent_out,
+         COUNT(*) OVER() AS total_count
+       FROM thread_order_deliveries d
+       LEFT JOIN suppliers sup ON sup.id = d.supplier_id
+       LEFT JOIN thread_types tt ON tt.id = d.thread_type_id
+       LEFT JOIN thread_order_weeks w ON w.id = d.week_id
+       LEFT JOIN (
+         SELECT to_week_id, thread_type_id, SUM(quantity_cones) AS borrowed_in
+         FROM thread_order_loans
+         WHERE status = 'ACTIVE' AND deleted_at IS NULL AND from_week_id IS NOT NULL
+         GROUP BY to_week_id, thread_type_id
+       ) bl ON bl.to_week_id = d.week_id AND bl.thread_type_id = d.thread_type_id
+       LEFT JOIN (
+         SELECT from_week_id, thread_type_id, SUM(quantity_cones) AS lent_out
+         FROM thread_order_loans
+         WHERE status = 'ACTIVE' AND deleted_at IS NULL AND from_week_id IS NOT NULL
+         GROUP BY from_week_id, thread_type_id
+       ) ll ON ll.from_week_id = d.week_id AND ll.thread_type_id = d.thread_type_id
+       WHERE ${conds.join(' AND ')}
+       ORDER BY d.delivery_date ASC, d.id ASC${pagination}`,
+      params,
     )
 
-    const borrowedMap = new Map<string, number>()
-    const lentMap = new Map<string, number>()
-    for (const loan of loanAggs || []) {
-      const borrowKey = `${loan.to_week_id}_${loan.thread_type_id}`
-      borrowedMap.set(borrowKey, (borrowedMap.get(borrowKey) || 0) + loan.quantity_cones)
-      const lentKey = `${loan.from_week_id}_${loan.thread_type_id}`
-      lentMap.set(lentKey, (lentMap.get(lentKey) || 0) + loan.quantity_cones)
-    }
-
-    const withLoanContext = enriched.map((row: any) => {
-      const key = `${row.week_id}_${row.thread_type_id}`
-      return {
-        ...row,
-        borrowed_in: borrowedMap.get(key) || 0,
-        lent_out: lentMap.get(key) || 0,
-      }
+    const total = rows.length > 0 ? Number(rows[0].total_count) : 0
+    const data = rows.map((row: any) => {
+      const { total_count, ...rest } = row
+      return rest
     })
 
-    const includesSearch = (value: unknown) => String(value || '').toLowerCase().includes(search)
-    const responseRows = search
-      ? withLoanContext.filter(row =>
-        includesSearch(row.supplier_name)
-        || includesSearch(row.tex_number)
-        || includesSearch(row.color_name)
-        || includesSearch(row.week_name)
-        || includesSearch(row.thread_type_name),
-      )
-      : withLoanContext
-
-    const total = responseRows.length
-    if (c.req.query('page')) {
-      const start = (page - 1) * limit
-      const paginated = responseRows.slice(start, start + limit)
-      return c.json({ data: paginated, total, error: null })
-    }
-
-    return c.json({ data: responseRows, total, error: null })
+    return c.json({ data, total, error: null })
   } catch (err) {
     console.error('Error fetching deliveries overview:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
