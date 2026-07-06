@@ -265,7 +265,7 @@ deliveries.patch('/deliveries/:deliveryId', requirePermission('thread.allocation
     }
 
     if (validated.delivery_date !== undefined) {
-      const updatedDelivery = data as { week_id: number; thread_type_id: number }
+      const updatedDelivery = data as { week_id: number; thread_type_id: number; thread_color: string | null }
 
       const resultRow = await queryOne<{ id: number; summary_data: unknown }>(
         `SELECT id, summary_data FROM thread_order_results WHERE week_id = $1 LIMIT 1`,
@@ -275,7 +275,9 @@ deliveries.patch('/deliveries/:deliveryId', requirePermission('thread.allocation
       if (resultRow?.summary_data && Array.isArray(resultRow.summary_data)) {
         let changed = false
         const nextSummary = (resultRow.summary_data as Array<Record<string, unknown>>).map((row) => {
-          if (row.thread_type_id === updatedDelivery.thread_type_id) {
+          const sameType = row.thread_type_id === updatedDelivery.thread_type_id
+          const sameColor = String(row.thread_color ?? '') === String(updatedDelivery.thread_color ?? '')
+          if (sameType && sameColor) {
             changed = true
             return { ...row, delivery_date: validated.delivery_date }
           }
