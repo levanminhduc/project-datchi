@@ -332,7 +332,7 @@ deliveries.post('/deliveries/:deliveryId/receive', requirePermission('thread.all
       throw err
     }
 
-    const { warehouse_id, quantity, received_by, expiry_date } = validated
+    const { warehouse_id, quantity, received_by, expiry_date, idempotency_key } = validated
 
     const delivery = await queryOne<{ id: number; status: string; week_id: number; thread_type_id: number }>(
       `SELECT id, status, week_id, thread_type_id FROM thread_order_deliveries WHERE id = $1 LIMIT 1`,
@@ -350,8 +350,8 @@ deliveries.post('/deliveries/:deliveryId/receive', requirePermission('thread.all
     let result: any
     try {
       const rows = await query<{ result: any }>(
-        `SELECT fn_receive_delivery($1, $2, $3, $4, $5) AS result`,
-        [deliveryId, quantity, warehouse_id, received_by, expiry_date || null],
+        `SELECT fn_receive_delivery($1, $2, $3, $4, $5, $6) AS result`,
+        [deliveryId, quantity, warehouse_id, received_by, expiry_date || null, idempotency_key || null],
       )
       result = rows.length > 0 ? rows[0].result : null
     } catch (rpcError) {
@@ -368,7 +368,9 @@ deliveries.post('/deliveries/:deliveryId/receive', requirePermission('thread.all
         auto_return: result?.auto_return ?? { settled: 0, returned_cones: 0, details: [] },
       },
       error: null,
-      message: `Đã nhập ${quantity} cuộn chỉ vào kho`,
+      message: result?.duplicate
+        ? 'Yêu cầu này đã được xử lý trước đó'
+        : `Đã nhập ${quantity} cuộn chỉ vào kho`,
     })
   } catch (err) {
     console.error('Error receiving delivery:', err)
