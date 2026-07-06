@@ -96,3 +96,10 @@ vendor/
 coverage/
 .cache/
 tmp/
+.tmp/
+
+# Local artifacts (reports, task notes, DB dumps)
+reports/
+sdd/
+task-*-report.md
+supabase/backup/
