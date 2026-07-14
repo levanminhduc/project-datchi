@@ -19,6 +19,7 @@ const subscribers = new Set<Subscriber>()
 let client: Client | null = null
 let reconnectAttempts = 0
 let started = false
+let stopping = false
 
 export function subscribe(fn: Subscriber): () => void {
   subscribers.add(fn)
@@ -82,6 +83,8 @@ async function connect(): Promise<void> {
 }
 
 function scheduleReconnect(): void {
+  if (stopping) return
+
   if (client) {
     const dead = client
     client = null
@@ -108,5 +111,15 @@ export async function startRealtimeListener(): Promise<void> {
   } catch (err) {
     console.error('[realtime] initial connect failed:', err)
     scheduleReconnect()
+  }
+}
+
+export async function stopRealtimeListener(): Promise<void> {
+  stopping = true
+  if (client) {
+    const dead = client
+    client = null
+    dead.removeAllListeners()
+    await dead.end().catch(() => {})
   }
 }

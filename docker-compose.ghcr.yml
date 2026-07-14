@@ -29,8 +29,9 @@ services:
 
   backend:
     image: ghcr.io/levanminhduc/datchi-backend:${IMAGE_TAG:-latest}
+    init: true
     ports:
-      - "${BACKEND_PORT:-3010}:3000"
+      - "127.0.0.1:${BACKEND_PORT:-3010}:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -42,6 +43,9 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
+      CHATBOT_SERVICE_URL: ${CHATBOT_SERVICE_URL:-}
+      CHATBOT_INTERNAL_TOKEN: ${CHATBOT_INTERNAL_TOKEN:-}
+      CHATBOT_REQUEST_TIMEOUT_MS: ${CHATBOT_REQUEST_TIMEOUT_MS:-15000}
     volumes:
       - guide_storage:${STORAGE_DIR:-/data/storage}
     restart: unless-stopped

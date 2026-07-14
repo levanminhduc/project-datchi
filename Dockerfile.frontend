@@ -42,6 +42,7 @@ RUN mkdir -p /run/nginx /var/cache/nginx
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 COPY nginx.docker.conf /etc/nginx/nginx.conf
+COPY nginx-security-headers.conf /etc/nginx/nginx-security-headers.conf
 
 RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /run/nginx
 

@@ -50,9 +50,10 @@ import overQuotaRouter from './routes/over-quota'
 import threadConeSummaryRouter from './routes/thread/cone-summary'
 import chatAssistantRouter from './routes/chat-assistant'
 import realtimeRouter from './realtime/stream'
-import { startRealtimeListener } from './realtime/listener'
+import { startRealtimeListener, stopRealtimeListener } from './realtime/listener'
 import { authMiddleware } from './middleware/auth'
 import { assertSigningKeyConfigured } from './auth/jwt'
+import { pool } from './db/pool'
 
 const app = new Hono()
 
@@ -180,7 +181,7 @@ if (HAS_DIST) console.log('Serving static files from dist/')
 
 assertSigningKeyConfigured()
 
-serve({
+const server = serve({
   fetch: app.fetch,
   port: PORT,
 })
@@ -190,3 +191,34 @@ startRealtimeListener().catch((err) => {
 })
 
 console.log(`Server is running at http://localhost:${PORT}`)
+
+let shuttingDown = false
+
+async function gracefulShutdown(): Promise<void> {
+  if (shuttingDown) return
+  shuttingDown = true
+
+  console.log('Nhận tín hiệu tắt, đang dừng server...')
+
+  const forceExit = setTimeout(() => {
+    console.error('Buộc thoát sau 10s chờ')
+    process.exit(1)
+  }, 10000)
+  forceExit.unref()
+
+  try {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve())
+    })
+    await stopRealtimeListener()
+    await pool.end()
+    clearTimeout(forceExit)
+    process.exit(0)
+  } catch (err) {
+    console.error('Lỗi khi tắt server:', err)
+    process.exit(1)
+  }
+}
+
+process.on('SIGTERM', gracefulShutdown)
+process.on('SIGINT', gracefulShutdown)
