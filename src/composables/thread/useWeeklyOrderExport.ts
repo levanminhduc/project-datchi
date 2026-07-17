@@ -71,9 +71,8 @@ const COLUMN_DEFS: Array<{ header: string; key: string; width: number }> = [
   { header: 'Tổng mét', key: 'total_meters', width: 15 },
   { header: 'Mét/cuộn', key: 'meters_per_cone', width: 12 },
   { header: 'Nhu Cầu', key: 'total_cones', width: 12 },
-  { header: 'Tồn kho KD', key: 'inventory_cones', width: 12 },
-  { header: 'Cuộn Nguyên TT', key: 'full_cones', width: 14 },
-  { header: 'Cuộn Lẻ TT', key: 'partial_cones', width: 14 },
+  { header: 'Cuộn Nguyên KD', key: 'full_cones', width: 14 },
+  { header: 'Cuộn Lẻ KD', key: 'partial_cones', width: 14 },
   { header: 'Tồn kho QĐ', key: 'equivalent_cones', width: 12 },
   { header: 'SL cần đặt', key: 'sl_can_dat', width: 12 },
   { header: 'Đặt thêm', key: 'additional_order', width: 12 },
@@ -239,7 +238,6 @@ async function buildOrderWorkbook(
   worksheet.getColumn('total_meters').numFmt = numFmt2
   worksheet.getColumn('meters_per_cone').numFmt = numFmt
   worksheet.getColumn('total_cones').numFmt = numFmt
-  worksheet.getColumn('inventory_cones').numFmt = numFmt
   worksheet.getColumn('full_cones').numFmt = numFmt
   worksheet.getColumn('partial_cones').numFmt = numFmt
   worksheet.getColumn('equivalent_cones').numFmt = 'General'
@@ -257,7 +255,6 @@ async function buildOrderWorkbook(
       total_meters: Number(r.total_meters.toFixed(2)),
       meters_per_cone: r.meters_per_cone || '',
       total_cones: r.total_cones > 0 ? r.total_cones : '',
-      inventory_cones: r.inventory_cones || '',
       full_cones: r.full_cones ?? '',
       partial_cones: r.partial_cones ?? '',
       equivalent_cones: r.equivalent_cones ?? '',

@@ -85,6 +85,10 @@ calculation.put('/items/:id/quota', requirePermission('thread.allocations.manage
     const summaryData = results.summary_data as any[]
     for (const row of summaryData) {
       if (row.thread_type_id === thread_type_id) {
+        const totalCones = Number(row.total_cones ?? 0)
+        if (quota_cones > totalCones) {
+          return c.json({ data: null, error: `Nhu cầu chỉ được giảm, tối đa ${totalCones} cuộn` }, 400)
+        }
         row.quota_cones = quota_cones
         updated = true
         break

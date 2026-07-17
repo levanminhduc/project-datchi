@@ -576,8 +576,7 @@ export function useWeeklyOrderCalculation() {
   const mergeDeliveryDateOverrides = () => {
     if (deliveryDateOverrides.size === 0) return
 
-    // Track thread_type_id-level overrides so summary_data can be synced before save.
-    const threadTypeDeliveryOverrides = new Map<number, string>()
+    const summaryDeliveryOverrides = new Map<string, string>()
 
     for (const result of perStyleResults.value) {
       for (const calc of result.calculations) {
@@ -587,19 +586,18 @@ export function useWeeklyOrderCalculation() {
 
           if (calc.color_breakdown && calc.color_breakdown.length > 0) {
             for (const cb of calc.color_breakdown) {
-              threadTypeDeliveryOverrides.set(cb.thread_type_id, override)
+              if (!cb.thread_type_id) continue
+              summaryDeliveryOverrides.set(aggregationKey(cb.thread_type_id, cb.thread_color_id ?? null), override)
             }
           } else {
-            // Fallback for non-color specs where aggregated row key currently follows spec_id.
-            threadTypeDeliveryOverrides.set(calc.spec_id, override)
+            summaryDeliveryOverrides.set(aggregationKey(calc.thread_type_id, null), override)
           }
         }
       }
     }
 
-    // Also update aggregated summary rows so summary_data stays in sync with edited dates.
     for (const row of aggregatedResults.value) {
-      const override = threadTypeDeliveryOverrides.get(row.thread_type_id)
+      const override = summaryDeliveryOverrides.get(aggregationKey(row.thread_type_id, row.thread_color_id ?? null))
       if (override) {
         row.delivery_date = override
       }
