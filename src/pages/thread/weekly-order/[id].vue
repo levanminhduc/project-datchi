@@ -223,26 +223,26 @@
           label="Tiến độ"
           icon="trending_up"
         />
-        <q-tab
+        <!-- <q-tab
           name="process-trace"
           label="Truy xuất"
           icon="account_tree"
-        />
+        /> -->
         <q-tab
           name="overview"
           label="Tổng quan"
           icon="info"
         />
-        <q-tab
+        <!-- <q-tab
           name="reservations"
           label="Đặt trước"
           icon="bookmark"
-        />
-        <q-tab
+        /> -->
+        <!-- <q-tab
           name="loans"
           label="Mượn chỉ"
           icon="swap_horiz"
-        />
+        /> -->
         <q-tab
           name="deliveries"
           label="Giao hàng"
