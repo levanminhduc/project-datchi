@@ -181,6 +181,24 @@
       </q-td>
     </template>
 
+    <template #body-cell-idle_days="props">
+      <q-td
+        :props="props"
+        class="text-center"
+      >
+        <span
+          v-if="props.value != null"
+          :class="props.value >= 90 ? 'text-negative text-weight-bold' : ''"
+        >
+          {{ formatIdleDays(props.value) }}
+        </span>
+        <span
+          v-else
+          class="text-grey"
+        >-</span>
+      </q-td>
+    </template>
+
     <!-- Action column -->
     <template #body-cell-actions="props">
       <q-td
@@ -274,13 +292,14 @@
           >-</span>
         </q-td>
         <q-td />
+        <q-td />
       </q-tr>
       <q-tr
         v-if="totalInventoryValue > 0"
         class="bg-blue-1 text-weight-bold"
       >
         <q-td
-          colspan="10"
+          colspan="11"
           class="text-right text-subtitle2"
         >
           <q-icon
@@ -418,6 +437,14 @@ const columns: QTableColumn[] = [
     sortable: true,
   },
   {
+    name: 'idle_days',
+    label: 'Ngày Tồn Kho',
+    field: 'idle_days',
+    align: 'center',
+    sortable: true,
+    sort: (a: number | null, b: number | null) => (a ?? -1) - (b ?? -1),
+  },
+  {
     name: 'actions',
     label: '',
     field: 'actions',
@@ -461,6 +488,11 @@ const formatNumber = (num: number): string => {
 
 const formatCurrency = (num: number): string => {
   return new Intl.NumberFormat('vi-VN').format(Math.round(num))
+}
+
+const formatIdleDays = (days: number | null | undefined): string => {
+  if (days == null) return '-'
+  return `${days} ngày`
 }
 
 const handleRowClick = (_evt: Event, row: ConeSummaryRow) => {

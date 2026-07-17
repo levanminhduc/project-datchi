@@ -416,6 +416,10 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
     const priceMap = new Map<number, number>()
     const texMap = new Map<number, { tex_number: string | null; tex_label: string | null }>()
     const supplierNameMap = new Map<number, string>()
+    const idleMap = new Map<string, number>()
+
+    const makeIdleKey = (threadTypeId: number, colorId: number | null): string =>
+      `${threadTypeId}|${colorId ?? 'null'}`
 
     if (threadTypeIds.length > 0) {
       let threadTypes: Array<{ id: number; tex_number: string | number | null; tex_label: string | null }>
@@ -470,6 +474,40 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
           }
         }
       }
+
+      try {
+        const idleRows = await query<{ thread_type_id: number; color_id: number | null; idle_days: number | null }>(
+          `SELECT
+             g.thread_type_id,
+             g.color_id,
+             EXTRACT(DAY FROM now() - COALESCE(li.last_issue, g.last_created))::int AS idle_days
+           FROM (
+             SELECT thread_type_id, color_id, MAX(created_at) AS last_created
+             FROM thread_inventory
+             WHERE thread_type_id = ANY($1)
+             GROUP BY thread_type_id, color_id
+           ) g
+           LEFT JOIN (
+             SELECT ti.thread_type_id, ti.color_id, MAX(mv.created_at) AS last_issue
+             FROM thread_movements mv
+             JOIN thread_inventory ti ON ti.id = mv.cone_id
+             WHERE mv.movement_type = 'ISSUE'
+               AND ti.thread_type_id = ANY($1)
+             GROUP BY ti.thread_type_id, ti.color_id
+           ) li
+             ON li.thread_type_id = g.thread_type_id
+             AND li.color_id IS NOT DISTINCT FROM g.color_id`,
+          [threadTypeIds]
+        )
+
+        for (const r of idleRows || []) {
+          if (r.idle_days != null) {
+            idleMap.set(makeIdleKey(r.thread_type_id, r.color_id ?? null), Number(r.idle_days))
+          }
+        }
+      } catch (idleError) {
+        console.error('Idle days lookup error:', idleError)
+      }
     }
 
     const getSummaryTex = (threadTypeId: number, fallback: string | number | null) => {
@@ -501,6 +539,7 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       partial_weight_grams: Number(row.partial_weight_grams),
       total_full_cones: Number(row.total_full_cones),
       total_partial_cones: Number(row.total_partial_cones),
+      idle_days: idleMap.get(makeIdleKey(row.thread_type_id, row.color_id ?? null)) ?? null,
       }
     })
 

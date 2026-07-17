@@ -96,6 +96,7 @@ export interface ConeSummaryRow {
   partial_weight_grams: number
   total_full_cones: number
   total_partial_cones: number
+  idle_days: number | null
 }
 
 /**
