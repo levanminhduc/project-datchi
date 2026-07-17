@@ -320,6 +320,7 @@ export const inventoryService = {
         week: { id: params.weekId, week_name: '', status: '' },
         thread_type_id: params.threadTypeId,
         thread_color_id: params.colorId,
+        additional_order: 0,
         rows: [],
       }
     )

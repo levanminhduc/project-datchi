@@ -205,9 +205,13 @@ export function useConeSummary() {
         threadTypeId,
         colorId,
       })
-      poBreakdownByKey.value.set(key, data.rows)
+      const rowsWithAdditional = data.rows.map((row) => ({
+        ...row,
+        additional_order: data.additional_order,
+      }))
+      poBreakdownByKey.value.set(key, rowsWithAdditional)
       poBreakdownByKey.value = new Map(poBreakdownByKey.value)
-      setCacheEntry(cacheKey, data.rows, CACHE_TTL)
+      setCacheEntry(cacheKey, rowsWithAdditional, CACHE_TTL)
     } catch (err) {
       const errorMessage = getErrorMessage(err)
       poBreakdownErrorByKey.value.set(key, errorMessage || MESSAGES.PO_BREAKDOWN_ERROR)

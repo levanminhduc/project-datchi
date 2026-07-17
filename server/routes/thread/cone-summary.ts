@@ -60,6 +60,7 @@ interface PoBreakdownResponse {
   week: { id: number; week_name: string; status: string }
   thread_type_id: number
   thread_color_id: number
+  additional_order: number
   rows: PoBreakdownRow[]
 }
 
@@ -385,6 +386,7 @@ coneSummary.get(
             week: { id: weekRow.id, week_name: weekRow.week_name, status: weekRow.status },
             thread_type_id,
             thread_color_id: color_id,
+            additional_order: 0,
             rows: [],
           },
           error: null,
@@ -392,7 +394,7 @@ coneSummary.get(
         })
       }
 
-      const [{ calculation_data }, orderItems, ratio] = await Promise.all([
+      const [{ calculation_data, summary_data }, orderItems, ratio] = await Promise.all([
         fetchCalculationData(weekId),
         fetchOrderItems(weekId),
         getPartialConeRatio(),
@@ -404,6 +406,7 @@ coneSummary.get(
             week: { id: weekRow.id, week_name: weekRow.week_name, status: weekRow.status },
             thread_type_id,
             thread_color_id: color_id,
+            additional_order: 0,
             rows: [],
           },
           error: null,
@@ -419,6 +422,19 @@ coneSummary.get(
       const colorByName = await fetchColorNameToIdMap(threadColorIds)
       const colorById = new Map<number, string>()
       for (const [name, id] of colorByName) colorById.set(id, name)
+
+      let additionalOrder = 0
+      for (const s of summary_data) {
+        if (s.thread_type_id !== thread_type_id) continue
+        const summaryColorId =
+          s.thread_color_id != null && s.thread_color_id > 0
+            ? s.thread_color_id
+            : s.thread_color
+              ? colorByName.get(s.thread_color) ?? null
+              : null
+        if (summaryColorId !== color_id) continue
+        additionalOrder += Number(s.additional_order ?? 0)
+      }
 
       const { poStyleColorThreadMap } = buildPoStyleColorQuotaMap(
         orderItems,
@@ -491,6 +507,7 @@ coneSummary.get(
             week: { id: weekRow.id, week_name: weekRow.week_name, status: weekRow.status },
             thread_type_id,
             thread_color_id: color_id,
+            additional_order: 0,
             rows: [],
           },
           error: null,
@@ -572,6 +589,7 @@ coneSummary.get(
           week: { id: weekRow.id, week_name: weekRow.week_name, status: weekRow.status },
           thread_type_id,
           thread_color_id: color_id,
+          additional_order: additionalOrder,
           rows,
         },
         error: null,

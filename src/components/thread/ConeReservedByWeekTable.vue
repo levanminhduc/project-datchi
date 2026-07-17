@@ -271,6 +271,9 @@
                               ĐM cone
                             </th>
                             <th class="text-center">
+                              Đặt thêm
+                            </th>
+                            <th class="text-center">
                               Đã xuất
                             </th>
                             <th class="text-center">
@@ -305,6 +308,15 @@
                             </td>
                             <td class="text-center">
                               {{ formatNumber(row.quota_cones) }}
+                            </td>
+                            <td class="text-center">
+                              <span v-if="row.additional_order && row.additional_order > 0">
+                                {{ formatNumber(row.additional_order) }}
+                              </span>
+                              <span
+                                v-else
+                                class="text-grey"
+                              >-</span>
                             </td>
                             <td class="text-center">
                               {{ formatNumber(row.issued_cones) }}
