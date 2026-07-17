@@ -1,10 +1,12 @@
 # CLAUDE.md
-1.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 When asked about the codebase, project structure, or to find code, always use the context-engine MCP tool (codebase-retrieval) in the root workspace first before reading individual files. Use `codebase-retrieval` instead of the Explore subagent for codebase exploration and search tasks.
 
 When you need to read a specific file but don't know the exact line range, use the file-retrieval MCP tool instead of reading the entire file. Describe what information you need and it returns only the relevant snippets with line numbers. Use the Read tool with the returned line ranges (expanded as needed) to get current content before making edits.
+
+## 1. Project Overview
 
 Thread Inventory Management System for Vietnamese garment manufacturing (B2B).
 Tracks thread cones from purchase order through delivery, allocation, issue to production, and recovery.
@@ -47,34 +49,25 @@ PGPASSWORD=postgres psql -h 127.0.0.1 -p 5432 -U postgres -d datchi -c "SELECT 1
 npm run db:seed         # Seed master data (local only)
 ```
 
-## 4. Core Logic Summary
+## 4. Binding Rules — `.claude/rules/`
 
-**Thread type identity:** 1 thread type = Supplier + Tex number + Color. Different supplier or different color = different thread type, separate inventory.
+Project rules live in `.claude/rules/` and are auto-loaded by Claude Code:
 
-**Cone-level inventory:** Every physical cone is a row in `thread_inventory` with a unique ID, status, and full audit trail via `thread_movements`.
+| Rule file | Scope | Covers |
+|-----------|-------|--------|
+| `00-core.md` | always loaded | Data safety, thread identity, migrations, Vietnamese UI, surgical changes, pre-code/pre-commit checklists |
+| `frontend.md` | `src/**` | App* wrappers, fetchApi, TypeScript rules, pagination, realtime |
+| `backend.md` | `server/**` | Response format, route order, Zod, pg query patterns, idempotency |
+| `database.md` | `supabase/**`, `server/db/**` | Naming, required columns, migration rules, RPC catalog |
+| `thread-domain.md` | thread pages/composables, `server/routes/**` | Identity, color_id sources, cone lifecycle, dual UoM, key flows |
+| `auth.md` | auth middleware/services | JWT, permissions, auth-change checklist |
+| `weekly-order.md` | `server/routes/weekly-order/**` + related | Flow, `thread_color` string exception, route order gotcha |
 
-**Dual UoM:** Each cone tracks `quantity_meters` AND `weight_grams`. Both must be updated on every movement.
+Dangerous shell commands (`DELETE FROM`, `TRUNCATE`, `DROP`, `supabase db reset`, `git push -f`) are additionally gated by a PreToolUse hook (`.claude/hooks/block-dangerous.cjs`).
 
-**FEFO allocation:** Cones allocated First-Expired First-Out via RPC `fn_dept_allocate`. AllocationStatus: PENDING → CONFIRMED → ISSUED.
+## 5. Extended Reference — `.claude/docs/`
 
-**Issue V2:** Multi-color issue flow. RPC `fn_issue_cones_with_movements`. Idempotency log prevents double-execute on retry.
-
-**Recovery:** Cones returned from production → status transitions back to AVAILABLE. Handled in `server/routes/recovery.ts`.
-
-**Weekly order → reservation → loan:** Calculate needs → reserve stock (`fn_reserve_from_stock`) → optional loans between depts (`fn_batch_borrow_thread`) → transfer reserved across POs.
-
-## 5. Key Constraints
-
-- **Never delete data rows.** Use soft-delete (`deleted_at` or status enum). No `DELETE`/`TRUNCATE`/`DROP` without explicit user confirmation.
-- **Never merge inventory** across supplier + tex + color boundary.
-- **`thread_types.color_id` is NULL for all records** — never use it as color source. Use `thread_inventory.color_id` for stock, `style_color_thread_specs.thread_color_id` for PO specs.
-- **Frontend CRUD always via Hono API** — never call database directly. Use `fetchApi()`, not raw `fetch()`.
-- **Use App* wrappers:** `AppSelect` (not `q-select`), `AppEditor` (not `q-editor`), `DatePicker` (not `<input type="date">`), `useConfirm()` (not `$q.dialog()`).
-- **Vietnamese for all user-facing text** — messages, labels, toasts, validation, buttons.
-- **Stock-changing actions need audit trail** — every inventory mutation must log to `thread_movements` or use an RPC that does so internally.
-- **Schema changes via migrations only** — new tables, enums, columns: create a `.sql` file in `supabase/migrations/`.
-
-## 6. Additional Documentation
+Deeper explanations and examples (read on demand):
 
 | File | When to read |
 |------|-------------|

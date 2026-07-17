@@ -47,8 +47,12 @@ nul
 opencode.json
 .opencode/
 
-# Claude Code
-.claude/
+# Claude Code — ignore everything except shared project rules/docs/hooks/settings
+.claude/*
+!.claude/rules/
+!.claude/docs/
+!.claude/hooks/
+!.claude/settings.json
 .worktrees/
 
 # Playwright
@@ -57,7 +61,7 @@ opencode.json
 playwright-report/
 test-results/
 plans/
-docs/
+/docs/
 playwright.config.ts
 tests/e2e/auth-session-expired.spec.ts
 .gitnexus
@@ -103,3 +107,4 @@ reports/
 sdd/
 task-*-report.md
 supabase/backup/
+.claude/settings.local.json
