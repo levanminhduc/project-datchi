@@ -1,8 +1,28 @@
 import { ref, computed } from 'vue'
-import type { NavItem } from '@/types/navigation'
+import type { HubNavGroup, HubNavItem, NavItem } from '@/types/navigation'
 
 const MOBILE_BREAKPOINT = 1024
 const isOpen = ref(window.innerWidth >= MOBILE_BREAKPOINT)
+
+const HUB_EXCLUDE_GROUPS = new Set(['Nhân Sự', 'Quản Lý Hệ Thống'])
+const HUB_COLORS = [
+  'primary',
+  'indigo',
+  'deep-purple',
+  'blue-grey',
+  'purple',
+  'teal',
+  'orange',
+  'positive',
+  'warning',
+  'cyan',
+  'secondary',
+  'deep-orange',
+  'brown',
+  'pink',
+  'info',
+  'light-blue',
+]
 
 const navItems: NavItem[] = [
   { label: 'Trang Chủ', icon: 'o_home', to: '/#top' },
@@ -42,8 +62,8 @@ const navItems: NavItem[] = [
       { label: 'Theo Dõi & Nhập Kho', icon: 'o_local_shipping', to: '/thread/weekly-order/deliveries' },
       { label: 'Xuất Kho', icon: 'o_output', to: '/thread/issues/v2' },
       { label: 'Tồn Kho', icon: 'o_inventory', to: '/thread/inventory' },
-      { label: 'Trả Kho', icon: 'o_assignment_return', to: '/thread/return' },
-      { label: 'Mượn Chỉ', icon: 'o_swap_horiz', to: '/thread/loans' },
+      // { label: 'Trả Kho', icon: 'o_assignment_return', to: '/thread/return' },
+      // { label: 'Mượn Chỉ', icon: 'o_swap_horiz', to: '/thread/loans' },
       { label: 'Chuyển Kho', icon: 'o_compare_arrows', to: '/thread/batch/transfer' },
       { label: 'Chuyển kho theo Tuần', icon: 'swap_horiz', to: '/thread/transfer-reserved' },
     ]
@@ -76,6 +96,99 @@ const navItems: NavItem[] = [
   }
 ]
 
+function buildHubModuleLinks(): Array<{ title: string; icon: string; to: string; color: string }> {
+  const links: Array<{ title: string; icon: string; to: string; color: string }> = []
+  let colorIndex = 0
+
+  for (const item of navItems) {
+    if (!item.children?.length || HUB_EXCLUDE_GROUPS.has(item.label)) continue
+    for (const child of item.children) {
+      if (!child.to) continue
+      links.push({
+        title: child.label,
+        icon: child.icon,
+        to: child.to,
+        color: HUB_COLORS[colorIndex % HUB_COLORS.length] ?? 'primary',
+      })
+      colorIndex += 1
+    }
+  }
+
+  return links
+}
+
+const hubModuleLinks = buildHubModuleLinks()
+
+const HUB_GROUP_COLORS: Record<string, string> = {
+  'Kỹ Thuật': '#3F51B5',
+  'Kế Hoạch': '#673AB7',
+  'Quản Lý Chỉ': '#1976D2',
+  'Danh Mục': '#009688',
+}
+
+const HUB_GROUP_PALETTES: Record<string, string[]> = {
+  'Kỹ Thuật': ['#3F51B5', '#5C6BC0'],
+  'Kế Hoạch': ['#673AB7', '#7E57C2', '#9575CD'],
+  'Quản Lý Chỉ': ['#1976D2', '#1E88E5', '#00897B', '#26A69A', '#43A047', '#FB8C00', '#8E24AA', '#546E7A'],
+  'Danh Mục': ['#009688', '#26A69A', '#EC407A', '#5C6BC0', '#78909C', '#8D6E63', '#00ACC1'],
+}
+
+const HUB_ITEM_CAPTIONS: Record<string, string> = {
+  '/thread/styles': 'Style & thông số kỹ thuật',
+  '/thread/styles/with-specs': 'Style đã thiết lập định mức chỉ',
+  '/thread/weekly-order': 'Tính nhu cầu, tạo đơn tuần',
+  '/thread/weekly-order/history': 'Các chu kỳ đặt hàng trước',
+  '/thread/weekly-order/leader-review': 'Phê duyệt đơn đặt hàng tuần',
+  '/thread/dashboard': 'Biểu đồ & phân tích tồn kho',
+  '/thread/weekly-order/deliveries': 'Nhận hàng từ đơn đặt',
+  '/thread/issues/v2': 'Cấp chỉ cho sản xuất',
+  '/thread/inventory': 'Tra cứu côn chỉ theo kho',
+  '/thread/return': 'Thu hồi & xác nhận chỉ thừa',
+  '/thread/loans': 'Cho mượn & theo dõi hoàn trả',
+  '/thread/batch/transfer': 'Điều chuyển giữa các kho',
+  '/thread/transfer-reserved': 'Chuyển chỉ đã reserve theo tuần',
+  '/thread/purchase-orders': 'Quản lý đơn mua chỉ',
+  '/thread': 'NCC × Tex × Màu',
+  '/thread/colors': 'Bảng màu chỉ theo NCC',
+  '/thread/suppliers': 'Đối tác cung cấp chỉ',
+  '/thread/sub-arts': 'Nhập định mức từ file',
+  '/thread/issues/export-history': 'Tra cứu các lần xuất kho',
+  '/thread/chat-assistant': 'Hỏi đáp nhanh về kho chỉ',
+}
+
+function buildHubNavGroups(): HubNavGroup[] {
+  const groups: HubNavGroup[] = []
+
+  for (const item of navItems) {
+    if (!item.children?.length || HUB_EXCLUDE_GROUPS.has(item.label)) continue
+
+    const palette = HUB_GROUP_PALETTES[item.label] ?? ['#1976D2']
+    const items: HubNavItem[] = []
+
+    for (const child of item.children) {
+      if (!child.to) continue
+      items.push({
+        title: child.label,
+        icon: child.icon,
+        to: child.to,
+        color: palette[items.length % palette.length] ?? '#1976D2',
+        caption: HUB_ITEM_CAPTIONS[child.to] ?? '',
+      })
+    }
+
+    groups.push({
+      label: item.label,
+      icon: item.icon,
+      color: HUB_GROUP_COLORS[item.label] ?? '#1976D2',
+      items,
+    })
+  }
+
+  return groups
+}
+
+const hubNavGroups = buildHubNavGroups()
+
 export function useSidebar() {
   const toggle = () => {
     isOpen.value = !isOpen.value
@@ -97,6 +210,8 @@ export function useSidebar() {
       }
     }),
     navItems,
+    hubModuleLinks,
+    hubNavGroups,
     toggle,
     open,
     close

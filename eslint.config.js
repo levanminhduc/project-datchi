@@ -59,6 +59,7 @@ export default [
         Element: 'readonly',
         KeyboardEvent: 'readonly',
         ClipboardEvent: 'readonly',
+        PointerEvent: 'readonly',
         // Vue Router auto-import macros
         definePage: 'readonly',
         // Node.js globals (for server files)

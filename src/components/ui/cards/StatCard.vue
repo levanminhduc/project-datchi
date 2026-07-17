@@ -11,8 +11,18 @@
           <div class="text-caption text-grey text-uppercase">
             {{ label }}
           </div>
-          <div class="text-h4 text-weight-bold q-mt-xs">
-            {{ value }}
+          <div class="text-h4 text-weight-bold q-mt-xs row items-baseline no-wrap">
+            <span>{{ value }}</span>
+            <span
+              v-if="unit"
+              class="text-subtitle1 text-weight-medium text-grey-7 q-ml-xs"
+            >{{ unit }}</span>
+          </div>
+          <div
+            v-if="caption"
+            class="text-caption text-grey-7 q-mt-xs"
+          >
+            {{ caption }}
           </div>
           <div
             v-if="trend"
@@ -53,5 +63,6 @@ withDefaults(defineProps<StatCardProps>(), {
 <style scoped>
 .stat-card {
   min-width: 200px;
+  height: 100%;
 }
 </style>

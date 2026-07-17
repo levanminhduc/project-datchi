@@ -1,82 +1,98 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import PageHeader from '@/components/ui/layout/PageHeader.vue'
 import StatCard from '@/components/ui/cards/StatCard.vue'
-import { employeeService } from '@/services/employeeService'
-import { useDashboard } from '@/composables'
+import HubNavCard from '@/components/ui/cards/HubNavCard.vue'
+import { useDashboard, useSidebar } from '@/composables'
+import { useAuth } from '@/composables/useAuth'
 import { date } from 'quasar'
-
-const activeEmployeeCount = ref<number>(0)
-const isLoadingEmployeeCount = ref(true)
 
 const {
   summary,
-  alerts,
-  isLoading,
-  hasCriticalAlerts,
-  fetchAll,
-  refreshDashboard,
+  fetchSummary,
 } = useDashboard()
 
+const { hubNavGroups } = useSidebar()
+const { employee } = useAuth()
+
+const isLoading = ref(false)
+const now = ref(new Date())
 const lastUpdated = ref(date.formatDate(Date.now(), 'HH:mm:ss DD/MM/YYYY'))
 const refreshInterval = ref<number | null>(null)
+
+const DAY_NAMES = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy']
+
+const greeting = computed(() => {
+  const hour = now.value.getHours()
+  if (hour < 11) return 'Chào buổi sáng'
+  if (hour < 13) return 'Chào buổi trưa'
+  if (hour < 18) return 'Chào buổi chiều'
+  return 'Chào buổi tối'
+})
+
+const firstName = computed(() => {
+  const fullName = employee.value?.fullName?.trim()
+  if (!fullName) return ''
+  return fullName.split(/\s+/).pop() ?? ''
+})
+
+const todayLabel = computed(() => {
+  const d = now.value
+  return `${DAY_NAMES[d.getDay()]}, ${d.getDate()} tháng ${d.getMonth() + 1}, ${d.getFullYear()}`
+})
 
 const formatNumber = (val: number | undefined | null) => {
   if (val === undefined || val === null) return '0'
   return val.toLocaleString('vi-VN')
 }
 
-const totalInventoryLabel = computed(() => {
-  if (isLoading.value && !summary.value) return '...'
-  const total = summary.value?.total_cones || 0
-  const partial = summary.value?.partial_cones || 0
-  const full = total - partial
-  return `${formatNumber(full)} nguyên, ${formatNumber(partial)} lẻ`
-})
-
-const alertCount = computed(() => alerts.value.length)
+const formatCurrency = (val: number | undefined | null) => {
+  if (val === undefined || val === null || val === 0) return '0'
+  return new Intl.NumberFormat('vi-VN').format(Math.round(val))
+}
 
 const stats = computed(() => [
   {
-    label: 'Tổng tồn kho',
+    label: 'Tổng Tồn Kho',
     value: isLoading.value && !summary.value ? '...' : formatNumber(summary.value?.total_cones),
     icon: 'inventory_2',
     color: 'primary',
-    trend: totalInventoryLabel.value,
-    trendPositive: true,
+    caption: `${formatNumber(summary.value?.total_meters)} mét`,
   },
   {
-    label: 'Cảnh báo tồn kho',
-    value: isLoading.value && alerts.value.length === 0 ? '...' : alertCount.value,
-    icon: 'warning',
-    color: hasCriticalAlerts.value ? 'negative' : alertCount.value > 0 ? 'warning' : 'positive',
-    trend: alertCount.value === 0 ? 'Ổn định' : `${alerts.value.filter(a => a.severity === 'critical').length} nguy cấp`,
-    trendPositive: alertCount.value === 0,
+    label: 'Khả Dụng',
+    value: isLoading.value && !summary.value ? '...' : formatNumber(summary.value?.available_cones),
+    icon: 'check_circle',
+    color: 'positive',
+    caption: `${formatNumber(summary.value?.available_meters)} mét`,
   },
   {
-    label: 'Nhân viên hoạt động',
-    value: isLoadingEmployeeCount.value ? '...' : activeEmployeeCount.value,
-    icon: 'people',
+    label: 'Giá Trị Tồn Kho',
+    value: isLoading.value && !summary.value
+      ? '...'
+      : formatCurrency(summary.value?.total_inventory_value),
+    unit: isLoading.value && !summary.value ? undefined : 'VND',
+    icon: 'payments',
     color: 'info',
-    trendPositive: true,
+    caption: 'Cuộn nguyên × đơn giá',
   },
 ])
 
-onMounted(async () => {
+const loadSummary = async () => {
+  isLoading.value = true
   try {
-    activeEmployeeCount.value = await employeeService.getActiveCount()
-  } catch {
-    activeEmployeeCount.value = 0
+    await fetchSummary()
+    now.value = new Date()
+    lastUpdated.value = date.formatDate(Date.now(), 'HH:mm:ss DD/MM/YYYY')
   } finally {
-    isLoadingEmployeeCount.value = false
+    isLoading.value = false
   }
+}
 
-  await fetchAll()
-  lastUpdated.value = date.formatDate(Date.now(), 'HH:mm:ss DD/MM/YYYY')
+onMounted(async () => {
+  await loadSummary()
 
   refreshInterval.value = window.setInterval(async () => {
-    await fetchAll()
-    lastUpdated.value = date.formatDate(Date.now(), 'HH:mm:ss DD/MM/YYYY')
+    await loadSummary()
   }, 60000)
 })
 
@@ -87,38 +103,41 @@ onUnmounted(() => {
 })
 
 const handleRefresh = async () => {
-  await refreshDashboard()
-  lastUpdated.value = date.formatDate(Date.now(), 'HH:mm:ss DD/MM/YYYY')
+  await loadSummary()
 }
 </script>
 
 <template>
   <q-page padding>
-    <PageHeader
-      title="Tổng Quan"
-      subtitle="Bảng điều khiển hệ thống"
-    >
-      <template #actions>
-        <div class="row items-center q-gutter-sm">
-          <div class="text-caption text-grey-7">
-            {{ lastUpdated }}
-          </div>
-          <q-btn
-            flat
-            round
-            dense
-            color="primary"
-            icon="refresh"
-            :loading="isLoading"
-            @click="handleRefresh"
-          >
-            <q-tooltip>Làm mới dữ liệu</q-tooltip>
-          </q-btn>
+    <div class="row items-end justify-between">
+      <div>
+        <div class="text-h5 text-weight-bold">
+          {{ greeting }}<template v-if="firstName">
+            , {{ firstName }}
+          </template>
         </div>
-      </template>
-    </PageHeader>
+        <div class="text-body2 text-grey-7 q-mt-xs">
+          {{ todayLabel }}
+        </div>
+      </div>
+      <div class="row items-center q-gutter-sm">
+        <div class="text-caption text-grey-7">
+          {{ lastUpdated }}
+        </div>
+        <q-btn
+          flat
+          round
+          dense
+          color="primary"
+          icon="refresh"
+          :loading="isLoading"
+          @click="handleRefresh"
+        >
+          <q-tooltip>Làm mới dữ liệu</q-tooltip>
+        </q-btn>
+      </div>
+    </div>
 
-    <!-- Stat Cards -->
     <div class="row q-col-gutter-md q-mt-md">
       <div
         v-for="(stat, index) in stats"
@@ -128,107 +147,63 @@ const handleRefresh = async () => {
         <StatCard
           :label="stat.label"
           :value="stat.value"
+          :unit="stat.unit"
           :icon="stat.icon"
-          :trend="stat.trend"
+          :caption="stat.caption"
           :icon-bg-color="stat.color"
-          :trend-positive="stat.trendPositive"
         />
       </div>
     </div>
 
-    <!-- Cảnh báo tồn kho -->
-    <q-card class="q-mt-lg shadow-2">
-      <q-card-section>
-        <div class="row items-center justify-between">
-          <div class="text-h6 row items-center">
-            <q-icon
-              name="warning"
-              :color="hasCriticalAlerts ? 'negative' : 'warning'"
-              class="q-mr-sm"
-            />
-            Cảnh Báo Tồn Kho
-          </div>
-          <q-badge
-            v-if="alerts.length"
-            :color="hasCriticalAlerts ? 'negative' : 'warning'"
-            class="q-px-sm q-py-xs"
-          >
-            {{ alerts.length }} cảnh báo
-          </q-badge>
-        </div>
-      </q-card-section>
+    <div class="row items-center q-mt-lg q-mb-md">
+      <q-icon
+        name="o_apps"
+        color="primary"
+        size="22px"
+      />
+      <span class="text-h6 text-weight-bold q-ml-sm">Điều Hướng Nhanh</span>
+      <q-separator class="col q-ml-md" />
+    </div>
 
-      <q-separator />
-
-      <q-list
-        v-if="alerts.length"
-        separator
-      >
-        <q-item
-          v-for="alert in alerts"
-          :key="alert.id"
-        >
-          <q-item-section avatar>
-            <q-icon
-              :name="alert.severity === 'critical' ? 'error' : 'warning'"
-              :color="alert.severity === 'critical' ? 'negative' : 'warning'"
-              size="28px"
-            />
-          </q-item-section>
-
-          <q-item-section>
-            <q-item-label class="text-weight-bold">
-              {{ alert.thread_type_code }} - {{ alert.thread_type_name }}
-            </q-item-label>
-            <q-item-label caption>
-              Hiện tại: {{ formatNumber(alert.current_meters) }}m / Định mức:
-              {{ formatNumber(alert.reorder_level) }}m
-            </q-item-label>
-            <q-linear-progress
-              :value="alert.percentage / 100"
-              :color="alert.severity === 'critical' ? 'negative' : 'warning'"
-              class="q-mt-xs"
-              style="height: 4px"
-            />
-          </q-item-section>
-
-          <q-item-section side>
-            <div class="column items-end">
-              <q-badge :color="alert.severity === 'critical' ? 'negative' : 'warning'">
-                {{ alert.percentage.toFixed(0) }}%
-              </q-badge>
-              <div class="text-caption text-grey-7 q-mt-xs">
-                {{ alert.severity === 'critical' ? 'Nguy cấp' : 'Thấp' }}
-              </div>
-            </div>
-          </q-item-section>
-        </q-item>
-      </q-list>
-
-      <q-card-section
-        v-else-if="!isLoading"
-        class="text-center text-grey-6 q-pa-xl"
+    <div
+      v-for="group in hubNavGroups"
+      :key="group.label"
+      class="q-mb-lg"
+    >
+      <div
+        class="hub-group-label row items-center q-mb-sm"
+        :style="{ color: group.color }"
       >
         <q-icon
-          name="check_circle"
-          size="48px"
-          color="positive"
-          class="q-mb-sm"
+          :name="group.icon"
+          size="19px"
         />
-        <div class="text-subtitle1">
-          Tồn kho ổn định
+        <span class="q-ml-xs">{{ group.label }}</span>
+      </div>
+      <div class="row q-col-gutter-md">
+        <div
+          v-for="item in group.items"
+          :key="item.to"
+          class="col-12 col-sm-6 col-md-4 col-lg-3"
+        >
+          <HubNavCard
+            :title="item.title"
+            :caption="item.caption"
+            :icon="item.icon"
+            :to="item.to"
+            :color="item.color"
+          />
         </div>
-        <div class="text-caption">
-          Không có loại chỉ nào dưới mức định mức
-        </div>
-      </q-card-section>
-
-      <q-inner-loading :showing="isLoading && alerts.length === 0">
-        <q-spinner-oval
-          color="primary"
-          size="40px"
-        />
-      </q-inner-loading>
-    </q-card>
+      </div>
+    </div>
   </q-page>
 </template>
+
+<style scoped lang="scss">
+.hub-group-label {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+</style>

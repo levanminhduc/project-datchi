@@ -249,22 +249,15 @@ export interface InfoCardProps extends BaseComponentProps {
 }
 
 export interface StatCardProps extends BaseComponentProps {
-  /** Stat label */
   label: string
-  /** Stat value */
   value: string | number
-  /** Icon */
+  unit?: string
   icon?: string
-  /** Icon color */
   iconColor?: string
-  /** Icon background color */
   iconBgColor?: string
-  /** Trend value (e.g., "+5%") */
+  caption?: string
   trend?: string
-  /** Trend is positive */
   trendPositive?: boolean
-  /** Flat style */
   flat?: boolean
-  /** Bordered */
   bordered?: boolean
 }

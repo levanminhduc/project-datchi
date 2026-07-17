@@ -36,7 +36,7 @@ pages/
     ├── index.vue                    # /thread ★ Loại Chỉ
     ├── dashboard.vue                # /thread/dashboard ★ Dashboard
     ├── inventory.vue                # /thread/inventory ★ Tồn Kho
-    ├── loans.vue                    # /thread/loans ★ Mượn Chỉ
+    ├── loans.vue                    # /thread/loans Mượn Chỉ (tạm ẩn khỏi sidebar/hub)
     ├── transfer-reserved.vue        # /thread/transfer-reserved ★ Chuyển kho theo Tuần
     ├── colors.vue                   # /thread/colors ★ Màu Sắc
     ├── suppliers.vue                # /thread/suppliers ★ Nhà Cung Cấp
@@ -65,7 +65,7 @@ pages/
     │   ├── export-history.vue       # /thread/issues/export-history ★ Lịch Sử Xuất Chỉ
     │   └── reconciliation.vue       # /thread/issues/reconciliation
     ├── return/
-    │   ├── index.vue                # /thread/return ★ Trả Kho
+    │   ├── index.vue                # /thread/return Trả Kho (tạm ẩn khỏi sidebar/hub)
     │   └── [id].vue                 # /thread/return/:id
     ├── purchase-orders/
     │   ├── index.vue                # /thread/purchase-orders ★ Đơn Hàng (PO)
