@@ -5,9 +5,11 @@ import { Pool, types, type PoolConfig } from 'pg'
 const DATE_OID = 1082
 const TIMESTAMP_OID = 1114
 const TIMESTAMPTZ_OID = 1184
+const NUMERIC_OID = 1700
 types.setTypeParser(DATE_OID, (val) => val)
 types.setTypeParser(TIMESTAMP_OID, (val) => val)
 types.setTypeParser(TIMESTAMPTZ_OID, (val) => val)
+types.setTypeParser(NUMERIC_OID, (val) => parseFloat(val))
 
 if (existsSync('.env')) {
   dotenv.config({ override: true })
