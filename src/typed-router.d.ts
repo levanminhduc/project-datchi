@@ -93,13 +93,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/kho': RouteRecordInfo<
-      '/kho',
-      '/kho',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
     '/ky-thuat': RouteRecordInfo<
       '/ky-thuat',
       '/ky-thuat',
@@ -542,12 +535,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/ke-hoach.vue': {
       routes:
         | '/ke-hoach'
-      views:
-        | never
-    }
-    'src/pages/kho.vue': {
-      routes:
-        | '/kho'
       views:
         | never
     }

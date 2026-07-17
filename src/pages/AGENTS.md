@@ -16,7 +16,6 @@ pages/
 ├── phan-quyen.vue                   # /phan-quyen ★ Phân Quyền
 ├── settings.vue                     # /settings ★ Cài Đặt
 ├── notification-channels.vue        # /notification-channels
-├── kho.vue                          # /kho ★ Kho
 ├── ke-hoach.vue                     # /ke-hoach ★ (landing nhóm Kế Hoạch)
 ├── ky-thuat.vue                     # /ky-thuat ★ (landing nhóm Kỹ Thuật)
 ├── nhan-su.vue                      # /nhan-su ★ (landing nhóm Nhân Sự)
