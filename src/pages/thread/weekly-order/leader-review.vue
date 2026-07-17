@@ -143,6 +143,14 @@
                     </div>
                   </div>
                   <div class="col-auto row q-gutter-sm">
+                    <AppButton
+                      flat
+                      dense
+                      color="primary"
+                      icon="o_open_in_new"
+                      label="Xem Đơn Hàng"
+                      @click="openOrderDetail(order.id)"
+                    />
                     <span style="display: inline-block;">
                       <q-btn-dropdown
                         flat
@@ -329,6 +337,14 @@
                       label="Đã ký duyệt"
                       color="positive"
                     />
+                    <AppButton
+                      flat
+                      dense
+                      color="primary"
+                      icon="o_open_in_new"
+                      label="Xem Đơn Hàng"
+                      @click="openOrderDetail(order.id)"
+                    />
                     <q-btn-dropdown
                       flat
                       dense
@@ -472,6 +488,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
 import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
 import { exportOrderResults, type ExportWeekMeta } from '@/composables/thread/useWeeklyOrderExport'
+import { openRouteInTab } from '@/utils/open-tab'
 
 definePage({
   meta: {
@@ -599,6 +616,10 @@ function handleRefresh() {
   } else {
     fetchSignedData()
   }
+}
+
+function openOrderDetail(orderId: number) {
+  openRouteInTab(`/thread/weekly-order/${orderId}`)
 }
 
 function confirmSign(order: LeaderReviewItem) {

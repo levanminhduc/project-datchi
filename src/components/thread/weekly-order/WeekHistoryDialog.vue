@@ -85,6 +85,7 @@ import { ref, computed, watch, nextTick } from "vue";
 import type { QTableColumn } from "quasar";
 import type { ThreadOrderWeek } from "@/types/thread";
 import AppInput from "@/components/ui/inputs/AppInput.vue";
+import { openRouteInTab } from "@/utils/open-tab";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -133,7 +134,7 @@ watch(
 );
 
 function openDetail(weekId: number) {
-  window.open(`/thread/weekly-order/${weekId}`, "_blank");
+  openRouteInTab(`/thread/weekly-order/${weekId}`);
 }
 
 function statusLabel(status: string): string {
