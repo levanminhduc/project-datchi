@@ -63,10 +63,10 @@ const navItems: NavItem[] = [
     icon: 'o_folder_open',
     to: '/danh-muc#top',
     children: [
-      { label: 'Đơn Hàng (PO)', icon: 'o_receipt_long', to: '/thread/purchase-orders' },
+      { label: 'Nhà Cung Cấp', icon: 'o_store', to: '/thread/suppliers' },
       { label: 'Loại Chỉ', icon: 'o_category', to: '/thread' },
       { label: 'Màu Sắc', icon: 'o_palette', to: '/thread/colors' },
-      { label: 'Nhà Cung Cấp', icon: 'o_store', to: '/thread/suppliers' },
+      { label: 'Đơn Hàng (PO)', icon: 'o_receipt_long', to: '/thread/purchase-orders' },
       { label: 'Import Sub-Art', icon: 'o_upload_file', to: '/thread/sub-arts' },
       { label: 'Trợ Lý Tra Cứu', icon: 'o_manage_search', to: '/thread/chat-assistant' }
     ]
