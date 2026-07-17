@@ -30,7 +30,7 @@ settings.get('/', async (c) => {
         'SELECT * FROM system_settings ORDER BY key ASC'
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<SettingsApiResponse<null>>(
         {
           data: null,
@@ -87,7 +87,7 @@ settings.get('/:key', async (c) => {
         [key]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<SettingsApiResponse<null>>(
         {
           data: null,
@@ -181,7 +181,7 @@ settings.put('/:key', async (c, next) => {
         [key]
       )
     } catch (findError) {
-      console.error('Supabase error:', findError)
+      console.error('Database error:', findError)
       return c.json<SettingsApiResponse<null>>(
         {
           data: null,
@@ -211,7 +211,7 @@ settings.put('/:key', async (c, next) => {
         [parseResult.data.value, new Date().toISOString(), key]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<SettingsApiResponse<null>>(
         {
           data: null,

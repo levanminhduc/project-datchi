@@ -33,7 +33,7 @@ employees.get('/unique-positions', requirePermission('employees.view'), async (c
         .order({ column: 'display_name', ascending: true })
         .list<{ name: string | null; display_name: string | null }>()
     } catch (error) {
-      console.error('Supabase error (falling back to defaults):', error)
+      console.error('Database error (falling back to defaults):', error)
       const defaultPositions = [
         { value: 'giam_doc', label: 'Giám Đốc' },
         { value: 'nhan_vien', label: 'Nhân Viên' },
@@ -83,7 +83,7 @@ employees.get('/count', requirePermission('employees.view'), async (c) => {
         .is('deleted_at', null)
         .count()
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Lỗi khi lấy số lượng nhân viên' },
         500
@@ -114,7 +114,7 @@ employees.get('/issue-departments', async (c) => {
         .is('deleted_at', null)
         .list<{ department: string | null }>()
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Lỗi khi lấy danh sách bộ phận' },
         500
@@ -172,7 +172,7 @@ employees.get('/departments', async (c) => {
         .is('deleted_at', null)
         .list<{ department: string | null }>()
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Lỗi khi lấy danh sách bộ phận' },
         500
@@ -233,7 +233,7 @@ employees.get('/', requirePermission('employees.view'), async (c) => {
           .range(offset, offset + limit - 1)
           .list<Employee>()
       } catch (error) {
-        console.error('Supabase error:', error)
+        console.error('Database error:', error)
         return c.json<ApiResponse<null>>(
           { data: null, error: 'Lỗi khi tải danh sách nhân viên' },
           500
@@ -283,7 +283,7 @@ employees.get('/', requirePermission('employees.view'), async (c) => {
           .order({ column: 'created_at', ascending: false })
           .list<Employee>()
       } catch (batchError) {
-        console.error('Supabase batch error:', batchError)
+        console.error('Database batch error:', batchError)
         return c.json<ApiResponse<null>>(
           { data: null, error: 'Lỗi khi tải danh sách nhân viên' },
           500
@@ -349,7 +349,7 @@ employees.get('/:id', requirePermission('employees.view'), async (c) => {
         [numericId]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Lỗi khi tải thông tin nhân viên' },
         500
@@ -517,7 +517,7 @@ employees.put('/:id', requirePermission('employees.edit'), async (c) => {
           params
         )
       } catch (error) {
-        console.error('Supabase error:', error)
+        console.error('Database error:', error)
         return c.json<ApiResponse<null>>(
           { data: null, error: 'Cập nhật thất bại. Vui lòng thử lại' },
           500

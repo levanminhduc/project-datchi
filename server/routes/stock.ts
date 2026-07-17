@@ -83,7 +83,7 @@ stock.get('/', requirePermission('thread.inventory.view'), async (c) => {
         params
       )
     } catch (conesError) {
-      console.error('Supabase error:', conesError)
+      console.error('Database error:', conesError)
       return c.json<StockApiResponse<null>>({
         success: false,
         error: 'Lỗi khi tải danh sách tồn kho',
@@ -211,7 +211,7 @@ stock.get('/summary', requirePermission('thread.inventory.view'), async (c) => {
         params
       )
     } catch (conesError) {
-      console.error('Supabase error:', conesError)
+      console.error('Database error:', conesError)
       return c.json<StockApiResponse<null>>({
         success: false,
         error: 'Lỗi khi tải tồn kho',
@@ -246,7 +246,7 @@ stock.get('/summary', requirePermission('thread.inventory.view'), async (c) => {
         [threadTypeIds]
       )
     } catch (threadError) {
-      console.error('Supabase error:', threadError)
+      console.error('Database error:', threadError)
       return c.json<StockApiResponse<null>>({
         success: false,
         error: 'Lỗi khi tải thông tin loại chỉ',
@@ -657,7 +657,7 @@ stock.post('/deduct', requirePermission('thread.batch.issue'), async (c) => {
       availableFull = fullResult
       availablePartial = partialResult
     } catch (fefoError) {
-      console.error('Supabase error:', fefoError)
+      console.error('Database error:', fefoError)
       return c.json<StockApiResponse<null>>({
         success: false,
         error: 'Lỗi khi tải tồn kho',

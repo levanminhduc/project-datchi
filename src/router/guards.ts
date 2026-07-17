@@ -46,7 +46,7 @@ export function setupRouterGuards(router: Router) {
     const auth = useAuth()
     const meta = to.meta as RouteMeta
 
-    // Initialize auth state if not done (restores session from Supabase Auth)
+    // Initialize auth state if not done (restores session from stored JWT tokens)
     await auth.init()
 
     // Check if route is public (explicitly marked as public: true)

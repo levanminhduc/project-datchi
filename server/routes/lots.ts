@@ -80,7 +80,7 @@ lots.post('/', requirePermission('thread.lots.manage'), async (c) => {
         [inserted!.id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tạo lô: ' + ((error as Error).message ?? '')
@@ -189,7 +189,7 @@ lots.get('/', requirePermission('thread.lots.view'), async (c) => {
         params
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải danh sách lô'
@@ -234,7 +234,7 @@ lots.get('/:id', requirePermission('thread.lots.view'), async (c) => {
         [id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải thông tin lô'
@@ -314,7 +314,7 @@ lots.patch('/:id', requirePermission('thread.lots.manage'), async (c) => {
         [updated.id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi cập nhật lô'
@@ -360,7 +360,7 @@ lots.get('/:id/cones', requirePermission('thread.lots.view'), async (c) => {
         [id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải danh sách cuộn'
@@ -404,7 +404,7 @@ lots.get('/:id/transactions', requirePermission('thread.lots.view'), async (c) =
         [id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải lịch sử thao tác'

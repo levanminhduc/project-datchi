@@ -9,7 +9,7 @@
  * Field names match actual database columns
  */
 export interface Employee {
-  id: number              // ID from Supabase
+  id: number              // employees.id primary key
   employee_id: string     // Mã Nhân Viên (database column)
   full_name: string       // Tên Nhân Viên
   department: string      // Phòng Ban

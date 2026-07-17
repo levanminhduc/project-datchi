@@ -69,7 +69,7 @@ interface ActivityItem {
   metadata?: Record<string, unknown>
 }
 
-// Helper to safely get relation data (handles both object and array from Supabase)
+// Helper to safely get relation data (handles both object and array relation shapes)
 function getRelation<T>(relation: T | T[] | null | undefined): T | null {
   if (!relation) return null
   if (Array.isArray(relation)) return relation[0] || null

@@ -1179,7 +1179,7 @@ batch.get('/transactions', requirePermission('thread.inventory.view'), async (c)
         params
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải lịch sử thao tác'
@@ -1225,7 +1225,7 @@ batch.get('/transactions/:id', requirePermission('thread.inventory.view'), async
         [id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải thông tin thao tác'

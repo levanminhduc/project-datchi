@@ -139,7 +139,7 @@ recovery.get('/', requirePermission('thread.recovery.view'), async (c) => {
         params
       ) as unknown as RecoveryWithCone[]
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải danh sách thu hồi',
@@ -187,7 +187,7 @@ recovery.get('/:id', requirePermission('thread.recovery.view'), async (c) => {
         [parsedId]
       ) as unknown as RecoveryWithCone | null
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải thông tin thu hồi',

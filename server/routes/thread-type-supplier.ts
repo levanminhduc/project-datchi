@@ -79,7 +79,7 @@ threadTypeSuppliers.get('/', async (c) => {
         params
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải danh sách liên kết loại chỉ - nhà cung cấp'
@@ -116,7 +116,7 @@ threadTypeSuppliers.get('/:id', async (c) => {
         [id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải thông tin liên kết'
@@ -207,7 +207,7 @@ threadTypeSuppliers.post('/', async (c) => {
         [inserted!.id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tạo liên kết: ' + ((error as Error).message ?? '')
@@ -301,7 +301,7 @@ threadTypeSuppliers.patch('/:id', async (c) => {
         [updated.id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
         error: 'Lỗi khi cập nhật liên kết'
@@ -336,7 +336,7 @@ threadTypeSuppliers.delete('/:id', async (c) => {
         [id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
         error: 'Lỗi khi xóa liên kết'
@@ -394,7 +394,7 @@ threadTypeSuppliers.get('/by-thread/:threadTypeId', async (c) => {
         params
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải danh sách nhà cung cấp'
@@ -478,7 +478,7 @@ threadTypeSuppliers.post('/by-thread/:threadTypeId', async (c) => {
         [inserted!.id]
       )
     } catch (error) {
-      console.error('Supabase error:', error)
+      console.error('Database error:', error)
       return c.json<ThreadTypeSupplierApiResponse<null>>({
         data: null,
         error: 'Lỗi khi liên kết nhà cung cấp: ' + ((error as Error).message ?? '')

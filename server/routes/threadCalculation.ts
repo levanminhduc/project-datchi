@@ -7,7 +7,7 @@ const threadCalculation = new Hono()
 
 threadCalculation.use('*', requirePermission('thread.inventory.view'))
 
-// ============ Supabase Query Result Types ============
+// ============ Query Result Types ============
 
 /** Row shape from: styles.select('id, style_code, style_name') */
 interface StyleRow {
@@ -153,7 +153,7 @@ const SPEC_COLUMNS = `
   sts.id,
   sts.style_id,
   sts.process_name,
-  sts.meters_per_unit,
+  sts.meters_per_unit::float8 AS meters_per_unit,
   sts.thread_type_id,
   CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('id', sup.id, 'name', sup.name, 'lead_time_days', sup.lead_time_days) END AS suppliers,
   CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
