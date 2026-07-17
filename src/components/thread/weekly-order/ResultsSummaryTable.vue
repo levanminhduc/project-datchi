@@ -82,6 +82,7 @@
                 v-slot="scope"
                 :model-value="props.row.quota_cones != null ? props.row.quota_cones : props.row.total_cones"
                 auto-save
+                :validate="(val) => val == null || String(val).trim() === '' || Number(val) <= props.row.total_cones"
                 @before-show="onDemandPopupOpen(props.row)"
                 @save="(val: number | null) => saveDemandOverride(props.row, val)"
               >
@@ -93,24 +94,18 @@
                     v-model.number="scope.value"
                     type="number"
                     :min="0"
+                    :max="props.row.total_cones"
                     dense
                     autofocus
                     label="Nhu cầu (cuộn)"
-                    hint="Để trống để xóa ghi đè"
+                    hint="Chỉ được giảm — để trống để xóa ghi đè"
                     @keyup.enter="scope.value !== '' ? scope.set() : scope.cancel()"
                   />
                   <div
                     v-if="Number(scope.value) > props.row.total_cones"
-                    class="q-mt-sm"
+                    class="q-mt-sm text-negative text-caption"
                   >
-                    <q-input
-                      v-model="demandNoteInput"
-                      type="textarea"
-                      rows="2"
-                      dense
-                      label="Ghi chú (bắt buộc khi tăng nhu cầu)"
-                      :rules="[(v: string) => !!v.trim() || 'Vui lòng nhập lý do tăng nhu cầu']"
-                    />
+                    Chỉ được giảm nhu cầu, tối đa {{ props.row.total_cones.toLocaleString('vi-VN') }} cuộn
                   </div>
                   <div class="row justify-end q-gutter-xs q-mt-sm">
                     <q-btn
@@ -124,7 +119,7 @@
                       dense
                       color="primary"
                       label="Lưu"
-                      :disable="Number(scope.value) > props.row.total_cones && !demandNoteInput.trim()"
+                      :disable="Number(scope.value) > props.row.total_cones"
                       @click="scope.set()"
                     />
                   </div>
@@ -146,7 +141,7 @@
         </template>
         <template #body-cell-additional_order="props">
           <q-td :props="props">
-            <template v-if="!readonly">
+            <template v-if="!readonly && canAddAdditional(props.row)">
               <span class="cursor-pointer text-primary">
                 {{ (props.row.additional_order && props.row.additional_order > 0) ? props.row.additional_order.toLocaleString('vi-VN') : '—' }}
                 <q-icon
@@ -158,23 +153,45 @@
               <q-popup-edit
                 v-slot="scope"
                 :model-value="props.row.additional_order || 0"
-                buttons
-                label-set="Lưu"
-                label-cancel="Hủy"
+                :validate="(val) => Number(val) >= 0 && Number(val) <= 70"
                 @save="(val: number) => emit('update:additional-order', props.row.thread_type_id, val, props.row.thread_color_id ?? null)"
               >
                 <q-input
                   v-model.number="scope.value"
                   type="number"
                   :min="0"
+                  :max="70"
                   dense
                   autofocus
                   label="Số lượng đặt thêm"
+                  hint="Tối đa 70 cuộn"
+                  :error="Number(scope.value) > 70"
+                  error-message="Đặt thêm tối đa 70 cuộn"
+                  @keyup.enter="Number(scope.value) >= 0 && Number(scope.value) <= 70 ? scope.set() : undefined"
                 />
+                <div class="row justify-end q-gutter-xs q-mt-sm">
+                  <q-btn
+                    flat
+                    dense
+                    label="Hủy"
+                    @click="scope.cancel()"
+                  />
+                  <q-btn
+                    flat
+                    dense
+                    color="primary"
+                    label="Lưu"
+                    :disable="Number(scope.value) > 70 || Number(scope.value) < 0"
+                    @click="scope.set()"
+                  />
+                </div>
               </q-popup-edit>
             </template>
             <template v-else>
-              <span>{{ (props.row.additional_order && props.row.additional_order > 0) ? props.row.additional_order.toLocaleString('vi-VN') : '—' }}</span>
+              <span>
+                {{ (props.row.additional_order && props.row.additional_order > 0) ? props.row.additional_order.toLocaleString('vi-VN') : '—' }}
+                <q-tooltip v-if="!readonly">Nhu cầu vượt 70 cuộn — không được đặt thêm</q-tooltip>
+              </span>
             </template>
           </q-td>
         </template>
@@ -271,6 +288,11 @@ function onDemandPopupOpen(row: AggregatedRow) {
   demandNoteInput.value = row.demand_note ?? ''
 }
 
+function canAddAdditional(row: AggregatedRow) {
+  const demand = row.quota_cones != null ? row.quota_cones : row.total_cones
+  return demand <= 70
+}
+
 function saveDemandOverride(row: AggregatedRow, val: number | null) {
   const parsed = val === null || val === undefined || String(val).trim() === '' ? null : Number(val)
   const rawVal = parsed !== null && isNaN(parsed) ? null : parsed
@@ -319,23 +341,15 @@ const columns: QTableColumn[] = [
     sortable: true,
   },
   {
-    name: 'inventory_cones',
-    label: 'Tồn kho KD',
-    field: 'inventory_cones',
-    align: 'right',
-    sortable: true,
-    format: (val: number | undefined) => (val && val > 0) ? val.toLocaleString('vi-VN') : '—',
-  },
-  {
     name: 'full_cones',
-    label: 'Cuộn Nguyên TT',
+    label: 'Cuộn Nguyên KD',
     field: 'full_cones',
     align: 'right',
     format: (val: number | undefined) => (val != null && val > 0) ? val.toLocaleString('vi-VN') : '—',
   },
   {
     name: 'partial_cones',
-    label: 'Cuộn Lẻ TT',
+    label: 'Cuộn Lẻ KD',
     field: 'partial_cones',
     align: 'right',
     format: (val: number | undefined) => (val != null && val > 0) ? val.toLocaleString('vi-VN') : '—',

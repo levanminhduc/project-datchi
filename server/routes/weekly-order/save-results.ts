@@ -52,6 +52,30 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
         [key: string]: unknown
       }>
 
+      const violations: string[] = []
+      for (const row of summaryRows) {
+        const label = [row.thread_type_name, row.thread_color].filter(Boolean).join(' - ') || `Loại chỉ #${row.thread_type_id}`
+        const totalCones = Number(row.total_cones ?? 0)
+        const quota = row.quota_cones as number | null | undefined
+        if (quota != null && quota > totalCones) {
+          violations.push(`${label}: nhu cầu ${quota} vượt nhu cầu tính toán ${totalCones} (chỉ được giảm)`)
+        }
+        const effectiveDemand = quota != null ? quota : totalCones
+        const additional = Number(row.additional_order ?? 0)
+        if (additional > 0 && effectiveDemand > 70) {
+          violations.push(`${label}: nhu cầu ${effectiveDemand} cuộn vượt 70 nên không được đặt thêm`)
+        }
+        if (additional > 70) {
+          violations.push(`${label}: đặt thêm ${additional} vượt tối đa 70 cuộn`)
+        }
+        if (additional < 0) {
+          violations.push(`${label}: đặt thêm không được âm`)
+        }
+      }
+      if (violations.length > 0) {
+        return c.json({ data: null, error: `Dữ liệu không hợp lệ: ${violations.join('; ')}` }, 400)
+      }
+
       const threadTypeIds = [...new Set(summaryRows.map((r) => r.thread_type_id))]
 
       let threadTypes: Array<{ id: number; meters_per_cone: number | null }> = []
@@ -76,10 +100,6 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
 
         const incomingQuotaCones = (row.quota_cones as number | null | undefined)
         const demandNote = (row.demand_note as string | null | undefined) ?? null
-
-        if (incomingQuotaCones != null && incomingQuotaCones > (row.total_cones as number | undefined ?? 0) && !demandNote) {
-          console.warn(`[saveResults] thread_type=${row.thread_type_id} quota_cones=${incomingQuotaCones} > total_cones but demand_note is empty`)
-        }
 
         return {
           ...row,
