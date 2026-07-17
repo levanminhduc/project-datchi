@@ -23,14 +23,13 @@
     "restore:full": "bash scripts/full-restore.sh",
     "cleanup:orphans": "curl -s -X POST http://localhost:3000/api/admin/guides/cleanup-orphans -H \"Authorization: Bearer $ADMIN_TOKEN\"",
     "export:available-thread-inventory": "tsx scripts/export-available-thread-inventory.ts",
-    "db:seed": "psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/seed/master-data-seed.sql",
+    "db:seed": "psql -h 127.0.0.1 -p 5432 -U postgres -d datchi -f supabase/seed/master-data-seed.sql",
     "prepare": "husky"
   },
   "dependencies": {
     "@fontsource/roboto": "5.2.7",
     "@hono/node-server": "^1.19.9",
     "@quasar/extras": "^1.16.15",
-    "@supabase/supabase-js": "^2.91.1",
     "@tiptap/extension-image": "^3.21.0",
     "@tiptap/extension-placeholder": "^3.21.0",
     "@tiptap/extension-table": "^3.21.0",
