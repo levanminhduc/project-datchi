@@ -386,6 +386,14 @@ const columns: QTableColumn[] = [
     format: (val: number | undefined) => (val && val > 0) ? val.toLocaleString('vi-VN') : '—',
   },
   {
+    name: 'total_full_cones',
+    label: 'Tồn Kho TT',
+    field: 'total_full_cones',
+    align: 'right',
+    sortable: true,
+    format: (val: number | undefined) => (val != null && val > 0) ? val.toLocaleString('vi-VN') : '—',
+  },
+  {
     name: 'demand_note',
     label: 'Ghi chú',
     field: 'demand_note',

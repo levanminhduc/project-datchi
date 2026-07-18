@@ -16,6 +16,7 @@ type EnrichedRow = SummaryRow & {
   sl_can_dat: number
   additional_order: number
   total_final: number
+  total_full_cones: number
 }
 
 export async function enrichWithInventory(
@@ -125,6 +126,35 @@ export async function enrichWithInventory(
     }
   }
 
+  const allTypeIds = [...new Set(summaryRows.map((r) => r.thread_type_id))]
+  const ttColorMap = new Map<string, number>()
+  const ttTypeMap = new Map<number, number>()
+
+  if (allTypeIds.length > 0) {
+    const ttCounts = await query<{
+      thread_type_id: number
+      color_id: number | null
+      cone_count: number | string
+    }>(
+      `SELECT thread_type_id, color_id, COUNT(*) AS cone_count
+       FROM thread_inventory
+       WHERE thread_type_id = ANY($1)
+         AND is_partial = FALSE
+         AND status IN ('RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED', 'RESERVED_FOR_ORDER')
+         AND ($2::int[] IS NULL OR warehouse_id = ANY($2))
+       GROUP BY thread_type_id, color_id`,
+      [allTypeIds, warehouseIdsParam],
+    )
+
+    for (const row of ttCounts || []) {
+      const count = Number(row.cone_count)
+      if (row.color_id != null) {
+        ttColorMap.set(`${row.thread_type_id}_${row.color_id}`, count)
+      }
+      ttTypeMap.set(row.thread_type_id, (ttTypeMap.get(row.thread_type_id) || 0) + count)
+    }
+  }
+
   const preserveAdditional = options?.preserveAdditionalOrder === true
 
   return summaryRows.map((row) => {
@@ -150,6 +180,9 @@ export async function enrichWithInventory(
       ? ((row.additional_order as number) || 0)
       : 0
     const total_final = sl_can_dat + additional_order
+    const total_full_cones = colorId != null
+      ? (ttColorMap.get(`${row.thread_type_id}_${colorId}`) || 0)
+      : (ttTypeMap.get(row.thread_type_id) || 0)
 
     return {
       ...row,
@@ -160,6 +193,7 @@ export async function enrichWithInventory(
       sl_can_dat,
       additional_order,
       total_final,
+      total_full_cones,
     }
   })
 }
