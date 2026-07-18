@@ -107,6 +107,7 @@ const linkStyle = computed(() => ({
 
 .hub-title {
   line-height: 1.3;
+  color: var(--q-primary);
 }
 
 .hub-caption {

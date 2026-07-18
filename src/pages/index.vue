@@ -111,7 +111,7 @@ const handleRefresh = async () => {
   <q-page padding>
     <div class="row items-end justify-between">
       <div>
-        <div class="text-h5 text-weight-bold">
+        <div class="text-h5 text-weight-bold text-primary">
           {{ greeting }}<template v-if="firstName">
             , {{ firstName }}
           </template>
@@ -142,7 +142,7 @@ const handleRefresh = async () => {
       <div
         v-for="(stat, index) in stats"
         :key="index"
-        class="col-12 col-md-4"
+        class="col-12 col-md-4 stat-value-primary"
       >
         <StatCard
           :label="stat.label"
@@ -161,7 +161,7 @@ const handleRefresh = async () => {
         color="primary"
         size="22px"
       />
-      <span class="text-h6 text-weight-bold q-ml-sm">Điều Hướng Nhanh</span>
+      <span class="text-h6 text-weight-bold text-primary q-ml-sm">Điều Hướng Nhanh</span>
       <q-separator class="col q-ml-md" />
     </div>
 
@@ -200,6 +200,10 @@ const handleRefresh = async () => {
 </template>
 
 <style scoped lang="scss">
+.stat-value-primary :deep(.text-h4) {
+  color: var(--q-primary);
+}
+
 .hub-group-label {
   font-size: 13px;
   font-weight: 700;
