@@ -33,6 +33,7 @@
             <AppButton
               icon="open_in_full"
               variant="flat"
+              color="white"
               round
               dense
               aria-label="Mở trang trợ lý đầy đủ"
@@ -43,6 +44,7 @@
             <AppButton
               icon="close"
               variant="flat"
+              color="white"
               round
               dense
               aria-label="Đóng trợ lý"
@@ -627,7 +629,7 @@ function formatNumber(value: number): string {
   justify-content: space-between;
   gap: 12px;
   padding: 14px;
-  background: linear-gradient(135deg, #0969f0, #1555de 55%, #0aa782);
+  background: #0969f0;
   color: #fff;
 }
 
