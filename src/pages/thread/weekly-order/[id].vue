@@ -223,11 +223,11 @@
           label="Tiến độ"
           icon="trending_up"
         />
-        <!-- <q-tab
+        <q-tab
           name="process-trace"
           label="Truy xuất"
           icon="account_tree"
-        /> -->
+        />
         <q-tab
           name="overview"
           label="Tổng quan"
