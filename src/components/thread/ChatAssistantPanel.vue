@@ -9,6 +9,10 @@
         <div
           ref="messagesEl"
           class="messages"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions text"
+          aria-label="Hội thoại với trợ lý tra cứu chỉ"
         >
           <div
             v-for="item in messages"
@@ -26,10 +30,7 @@
                 },
               ]"
             >
-              <div
-                class="message-text"
-                :aria-live="item.status === 'thinking' ? 'polite' : undefined"
-              >
+              <div class="message-text">
                 {{ item.text }}
                 <span
                   v-if="item.status === 'thinking'"
@@ -45,6 +46,9 @@
               <div
                 v-if="item.stockRows?.length"
                 class="stock-table-wrap"
+                tabindex="0"
+                role="region"
+                aria-label="Bảng tồn kho có thể cuộn ngang"
               >
                 <table
                   class="stock-table"
@@ -52,16 +56,31 @@
                 >
                   <thead>
                     <tr>
-                      <th>NCC</th>
-                      <th>Tex</th>
-                      <th>Màu</th>
-                      <th class="text-right">
+                      <th scope="col">
+                        NCC
+                      </th>
+                      <th scope="col">
+                        Tex
+                      </th>
+                      <th scope="col">
+                        Màu
+                      </th>
+                      <th
+                        class="text-right"
+                        scope="col"
+                      >
                         Cuộn nguyên
                       </th>
-                      <th class="text-right">
+                      <th
+                        class="text-right"
+                        scope="col"
+                      >
                         Cuộn lẻ
                       </th>
-                      <th class="text-right">
+                      <th
+                        class="text-right"
+                        scope="col"
+                      >
                         Mét lẻ
                       </th>
                     </tr>
@@ -150,6 +169,7 @@
           <AppButton
             v-for="question in quickQuestions"
             :key="question"
+            class="quick-question-button"
             :label="question"
             icon="bolt"
             variant="outlined"
@@ -301,6 +321,14 @@ function formatNumber(value: number): string {
   background: linear-gradient(180deg, rgba(0, 121, 107, 0.07), rgba(25, 118, 210, 0.04));
 }
 
+@media (max-width: 599px) {
+  .messages {
+    height: clamp(180px, calc(100dvh - 250px), 420px);
+    min-height: 0;
+    padding: 12px;
+  }
+}
+
 .message-row {
   flex: 0 0 auto;
   width: 100%;
@@ -310,13 +338,14 @@ function formatNumber(value: number): string {
 .message-bubble {
   max-width: min(720px, 88%);
   min-width: 0;
-  border-radius: 8px;
+  border-radius: 16px;
   padding: 12px 14px;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
 .message-bubble.assistant {
+  color: #25313b;
   background: white;
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
@@ -344,8 +373,13 @@ function formatNumber(value: number): string {
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid #d7e0e5;
-  border-radius: 6px;
+  border-radius: 12px;
   background: #fff;
+}
+
+.stock-table-wrap:focus-visible {
+  outline: 2px solid var(--q-primary);
+  outline-offset: 2px;
 }
 
 .stock-table {
@@ -394,6 +428,18 @@ function formatNumber(value: number): string {
   font-variant-numeric: tabular-nums;
 }
 
+.quick-question-button {
+  min-height: 40px;
+  height: auto;
+}
+
+.quick-question-button :deep(.q-btn__content) {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+}
+
 .thinking-dots {
   display: inline-flex;
   gap: 4px;
@@ -423,5 +469,45 @@ function formatNumber(value: number): string {
     transform: translateY(-3px);
     opacity: 0.9;
   }
+}
+</style>
+
+<style lang="scss">
+.body--dark .chat-panel .messages {
+  background: linear-gradient(180deg, rgba(9, 105, 240, 0.12), rgba(0, 184, 148, 0.06));
+}
+
+.body--dark .chat-panel .message-bubble.assistant {
+  color: rgba(255, 255, 255, 0.9);
+  background: #24282e;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.body--dark .chat-panel .message-bubble.thinking {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.body--dark .chat-panel .stock-table-wrap {
+  background: #1f2329;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.body--dark .chat-panel .stock-table th,
+.body--dark .chat-panel .stock-table td {
+  color: rgba(255, 255, 255, 0.88);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.body--dark .chat-panel .stock-table th {
+  color: rgba(255, 255, 255, 0.7);
+  background: #292e35;
+}
+
+.body--dark .chat-panel .stock-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.body--dark .chat-panel .supplier-cell {
+  color: rgba(255, 255, 255, 0.92);
 }
 </style>
