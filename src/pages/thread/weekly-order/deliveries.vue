@@ -729,19 +729,9 @@ interface WeekSummary {
   delivery_status_color: string
 }
 
-const MAX_OVERDUE_DAYS_VISIBLE = 5
-
-const visibleTrackingDeliveries = computed(() => {
-  return deliveries.value.filter((d: DeliveryRecord) => {
-    if (d.status !== DeliveryStatus.PENDING) return true
-    if (typeof d.days_remaining !== 'number') return true
-    return d.days_remaining >= -MAX_OVERDUE_DAYS_VISIBLE
-  })
-})
-
 const weekGroups = computed(() => {
   const groups = new Map<number, DeliveryRecord[]>()
-  for (const d of visibleTrackingDeliveries.value) {
+  for (const d of deliveries.value) {
     const key = d.week_id
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)!.push(d)
