@@ -251,6 +251,13 @@ export function useWeeklyOrderCalculation() {
   const aggregateResults = (results: CalculationResult[]) => {
     const map = new Map<string, AggregatedRow>()
     const specsWithColorBreakdown = new Set<number>()
+    const issueGroupMeters = new Map<string, Map<string, number>>()
+
+    const addIssueGroupMeters = (key: string, issueKey: string, meters: number) => {
+      const groups = issueGroupMeters.get(key) ?? new Map<string, number>()
+      groups.set(issueKey, (groups.get(issueKey) ?? 0) + meters)
+      issueGroupMeters.set(key, groups)
+    }
 
     for (const result of results) {
       for (const calc of result.calculations) {
@@ -261,6 +268,8 @@ export function useWeeklyOrderCalculation() {
             const colorId = cb.thread_color_id ?? null
             const key = aggregationKey(cb.thread_type_id, colorId)
             const existing = map.get(key)
+
+            addIssueGroupMeters(key, `${result.style_id}_${cb.color_id}_${cb.thread_color ?? ''}`, cb.total_meters)
 
             if (existing) {
               existing.total_meters += cb.total_meters
@@ -294,6 +303,8 @@ export function useWeeklyOrderCalculation() {
         const key = aggregationKey(calc.thread_type_id, null)
         const existing = map.get(key)
 
+        addIssueGroupMeters(key, `${result.style_id}__${calc.thread_color ?? ''}`, calc.total_meters)
+
         if (existing) {
           existing.total_meters += calc.total_meters
         } else {
@@ -318,9 +329,13 @@ export function useWeeklyOrderCalculation() {
     }
 
     // Recalculate total_cones for each aggregated row
-    for (const row of map.values()) {
-      if (row.meters_per_cone && row.meters_per_cone > 0) {
-        row.total_cones = Math.ceil(row.total_meters / row.meters_per_cone)
+    for (const [key, row] of map) {
+      const metersPerCone = row.meters_per_cone
+      if (metersPerCone && metersPerCone > 0) {
+        const groups = issueGroupMeters.get(key)
+        row.total_cones = groups
+          ? Array.from(groups.values()).reduce((sum, meters) => sum + Math.ceil(meters / metersPerCone), 0)
+          : Math.ceil(row.total_meters / metersPerCone)
       } else {
         row.total_cones = 0
       }
