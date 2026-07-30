@@ -111,38 +111,6 @@
                       >—</span>
                     </q-td>
                   </template>
-                  <template #bottom-row>
-                    <q-tr
-                      v-for="sub in getThreadSubtotals(group.rows)"
-                      :key="sub.key"
-                      class="text-primary text-weight-medium"
-                    >
-                      <q-td colspan="3">
-                        Cộng {{ sub.supplier_name }} — Tex {{ sub.tex_number }}
-                      </q-td>
-                      <q-td class="text-right text-grey-5">
-                        —
-                      </q-td>
-                      <q-td class="text-right">
-                        {{ sub.total_meters.toLocaleString('vi-VN', { maximumFractionDigits: 2 }) }}
-                      </q-td>
-                      <q-td class="text-right">
-                        {{ sub.total_cones != null ? sub.total_cones.toLocaleString('vi-VN') : '—' }}
-                      </q-td>
-                      <q-td class="text-center">
-                        <AppBadge
-                          v-if="sub.thread_color"
-                          :style="{ backgroundColor: sub.thread_color_code || '#999' }"
-                          :class="sub.thread_color_code && isLightColor(sub.thread_color_code) ? 'text-dark' : 'text-white'"
-                          :label="sub.thread_color"
-                        />
-                        <span
-                          v-else
-                          class="text-grey-5"
-                        >—</span>
-                      </q-td>
-                    </q-tr>
-                  </template>
                 </q-table>
               </div>
             </template>
@@ -268,41 +236,6 @@
                     </template>
                   </template>
                 </q-td>
-              </template>
-              <template #bottom-row>
-                <q-tr
-                  v-for="sub in getThreadSubtotals(result.calculations)"
-                  :key="sub.key"
-                  class="text-primary text-weight-medium"
-                >
-                  <q-td colspan="3">
-                    Cộng {{ sub.supplier_name }} — Tex {{ sub.tex_number }}
-                  </q-td>
-                  <q-td class="text-right text-grey-5">
-                    —
-                  </q-td>
-                  <q-td class="text-right">
-                    {{ sub.total_cones != null ? sub.total_cones.toLocaleString('vi-VN') : '—' }}
-                  </q-td>
-                  <q-td class="text-center">
-                    <AppBadge
-                      v-if="sub.thread_color"
-                      :style="{ backgroundColor: sub.thread_color_code || '#999' }"
-                      :class="sub.thread_color_code && isLightColor(sub.thread_color_code) ? 'text-dark' : 'text-white'"
-                      :label="sub.thread_color"
-                    />
-                    <span
-                      v-else
-                      class="text-grey-5"
-                    >—</span>
-                  </q-td>
-                  <q-td class="text-right text-grey-5">
-                    —
-                  </q-td>
-                  <q-td class="text-center text-grey-5">
-                    —
-                  </q-td>
-                </q-tr>
               </template>
             </q-table>
           </q-card-section>
@@ -463,56 +396,6 @@ interface ColorGroup {
   rows: ColorCalculationResult[]
 }
 
-interface ThreadSubtotalSource {
-  thread_type_id: number
-  thread_color?: string | null
-  thread_color_code?: string | null
-  supplier_name: string
-  tex_number: string
-  total_meters: number
-  meters_per_cone?: number | null
-}
-
-interface ThreadSubtotal {
-  key: string
-  supplier_name: string
-  tex_number: string
-  thread_color: string | null
-  thread_color_code: string | null
-  total_meters: number
-  total_cones: number | null
-}
-
-function getThreadSubtotals(rows: ThreadSubtotalSource[]): ThreadSubtotal[] {
-  const map = new Map<string, ThreadSubtotal & { meters_per_cone: number | null }>()
-
-  for (const row of rows) {
-    const key = `${row.thread_type_id}_${row.thread_color ?? ''}`
-    const existing = map.get(key)
-    if (existing) {
-      existing.total_meters += row.total_meters
-      continue
-    }
-    map.set(key, {
-      key,
-      supplier_name: row.supplier_name,
-      tex_number: row.tex_number,
-      thread_color: row.thread_color ?? null,
-      thread_color_code: row.thread_color_code ?? null,
-      meters_per_cone: row.meters_per_cone ?? null,
-      total_meters: row.total_meters,
-      total_cones: null,
-    })
-  }
-
-  return Array.from(map.values()).map(({ meters_per_cone, ...sub }) => ({
-    ...sub,
-    total_cones: meters_per_cone && meters_per_cone > 0
-      ? Math.ceil(sub.total_meters / meters_per_cone)
-      : null,
-  }))
-}
-
 function getColorGroups(result: CalculationResult): ColorGroup[] | null {
   const hasColorBreakdown = result.calculations.some(c => c.color_breakdown && c.color_breakdown.length > 0)
   if (!hasColorBreakdown) return null
@@ -571,16 +454,14 @@ const colorColumns: QTableColumn[] = [
   },
   {
     name: 'total_cones',
-    label: 'Cuộn lẻ',
+    label: 'Tổng cuộn',
     field: (row) => {
       const r = row as ColorCalculationResult
       if (!r.meters_per_cone || r.meters_per_cone <= 0) return null
-      return r.total_meters / r.meters_per_cone
+      return Math.ceil(r.total_meters / r.meters_per_cone)
     },
     align: 'right',
-    format: (val) => (val !== null && val !== undefined)
-      ? Number(val).toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-      : '—',
+    format: (val) => (val !== null && val !== undefined) ? Number(val).toLocaleString('vi-VN') : '—',
   },
   { name: 'thread_color', label: 'Màu chỉ', field: 'thread_color', align: 'center' },
 ]
@@ -592,16 +473,14 @@ const columns: QTableColumn[] = [
   { name: 'meters_per_unit', label: 'Mét/SP', field: 'meters_per_unit', align: 'right', format: (val: number) => val.toFixed(2) },
   {
     name: 'total_cones',
-    label: 'Cuộn lẻ',
+    label: 'Tổng cuộn',
     field: (row) => {
       const r = row as CalculationItem
       if (!r.meters_per_cone || r.meters_per_cone <= 0) return null
-      return r.total_meters / r.meters_per_cone
+      return Math.ceil(r.total_meters / r.meters_per_cone)
     },
     align: 'right',
-    format: (val) => (val !== null && val !== undefined)
-      ? Number(val).toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-      : '—',
+    format: (val) => (val !== null && val !== undefined) ? Number(val).toLocaleString('vi-VN') : '—',
   },
   { name: 'thread_color', label: 'Màu chỉ', field: 'thread_color', align: 'center' },
   {
