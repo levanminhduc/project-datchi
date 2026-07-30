@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import StatCard from '@/components/ui/cards/StatCard.vue'
-import HubNavCard from '@/components/ui/cards/HubNavCard.vue'
 import { useDashboard, useSidebar } from '@/composables'
 import { useAuth } from '@/composables/useAuth'
+import { useRouter } from 'vue-router'
 import { date } from 'quasar'
+
+const router = useRouter()
 
 const {
   summary,
@@ -186,13 +188,31 @@ const handleRefresh = async () => {
           :key="item.to"
           class="col-12 col-sm-6 col-md-4 col-lg-3"
         >
-          <HubNavCard
-            :title="item.title"
-            :caption="item.caption"
-            :icon="item.icon"
-            :to="item.to"
-            :color="item.color"
-          />
+          <q-card
+            v-ripple
+            bordered
+            class="hub-card cursor-pointer full-height"
+            :style="{ '--hub-icon-color': item.color }"
+            @click="router.push(item.to)"
+          >
+            <q-card-section class="row items-center no-wrap">
+              <q-icon
+                :name="item.icon"
+                size="28px"
+              />
+              <div class="q-ml-md col">
+                <div class="text-subtitle2 text-weight-bold">
+                  {{ item.title }}
+                </div>
+                <div
+                  v-if="item.caption"
+                  class="text-caption hub-caption"
+                >
+                  {{ item.caption }}
+                </div>
+              </div>
+            </q-card-section>
+          </q-card>
         </div>
       </div>
     </div>
@@ -202,6 +222,29 @@ const handleRefresh = async () => {
 <style scoped lang="scss">
 .stat-value-primary :deep(.text-h4) {
   color: var(--q-primary);
+}
+
+.hub-card {
+  border-color: var(--q-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.hub-card .q-icon {
+  color: var(--hub-icon-color);
+}
+
+.hub-caption {
+  color: #616161;
+}
+
+.hub-card:hover {
+  background-color: var(--q-primary);
+  color: #fff;
+}
+
+.hub-card:hover .q-icon,
+.hub-card:hover .hub-caption {
+  color: #fff;
 }
 
 .hub-group-label {
