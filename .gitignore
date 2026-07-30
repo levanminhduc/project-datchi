@@ -108,3 +108,8 @@ sdd/
 task-*-report.md
 supabase/backup/
 .claude/settings.local.json
+
+# Local runtime data & build artifacts (never commit)
+backup/
+docker-images/
+storage/
