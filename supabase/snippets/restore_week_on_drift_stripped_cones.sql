@@ -1,3 +1,6 @@
+-- TRẠNG THÁI: CHƯA CHẠY. Đã quyết định để nguyên hiện trạng, không hoàn nguyên.
+-- Giữ lại phòng khi đổi ý. Bối cảnh đầy đủ: README-drift-heal-tuoc-tuan.md
+--
 -- Hoàn nguyên tuần cho các cuộn bị TƯỚC reserve không đúng nghiệp vụ.
 --
 -- Phạm vi: CHỈ cuộn đã từng có reserved_week_id rồi bị gỡ mà không có hành động
