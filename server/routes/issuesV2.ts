@@ -13,6 +13,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { ZodError } from 'zod'
 import { createHash } from 'crypto'
+import type { PoolClient, QueryResultRow } from 'pg'
 import { query, queryOne, queryCount } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
@@ -167,6 +168,16 @@ interface PrefetchedReturnData {
   metersPerCone: number | null
 }
 
+async function runOn<T extends QueryResultRow>(
+  client: PoolClient | undefined,
+  text: string,
+  params: unknown[],
+): Promise<T[]> {
+  if (!client) return query<T>(text, params)
+  const result = await client.query<T>(text, params)
+  return result.rows
+}
+
 async function processReturnForLine(
   lineId: number,
   line: IssueLine,
@@ -175,6 +186,9 @@ async function processReturnForLine(
   performedBy: string,
   partialConeRatio: number,
   prefetchedData?: PrefetchedReturnData,
+  client?: PoolClient,
+  targetWarehouseId?: number | null,
+  returnLogId?: number | null,
 ): Promise<ProcessReturnLineResult> {
   if (requestedFull <= 0 && requestedPartial <= 0) {
     return { success: true, line_id: lineId, returned_full: 0, returned_partial: 0 }
@@ -200,7 +214,7 @@ async function processReturnForLine(
         line_id: lineId,
         returned_full: 0,
         returned_partial: 0,
-        error: `Khong the tai cuon nguyen dang xuat cho dong ${lineId}`,
+        error: `Không tải được cuộn nguyên đang xuất của dòng ${lineId}`,
       }
     }
 
@@ -217,7 +231,7 @@ async function processReturnForLine(
         line_id: lineId,
         returned_full: 0,
         returned_partial: 0,
-        error: `Khong the tai cuon le dang xuat cho dong ${lineId}`,
+        error: `Không tải được cuộn lẻ đang xuất của dòng ${lineId}`,
       }
     }
   }
@@ -243,7 +257,7 @@ async function processReturnForLine(
       line_id: lineId,
       returned_full: 0,
       returned_partial: 0,
-      error: `Dong ${line.id}: Khong du cuon nguyen de tra (${requestedFull}/${fullCones.length})`,
+      error: `Dòng ${line.id}: Không đủ cuộn nguyên để trả — cần ${requestedFull}, còn ${fullCones.length}`,
     }
   }
 
@@ -260,7 +274,7 @@ async function processReturnForLine(
       line_id: lineId,
       returned_full: 0,
       returned_partial: 0,
-      error: `Dong ${line.id}: Khong du cuon le de tra (${requestedPartial}/${availableEquivalentPartial})`,
+      error: `Dòng ${line.id}: Không đủ cuộn lẻ để trả — cần ${requestedPartial}, còn ${availableEquivalentPartial}`,
     }
   }
 
@@ -284,7 +298,7 @@ async function processReturnForLine(
         line_id: lineId,
         returned_full: 0,
         returned_partial: 0,
-        error: `Dong ${line.id}: Ty le cuon le khong hop le cho phep tach cuon (${partialConeRatio})`,
+        error: `Dòng ${line.id}: Tỉ lệ cuộn lẻ không hợp lệ để tách cuộn (${partialConeRatio})`,
       }
     }
 
@@ -296,7 +310,7 @@ async function processReturnForLine(
           line_id: lineId,
           returned_full: 0,
           returned_partial: 0,
-          error: `Dong ${line.id}: Cuon ${sourceCone.id} khong du met de tach cuon le`,
+          error: `Dòng ${line.id}: Cuộn ${sourceCone.id} không đủ mét để tách cuộn lẻ`,
         }
       }
       partialReturnsPayload.push({
@@ -313,13 +327,16 @@ async function processReturnForLine(
 
   let rpcResultRaw: ReturnRpcResult | null
   try {
-    const rpcRows = await query<{ result: ReturnRpcResult }>(
-      'SELECT fn_return_cones_with_movements($1, $2, $3, $4) AS result',
+    const rpcRows = await runOn<{ result: ReturnRpcResult }>(
+      client,
+      'SELECT fn_return_cones_with_movements($1, $2, $3, $4, $5, $6) AS result',
       [
         coneIdsForDirectReturn.length > 0 ? coneIdsForDirectReturn : null,
         lineId,
         performedBy,
         partialReturnsPayload.length > 0 ? JSON.stringify(partialReturnsPayload) : null,
+        targetWarehouseId ?? null,
+        returnLogId ?? null,
       ]
     )
     rpcResultRaw = rpcRows.length > 0 ? rpcRows[0].result : null
@@ -329,7 +346,7 @@ async function processReturnForLine(
       line_id: lineId,
       returned_full: 0,
       returned_partial: 0,
-      error: getErrorMessage(err) || 'Loi xu ly tra hang',
+      error: getErrorMessage(err) || 'Lỗi xử lý trả hàng',
     }
   }
 
@@ -350,7 +367,7 @@ async function processReturnForLine(
       line_id: lineId,
       returned_full: 0,
       returned_partial: 0,
-      error: `Dong ${line.id}: Ket qua tra kho khong khop yeu cau`,
+      error: `Dòng ${line.id}: Kết quả trả kho không khớp yêu cầu`,
     }
   }
 
@@ -358,7 +375,8 @@ async function processReturnForLine(
   const newReturnedPartial = (line.returned_partial || 0) + actualReturnedPartial
 
   try {
-    await query(
+    await runOn(
+      client,
       'UPDATE thread_issue_lines SET returned_full = $1, returned_partial = $2 WHERE id = $3',
       [newReturnedFull, newReturnedPartial, lineId]
     )
@@ -368,7 +386,7 @@ async function processReturnForLine(
       line_id: lineId,
       returned_full: 0,
       returned_partial: 0,
-      error: 'Khong the cap nhat dong tra',
+      error: 'Không cập nhật được dòng trả',
     }
   }
 
@@ -509,7 +527,7 @@ async function validateSubArtId(
   subArtId: number | null | undefined
 ): Promise<string | null> {
   if (!styleId) {
-    if (subArtId) return 'Khong the chon sub-art khi chua chon ma hang'
+    if (subArtId) return 'Chưa chọn mã hàng thì không chọn được sub-art'
     return null
   }
 
@@ -521,11 +539,11 @@ async function validateSubArtId(
   const hasSubArts = subArts && subArts.length > 0
 
   if (hasSubArts && !subArtId) {
-    return 'Ma hang nay yeu cau chon sub-art'
+    return 'Mã hàng này bắt buộc chọn sub-art'
   }
 
   if (!hasSubArts && subArtId) {
-    return 'Ma hang nay khong co sub-art'
+    return 'Mã hàng này không có sub-art'
   }
 
   if (subArtId) {
@@ -535,7 +553,7 @@ async function validateSubArtId(
     )
 
     if (!subArt) {
-      return 'Sub-art khong thuoc ma hang da chon'
+      return 'Sub-art không thuộc mã hàng đã chọn'
     }
   }
 
@@ -1189,7 +1207,7 @@ async function transferConesForIssue(
       toWarehouseId,
       coneIds,
       coneIds.length,
-      `Muon kho cho phieu xuat #${issueId}`,
+      `Mượn kho cho phiếu xuất #${issueId}`,
       performedBy,
       new Date().toISOString(),
     ]
@@ -1306,13 +1324,13 @@ async function deductStock(
     try {
       availFull = await query<{ id: number }>(afSql, afParams)
     } catch {
-      return { success: false, message: 'Loi truy van ton kho cuon nguyen' }
+      return { success: false, message: 'Lỗi truy vấn tồn kho cuộn nguyên' }
     }
 
     if (!availFull || availFull.length < remainingFull) {
       return {
         success: false,
-        message: `Khong du cuon nguyen. Can ${deductFull}, co ${fullIds.length + (availFull?.length || 0)}`,
+        message: `Không đủ cuộn nguyên. Cần ${deductFull}, có ${fullIds.length + (availFull?.length || 0)}`,
       }
     }
 
@@ -1346,13 +1364,13 @@ async function deductStock(
     try {
       availPartial = await query<{ id: number }>(apSql, apParams)
     } catch {
-      return { success: false, message: 'Loi truy van ton kho cuon le' }
+      return { success: false, message: 'Lỗi truy vấn tồn kho cuộn lẻ' }
     }
 
     if (!availPartial || availPartial.length < remainingPartial) {
       return {
         success: false,
-        message: `Khong du cuon le. Can ${deductPartial}, co ${partialIds.length + (availPartial?.length || 0)}`,
+        message: `Không đủ cuộn lẻ. Cần ${deductPartial}, có ${partialIds.length + (availPartial?.length || 0)}`,
       }
     }
 
@@ -1372,7 +1390,7 @@ async function deductStock(
     )
   } catch (rpcError) {
     console.error('[deductStock] RPC error:', rpcError)
-    return { success: false, message: getErrorMessage(rpcError) || 'Loi xu ly xuat kho' }
+    return { success: false, message: getErrorMessage(rpcError) || 'Lỗi xử lý xuất kho' }
   }
 
   return { success: true, allocatedConeIds: allConeIds }
@@ -1429,7 +1447,7 @@ issuesV2.get('/order-options', async (c) => {
           [po_id, style_id, weekIds.map((w) => w.id)]
         )
       } catch {
-        return c.json({ data: null, error: 'Loi truy van mau sac' }, 500)
+        return c.json({ data: null, error: 'Lỗi truy vấn màu sắc' }, 500)
       }
 
       const uniqueColors = new Map()
@@ -1480,7 +1498,7 @@ issuesV2.get('/order-options', async (c) => {
         return c.json(
           {
             data: null,
-            error: 'Loi truy van style',
+            error: 'Lỗi truy vấn mã hàng',
           },
           500
         )
@@ -1547,7 +1565,7 @@ issuesV2.get('/order-options', async (c) => {
       return c.json(
         {
           data: null,
-          error: 'Loi truy van PO',
+          error: 'Lỗi truy vấn đơn hàng',
         },
         500
       )
@@ -1630,7 +1648,7 @@ issuesV2.post('/', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tao phieu xuat: ' + getErrorMessage(error),
+          error: 'Không tạo được phiếu xuất: ' + getErrorMessage(error),
         },
         500
       )
@@ -1639,7 +1657,7 @@ issuesV2.post('/', async (c) => {
     return c.json({
       data: { issue_id: issue.id, issue_code: issue.issue_code },
       error: null,
-      message: 'Tao phieu xuat thanh cong',
+      message: 'Tạo phiếu xuất thành công',
     })
   } catch (err) {
     console.error('Error in POST /api/issues/v2:', err)
@@ -1708,15 +1726,15 @@ issuesV2.post('/validate-line', async (c) => {
 
     let message: string | undefined
     if (isOverQuota) {
-      message = `Vuot dinh muc ${(issuedEquivalent - (quotaCones || 0)).toFixed(2)} cuon`
+      message = `Vượt định mức ${(issuedEquivalent - (quotaCones || 0)).toFixed(2)} cuộn`
     }
     if (!stockSufficient) {
       const shortFull = Math.max(0, (issued_full || 0) - stock.full_cones)
       const shortPartial = Math.max(0, (issued_partial || 0) - stock.partial_cones)
       const borrowHint = canBorrowFromOther ? ' (co the muon tu kho khac)' : ''
       message = message
-        ? `${message}. Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le${borrowHint}`
-        : `Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le${borrowHint}`
+        ? `${message}. Thiếu ${shortFull} cuộn nguyên, ${shortPartial} cuộn lẻ${borrowHint}`
+        : `Thiếu ${shortFull} cuộn nguyên, ${shortPartial} cuộn lẻ${borrowHint}`
     }
 
     return c.json({
@@ -1801,7 +1819,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Vuot dinh muc, yeu cau ghi chu ly do',
+          error: 'Vượt định mức, phải ghi chú lý do',
         },
         400
       )
@@ -1840,7 +1858,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tao phieu xuat: ' + (getErrorMessage(issueError) || 'Loi khong xac dinh'),
+          error: 'Không tạo được phiếu xuất: ' + (getErrorMessage(issueError) || 'Lỗi không xác định'),
         },
         500
       )
@@ -1850,7 +1868,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tao phieu xuat: Loi khong xac dinh',
+          error: 'Không tạo được phiếu xuất: Lỗi không xác định',
         },
         500
       )
@@ -1885,7 +1903,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the them dong: ' + (getErrorMessage(lineError) || 'Loi khong xac dinh'),
+          error: 'Không thêm được dòng: ' + (getErrorMessage(lineError) || 'Lỗi không xác định'),
         },
         500
       )
@@ -1896,7 +1914,7 @@ issuesV2.post('/create-with-lines', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the them dong: Loi khong xac dinh',
+          error: 'Không thêm được dòng: Lỗi không xác định',
         },
         500
       )
@@ -1957,7 +1975,7 @@ issuesV2.post('/create-with-lines', async (c) => {
         lines: [lineWithComputed],
       },
       error: null,
-      message: 'Tao phieu xuat thanh cong',
+      message: 'Tạo phiếu xuất thành công',
     })
   } catch (err) {
     console.error('Error in POST /api/issues/v2/create-with-lines:', err)
@@ -2145,7 +2163,7 @@ issuesV2.get('/form-data', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tai dinh muc chi',
+          error: 'Không tải được định mức chỉ',
         },
         500
       )
@@ -2487,15 +2505,15 @@ issuesV2.post('/:id/lines/validate', async (c) => {
     // Build message
     let message: string | undefined
     if (isOverQuota) {
-      message = `Vuot dinh muc ${(issuedEquivalent - (quotaCones || 0)).toFixed(2)} cuon`
+      message = `Vượt định mức ${(issuedEquivalent - (quotaCones || 0)).toFixed(2)} cuộn`
     }
     if (!stockSufficient) {
       const shortFull = Math.max(0, (issued_full || 0) - stock.full_cones)
       const shortPartial = Math.max(0, (issued_partial || 0) - stock.partial_cones)
       const borrowHint = canBorrowFromOther ? ' (co the muon tu kho khac)' : ''
       message = message
-        ? `${message}. Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le${borrowHint}`
-        : `Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le${borrowHint}`
+        ? `${message}. Thiếu ${shortFull} cuộn nguyên, ${shortPartial} cuộn lẻ${borrowHint}`
+        : `Thiếu ${shortFull} cuộn nguyên, ${shortPartial} cuộn lẻ${borrowHint}`
     }
 
     return c.json({
@@ -2534,7 +2552,7 @@ issuesV2.post('/:id/batch-lines', async (c) => {
     const issueId = parseInt(c.req.param('id'))
     if (isNaN(issueId)) {
       return c.json<ThreadApiResponse<null>>(
-        { data: null, error: 'ID phieu xuat khong hop le' },
+        { data: null, error: 'Mã phiếu xuất không hợp lệ' },
         400
       )
     }
@@ -2561,14 +2579,14 @@ issuesV2.post('/:id/batch-lines', async (c) => {
 
     if (!issue) {
       return c.json<ThreadApiResponse<null>>(
-        { data: null, error: 'Khong tim thay phieu xuat' },
+        { data: null, error: 'Không tìm thấy phiếu xuất' },
         404
       )
     }
 
     if (issue.status !== 'DRAFT') {
       return c.json<ThreadApiResponse<null>>(
-        { data: null, error: 'Chi co the them dong vao phieu nhap - Phieu da xac nhan' },
+        { data: null, error: 'Chỉ thêm được dòng vào phiếu nháp — phiếu đã xác nhận rồi' },
         400
       )
     }
@@ -2589,14 +2607,14 @@ issuesV2.post('/:id/batch-lines', async (c) => {
       const subArtError = await validateSubArtId(style_id, sub_art_id)
       if (subArtError) {
         return c.json<ThreadApiResponse<null>>(
-          { data: null, error: `Dong ${i + 1}: ${subArtError}` },
+          { data: null, error: `Dòng ${i + 1}: ${subArtError}` },
           400
         )
       }
 
       if (await isComboCompletedInAllWeeks(po_id, style_id, effectiveColorId)) {
         return c.json<ThreadApiResponse<null>>(
-          { data: null, error: `Dong ${i + 1}: PO-Style-Mau da hoan tat xuat trong tat ca tuan` },
+          { data: null, error: `Dòng ${i + 1}: PO — mã hàng — màu đã hoàn tất xuất ở tất cả các tuần` },
           400
         )
       }
@@ -2622,7 +2640,7 @@ issuesV2.post('/:id/batch-lines', async (c) => {
 
       if (isOverQuota && !over_quota_notes?.trim()) {
         return c.json<ThreadApiResponse<null>>(
-          { data: null, error: `Dong ${i + 1}: Vuot dinh muc, yeu cau ghi chu ly do` },
+          { data: null, error: `Dòng ${i + 1}: Vượt định mức, phải ghi chú lý do` },
           400
         )
       }
@@ -2702,7 +2720,7 @@ issuesV2.post('/:id/batch-lines', async (c) => {
     } catch (insertErr) {
       console.error('Error batch inserting lines:', insertErr)
       return c.json<ThreadApiResponse<null>>(
-        { data: null, error: 'Khong the them cac dong: ' + getErrorMessage(insertErr) },
+        { data: null, error: 'Không thêm được các dòng: ' + getErrorMessage(insertErr) },
         500
       )
     }
@@ -2745,7 +2763,7 @@ issuesV2.post('/:id/batch-lines', async (c) => {
     return c.json({
       data: enrichedLines,
       error: null,
-      message: `Them ${enrichedLines.length} dong thanh cong`,
+      message: `Đã thêm ${enrichedLines.length} dòng`,
     })
   } catch (err) {
     console.error('Error in POST /api/issues/v2/:id/batch-lines:', err)
@@ -2769,7 +2787,7 @@ issuesV2.post('/:id/lines', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'ID phieu xuat khong hop le',
+          error: 'Mã phiếu xuất không hợp lệ',
         },
         400
       )
@@ -2803,7 +2821,7 @@ issuesV2.post('/:id/lines', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong tim thay phieu xuat',
+          error: 'Không tìm thấy phiếu xuất',
         },
         404
       )
@@ -2813,7 +2831,7 @@ issuesV2.post('/:id/lines', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Chi co the them dong vao phieu nhap - Phieu da xac nhan',
+          error: 'Chỉ thêm được dòng vào phiếu nháp — phiếu đã xác nhận rồi',
         },
         400
       )
@@ -2862,7 +2880,7 @@ issuesV2.post('/:id/lines', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Vuot dinh muc, yeu cau ghi chu ly do',
+          error: 'Vượt định mức, phải ghi chú lý do',
         },
         400
       )
@@ -2916,7 +2934,7 @@ issuesV2.post('/:id/lines', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the them dong: ' + getErrorMessage(lineErr),
+          error: 'Không thêm được dòng: ' + getErrorMessage(lineErr),
         },
         500
       )
@@ -2944,7 +2962,7 @@ issuesV2.post('/:id/lines', async (c) => {
         sub_art_code: lineSubArtCode,
       },
       error: null,
-      message: 'Them dong thanh cong',
+      message: 'Đã thêm dòng',
     })
   } catch (err) {
     console.error('Error in POST /api/issues/v2/:id/lines:', err)
@@ -2965,7 +2983,7 @@ issuesV2.get('/:id/return-logs', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'ID khong hop le',
+          error: 'Mã không hợp lệ',
         },
         400
       )
@@ -2980,7 +2998,7 @@ issuesV2.get('/:id/return-logs', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong tim thay phieu xuat',
+          error: 'Không tìm thấy phiếu xuất',
         },
         404
       )
@@ -3000,7 +3018,7 @@ issuesV2.get('/:id/return-logs', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tai lich su tra hang',
+          error: 'Không tải được lịch sử trả hàng',
         },
         500
       )
@@ -3075,7 +3093,7 @@ issuesV2.get('/:id', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'ID khong hop le',
+          error: 'Mã không hợp lệ',
         },
         400
       )
@@ -3091,7 +3109,7 @@ issuesV2.get('/:id', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong tim thay phieu xuat',
+          error: 'Không tìm thấy phiếu xuất',
         },
         404
       )
@@ -3125,7 +3143,7 @@ issuesV2.get('/:id', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tai chi tiet phieu xuat',
+          error: 'Không tải được chi tiết phiếu xuất',
         },
         500
       )
@@ -3341,7 +3359,7 @@ issuesV2.get('/', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tai danh sach phieu xuat',
+          error: 'Không tải được danh sách phiếu xuất',
         },
         500
       )
@@ -3427,13 +3445,14 @@ issuesV2.get('/', async (c) => {
  * Then deducts stock and sets status=CONFIRMED
  */
 issuesV2.post('/:id/confirm', async (c) => {
+  let claimedIssueId: number | null = null
   try {
     const issueId = parseInt(c.req.param('id'))
     if (isNaN(issueId)) {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'ID khong hop le',
+          error: 'Mã không hợp lệ',
         },
         400
       )
@@ -3470,7 +3489,7 @@ issuesV2.post('/:id/confirm', async (c) => {
         return c.json<ThreadApiResponse<null>>(
           {
             data: null,
-            error: 'Idempotency key da duoc su dung voi payload khac',
+            error: 'Mã chống trùng đã được dùng cho dữ liệu khác',
           },
           409
         )
@@ -3484,7 +3503,7 @@ issuesV2.post('/:id/confirm', async (c) => {
         return c.json({
           data: cachedIssue,
           error: null,
-          message: 'Xac nhan xuat kho thanh cong (cached)',
+          message: 'Xác nhận xuất kho thành công (kết quả đã lưu)',
         })
       }
 
@@ -3492,7 +3511,7 @@ issuesV2.post('/:id/confirm', async (c) => {
         return c.json<ThreadApiResponse<null>>(
           {
             data: null,
-            error: 'Operation dang xu ly, vui long doi',
+            error: 'Thao tác đang được xử lý, vui lòng đợi',
           },
           409
         )
@@ -3523,12 +3542,12 @@ issuesV2.post('/:id/confirm', async (c) => {
       await query(
         `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
          WHERE idempotency_key = $4 AND operation_type = $5`,
-        ['FAILED', 'Khong tim thay phieu xuat', new Date().toISOString(), idempotency_key, 'CONFIRM']
+        ['FAILED', 'Không tìm thấy phiếu xuất', new Date().toISOString(), idempotency_key, 'CONFIRM']
       )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong tim thay phieu xuat',
+          error: 'Không tìm thấy phiếu xuất',
         },
         404
       )
@@ -3543,11 +3562,33 @@ issuesV2.post('/:id/confirm', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Phieu da duoc xac nhan truoc do',
+          error: 'Phiếu đã được xác nhận trước đó',
         },
         400
       )
     }
+
+    const claimed = await query<{ id: number }>(
+      `UPDATE thread_issues
+       SET confirming_at = NOW()
+       WHERE id = $1
+         AND status = 'DRAFT'
+         AND (confirming_at IS NULL OR confirming_at < NOW() - INTERVAL '2 minutes')
+       RETURNING id`,
+      [issueId]
+    )
+
+    if (claimed.length === 0) {
+      return c.json<ThreadApiResponse<null>>(
+        {
+          data: null,
+          error: 'Phiếu đang được xác nhận, vui lòng đợi rồi tải lại trang',
+        },
+        409
+      )
+    }
+
+    claimedIssueId = issueId
 
     let lines: Array<Record<string, any>>
     try {
@@ -3559,12 +3600,12 @@ issuesV2.post('/:id/confirm', async (c) => {
       await query(
         `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
          WHERE idempotency_key = $4 AND operation_type = $5`,
-        ['FAILED', 'Khong the tai chi tiet phieu xuat', new Date().toISOString(), idempotency_key, 'CONFIRM']
+        ['FAILED', 'Không tải được chi tiết phiếu xuất', new Date().toISOString(), idempotency_key, 'CONFIRM']
       )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tai chi tiet phieu xuat',
+          error: 'Không tải được chi tiết phiếu xuất',
         },
         500
       )
@@ -3574,12 +3615,12 @@ issuesV2.post('/:id/confirm', async (c) => {
       await query(
         `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
          WHERE idempotency_key = $4 AND operation_type = $5`,
-        ['FAILED', 'Phieu xuat khong co dong nao', new Date().toISOString(), idempotency_key, 'CONFIRM']
+        ['FAILED', 'Phiếu xuất không có dòng nào', new Date().toISOString(), idempotency_key, 'CONFIRM']
       )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Phieu xuat khong co dong nao',
+          error: 'Phiếu xuất không có dòng nào',
         },
         400
       )
@@ -3656,7 +3697,7 @@ issuesV2.post('/:id/confirm', async (c) => {
             'SELECT name FROM thread_types WHERE id = $1',
             [line.thread_type_id]
           )
-          errors.push(`${threadType?.name || 'Loai chi'}: Vuot dinh muc nhung chua co ghi chu`)
+          errors.push(`${threadType?.name || 'Loại chỉ'}: Vuot dinh muc nhung chua co ghi chu`)
         }
 
         if (!isOverQuota || line.over_quota_notes?.trim()) {
@@ -3702,7 +3743,7 @@ issuesV2.post('/:id/confirm', async (c) => {
 
           shortages.push({
             thread_type_id: line.thread_type_id,
-            thread_name: threadType?.name || 'Loai chi',
+            thread_name: threadType?.name || 'Loại chỉ',
             needed_full: line.issued_full,
             needed_partial: line.issued_partial,
             available_full: stock.full_cones,
@@ -3744,7 +3785,7 @@ issuesV2.post('/:id/confirm', async (c) => {
           const shortFull = Math.max(0, line.issued_full - stock.full_cones)
           const shortPartial = Math.max(0, line.issued_partial - stock.partial_cones)
           errors.push(
-            `${threadType?.name || 'Loai chi'}: Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le`
+            `${threadType?.name || 'Loại chỉ'}: Thieu ${shortFull} cuon nguyen, ${shortPartial} cuon le`
           )
         }
       }
@@ -3836,12 +3877,12 @@ issuesV2.post('/:id/confirm', async (c) => {
         await query(
           `UPDATE issue_operations_log SET status = $1, succeeded_line_ids = $2, error_info = $3, completed_at = $4
            WHERE idempotency_key = $5 AND operation_type = $6`,
-          ['FAILED', succeededLineIds, result.message || 'Loi tru ton kho', new Date().toISOString(), idempotency_key, 'CONFIRM']
+          ['FAILED', succeededLineIds, result.message || 'Lỗi trừ tồn kho', new Date().toISOString(), idempotency_key, 'CONFIRM']
         )
         return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
           {
             data: { succeeded_line_ids: succeededLineIds },
-            error: result.message || 'Loi tru ton kho',
+            error: result.message || 'Lỗi trừ tồn kho',
           },
           500
         )
@@ -3873,12 +3914,12 @@ issuesV2.post('/:id/confirm', async (c) => {
       await query(
         `UPDATE issue_operations_log SET status = $1, succeeded_line_ids = $2, error_info = $3, completed_at = $4
          WHERE idempotency_key = $5 AND operation_type = $6`,
-        ['FAILED', succeededLineIds, 'Khong the cap nhat trang thai phieu xuat', new Date().toISOString(), idempotency_key, 'CONFIRM']
+        ['FAILED', succeededLineIds, 'Không cập nhật được trạng thái phiếu xuất', new Date().toISOString(), idempotency_key, 'CONFIRM']
       )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the cap nhat trang thai phieu xuat',
+          error: 'Không cập nhật được trạng thái phiếu xuất',
         },
         500
       )
@@ -3893,7 +3934,7 @@ issuesV2.post('/:id/confirm', async (c) => {
     return c.json({
       data: transfers.length > 0 ? { ...updatedIssue, transfers } : updatedIssue,
       error: null,
-      message: 'Xac nhan xuat kho thanh cong',
+      message: 'Xác nhận xuất kho thành công',
     })
   } catch (err) {
     console.error('Error in POST /api/issues/v2/:id/confirm:', err)
@@ -3904,6 +3945,14 @@ issuesV2.post('/:id/confirm', async (c) => {
       },
       500
     )
+  } finally {
+    if (claimedIssueId !== null) {
+      try {
+        await query('UPDATE thread_issues SET confirming_at = NULL WHERE id = $1', [claimedIssueId])
+      } catch (releaseErr) {
+        console.error('[confirm] Failed to release confirm claim:', releaseErr)
+      }
+    }
   }
 })
 
@@ -3925,7 +3974,7 @@ issuesV2.post('/:id/return', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'ID khong hop le',
+          error: 'Mã không hợp lệ',
         },
         400
       )
@@ -3963,7 +4012,7 @@ issuesV2.post('/:id/return', async (c) => {
         return c.json<ThreadApiResponse<null>>(
           {
             data: null,
-            error: 'Idempotency key da duoc su dung voi payload khac',
+            error: 'Mã chống trùng đã được dùng cho dữ liệu khác',
           },
           409
         )
@@ -3977,7 +4026,7 @@ issuesV2.post('/:id/return', async (c) => {
         return c.json({
           data: cachedIssue,
           error: null,
-          message: 'Tra hang thanh cong (cached)',
+          message: 'Trả hàng thành công (kết quả đã lưu)',
         })
       }
 
@@ -3985,7 +4034,7 @@ issuesV2.post('/:id/return', async (c) => {
         return c.json<ThreadApiResponse<null>>(
           {
             data: null,
-            error: 'Operation dang xu ly, vui long doi',
+            error: 'Thao tác đang được xử lý, vui lòng đợi',
           },
           409
         )
@@ -4016,12 +4065,12 @@ issuesV2.post('/:id/return', async (c) => {
       await query(
         `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
          WHERE idempotency_key = $4 AND operation_type = $5`,
-        ['FAILED', 'Khong tim thay phieu xuat', new Date().toISOString(), idempotency_key, 'RETURN']
+        ['FAILED', 'Không tìm thấy phiếu xuất', new Date().toISOString(), idempotency_key, 'RETURN']
       )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong tim thay phieu xuat',
+          error: 'Không tìm thấy phiếu xuất',
         },
         404
       )
@@ -4031,12 +4080,12 @@ issuesV2.post('/:id/return', async (c) => {
       await query(
         `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
          WHERE idempotency_key = $4 AND operation_type = $5`,
-        ['FAILED', 'Chi co the tra hang tu phieu da xac nhan', new Date().toISOString(), idempotency_key, 'RETURN']
+        ['FAILED', 'Chỉ trả được hàng từ phiếu đã xác nhận', new Date().toISOString(), idempotency_key, 'RETURN']
       )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Chi co the tra hang tu phieu da xac nhan',
+          error: 'Chỉ trả được hàng từ phiếu đã xác nhận',
         },
         400
       )
@@ -4052,12 +4101,12 @@ issuesV2.post('/:id/return', async (c) => {
       await query(
         `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
          WHERE idempotency_key = $4 AND operation_type = $5`,
-        ['FAILED', 'Khong the tai chi tiet phieu xuat', new Date().toISOString(), idempotency_key, 'RETURN']
+        ['FAILED', 'Không tải được chi tiết phiếu xuất', new Date().toISOString(), idempotency_key, 'RETURN']
       )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the tai chi tiet phieu xuat',
+          error: 'Không tải được chi tiết phiếu xuất',
         },
         500
       )
@@ -4088,12 +4137,12 @@ issuesV2.post('/:id/return', async (c) => {
       await query(
         `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
          WHERE idempotency_key = $4 AND operation_type = $5`,
-        ['FAILED', `Ty le cuon le khong hop le (${partialConeRatio})`, new Date().toISOString(), idempotency_key, 'RETURN']
+        ['FAILED', `Tỉ lệ cuộn lẻ không hợp lệ (${partialConeRatio})`, new Date().toISOString(), idempotency_key, 'RETURN']
       )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: `Ty le cuon le khong hop le (${partialConeRatio})`,
+          error: `Tỉ lệ cuộn lẻ không hợp lệ (${partialConeRatio})`,
         },
         400
       )
@@ -4175,12 +4224,12 @@ issuesV2.post('/:id/return', async (c) => {
         await query(
           `UPDATE issue_operations_log SET status = $1, succeeded_line_ids = $2, error_info = $3, completed_at = $4
            WHERE idempotency_key = $5 AND operation_type = $6`,
-          ['FAILED', succeededLineIds, result.error || 'Loi xu ly tra hang', new Date().toISOString(), idempotency_key, 'RETURN']
+          ['FAILED', succeededLineIds, result.error || 'Lỗi xử lý trả hàng', new Date().toISOString(), idempotency_key, 'RETURN']
         )
         return c.json<ThreadApiResponse<{ succeeded_line_ids: number[] }>>(
           {
             data: { succeeded_line_ids: succeededLineIds },
-            error: result.error || 'Loi xu ly tra hang',
+            error: result.error || 'Lỗi xử lý trả hàng',
           },
           400
         )
@@ -4202,12 +4251,12 @@ issuesV2.post('/:id/return', async (c) => {
       await query(
         `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
          WHERE idempotency_key = $4 AND operation_type = $5`,
-        ['FAILED', 'Khong co so luong tra hop le', new Date().toISOString(), idempotency_key, 'RETURN']
+        ['FAILED', 'Không có số lượng trả hợp lệ', new Date().toISOString(), idempotency_key, 'RETURN']
       )
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong co so luong tra hop le',
+          error: 'Không có số lượng trả hợp lệ',
         },
         400
       )
@@ -4261,7 +4310,7 @@ issuesV2.post('/:id/return', async (c) => {
     return c.json({
       data: finalIssue,
       error: null,
-      message: allReturned ? 'Tra hang hoan tat' : 'Tra hang thanh cong',
+      message: allReturned ? 'Trả hàng hoàn tất' : 'Trả hàng thành công',
     })
   } catch (err) {
     console.error('Error in POST /api/issues/v2/:id/return:', err)
@@ -4283,7 +4332,7 @@ issuesV2.delete('/:id', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'ID khong hop le',
+          error: 'Mã không hợp lệ',
         },
         400
       )
@@ -4363,7 +4412,7 @@ issuesV2.delete('/:id/lines/:lineId', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'ID khong hop le',
+          error: 'Mã không hợp lệ',
         },
         400
       )
@@ -4379,7 +4428,7 @@ issuesV2.delete('/:id/lines/:lineId', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong tim thay phieu xuat',
+          error: 'Không tìm thấy phiếu xuất',
         },
         404
       )
@@ -4389,7 +4438,7 @@ issuesV2.delete('/:id/lines/:lineId', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Chi co the xoa dong tu phieu nhap',
+          error: 'Chỉ xoá được dòng từ phiếu nháp',
         },
         400
       )
@@ -4402,7 +4451,7 @@ issuesV2.delete('/:id/lines/:lineId', async (c) => {
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
-          error: 'Khong the xoa dong',
+          error: 'Không xoá được dòng',
         },
         500
       )
@@ -4411,7 +4460,7 @@ issuesV2.delete('/:id/lines/:lineId', async (c) => {
     return c.json({
       data: null,
       error: null,
-      message: 'Xoa dong thanh cong',
+      message: 'Đã xoá dòng',
     })
   } catch (err) {
     console.error('Error in DELETE /api/issues/v2/:id/lines/:lineId:', err)

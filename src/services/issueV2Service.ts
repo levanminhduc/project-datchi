@@ -349,9 +349,19 @@ export const issueV2Service = {
       body: JSON.stringify(data),
     })
     if (response.error || !response.data) {
-      throw new Error(response.error || 'Khong the tra hang theo nhom')
+      throw new Error(response.error || 'Không thể trả hàng theo nhóm')
     }
     return response.data
+  },
+
+  async revertReturnLog(logId: number, reason: string): Promise<void> {
+    const response = await fetchApi<ApiResponse<unknown>>(`${BASE}/return-logs/${logId}/revert`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    })
+    if (response.error) {
+      throw new Error(response.error)
+    }
   },
 
   async getGroupedReturnLogs(poId: number, styleId: number, styleColorId?: number, colorId?: number): Promise<GroupedReturnLog[]> {

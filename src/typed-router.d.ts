@@ -359,13 +359,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/thread/return/[id]': RouteRecordInfo<
-      '/thread/return/[id]',
-      '/thread/return/:id',
-      { id: ParamValue<true> },
-      { id: ParamValue<false> },
-      | never
-    >,
     '/thread/stocktake': RouteRecordInfo<
       '/thread/stocktake',
       '/thread/stocktake',
@@ -764,12 +757,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/return/index.vue': {
       routes:
         | '/thread/return/'
-      views:
-        | never
-    }
-    'src/pages/thread/return/[id].vue': {
-      routes:
-        | '/thread/return/[id]'
       views:
         | never
     }

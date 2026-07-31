@@ -67,7 +67,8 @@ export function useReturnV2() {
 
   const submitGroupedReturn = async (
     group: ReturnGroup,
-    lines: { thread_type_id: number; thread_color_id: number | null; returned_full: number; returned_partial: number }[]
+    lines: { thread_type_id: number; thread_color_id: number | null; returned_full: number; returned_partial: number }[],
+    warehouseId: number | null = null
   ): Promise<ReturnGroupedResponse | null> => {
     clearError()
     clearCompletionInfo()
@@ -85,6 +86,7 @@ export function useReturnV2() {
           style_color_id: group.style_color_id,
           color_id: group.color_id,
           idempotency_key: crypto.randomUUID(),
+          warehouse_id: warehouseId,
           lines: linesToSubmit,
         })
       )
