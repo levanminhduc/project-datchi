@@ -574,6 +574,17 @@
           </template>
 
           <template v-else-if="calculationResults">
+            <q-banner
+              v-if="canEditSummary && calculationView === 'summary'"
+              dense
+              class="bg-warning text-white q-mb-md"
+            >
+              <template #avatar>
+                <q-icon name="lock_open" />
+              </template>
+              Tuần đang được ROOT mở khóa chỉnh sửa — còn {{ unlockRemainingLabel }}. Mọi thay đổi đều được ghi nhật ký.
+            </q-banner>
+
             <ResultsDetailView
               v-if="calculationView === 'detail'"
               :results="filteredDetailData"
@@ -583,13 +594,28 @@
             <ResultsSummaryTable
               v-else
               :rows="filteredSummaryData"
-              readonly
+              :readonly="!canEditSummary"
+              @update:quota-cones="handleSummaryQuota"
+              @update:additional-order="handleSummaryAdditional"
+              @update:delivery-date="handleSummaryDeliveryDate"
+              @add-row="showAddRowDialog = true"
+              @remove-row="handleSummaryRemoveRow"
+              @adjust-stock="handleAdjustStock"
             />
 
             <div
               v-if="calculationView === 'summary'"
               class="row q-gutter-sm q-mt-md"
             >
+              <AppButton
+                v-if="canEditSummary"
+                color="primary"
+                icon="save"
+                label="Lưu nhu cầu chỉ"
+                :loading="isSavingSummary"
+                :disable="!hasSummaryChanges"
+                @click="handleSaveSummary"
+              />
               <span style="display: inline-block;">
                 <AppButton
                   flat
@@ -786,17 +812,33 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <AddSummaryRowDialog
+      v-model="showAddRowDialog"
+      :existing-keys="summaryRowKeys"
+      @submit="handleSummaryAddRow"
+    />
+
+    <AdjustWeekStockDialog
+      v-model="showAdjustStockDialog"
+      :week-id="weekId"
+      :row="adjustStockRow"
+      @adjusted="loadCalculationResults"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, reactive } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
+import { weeklyOrderUnlockService, type WeeklyOrderEditUnlock } from '@/services/weeklyOrderUnlockService'
 import { useWeeklyOrderReservations } from '@/composables/thread/useWeeklyOrderReservations'
-import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone, ReservationSummary, ThreadOrderItemCompletion, SurplusPreview, WeeklyOrderProgressPo, DeliverySummary, WeeklyOrderProcessTraceResponse } from '@/types/thread'
+import { usePermission } from '@/composables/usePermission'
+import type { ThreadOrderWeek, ThreadOrderLoan, ReservedCone, ReservationSummary, ThreadOrderItemCompletion, SurplusPreview, WeeklyOrderProgressPo, DeliverySummary, WeeklyOrderProcessTraceResponse, AggregatedRow } from '@/types/thread'
 import type { WeeklyOrderResults, StyleOrderEntry } from '@/types/thread/weeklyOrder'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { useConfirm } from '@/composables/useConfirm'
 import { formatThreadTypeDisplay } from '@/utils/thread-format'
 import type { QTableColumn } from 'quasar'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
@@ -807,6 +849,8 @@ import LoanDialog from '@/components/thread/weekly-order/LoanDialog.vue'
 import ReserveFromStockDialog from '@/components/thread/weekly-order/ReserveFromStockDialog.vue'
 import LoanDetailDialog from '@/components/thread/weekly-order/LoanDetailDialog.vue'
 import ManualReturnDialog from '@/components/thread/weekly-order/ManualReturnDialog.vue'
+import AddSummaryRowDialog from '@/components/thread/weekly-order/AddSummaryRowDialog.vue'
+import AdjustWeekStockDialog from '@/components/thread/weekly-order/AdjustWeekStockDialog.vue'
 import AppCheckbox from '@/components/ui/inputs/AppCheckbox.vue'
 import ResultsDetailView from '@/components/thread/weekly-order/ResultsDetailView.vue'
 import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
@@ -828,6 +872,7 @@ definePage({
 const route = useRoute()
 const router = useRouter()
 const snackbar = useSnackbar()
+const { confirm } = useConfirm()
 
 const weekId = computed(() => Number((route.params as { id?: string }).id || '0'))
 
@@ -864,6 +909,16 @@ const releaseLoading = ref(false)
 const calculationView = ref<'detail' | 'summary'>('detail')
 const calculationResults = ref<WeeklyOrderResults | null>(null)
 const calculationLoading = ref(false)
+
+const { isRoot } = usePermission()
+const activeUnlock = ref<WeeklyOrderEditUnlock | null>(null)
+const unlockNow = ref(Date.now())
+let unlockTimer: ReturnType<typeof setInterval> | null = null
+const showAddRowDialog = ref(false)
+const showAdjustStockDialog = ref(false)
+const adjustStockRow = ref<AggregatedRow | null>(null)
+const isSavingSummary = ref(false)
+const hasSummaryChanges = ref(false)
 
 const detailSearch = ref('')
 const summarySearchColor = ref('')
@@ -942,6 +997,117 @@ const filteredSummaryData = computed(() => {
     row.thread_color?.toLowerCase().includes(color),
   )
 })
+
+const unlockRemainingMs = computed(() => {
+  if (!activeUnlock.value) return 0
+  return new Date(activeUnlock.value.expires_at).getTime() - unlockNow.value
+})
+
+const canEditSummary = computed(() => isRoot.value && unlockRemainingMs.value > 0)
+
+const unlockRemainingLabel = computed(() => {
+  const totalSeconds = Math.max(0, Math.floor(unlockRemainingMs.value / 1000))
+  return `${Math.floor(totalSeconds / 60)} phút ${String(totalSeconds % 60).padStart(2, '0')} giây`
+})
+
+const summaryRowKeys = computed(() =>
+  (calculationResults.value?.summary_data ?? []).map(
+    (row) => `${row.thread_type_id}_${row.thread_color_id ?? ''}`,
+  ),
+)
+
+const findSummaryRow = (threadTypeId: number, threadColorId: number | null) =>
+  calculationResults.value?.summary_data.find(
+    (row) => row.thread_type_id === threadTypeId && (row.thread_color_id ?? null) === threadColorId,
+  )
+
+const handleSummaryQuota = (
+  threadTypeId: number,
+  value: number | null,
+  threadColorId: number | null,
+  demandNote: string | null,
+) => {
+  const row = findSummaryRow(threadTypeId, threadColorId)
+  if (!row) return
+  row.quota_cones = value
+  row.demand_note = demandNote
+  hasSummaryChanges.value = true
+}
+
+const handleSummaryAdditional = (threadTypeId: number, value: number, threadColorId: number | null) => {
+  const row = findSummaryRow(threadTypeId, threadColorId)
+  if (!row) return
+  row.additional_order = value
+  row.total_final = (row.quota_cones ?? row.total_cones) + value
+  hasSummaryChanges.value = true
+}
+
+const handleSummaryDeliveryDate = (threadTypeId: number, date: string, threadColorId: number | null) => {
+  const row = findSummaryRow(threadTypeId, threadColorId)
+  if (!row) return
+  row.delivery_date = date
+  hasSummaryChanges.value = true
+}
+
+const handleSummaryAddRow = (row: AggregatedRow) => {
+  if (!calculationResults.value) return
+  calculationResults.value.summary_data.push(row)
+  hasSummaryChanges.value = true
+}
+
+const handleAdjustStock = (row: AggregatedRow) => {
+  adjustStockRow.value = row
+  showAdjustStockDialog.value = true
+}
+
+const handleSummaryRemoveRow = async (threadTypeId: number, threadColorId: number | null) => {
+  if (!calculationResults.value) return
+  const row = findSummaryRow(threadTypeId, threadColorId)
+  if (!row) return
+
+  const confirmed = await confirm({
+    title: 'Xóa dòng chỉ',
+    message: `Xóa <b>${row.thread_type_name}</b>${row.thread_color ? ` - ${row.thread_color}` : ''} khỏi nhu cầu chỉ của tuần?`,
+    type: 'warning',
+    html: true,
+  })
+  if (!confirmed) return
+
+  calculationResults.value.summary_data = calculationResults.value.summary_data.filter(
+    (item) => item !== row,
+  )
+  hasSummaryChanges.value = true
+}
+
+const handleSaveSummary = async () => {
+  if (!calculationResults.value || !weekId.value) return
+  isSavingSummary.value = true
+  try {
+    calculationResults.value = await weeklyOrderService.saveResults(weekId.value, {
+      calculation_data: calculationResults.value.calculation_data,
+      summary_data: calculationResults.value.summary_data,
+    })
+    hasSummaryChanges.value = false
+    snackbar.success('Đã lưu nhu cầu chỉ của tuần')
+  } catch (err: any) {
+    snackbar.error(err.message || 'Không thể lưu nhu cầu chỉ')
+  } finally {
+    isSavingSummary.value = false
+  }
+}
+
+const loadUnlockState = async () => {
+  if (!isRoot.value || !weekId.value) {
+    activeUnlock.value = null
+    return
+  }
+  try {
+    const result = await weeklyOrderUnlockService.getByWeek(weekId.value)
+    activeUnlock.value = result.active
+  } catch {
+    activeUnlock.value = null
+  }
+}
 
 const isCompleted = computed(() => week.value?.status === 'COMPLETED')
 const isConfirmed = computed(() => week.value?.status === 'CONFIRMED')
@@ -1260,6 +1426,10 @@ function goRecalculate() {
 
 onMounted(async () => {
   await loadWeek()
+  loadUnlockState()
+  unlockTimer = setInterval(() => {
+    unlockNow.value = Date.now()
+  }, 1000)
   if (week.value && (week.value.status === 'CONFIRMED' || week.value.status === 'COMPLETED')) {
     loadCompletions()
   }
@@ -1283,6 +1453,10 @@ onMounted(async () => {
   } else if (activeTab.value === 'deliveries') {
     loadDeliverySummary()
   }
+})
+
+onUnmounted(() => {
+  if (unlockTimer) clearInterval(unlockTimer)
 })
 
 function formatDate(d: string | null): string {

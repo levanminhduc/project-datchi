@@ -444,6 +444,33 @@
               <span class="text-grey-6"> / {{ props.row.quantity_cones || '—' }}</span>
             </q-td>
           </template>
+          <template #body-cell-actions="props">
+            <q-td :props="props">
+              <q-chip
+                v-if="props.row.reverted_at"
+                dense
+                color="grey-4"
+                text-color="grey-8"
+                label="Đã hoàn tác"
+              />
+              <q-btn
+                v-else-if="isRoot"
+                dense
+                flat
+                round
+                color="negative"
+                icon="undo"
+                :disable="!props.row.has_tagged_cones"
+                @click="openRevertDialog(props.row)"
+              >
+                <q-tooltip>
+                  {{ props.row.has_tagged_cones
+                    ? 'Hoàn tác lần nhập này'
+                    : 'Lần nhập cũ chưa gắn được cuộn — dùng điều chỉnh tồn kho của tuần' }}
+                </q-tooltip>
+              </q-btn>
+            </q-td>
+          </template>
         </DataTable>
       </q-tab-panel>
     </q-tab-panels>
@@ -601,6 +628,12 @@
       :result="receiveResult"
       @update:model-value="onResultDialogClose"
     />
+
+    <RevertReceiveDialog
+      v-model="showRevertDialog"
+      :log="selectedRevertLog"
+      @reverted="onReceiveReverted"
+    />
   </q-page>
 </template>
 
@@ -620,7 +653,9 @@ import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
 import ReceiveResultDialog from '@/components/thread/weekly-order/ReceiveResultDialog.vue'
 import type { ReceiveResult } from '@/components/thread/weekly-order/ReceiveResultDialog.vue'
+import RevertReceiveDialog from '@/components/thread/weekly-order/RevertReceiveDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
+import { usePermission } from '@/composables/usePermission'
 
 definePage({
   meta: {
@@ -700,6 +735,20 @@ const historyPagination = ref({
   rowsNumber: 0,
 })
 const weekOptions = ref<Array<{ id: number; week_name: string }>>([])
+
+const { isRoot } = usePermission()
+const showRevertDialog = ref(false)
+const selectedRevertLog = ref<DeliveryReceiveLog | null>(null)
+
+function openRevertDialog(log: DeliveryReceiveLog) {
+  selectedRevertLog.value = log
+  showRevertDialog.value = true
+}
+
+async function onReceiveReverted() {
+  await loadHistoryData()
+  if (activeTab.value === 'tracking') await loadTrackingData()
+}
 
 const weekFilterOptions = computed(() => {
   return [
@@ -838,6 +887,7 @@ const historyColumns: QTableColumn[] = [
   { name: 'warehouse_name', label: 'Kho nhập', field: 'warehouse_name', align: 'left' },
   { name: 'quantity', label: 'Số lượng (cuộn)', field: 'quantity', align: 'center' },
   { name: 'received_by', label: 'Người nhập', field: 'received_by', align: 'left' },
+  { name: 'actions', label: '', field: '', align: 'center' },
 ]
 
 function formatDate(dateStr: string): string {

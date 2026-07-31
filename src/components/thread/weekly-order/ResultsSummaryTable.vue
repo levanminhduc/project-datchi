@@ -255,23 +255,63 @@
             </template>
           </q-td>
         </template>
+        <template #body-cell-actions="props">
+          <q-td :props="props">
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              color="primary"
+              icon="inventory"
+              @click="emit('adjust-stock', props.row)"
+            >
+              <q-tooltip>Điều chỉnh tồn kho theo số đếm thực tế</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              color="negative"
+              icon="delete"
+              @click="emit('remove-row', props.row.thread_type_id, props.row.thread_color_id ?? null)"
+            >
+              <q-tooltip>Xóa dòng chỉ này khỏi tuần</q-tooltip>
+            </q-btn>
+          </q-td>
+        </template>
         <template #no-data>
           <div class="text-center text-grey q-pa-md">
             Chưa có dữ liệu tổng hợp
           </div>
         </template>
       </q-table>
+
+      <div
+        v-if="!readonly"
+        class="q-mt-sm"
+      >
+        <q-btn
+          flat
+          dense
+          color="primary"
+          icon="add"
+          label="Thêm dòng chỉ"
+          @click="emit('add-row')"
+        />
+      </div>
     </q-card-section>
   </AppCard>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { QTableColumn } from 'quasar'
 import type { AggregatedRow } from '@/types/thread'
 import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 
-defineProps<{
+const props = defineProps<{
   rows: AggregatedRow[]
   readonly?: boolean
 }>()
@@ -280,6 +320,9 @@ const emit = defineEmits<{
   'update:additional-order': [threadTypeId: number, value: number, threadColorId: number | null]
   'update:quota-cones': [threadTypeId: number, value: number | null, threadColorId: number | null, demandNote: string | null]
   'update:delivery-date': [threadTypeId: number, date: string, threadColorId: number | null]
+  'add-row': []
+  'remove-row': [threadTypeId: number, threadColorId: number | null]
+  'adjust-stock': [row: AggregatedRow]
 }>()
 
 const demandNoteInput = ref('')
@@ -312,7 +355,7 @@ function toIso(displayDate: string): string {
   return `${y}-${m}-${d}`
 }
 
-const columns: QTableColumn[] = [
+const baseColumns: QTableColumn[] = [
   { name: 'stt', label: 'STT', field: '', align: 'center' },
   { name: 'thread_type_name', label: 'Loại chỉ', field: 'thread_type_name', align: 'left', sortable: true },
   { name: 'supplier_name', label: 'NCC', field: 'supplier_name', align: 'left', sortable: true },
@@ -406,4 +449,10 @@ const columns: QTableColumn[] = [
     align: 'center',
   },
 ]
+
+const columns = computed<QTableColumn[]>(() =>
+  props.readonly
+    ? baseColumns
+    : [...baseColumns, { name: 'actions', label: '', field: '', align: 'center' }],
+)
 </script>

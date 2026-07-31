@@ -11,6 +11,7 @@ import {
 import type { AppEnv } from '../../types/hono-env'
 import { formatZodError } from './helpers'
 import { getWeeklyOrderDeliverySummary } from './delivery-summary-helper'
+import { isRootUnlocked, logWeekAudit, getPerformer } from '../../utils/weekly-order-unlock'
 
 const deliveries = new Hono<AppEnv>()
 
@@ -183,6 +184,10 @@ deliveries.get('/deliveries/receive-logs', requirePermission('thread.allocations
          COALESCE(wh.name, '') AS warehouse_name,
          COALESCE(d.quantity_cones, 0) AS quantity_cones,
          COALESCE(d.received_quantity, 0) AS received_quantity,
+         d.week_id,
+         l.reverted_at,
+         l.reverted_by,
+         (SELECT COUNT(*) FROM thread_inventory ti WHERE ti.receive_log_id = l.id) = l.quantity AS has_tagged_cones,
          COUNT(*) OVER() AS total_count
        FROM delivery_receive_logs l
        LEFT JOIN thread_order_deliveries d ON d.id = l.delivery_id
@@ -227,6 +232,18 @@ deliveries.patch('/deliveries/:deliveryId', requirePermission('thread.allocation
       }
       throw err
     }
+
+    const previousDelivery = await queryOne<{
+      week_id: number
+      delivery_date: string
+      actual_delivery_date: string | null
+      status: string
+      notes: string | null
+    }>(
+      `SELECT week_id, delivery_date, actual_delivery_date, status, notes
+         FROM thread_order_deliveries WHERE id = $1`,
+      [deliveryId],
+    )
 
     const updateFields: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -295,6 +312,24 @@ deliveries.patch('/deliveries/:deliveryId', requirePermission('thread.allocation
           }
         }
       }
+    }
+
+    if (previousDelivery && (await isRootUnlocked(c, previousDelivery.week_id))) {
+      const { week_id: _weekId, ...previousValues } = previousDelivery
+      await logWeekAudit({
+        weekId: previousDelivery.week_id,
+        tableName: 'thread_order_deliveries',
+        recordId: deliveryId,
+        action: 'UPDATE',
+        oldValues: previousValues,
+        newValues: {
+          delivery_date: (data as any).delivery_date,
+          actual_delivery_date: (data as any).actual_delivery_date,
+          status: (data as any).status,
+          notes: (data as any).notes,
+        },
+        performedBy: getPerformer(c),
+      })
     }
 
     return c.json({
