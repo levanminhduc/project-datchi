@@ -19,6 +19,7 @@ import {
   RemovePOFromWeekSchema,
   WeekWarehouseFilterSchema,
 } from '../../validation/weeklyOrder'
+import { isRootUnlocked, logWeekAudit, getPerformer } from '../../utils/weekly-order-unlock'
 import type { WeeklyOrderStatus } from '../../types/weeklyOrder'
 import type { AppEnv } from '../../types/hono-env'
 import {
@@ -711,7 +712,9 @@ core.put('/:id/warehouses', requirePermission('thread.allocations.manage'), asyn
       return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
 
-    if (week.status !== 'DRAFT') {
+    const unlockedWarehouses = week.status !== 'DRAFT' && (await isRootUnlocked(c, id))
+
+    if (week.status !== 'DRAFT' && !unlockedWarehouses) {
       return c.json({ data: null, error: 'Chỉ có thể thay đổi kho cho tuần ở trạng thái nháp' }, 400)
     }
 
@@ -727,6 +730,15 @@ core.put('/:id/warehouses', requirePermission('thread.allocations.manage'), asyn
     }
     const { warehouse_ids } = validated
 
+    const previousWarehouseIds = unlockedWarehouses
+      ? (
+          await query<{ warehouse_id: number }>(
+            `SELECT warehouse_id FROM thread_order_week_warehouses WHERE week_id = $1`,
+            [id],
+          )
+        ).map((r) => r.warehouse_id)
+      : null
+
     await query(
       `DELETE FROM thread_order_week_warehouses WHERE week_id = $1`,
       [id],
@@ -738,6 +750,18 @@ core.put('/:id/warehouses', requirePermission('thread.allocations.manage'), asyn
          SELECT $1, unnest($2::int[])`,
         [id, warehouse_ids],
       )
+    }
+
+    if (unlockedWarehouses) {
+      await logWeekAudit({
+        weekId: id,
+        tableName: 'thread_order_week_warehouses',
+        recordId: id,
+        action: 'UPDATE',
+        oldValues: { warehouse_ids: previousWarehouseIds },
+        newValues: { warehouse_ids },
+        performedBy: getPerformer(c),
+      })
     }
 
     return c.json({
@@ -941,7 +965,10 @@ core.post('/:id/remove-po', requirePermission('thread.allocations.manage'), asyn
       return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
 
-    if (week.status === 'COMPLETED' || week.status === 'CANCELLED') {
+    const lockedByStatus = week.status === 'COMPLETED' || week.status === 'CANCELLED'
+    const unlockedRemovePO = lockedByStatus && (await isRootUnlocked(c, id))
+
+    if (lockedByStatus && !unlockedRemovePO) {
       return c.json({ data: null, error: 'Không thể xóa PO từ đơn đã hoàn thành hoặc đã hủy' }, 400)
     }
 
@@ -952,6 +979,17 @@ core.post('/:id/remove-po', requirePermission('thread.allocations.manage'), asyn
 
     const removedCount = removedItems?.length ?? 0
     console.info(`[remove-po] Removed ${removedCount} items from week=${id} po=${validated.po_id}`)
+
+    if (unlockedRemovePO && removedCount > 0) {
+      await logWeekAudit({
+        weekId: id,
+        tableName: 'thread_order_items',
+        recordId: validated.po_id,
+        action: 'DELETE',
+        oldValues: { po_id: validated.po_id, removed_item_ids: removedItems.map((i) => i.id) },
+        performedBy: getPerformer(c),
+      })
+    }
 
     let deliveriesSynced = false
     let reservationsReleased = 0
@@ -1068,7 +1106,9 @@ core.put('/:id', requirePermission('thread.allocations.manage'), async (c) => {
       return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
 
-    if (existing.status !== 'DRAFT') {
+    const unlockedUpdate = existing.status !== 'DRAFT' && (await isRootUnlocked(c, id))
+
+    if (existing.status !== 'DRAFT' && !unlockedUpdate) {
       return c.json(
         { data: null, error: 'Chỉ có thể cập nhật tuần ở trạng thái nháp (DRAFT)' },
         400,
@@ -1124,6 +1164,15 @@ core.put('/:id', requirePermission('thread.allocations.manage'), async (c) => {
     const updateParams = setKeys.map((k) => updateFields[k])
     updateParams.push(id)
 
+    const previousWeek = unlockedUpdate
+      ? await queryOne<Record<string, any>>(
+          `SELECT w.week_name, w.start_date, w.end_date, w.notes,
+                  (SELECT COUNT(*) FROM thread_order_items i WHERE i.week_id = w.id)::int AS items_count
+             FROM thread_order_weeks w WHERE w.id = $1`,
+          [id],
+        )
+      : null
+
     let week: Record<string, any>
     try {
       week = await querySingle<Record<string, any>>(
@@ -1162,6 +1211,24 @@ core.put('/:id', requirePermission('thread.allocations.manage'), async (c) => {
 
     const result = items !== null ? { ...week, items } : week
 
+    if (unlockedUpdate) {
+      await logWeekAudit({
+        weekId: id,
+        tableName: 'thread_order_weeks',
+        recordId: id,
+        action: 'UPDATE',
+        oldValues: previousWeek ?? {},
+        newValues: {
+          week_name: week.week_name,
+          start_date: week.start_date,
+          end_date: week.end_date,
+          notes: week.notes,
+          items_count: items !== null ? items.length : previousWeek?.items_count,
+        },
+        performedBy: getPerformer(c),
+      })
+    }
+
     return c.json({ data: result, error: null, message: 'Cập nhật tuần đặt hàng thành công' })
   } catch (err) {
     console.error('Error updating weekly order:', err)
@@ -1186,7 +1253,9 @@ core.delete('/:id', requirePermission('thread.allocations.manage'), async (c) =>
       return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
 
-    if (existing.status !== 'DRAFT') {
+    const unlockedDelete = existing.status !== 'DRAFT' && (await isRootUnlocked(c, id))
+
+    if (existing.status !== 'DRAFT' && !unlockedDelete) {
       return c.json(
         { data: null, error: 'Chỉ có thể xóa tuần ở trạng thái nháp (DRAFT)' },
         400,
@@ -1208,6 +1277,13 @@ core.delete('/:id', requirePermission('thread.allocations.manage'), async (c) =>
       )
     }
 
+    const deletedWeek = unlockedDelete
+      ? await queryOne<Record<string, any>>(
+          `SELECT id, week_name, status, start_date, end_date FROM thread_order_weeks WHERE id = $1`,
+          [id],
+        )
+      : null
+
     await query(
       `DELETE FROM thread_order_items WHERE week_id = $1`,
       [id],
@@ -1217,6 +1293,17 @@ core.delete('/:id', requirePermission('thread.allocations.manage'), async (c) =>
       `DELETE FROM thread_order_weeks WHERE id = $1`,
       [id],
     )
+
+    if (unlockedDelete) {
+      await logWeekAudit({
+        weekId: id,
+        tableName: 'thread_order_weeks',
+        recordId: id,
+        action: 'DELETE',
+        oldValues: deletedWeek ?? { id },
+        performedBy: getPerformer(c),
+      })
+    }
 
     return c.json({ data: null, error: null, message: 'Xóa tuần đặt hàng thành công' })
   } catch (err) {

@@ -603,6 +603,9 @@
         </div>
       </q-card-section>
     </q-card>
+
+    <!-- Weekly Order Edit Unlock (ROOT only) -->
+    <WeeklyOrderUnlockCard v-if="isRoot && hasLoaded" />
   </q-page>
 </template>
 
@@ -614,6 +617,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import { importService } from '@/services/importService'
 import { settingsService } from '@/services/settingsService'
 import { employeeService } from '@/services/employeeService'
+import WeeklyOrderUnlockCard from '@/components/settings/WeeklyOrderUnlockCard.vue'
 
 const PARTIAL_CONE_RATIO_KEY = 'partial_cone_ratio'
 const RESERVE_PRIORITY_KEY = 'reserve_priority'

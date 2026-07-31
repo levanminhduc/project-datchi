@@ -30,6 +30,7 @@ import stylesRouter from './routes/styles'
 import styleThreadSpecsRouter from './routes/styleThreadSpecs'
 import threadCalculationRouter from './routes/threadCalculation'
 import weeklyOrderRouter from './routes/weekly-order'
+import weeklyOrderUnlockRouter from './routes/weeklyOrderUnlock'
 import reconciliationRouter from './routes/reconciliation'
 import settingsRouter from './routes/settings'
 import stockRouter from './routes/stock'
@@ -127,6 +128,7 @@ app.route('/api/styles', stylesRouter)
 app.route('/api/style-thread-specs', styleThreadSpecsRouter)
 app.route('/api/thread-calculation', threadCalculationRouter)
 app.route('/api/weekly-orders', weeklyOrderRouter)
+app.route('/api/weekly-order-unlocks', weeklyOrderUnlockRouter)
 app.route('/api/issues/reconciliation', reconciliationRouter)
 app.route('/api/issues/v2', issuesV2Router)
 app.route('/api/issue-history', issueHistoryRouter)

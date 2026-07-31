@@ -12,6 +12,7 @@ import {
 import type { AppEnv } from '../../types/hono-env'
 import { formatZodError, getPerformerName } from './helpers'
 import { getPartialConeRatio } from '../../utils/settings-helper'
+import { isRootUnlocked, logWeekAudit, getPerformer } from '../../utils/weekly-order-unlock'
 
 const loansReservations = new Hono<AppEnv>()
 
@@ -262,7 +263,7 @@ loansReservations.post('/:id/items/:itemId/complete', requirePermission('thread.
     if (!week) {
       return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
-    if (week.status !== 'CONFIRMED') {
+    if (week.status !== 'CONFIRMED' && !(await isRootUnlocked(c, weekId))) {
       return c.json({ data: null, error: 'Chỉ có thể đánh dấu hoàn tất khi tuần ở trạng thái CONFIRMED' }, 400)
     }
 
@@ -309,7 +310,7 @@ loansReservations.delete('/:id/items/:itemId/complete', requirePermission('threa
     if (!week) {
       return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
-    if (week.status !== 'CONFIRMED') {
+    if (week.status !== 'CONFIRMED' && !(await isRootUnlocked(c, weekId))) {
       return c.json({ data: null, error: 'Không thể bỏ đánh dấu khi tuần không ở trạng thái CONFIRMED' }, 400)
     }
 
@@ -1019,7 +1020,9 @@ loansReservations.post('/:id/reserve-from-stock', requirePermission('thread.allo
       return c.json({ data: null, error: 'Không tìm thấy tuần đơn hàng' }, 404)
     }
 
-    if (week.status !== 'CONFIRMED') {
+    const unlockedReserve = week.status !== 'CONFIRMED' && (await isRootUnlocked(c, weekId))
+
+    if (week.status !== 'CONFIRMED' && !unlockedReserve) {
       return c.json({ data: null, error: 'Chỉ có thể lấy từ tồn kho cho tuần đã xác nhận' }, 400)
     }
 
@@ -1041,6 +1044,23 @@ loansReservations.post('/:id/reserve-from-stock', requirePermission('thread.allo
       result = rows.length > 0 ? rows[0].result : null
     } catch (rpcErr) {
       return c.json({ data: null, error: getErrorMessage(rpcErr) }, 400)
+    }
+
+    if (unlockedReserve) {
+      await logWeekAudit({
+        weekId,
+        tableName: 'thread_order_reservations',
+        recordId: validated.thread_type_id,
+        action: 'INSERT',
+        newValues: {
+          thread_type_id: validated.thread_type_id,
+          color_id: validated.color_id,
+          quantity: validated.quantity,
+          reason: validated.reason ?? null,
+          reserved_physical_cones: result?.reserved_physical_cones ?? 0,
+        },
+        performedBy: getPerformer(c),
+      })
     }
 
     return c.json({
