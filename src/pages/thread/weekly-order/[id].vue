@@ -168,6 +168,15 @@
                 </q-tooltip>
               </span>
             </div>
+            <div class="col-12 col-sm-3">
+              <AppButton
+                color="secondary"
+                icon="list_alt"
+                label="Xuất DS Đặt Hàng"
+                :disable="!hasOrderItems"
+                @click="handleExportOrderItems"
+              />
+            </div>
           </div>
         </q-card-section>
       </q-card>
@@ -858,7 +867,7 @@ import ProgressSummarySection from '@/components/thread/weekly-order/ProgressSum
 import WeeklyOrderProcessTraceSection from '@/components/thread/weekly-order/WeeklyOrderProcessTraceSection.vue'
 import DeliverySummarySection from '@/components/thread/weekly-order/DeliverySummarySection.vue'
 import ButtonToggle from '@/components/ui/buttons/ButtonToggle.vue'
-import { exportOrderResults, exportOrdersAsZip, getSupplierGroups } from '@/composables/thread/useWeeklyOrderExport'
+import { exportOrderResults, exportOrdersAsZip, getSupplierGroups, exportWeekItems, weekItemsToExportRows } from '@/composables/thread/useWeeklyOrderExport'
 import SupplierExportDialog from '@/components/thread/weekly-order/SupplierExportDialog.vue'
 import ExportProgressDialog from '@/components/thread/weekly-order/ExportProgressDialog.vue'
 
@@ -1324,6 +1333,18 @@ const supplierGroups = computed(() => {
 })
 
 const isLeaderSigned = computed(() => Boolean(week.value?.leader_signed_at))
+
+const hasOrderItems = computed(() => (week.value?.items?.length ?? 0) > 0)
+
+const handleExportOrderItems = async () => {
+  if (!week.value?.items?.length) return
+  await exportWeekItems(weekItemsToExportRows(week.value.items), {
+    id: week.value.id,
+    week_name: week.value.week_name,
+    created_by: week.value.created_by,
+    created_at: week.value.created_at,
+  })
+}
 
 const handleExportSummaryFromCard = async () => {
   if (!isLeaderSigned.value) return
