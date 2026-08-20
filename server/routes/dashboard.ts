@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { query, queryCount } from '../db/query'
 import { requirePermission } from '../middleware/auth'
+import { getKdExcludedSupplierIds, isKdExcluded } from '../utils/kd-excluded-suppliers'
 import type { ThreadApiResponse } from '../types/thread'
 
 const dashboard = new Hono()
@@ -90,7 +91,7 @@ dashboard.get('/summary', async (c) => {
     let totalRows: SummaryRow[]
     let kdRows: SummaryRow[]
     try {
-      const [totalResult, kdResult] = await Promise.all([
+      const [totalResult, kdResult, kdExcludedSupplierIds] = await Promise.all([
         query<SummaryRow>(
           'SELECT * FROM fn_cone_summary_filtered($1, $2, $3, $4, $5, $6)',
           [totalStatuses, null, null, null, null, false]
@@ -99,9 +100,10 @@ dashboard.get('/summary', async (c) => {
           'SELECT * FROM fn_cone_summary_filtered($1, $2, $3, $4, $5, $6)',
           [kdStatuses, null, null, null, null, true]
         ),
+        getKdExcludedSupplierIds(),
       ])
       totalRows = totalResult
-      kdRows = kdResult
+      kdRows = kdResult.filter((r) => !isKdExcluded(kdExcludedSupplierIds, r.supplier_id))
     } catch (rpcErr) {
       console.error('Dashboard summary - RPC error:', rpcErr)
       return c.json<ThreadApiResponse<null>>({

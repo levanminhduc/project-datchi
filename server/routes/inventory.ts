@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { query, queryOne, queryCount } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import { sanitizeFilterValue } from '../utils/sanitize'
+import { getKdExcludedSupplierIds, isKdExcluded } from '../utils/kd-excluded-suppliers'
 import type { ThreadApiResponse, ConeRow, ReceiveStockDTO, StocktakeDTO, StocktakeResult, ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeStatus } from '../types/thread'
 
 const inventory = new Hono()
@@ -370,8 +371,9 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
 
     let totalRpcRows: SummaryViewRow[]
     let kdRpcRows: SummaryViewRow[]
+    let kdExcludedSupplierIds: Set<number>
     try {
-      const [totalResult, kdResult] = await Promise.all([
+      const [totalResult, kdResult, excludedIds] = await Promise.all([
         query<SummaryViewRow>(
           'SELECT * FROM fn_cone_summary_filtered($1, $2, $3, $4, $5, $6)',
           [totalStatuses, warehouseIds, parsedSupplierId, material || null, sanitizedSearch, false]
@@ -379,10 +381,12 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
         query<SummaryViewRow>(
           'SELECT * FROM fn_cone_summary_filtered($1, $2, $3, $4, $5, $6)',
           [kdStatuses, warehouseIds, parsedSupplierId, material || null, sanitizedSearch, true]
-        )
+        ),
+        getKdExcludedSupplierIds()
       ])
       totalRpcRows = totalResult
       kdRpcRows = kdResult
+      kdExcludedSupplierIds = excludedIds
     } catch (err) {
       console.error('RPC error:', err)
       return c.json<ThreadApiResponse<null>>({
@@ -400,7 +404,9 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
     }
 
     const summaryData: SummaryViewRow[] = totalRpcRows.map((row) => {
-      const kd = kdMap.get(makeSummaryKey(row))
+      const kd = isKdExcluded(kdExcludedSupplierIds, row.supplier_id)
+        ? undefined
+        : kdMap.get(makeSummaryKey(row))
 
       return {
         ...row,

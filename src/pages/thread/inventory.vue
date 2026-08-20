@@ -783,9 +783,50 @@
         Xuất Excel tồn kho theo NCC
       </template>
 
-      <div style="min-width: min(420px, 80vw)">
+      <div class="export-dialog-body">
         <div class="text-caption text-grey-7 q-mb-md">
-          Chọn NCC cần xuất. Tất cả NCC sẽ nằm trong 1 file Excel.
+          Chọn kho và NCC cần xuất. Tất cả sẽ nằm trong 1 file Excel.
+        </div>
+
+        <div class="text-weight-medium q-mb-xs">
+          Kho
+        </div>
+
+        <div class="q-mb-sm">
+          <AppCheckbox
+            :model-value="allExportWarehousesSelected"
+            label="Chọn tất cả"
+            dense
+            @update:model-value="toggleAllExportWarehouses"
+          />
+        </div>
+
+        <q-separator class="q-mb-sm" />
+
+        <div
+          class="export-option-list"
+          style="max-height: 200px"
+        >
+          <AppCheckbox
+            v-for="w in storageOptions"
+            :key="w.value"
+            :model-value="selectedExportWarehouses.includes(w.value)"
+            :label="w.label"
+            dense
+            @update:model-value="
+              $event
+                ? selectedExportWarehouses.push(w.value)
+                : (selectedExportWarehouses = selectedExportWarehouses.filter((id: number) => id !== w.value))
+            "
+          />
+        </div>
+
+        <div class="text-caption text-grey-7 q-mt-sm q-mb-md">
+          Đã chọn: {{ selectedExportWarehouses.length }}/{{ storageOptions.length }} kho
+        </div>
+
+        <div class="text-weight-medium q-mb-xs">
+          Nhà cung cấp
         </div>
 
         <div class="q-mb-sm">
@@ -800,8 +841,8 @@
         <q-separator class="q-mb-sm" />
 
         <div
-          class="column q-gutter-xs"
-          style="max-height: 300px; overflow-y: auto"
+          class="export-option-list"
+          style="max-height: 260px"
         >
           <AppCheckbox
             v-for="s in suppliers"
@@ -817,8 +858,25 @@
           />
         </div>
 
-        <div class="text-caption text-grey-7 q-mt-md">
+        <div class="text-caption text-grey-7 q-mt-md q-mb-md">
           Đã chọn: {{ selectedExportSuppliers.length }}/{{ suppliers.length }} NCC
+        </div>
+
+        <q-separator class="q-mb-sm" />
+
+        <AppCheckbox
+          :model-value="exportMergeSupplierCells"
+          label="Gộp ô Nhà cung cấp"
+          dense
+          @update:model-value="toggleExportMergeSupplierCells"
+        />
+
+        <div class="text-caption text-grey-7 q-mt-xs">
+          {{
+            exportMergeSupplierCells
+              ? 'Mỗi NCC gộp thành 1 ô, dễ nhìn nhưng không lọc/sắp xếp được trong Excel.'
+              : 'Mỗi dòng ghi đủ tên NCC và bật sẵn bộ lọc, lọc/sắp xếp theo số lượng được.'
+          }}
         </div>
       </div>
 
@@ -830,8 +888,8 @@
         />
         <AppButton
           color="primary"
-          :label="`Xuất (${selectedExportSuppliers.length} NCC)`"
-          :disable="selectedExportSuppliers.length === 0"
+          :label="`Xuất (${selectedExportWarehouses.length} kho, ${selectedExportSuppliers.length} NCC)`"
+          :disable="selectedExportSuppliers.length === 0 || selectedExportWarehouses.length === 0"
           :loading="exporting"
           @click="handleExportConfirm"
         />
@@ -914,8 +972,16 @@ const { exporting, exportBySuppliers } = useInventoryExport()
 const showExportDialog = ref(false)
 const selectedExportSuppliers = ref<number[]>([])
 
+const selectedExportWarehouses = ref<number[]>([])
+const exportMergeSupplierCells = ref(true)
+
 const allSuppliersSelected = computed(() =>
   suppliers.value.length > 0 && selectedExportSuppliers.value.length === suppliers.value.length,
+)
+
+const allExportWarehousesSelected = computed(() =>
+  storageOptions.value.length > 0
+  && selectedExportWarehouses.value.length === storageOptions.value.length,
 )
 
 function toggleAllExportSuppliers() {
@@ -926,8 +992,21 @@ function toggleAllExportSuppliers() {
   }
 }
 
+function toggleAllExportWarehouses() {
+  if (allExportWarehousesSelected.value) {
+    selectedExportWarehouses.value = []
+  } else {
+    selectedExportWarehouses.value = storageOptions.value.map((w) => w.value)
+  }
+}
+
+function toggleExportMergeSupplierCells() {
+  exportMergeSupplierCells.value = !exportMergeSupplierCells.value
+}
+
 function openExportDialog() {
   selectedExportSuppliers.value = suppliers.value.map((s) => s.id)
+  selectedExportWarehouses.value = storageOptions.value.map((w) => w.value)
   showExportDialog.value = true
 }
 
@@ -935,8 +1014,11 @@ async function handleExportConfirm() {
   const selected = suppliers.value.filter((s) =>
     selectedExportSuppliers.value.includes(s.id),
   )
+  const warehouseIds = allExportWarehousesSelected.value
+    ? null
+    : [...selectedExportWarehouses.value]
   showExportDialog.value = false
-  await exportBySuppliers(selected)
+  await exportBySuppliers(selected, warehouseIds, exportMergeSupplierCells.value)
 }
 
 // Cone Summary Composable
@@ -1562,6 +1644,30 @@ onUnmounted(() => {
 
 .rounded-borders {
   border-radius: 4px;
+}
+
+.export-dialog-body {
+  width: min(460px, 84vw);
+  max-width: 100%;
+}
+
+.export-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+
+  :deep(.q-checkbox) {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  :deep(.q-checkbox__label) {
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
 }
 
 /* Horizontal scroll wrapper for mobile */

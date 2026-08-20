@@ -1,56 +1,33 @@
 import { ref } from 'vue'
 import { format } from 'date-fns'
 import { useSnackbar } from '@/composables/useSnackbar'
-import { inventoryService } from '@/services/inventoryService'
 import type { ConeSummaryRow } from '@/types/thread/inventory'
 import type { Supplier } from '@/types/thread/supplier'
 import { formatTexWithLabel } from '@/utils/thread-format'
+import {
+  styleHeaderRow,
+  downloadWorkbook,
+  findSupplierId,
+  fetchSummaryRows,
+} from './inventory-export-helpers'
 
 type Workbook = import('exceljs').Workbook
-type Worksheet = import('exceljs').Worksheet
-
-function styleHeaderRow(worksheet: Worksheet) {
-  worksheet.getRow(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FF1976D2' },
-  }
-  worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
-}
-
-async function downloadWorkbook(workbook: Workbook, filename: string) {
-  const buffer = await workbook.xlsx.writeBuffer()
-  const blob = new Blob([buffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.style.display = 'none'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-function findSupplierId(row: ConeSummaryRow, suppliers: Supplier[]): number | null {
-  if (!row.supplier_name) return null
-  const match = suppliers.find((s) => s.name === row.supplier_name)
-  return match?.id ?? null
-}
 
 export function useInventoryExport() {
   const exporting = ref(false)
   const snackbar = useSnackbar()
 
-  async function exportBySuppliers(suppliers: Supplier[]): Promise<void> {
+  async function exportBySuppliers(
+    suppliers: Supplier[],
+    warehouseIds: number[] | null = null,
+    mergeSupplierCells = true,
+  ): Promise<void> {
     if (suppliers.length === 0) return
     exporting.value = true
 
     try {
       const ExcelJS = await import('exceljs')
-      const allRows = await inventoryService.getConeSummary({})
+      const allRows = await fetchSummaryRows(warehouseIds)
 
       const supplierIds = new Set(suppliers.map((s) => s.id))
       const supplierNameMap = new Map(suppliers.map((s) => [s.id, s.name]))
@@ -75,6 +52,7 @@ export function useInventoryExport() {
         { header: 'Cuộn lẻ KD', key: 'partial_available', width: 14 },
         { header: 'Cuộn nguyên TT', key: 'full_total', width: 16 },
         { header: 'Cuộn lẻ TT', key: 'partial_total', width: 14 },
+        { header: 'Ngày Tồn Kho', key: 'idle_days', width: 14 },
       ]
 
       styleHeaderRow(worksheet)
@@ -100,6 +78,7 @@ export function useInventoryExport() {
             partial_available: 0,
             full_total: 0,
             partial_total: 0,
+            idle_days: '',
           })
           currentRow++
         } else {
@@ -121,18 +100,26 @@ export function useInventoryExport() {
               partial_available: row.partial_cones,
               full_total: row.total_full_cones,
               partial_total: row.total_partial_cones,
+              idle_days: row.idle_days ?? '',
             })
             currentRow++
           }
           const endRow = currentRow - 1
 
-          if (endRow > startRow) {
+          if (mergeSupplierCells && endRow > startRow) {
             worksheet.mergeCells(startRow, 1, endRow, 1)
           }
         }
       }
 
       worksheet.getColumn(1).alignment = { vertical: 'middle' }
+
+      if (!mergeSupplierCells && currentRow > 2) {
+        worksheet.autoFilter = {
+          from: { row: 1, column: 1 },
+          to: { row: currentRow - 1, column: 8 },
+        }
+      }
 
       const includedRows = [...grouped.values()].flat()
       const totalRow = worksheet.addRow({
@@ -143,6 +130,7 @@ export function useInventoryExport() {
         partial_available: includedRows.reduce((s, r) => s + r.partial_cones, 0),
         full_total: includedRows.reduce((s, r) => s + r.total_full_cones, 0),
         partial_total: includedRows.reduce((s, r) => s + r.total_partial_cones, 0),
+        idle_days: '',
       })
       totalRow.font = { bold: true }
 
