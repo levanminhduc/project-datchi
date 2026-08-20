@@ -189,6 +189,9 @@ declare module 'vue' {
     WeeklyOrderUnlockCard: typeof import('./components/settings/WeeklyOrderUnlockCard.vue')['default']
     WeighingDialog: typeof import('./components/thread/WeighingDialog.vue')['default']
     WeightMeterDisplay: typeof import('./components/thread/WeightMeterDisplay.vue')['default']
+    WorkflowMap: typeof import('./components/thread/weekly-order/workflow/WorkflowMap.vue')['default']
+    WorkflowNode: typeof import('./components/thread/weekly-order/workflow/WorkflowNode.vue')['default']
+    WorkflowRowDetail: typeof import('./components/thread/weekly-order/workflow/WorkflowRowDetail.vue')['default']
     WriteOffDialog: typeof import('./components/thread/WriteOffDialog.vue')['default']
   }
 }

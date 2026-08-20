@@ -31,7 +31,8 @@ const navItems: NavItem[] = [
     to: '/ke-hoach#top',
     children: [
       { label: 'Tính Toán & Đặt Hàng', icon: 'o_shopping_cart', to: '/thread/weekly-order' },
-      { label: 'Lịch Sử Đặt Hàng', icon: 'o_history', to: '/thread/weekly-order/history' }
+      { label: 'Lịch Sử Đặt Hàng', icon: 'o_history', to: '/thread/weekly-order/history' },
+      { label: 'Quy Trình Đặt Chỉ', icon: 'o_account_tree', to: '/thread/weekly-order/workflow' }
     ]
   },
   {
@@ -105,6 +106,7 @@ const HUB_ITEM_CAPTIONS: Record<string, string> = {
   '/thread/styles/with-specs': 'Style đã thiết lập định mức chỉ',
   '/thread/weekly-order': 'Tính nhu cầu, tạo đơn tuần',
   '/thread/weekly-order/history': 'Các chu kỳ đặt hàng trước',
+  '/thread/weekly-order/workflow': 'Workflow đặt chỉ theo tuần',
   '/thread/weekly-order/leader-review': 'Phê duyệt đơn đặt hàng tuần',
   '/thread/dashboard': 'Biểu đồ & phân tích tồn kho',
   '/thread/weekly-order/deliveries': 'Nhận hàng từ đơn đặt',
