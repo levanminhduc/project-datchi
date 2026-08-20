@@ -4,6 +4,7 @@ import { query, queryOne, tx } from '../db/query'
 import { from } from '../db/sql-builder'
 import {
   requireAdmin,
+  requireRoot,
   canManageEmployee,
 } from '../middleware/auth'
 import { rateLimit } from '../middleware/rate-limit'
@@ -529,7 +530,7 @@ auth.post('/change-password', async (c) => {
   }
 })
 
-auth.post('/reset-password/:id', requireAdmin, async (c) => {
+auth.post('/reset-password/:id', requireRoot, async (c) => {
   const authContext = c.get('auth')
   const targetId = parseInt(c.req.param('id'))
   const body = await c.req.json().catch(() => ({}))

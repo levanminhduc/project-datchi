@@ -206,7 +206,7 @@ employees.get('/', requirePermission('employees.view'), async (c) => {
     const limit = limitParam === 'all' ? 0 : parseInt(limitParam, 10)
     const search = c.req.query('search') || ''
 
-    const EMPLOYEE_LIST_COLUMNS = 'id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at'
+    const EMPLOYEE_LIST_COLUMNS = 'id, employee_id, full_name, department, chuc_vu, is_active, created_at, updated_at, locked_until'
 
     if (limit > 0) {
       const offset = (page - 1) * limit
@@ -249,6 +249,7 @@ employees.get('/', requirePermission('employees.view'), async (c) => {
         is_active: emp.is_active,
         created_at: emp.created_at,
         updated_at: emp.updated_at,
+        locked_until: emp.locked_until,
       }))
 
       const response: PaginatedResponse<Employee> = {
@@ -300,6 +301,7 @@ employees.get('/', requirePermission('employees.view'), async (c) => {
           is_active: emp.is_active,
           created_at: emp.created_at,
           updated_at: emp.updated_at,
+          locked_until: emp.locked_until,
         })
       }
     }
