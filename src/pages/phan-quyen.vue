@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { PageHeader } from '@/components/ui/layout'
 import { AppCard } from '@/components/ui/cards'
 import { EmptyState } from '@/components/ui/feedback'
+import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useConfirm } from '@/composables/useConfirm'
 import {
@@ -349,19 +350,33 @@ const employeeData = ref<EmployeeRolesPermissions | null>(null)
 const employeeRoleIds = ref<number[]>([])
 const employeeDirectPerms = ref<Map<number, boolean>>(new Map())
 const employeeLoading = ref(false)
+const departmentOptions = ref<string[]>([])
+const selectedDepartment = ref<string | null>(null)
+const employeeSearchTotal = ref(0)
+
+const hiddenResultCount = computed(() =>
+  Math.max(0, employeeSearchTotal.value - employeeOptions.value.length)
+)
 
 async function filterEmployees(val: string, update: (fn: () => void) => void) {
-  if (val.length < 2) {
+  if (val.length < 2 && !selectedDepartment.value) {
     update(() => {
       employeeOptions.value = []
+      employeeSearchTotal.value = 0
     })
     return
   }
 
-  const results = await permMgmt.searchEmployees(val)
+  const result = await permMgmt.searchEmployees(val, selectedDepartment.value || undefined)
   update(() => {
-    employeeOptions.value = results
+    employeeOptions.value = result.data
+    employeeSearchTotal.value = result.total
   })
+}
+
+function onDepartmentChanged() {
+  employeeOptions.value = []
+  employeeSearchTotal.value = 0
 }
 
 async function onEmployeeSelected(emp: EmployeeSearchResult | null) {
@@ -470,6 +485,7 @@ onMounted(async () => {
     await permMgmt.initialize()
   } catch {
   }
+  departmentOptions.value = await permMgmt.fetchEmployeeDepartments()
 })
 </script>
 
@@ -1014,12 +1030,27 @@ onMounted(async () => {
       >
         <AppCard>
           <q-card-section class="row items-center q-col-gutter-md">
-            <div class="col-12 col-sm-6">
+            <div class="col-12 col-md-3">
               <div class="text-h6">
                 Phân quyền nhân viên
               </div>
             </div>
-            <div class="col-12 col-sm-6">
+            <div class="col-12 col-sm-4 col-md-4">
+              <AppSelect
+                v-model="selectedDepartment"
+                :options="departmentOptions"
+                label="Phòng ban"
+                dense
+                clearable
+                use-input
+                @update:model-value="onDepartmentChanged"
+              >
+                <template #prepend>
+                  <q-icon name="business" />
+                </template>
+              </AppSelect>
+            </div>
+            <div class="col-12 col-sm-8 col-md-5">
               <q-select
                 v-model="selectedEmployee"
                 :options="employeeOptions"
@@ -1036,7 +1067,7 @@ onMounted(async () => {
                 <template #no-option>
                   <q-item>
                     <q-item-section class="text-grey">
-                      Nhập ít nhất 2 ký tự để tìm kiếm
+                      {{ selectedDepartment ? 'Không tìm thấy nhân viên phù hợp' : 'Nhập ít nhất 2 ký tự hoặc chọn phòng ban' }}
                     </q-item-section>
                   </q-item>
                 </template>
@@ -1054,8 +1085,15 @@ onMounted(async () => {
                     <q-item-section>
                       <q-item-label>{{ scope.opt.fullName }}</q-item-label>
                       <q-item-label caption>
-                        {{ scope.opt.employeeId }} - {{ scope.opt.department }}
+                        {{ [scope.opt.employeeId, scope.opt.department, scope.opt.chucVu].filter(Boolean).join(' - ') }}
                       </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+                <template #after-options>
+                  <q-item v-if="hiddenResultCount > 0">
+                    <q-item-section class="text-grey text-caption">
+                      Còn {{ hiddenResultCount }} kết quả khác — gõ thêm để thu hẹp
                     </q-item-section>
                   </q-item>
                 </template>

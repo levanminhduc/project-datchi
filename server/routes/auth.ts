@@ -24,7 +24,6 @@ import {
   updateEmployeeRolesSchema,
   updateEmployeePermissionsSchema,
 } from '../validation/auth'
-import { sanitizeFilterValue } from '../utils/sanitize'
 import type { AppEnv } from '../types/hono-env'
 
 const auth = new Hono<AppEnv>()
@@ -1236,22 +1235,53 @@ auth.get('/roles/:id/permissions', requireAdmin, async (c) => {
   }
 })
 
+auth.get('/employees/departments', requireAdmin, async (c) => {
+  try {
+    const rows = await query<{ department: string }>(
+      `SELECT DISTINCT department FROM employees
+       WHERE is_active = true AND deleted_at IS NULL AND department IS NOT NULL AND department <> ''
+       ORDER BY department ASC`
+    )
+
+    return c.json({
+      data: rows.map((r) => r.department),
+      error: false,
+    })
+  } catch (err) {
+    console.error('Get employee departments error:', err)
+    return c.json({ error: true, message: 'Không thể tải danh sách phòng ban' }, 500)
+  }
+})
+
 auth.get('/employees/search', requireAdmin, async (c) => {
-  const searchText = c.req.query('q') || ''
-  const limit = parseInt(c.req.query('limit') || '20')
+  const searchText = (c.req.query('q') || '').trim()
+  const department = (c.req.query('department') || '').trim()
+  const limitParam = parseInt(c.req.query('limit') || '50')
+  const limit = Math.min(Number.isNaN(limitParam) ? 50 : limitParam, 100)
+
+  if (!searchText && !department) {
+    return c.json({ data: [], total: 0, error: false })
+  }
 
   try {
-    const builder = from('employees')
-      .select('id, employee_id, full_name, department, chuc_vu, is_active')
-      .eq('is_active', true)
+    const conditions = ['is_active = true', 'deleted_at IS NULL']
+    const params: unknown[] = []
 
     if (searchText) {
-      const q = sanitizeFilterValue(searchText)
-      builder.or([
-        { column: 'employee_id', op: 'ilike', value: `%${q}%` },
-        { column: 'full_name', op: 'ilike', value: `%${q}%` },
-      ])
+      const escaped = searchText.replace(/[\\%_]/g, (m) => `\\${m}`)
+      params.push(`%${escaped}%`)
+      const idx = params.length
+      conditions.push(
+        `(employee_id ILIKE $${idx} OR unaccent(full_name) ILIKE unaccent($${idx}))`
+      )
     }
+
+    if (department) {
+      params.push(department)
+      conditions.push(`department = $${params.length}`)
+    }
+
+    params.push(limit)
 
     let employees: Array<{
       id: number
@@ -1260,16 +1290,24 @@ auth.get('/employees/search', requireAdmin, async (c) => {
       department: string | null
       chuc_vu: string | null
       is_active: boolean
+      total_count: string
     }>
     try {
-      employees = await builder
-        .order({ column: 'full_name', ascending: true })
-        .limit(limit)
-        .list()
+      employees = await query(
+        `SELECT id, employee_id, full_name, department, chuc_vu, is_active,
+                COUNT(*) OVER() AS total_count
+         FROM employees
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY full_name ASC
+         LIMIT $${params.length}`,
+        params
+      )
     } catch (error) {
       console.error('Search employees error:', error)
       return c.json({ error: true, message: 'Không thể tìm kiếm nhân viên' }, 500)
     }
+
+    const total = employees.length > 0 ? parseInt(employees[0].total_count, 10) : 0
 
     const mappedEmployees = (employees || []).map((emp) => ({
       id: emp.id,
@@ -1282,6 +1320,7 @@ auth.get('/employees/search', requireAdmin, async (c) => {
 
     return c.json({
       data: mappedEmployees,
+      total,
       error: false,
     })
   } catch (err) {
