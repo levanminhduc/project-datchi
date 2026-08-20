@@ -4,133 +4,135 @@
     bordered
     class="settings-card q-mt-lg"
   >
-    <q-card-section>
-      <div class="text-subtitle1 text-weight-medium q-mb-md">
-        Mở khóa chỉnh sửa tuần đặt hàng
-      </div>
+    <q-expansion-item
+      label="Mở khóa chỉnh sửa tuần đặt hàng"
+      header-class="text-subtitle1 text-weight-medium"
+      expand-icon-class="text-primary"
+    >
+      <q-card-section class="q-pt-none">
+        <div class="row q-col-gutter-md items-start">
+          <div class="col-12 col-md-4">
+            <AppSelect
+              v-model="selectedWeekId"
+              label="Tuần đặt hàng"
+              :options="weekOptions"
+              :loading="isLoadingWeeks"
+              emit-value
+              map-options
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-12 col-sm-6 col-md-3">
+            <AppSelect
+              v-model="durationMinutes"
+              label="Thời hạn mở khóa"
+              :options="durationOptions"
+              :disable="isUnlocked"
+              emit-value
+              map-options
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-12 col-sm-6 col-md-5">
+            <AppInput
+              v-model="reason"
+              label="Lý do mở khóa"
+              :disable="isUnlocked"
+              outlined
+              dense
+            />
+          </div>
+        </div>
 
-      <div class="row q-col-gutter-md items-start">
-        <div class="col-12 col-md-4">
-          <AppSelect
-            v-model="selectedWeekId"
-            label="Tuần đặt hàng"
-            :options="weekOptions"
-            :loading="isLoadingWeeks"
-            emit-value
-            map-options
-            outlined
-            dense
-          />
+        <div
+          v-if="isUnlocked"
+          class="row items-center q-col-gutter-sm q-mt-md"
+        >
+          <div class="col-auto">
+            <q-chip
+              color="warning"
+              text-color="white"
+              icon="lock_open"
+            >
+              Đang mở — còn {{ remainingLabel }}
+            </q-chip>
+          </div>
+          <div class="col-auto text-caption text-grey-7">
+            Mở bởi {{ activeUnlock?.granted_by }} · {{ activeUnlock?.reason }}
+          </div>
+          <div class="col-12 col-md-auto q-mt-sm">
+            <AppButton
+              label="Khóa lại"
+              color="negative"
+              icon="lock"
+              :loading="isSaving"
+              @click="handleRevoke"
+            />
+          </div>
         </div>
-        <div class="col-12 col-sm-6 col-md-3">
-          <AppSelect
-            v-model="durationMinutes"
-            label="Thời hạn mở khóa"
-            :options="durationOptions"
-            :disable="isUnlocked"
-            emit-value
-            map-options
-            outlined
-            dense
-          />
-        </div>
-        <div class="col-12 col-sm-6 col-md-5">
-          <AppInput
-            v-model="reason"
-            label="Lý do mở khóa"
-            :disable="isUnlocked"
-            outlined
-            dense
-          />
-        </div>
-      </div>
 
-      <div
-        v-if="isUnlocked"
-        class="row items-center q-col-gutter-sm q-mt-md"
-      >
-        <div class="col-auto">
-          <q-chip
-            color="warning"
-            text-color="white"
-            icon="lock_open"
-          >
-            Đang mở — còn {{ remainingLabel }}
-          </q-chip>
-        </div>
-        <div class="col-auto text-caption text-grey-7">
-          Mở bởi {{ activeUnlock?.granted_by }} · {{ activeUnlock?.reason }}
-        </div>
-        <div class="col-12 col-md-auto q-mt-sm">
+        <div
+          v-else
+          class="row q-mt-md"
+        >
           <AppButton
-            label="Khóa lại"
-            color="negative"
-            icon="lock"
+            label="Mở khóa chỉnh sửa"
+            color="primary"
+            icon="lock_open"
             :loading="isSaving"
-            @click="handleRevoke"
+            :disable="!selectedWeekId || !reason.trim()"
+            @click="handleGrant"
           />
         </div>
-      </div>
 
-      <div
-        v-else
-        class="row q-mt-md"
-      >
-        <AppButton
-          label="Mở khóa chỉnh sửa"
-          color="primary"
-          icon="lock_open"
-          :loading="isSaving"
-          :disable="!selectedWeekId || !reason.trim()"
-          @click="handleGrant"
-        />
-      </div>
+        <div class="q-mt-md text-caption text-grey-7">
+          <q-icon
+            name="info"
+            size="xs"
+            class="q-mr-xs"
+          />
+          Khi tuần được mở khóa, chỉ tài khoản ROOT mới vượt được chốt chặn theo trạng thái. Hết thời hạn tuần tự khóa lại.
+        </div>
 
-      <div class="q-mt-md text-caption text-grey-7">
-        <q-icon
-          name="info"
-          size="xs"
-          class="q-mr-xs"
-        />
-        Khi tuần được mở khóa, chỉ tài khoản ROOT mới vượt được chốt chặn theo trạng thái. Hết thời hạn tuần tự khóa lại.
-      </div>
+        <q-separator class="q-my-lg" />
 
-      <q-separator class="q-my-lg" />
+        <div class="text-subtitle1 text-weight-medium q-mb-md">
+          Nhật ký thao tác
+        </div>
 
-      <div class="text-subtitle1 text-weight-medium q-mb-md">
-        Nhật ký thao tác
-      </div>
-
-      <DataTable
-        v-model:pagination="auditPagination"
-        :rows="auditRows"
-        :columns="auditColumns"
-        :loading="isLoadingAudit"
-        row-key="id"
-        dense
-        empty-title="Chưa có thao tác nào"
-        empty-subtitle="Tuần này chưa ghi nhận thao tác chỉnh sửa nào"
-        @request="handleAuditRequest"
-      >
-        <template #body-cell-created_at="props">
-          <q-td :props="props">
-            {{ formatDateTime(props.row.created_at) }}
-          </q-td>
-        </template>
-        <template #body-cell-changes="props">
-          <q-td :props="props">
-            <span
-              v-if="!describeChanges(props.row)"
-              class="text-grey-6"
-            >—</span>
-            <span
-              v-else
-              class="text-caption"
-            >{{ describeChanges(props.row) }}</span>
-          </q-td>
-        </template>
-      </DataTable>
-    </q-card-section>
+        <DataTable
+          v-model:pagination="auditPagination"
+          :rows="auditRows"
+          :columns="auditColumns"
+          :loading="isLoadingAudit"
+          row-key="id"
+          dense
+          empty-title="Chưa có thao tác nào"
+          empty-subtitle="Tuần này chưa ghi nhận thao tác chỉnh sửa nào"
+          @request="handleAuditRequest"
+        >
+          <template #body-cell-created_at="props">
+            <q-td :props="props">
+              {{ formatDateTime(props.row.created_at) }}
+            </q-td>
+          </template>
+          <template #body-cell-changes="props">
+            <q-td :props="props">
+              <span
+                v-if="!describeChanges(props.row)"
+                class="text-grey-6"
+              >—</span>
+              <span
+                v-else
+                class="text-caption"
+              >{{ describeChanges(props.row) }}</span>
+            </q-td>
+          </template>
+        </DataTable>
+      </q-card-section>
+    </q-expansion-item>
   </q-card>
 </template>
 
