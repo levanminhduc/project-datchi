@@ -369,8 +369,16 @@ deliveries.post('/deliveries/:deliveryId/receive', requirePermission('thread.all
 
     const { warehouse_id, quantity, received_by, expiry_date, idempotency_key } = validated
 
-    const delivery = await queryOne<{ id: number; status: string; week_id: number; thread_type_id: number }>(
-      `SELECT id, status, week_id, thread_type_id FROM thread_order_deliveries WHERE id = $1 LIMIT 1`,
+    const delivery = await queryOne<{
+      id: number
+      status: string
+      week_id: number
+      thread_type_id: number
+      quantity_cones: number | null
+      received_quantity: number | null
+    }>(
+      `SELECT id, status, week_id, thread_type_id, quantity_cones, received_quantity
+       FROM thread_order_deliveries WHERE id = $1 LIMIT 1`,
       [deliveryId],
     )
 
@@ -380,6 +388,20 @@ deliveries.post('/deliveries/:deliveryId/receive', requirePermission('thread.all
 
     if (delivery.status !== 'DELIVERED') {
       return c.json({ data: null, error: 'Chỉ có thể nhập kho cho đơn đã giao' }, 400)
+    }
+
+    const pendingQuantity = (delivery.quantity_cones ?? 0) - (delivery.received_quantity ?? 0)
+
+    if (quantity > pendingQuantity && !c.get('auth').isRoot) {
+      return c.json(
+        {
+          data: null,
+          error: pendingQuantity > 0
+            ? `Chỉ ROOT mới được nhập vượt số đặt. Đơn này còn thiếu ${pendingQuantity} cuộn.`
+            : 'Chỉ ROOT mới được nhập vượt số đặt. Đơn này đã nhập đủ số đặt.',
+        },
+        403,
+      )
     }
 
     let result: any

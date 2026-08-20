@@ -563,7 +563,11 @@
             type="number"
             label="Số lượng nhập *"
             :min="1"
-            :rules="[(v: number) => v > 0 || 'Số lượng phải lớn hơn 0']"
+            :max="isRoot ? undefined : Math.max(receivePendingQuantity, 0)"
+            :rules="[
+              (v: number) => v > 0 || 'Số lượng phải lớn hơn 0',
+              (v: number) => isRoot || v <= receivePendingQuantity || overReceiveDeniedMessage,
+            ]"
             class="q-mt-md"
           />
 
@@ -615,7 +619,7 @@
             color="primary"
             label="Nhập kho"
             :loading="receiving"
-            :disable="!receiveForm.warehouse_id || receiveForm.quantity < 1"
+            :disable="!receiveForm.warehouse_id || receiveForm.quantity < 1 || (!isRoot && receiveExceedsPending)"
             @click="confirmReceive"
           />
         </q-card-actions>
@@ -930,6 +934,18 @@ function getPendingQuantity(delivery: DeliveryRecord): number {
   return total - received
 }
 
+const receivePendingQuantity = computed(() =>
+  selectedReceiveDelivery.value ? getPendingQuantity(selectedReceiveDelivery.value) : 0,
+)
+
+const receiveExceedsPending = computed(() => receiveForm.value.quantity > receivePendingQuantity.value)
+
+const overReceiveDeniedMessage = computed(() =>
+  receivePendingQuantity.value > 0
+    ? `Chỉ ROOT mới được nhập vượt số đặt. Đơn này còn thiếu ${receivePendingQuantity.value} cuộn.`
+    : 'Chỉ ROOT mới được nhập vượt số đặt. Đơn này đã nhập đủ số đặt.',
+)
+
 function getInventoryStatusColor(status: string): string {
   switch (status) {
     case InventoryReceiptStatus.RECEIVED: return 'green'
@@ -1127,6 +1143,10 @@ async function confirmReceive() {
   if (!selectedReceiveDelivery.value || !receiveForm.value.warehouse_id) return
   const pending = getPendingQuantity(selectedReceiveDelivery.value)
   if (receiveForm.value.quantity > pending) {
+    if (!isRoot.value) {
+      snackbar.error(overReceiveDeniedMessage.value)
+      return
+    }
     const over = receiveForm.value.quantity - Math.max(pending, 0)
     const ok = await confirm(`Bạn đang nhập dư ${over} cuộn so với số đặt. Tiếp tục?`)
     if (!ok) return
