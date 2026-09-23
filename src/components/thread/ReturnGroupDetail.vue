@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import type { ReturnGroup, ReturnGroupThread, GroupedReturnLog } from '@/types/thread/issueV2'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
+import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import ReturnHistoryDialog from '@/components/thread/ReturnHistoryDialog.vue'
+import { warehouseService } from '@/services/warehouseService'
+import { useSnackbar } from '@/composables/useSnackbar'
 
 const props = defineProps<{
   group: ReturnGroup
@@ -13,9 +16,26 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  submit: [lines: { thread_type_id: number; thread_color_id: number | null; returned_full: number; returned_partial: number }[]]
+  submit: [payload: {
+    warehouseId: number | null
+    lines: { thread_type_id: number; thread_color_id: number | null; returned_full: number; returned_partial: number }[]
+  }]
   cancel: []
+  reverted: []
 }>()
+
+const snackbar = useSnackbar()
+const warehouseOptions = ref<{ label: string; value: number }[]>([])
+const targetWarehouseId = ref<number | null>(null)
+
+onMounted(async () => {
+  try {
+    const warehouses = await warehouseService.getStorageOnly()
+    warehouseOptions.value = warehouses.map((w) => ({ label: w.name, value: w.id }))
+  } catch {
+    snackbar.error('Không tải được danh sách kho nhận')
+  }
+})
 
 interface ReturnInput {
   thread_type_id: number
@@ -123,7 +143,7 @@ function handleSubmit() {
       returned_full: i.returned_full,
       returned_partial: i.returned_partial,
     }))
-  emit('submit', lines)
+  emit('submit', { warehouseId: targetWarehouseId.value, lines })
 }
 </script>
 
@@ -162,8 +182,23 @@ function handleSubmit() {
         </div>
       </div>
 
-      <div class="text-caption text-blue-grey-6 q-mb-sm">
-        Cuộn nguyên có thể trả lẻ nếu sản xuất chưa dùng hết
+      <div class="row q-col-gutter-md items-center q-mb-sm">
+        <div class="col-12 col-sm-6 col-md-4">
+          <AppSelect
+            v-model="targetWarehouseId"
+            :options="warehouseOptions"
+            label="Kho nhận"
+            emit-value
+            map-options
+            clearable
+            dense
+            outlined
+            hide-bottom-space
+          />
+        </div>
+        <div class="col-12 col-sm-6 col-md-8 text-caption text-blue-grey-6">
+          Để trống thì cuộn về đúng kho đã xuất. Cuộn nguyên có thể trả lẻ nếu sản xuất chưa dùng hết.
+        </div>
       </div>
 
       <q-table
@@ -302,6 +337,7 @@ function handleSubmit() {
       :logs="returnLogs || []"
       :loading="logsLoading"
       :group-label="`${group.po_number} / ${group.style_code} / ${group.color_name}`"
+      @reverted="emit('reverted')"
     />
   </q-card>
 </template>

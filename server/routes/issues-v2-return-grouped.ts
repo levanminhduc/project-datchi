@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne, tx } from '../db/query'
+import { from } from '../db/sql-builder'
 import { getPartialConeRatio } from '../utils/settings-helper'
 import { getErrorMessage } from '../utils/errorHelper'
 import {
@@ -28,22 +29,36 @@ async function _findMatchingWeekItems(
   styleId: number,
   styleColorId: number | null,
 ): Promise<MatchingWeekItem[]> {
-  let query = supabase
-    .from('thread_order_items')
-    .select('id, week_id, thread_order_weeks!inner(id, week_name, status)')
-    .eq('po_id', poId)
-    .eq('style_id', styleId)
-    .in('thread_order_weeks.status', ['CONFIRMED', 'COMPLETED'])
-
+  const params: unknown[] = [poId, styleId]
+  let whereColor: string
   if (styleColorId) {
-    query = query.eq('style_color_id', styleColorId)
+    params.push(styleColorId)
+    whereColor = `toi.style_color_id = $${params.length}`
   } else {
-    query = query.is('style_color_id', null)
+    whereColor = 'toi.style_color_id IS NULL'
   }
 
-  const { data, error } = await query.limit(100)
+  const sql = `
+    SELECT
+      toi.id,
+      toi.week_id,
+      json_build_object('id', tow.id, 'week_name', tow.week_name, 'status', tow.status) AS thread_order_weeks
+    FROM thread_order_items toi
+    INNER JOIN thread_order_weeks tow ON tow.id = toi.week_id
+    WHERE toi.po_id = $1
+      AND toi.style_id = $2
+      AND tow.status = ANY($${params.length + 1})
+      AND ${whereColor}
+    LIMIT 100`
+  params.push(['CONFIRMED', 'COMPLETED'])
 
-  if (error || !data) return []
+  let data: Array<Record<string, any>>
+  try {
+    data = await query<Record<string, any>>(sql, params)
+  } catch {
+    return []
+  }
+  if (!data) return []
 
   return data.map((row: any) => ({
     item_id: row.id,
@@ -59,31 +74,34 @@ returnGroupedRoutes.use('*', requirePermission('thread.issues.return'))
 
 returnGroupedRoutes.get('/return-groups', async (c) => {
   try {
-    const { data: lines, error } = await supabase
-      .from('thread_issue_lines')
-      .select(
+    let lines: Array<Record<string, any>>
+    try {
+      lines = await query<Record<string, any>>(
         `
-        id,
-        issue_id,
-        po_id,
-        style_id,
-        style_color_id,
-        color_id,
-        thread_type_id,
-        thread_color_id,
-        issued_full,
-        issued_partial,
-        returned_full,
-        returned_partial,
-        thread_issues!inner(id, issue_code, status, created_at),
-        thread_types!inner(id, name, code, supplier_id, tex_number, tex_label)
-      `
+        SELECT
+          til.id,
+          til.issue_id,
+          til.po_id,
+          til.style_id,
+          til.style_color_id,
+          til.color_id,
+          til.thread_type_id,
+          til.thread_color_id,
+          til.issued_full,
+          til.issued_partial,
+          til.returned_full,
+          til.returned_partial,
+          json_build_object('id', ti.id, 'issue_code', ti.issue_code, 'status', ti.status, 'created_at', ti.created_at) AS thread_issues,
+          json_build_object('id', tt.id, 'name', tt.name, 'code', tt.code, 'supplier_id', tt.supplier_id, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label) AS thread_types
+        FROM thread_issue_lines til
+        INNER JOIN thread_issues ti ON ti.id = til.issue_id
+        INNER JOIN thread_types tt ON tt.id = til.thread_type_id
+        WHERE ti.status = $1`,
+        ['CONFIRMED']
       )
-      .eq('thread_issues.status', 'CONFIRMED')
-
-    if (error) {
+    } catch (error) {
       console.error('[return-groups] Query error:', error)
-      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Loi truy van danh sach phieu xuat' }, 500)
+      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Lỗi truy vấn danh sách phiếu xuất' }, 500)
     }
 
     const poIds = new Set<number>()
@@ -105,22 +123,22 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
     }
 
     const [poResult, scResult, cResult, sResult, supplierResult, threadColorNameResult] = await Promise.all([
-      poIds.size > 0 ? supabase.from('purchase_orders').select('id, po_number').in('id', [...poIds]) : null,
-      styleColorIds.size > 0 ? supabase.from('style_colors').select('id, color_name, hex_code').in('id', [...styleColorIds]) : null,
-      colorIds.size > 0 ? supabase.from('colors').select('id, name').in('id', [...colorIds]) : null,
-      styleIds.size > 0 ? supabase.from('styles').select('id, style_code, style_name').in('id', [...styleIds]) : null,
-      supplierIds.size > 0 ? supabase.from('suppliers').select('id, name').in('id', [...supplierIds]) : null,
-      threadColorIds.size > 0 ? supabase.from('colors').select('id, name').in('id', [...threadColorIds]) : null,
+      poIds.size > 0 ? from('purchase_orders').select('id, po_number').in('id', [...poIds]).list<{ id: number; po_number: string }>() : null,
+      styleColorIds.size > 0 ? from('style_colors').select('id, color_name, hex_code').in('id', [...styleColorIds]).list<{ id: number; color_name: string; hex_code: string }>() : null,
+      colorIds.size > 0 ? from('colors').select('id, name').in('id', [...colorIds]).list<{ id: number; name: string }>() : null,
+      styleIds.size > 0 ? from('styles').select('id, style_code, style_name').in('id', [...styleIds]).list<{ id: number; style_code: string; style_name: string }>() : null,
+      supplierIds.size > 0 ? from('suppliers').select('id, name').in('id', [...supplierIds]).list<{ id: number; name: string }>() : null,
+      threadColorIds.size > 0 ? from('colors').select('id, name').in('id', [...threadColorIds]).list<{ id: number; name: string }>() : null,
     ])
 
-    const poMap = new Map((poResult?.data || []).map((p) => [p.id, p.po_number]))
-    const scMap = new Map((scResult?.data || []).map((s) => [s.id, { color_name: s.color_name, hex_code: s.hex_code }]))
-    const cMap = new Map((cResult?.data || []).map((c) => [c.id, c.name]))
-    const sMap = new Map((sResult?.data || []).map((s) => [s.id, s.style_code]))
-    const supplierMap = new Map((supplierResult?.data || []).map((s) => [s.id, s.name]))
+    const poMap = new Map((poResult || []).map((p) => [p.id, p.po_number]))
+    const scMap = new Map((scResult || []).map((s) => [s.id, { color_name: s.color_name, hex_code: s.hex_code }]))
+    const cMap = new Map((cResult || []).map((c) => [c.id, c.name]))
+    const sMap = new Map((sResult || []).map((s) => [s.id, s.style_code]))
+    const supplierMap = new Map((supplierResult || []).map((s) => [s.id, s.name]))
 
     const threadColorNameMap = new Map<number, string>(
-      (threadColorNameResult?.data || []).map((c) => [c.id, c.name])
+      (threadColorNameResult || []).map((c) => [c.id, c.name])
     )
 
     const groupMap = new Map<
@@ -227,19 +245,21 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
       const allPoIds = [...new Set(groupEntries.map(([, g]) => g.po_id))]
       const allStyleIds = [...new Set(groupEntries.map(([, g]) => g.style_id))]
 
-      const { data: completedItems } = await supabase
-        .from('thread_order_item_completions')
-        .select('item_id, thread_order_items!inner(po_id, style_id, style_color_id)')
-        .in('thread_order_items.po_id', allPoIds)
-        .in('thread_order_items.style_id', allStyleIds)
-        .limit(500)
+      const completedItems = await query<{
+        po_id: number
+        style_id: number
+        style_color_id: number | null
+      }>(
+        `SELECT DISTINCT toi.po_id, toi.style_id, toi.style_color_id
+         FROM thread_order_item_completions toic
+         INNER JOIN thread_order_items toi ON toi.id = toic.item_id
+         WHERE toi.po_id = ANY($1) AND toi.style_id = ANY($2)`,
+        [allPoIds, allStyleIds]
+      )
 
       if (completedItems && completedItems.length > 0) {
         const completedPSC = new Set(
-          completedItems.map((c: any) => {
-            const toi = c.thread_order_items
-            return `${toi.po_id}_${toi.style_id}_${toi.style_color_id || 'null'}`
-          })
+          completedItems.map((c) => `${c.po_id}_${c.style_id}_${c.style_color_id || 'null'}`)
         )
 
         for (const [key, g] of groupEntries) {
@@ -286,73 +306,77 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
       throw err
     }
 
-    const { po_id, style_id, style_color_id, color_id, idempotency_key, lines: requestLines } = validated
+    const { po_id, style_id, style_color_id, color_id, idempotency_key, warehouse_id, lines: requestLines } = validated
     const effectiveColorId = style_color_id || color_id
     const performedBy = getPerformedBy(c)
     const requestHash = hashPayload(body)
 
-    const { data: existingOp, error: opCheckError } = await supabase
-      .from('issue_operations_log')
-      .select('*')
-      .eq('operation_type', 'RETURN_GROUPED')
-      .eq('idempotency_key', idempotency_key)
-      .single()
+    const existingOp = await queryOne<Record<string, any>>(
+      `SELECT * FROM issue_operations_log
+       WHERE operation_type = $1 AND idempotency_key = $2`,
+      ['RETURN_GROUPED', idempotency_key]
+    )
 
-    if (existingOp && !opCheckError) {
+    if (existingOp) {
       if (existingOp.request_hash !== requestHash) {
         return c.json<ThreadApiResponse<null>>(
-          { data: null, error: 'Idempotency key da duoc su dung voi payload khac' },
+          { data: null, error: 'Mã chống trùng đã được dùng cho dữ liệu khác' },
           409
         )
       }
       if (existingOp.status === 'COMPLETED') {
-        return c.json({ data: existingOp.result_payload, error: null, message: 'Tra hang thanh cong (cached)' })
+        return c.json({ data: existingOp.result_payload, error: null, message: 'Trả hàng thành công (kết quả đã lưu)' })
       }
       if (existingOp.status === 'IN_PROGRESS') {
-        return c.json<ThreadApiResponse<null>>({ data: null, error: 'Operation dang xu ly, vui long doi' }, 409)
+        return c.json<ThreadApiResponse<null>>({ data: null, error: 'Thao tác đang được xử lý, vui lòng đợi' }, 409)
       }
     }
 
-    await supabase.from('issue_operations_log').upsert(
-      {
-        idempotency_key,
-        operation_type: 'RETURN_GROUPED',
-        request_hash: requestHash,
-        request_payload: body,
-        status: 'IN_PROGRESS',
-        succeeded_line_ids: [],
-      },
-      { onConflict: 'operation_type,idempotency_key' }
+    await query(
+      `INSERT INTO issue_operations_log (idempotency_key, operation_type, request_hash, request_payload, status, succeeded_line_ids)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (operation_type, idempotency_key) DO UPDATE SET
+         request_hash = EXCLUDED.request_hash,
+         request_payload = EXCLUDED.request_payload,
+         status = EXCLUDED.status,
+         succeeded_line_ids = EXCLUDED.succeeded_line_ids`,
+      [idempotency_key, 'RETURN_GROUPED', requestHash, JSON.stringify(body), 'IN_PROGRESS', []]
     )
 
     const partialConeRatio = await getPartialConeRatio()
     if (!partialConeRatio || partialConeRatio <= 0) {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: `Ty le cuon le khong hop le (${partialConeRatio})`, completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'RETURN_GROUPED')
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', `Tỉ lệ cuộn lẻ không hợp lệ (${partialConeRatio})`, new Date().toISOString(), idempotency_key, 'RETURN_GROUPED']
+      )
       return c.json<ThreadApiResponse<null>>(
-        { data: null, error: `Ty le cuon le khong hop le (${partialConeRatio})` },
+        { data: null, error: `Tỉ lệ cuộn lẻ không hợp lệ (${partialConeRatio})` },
         400
       )
     }
 
-    const { data: issueLinesRaw, error: linesError } = await supabase
-      .from('thread_issue_lines')
-      .select('*, thread_issues!inner(id, status, created_at, issue_code)')
-      .eq('po_id', po_id)
-      .eq('style_id', style_id)
-      .eq('thread_issues.status', 'CONFIRMED')
-      .order('created_at', { ascending: true })
-
-    if (linesError) {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: 'Khong the tai danh sach dong phieu xuat', completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'RETURN_GROUPED')
-      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Khong the tai danh sach dong phieu xuat' }, 500)
+    let issueLinesRaw: Array<Record<string, any>>
+    try {
+      issueLinesRaw = await query<Record<string, any>>(
+        `SELECT
+           til.*,
+           json_build_object('id', ti.id, 'status', ti.status, 'created_at', ti.created_at, 'issue_code', ti.issue_code) AS thread_issues
+         FROM thread_issue_lines til
+         INNER JOIN thread_issues ti ON ti.id = til.issue_id
+         WHERE til.po_id = $1
+           AND til.style_id = $2
+           AND ti.status = $3
+         ORDER BY til.created_at ASC`,
+        [po_id, style_id, 'CONFIRMED']
+      )
+    } catch {
+      await query(
+        `UPDATE issue_operations_log SET status = $1, error_info = $2, completed_at = $3
+         WHERE idempotency_key = $4 AND operation_type = $5`,
+        ['FAILED', 'Không tải được danh sách dòng phiếu xuất', new Date().toISOString(), idempotency_key, 'RETURN_GROUPED']
+      )
+      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Không tải được danh sách dòng phiếu xuất' }, 500)
     }
 
     const matchingLines = (issueLinesRaw || []).filter((l: any) => {
@@ -360,29 +384,25 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
       return l.color_id === color_id
     }) as (IssueLine & { issue_id: number; thread_issues: { id: number; issue_code: string; created_at: string } | null })[]
 
-    const succeededLineIds: number[] = []
-    const returnLogRows: Array<{ issue_id: number; line_id: number; returned_full: number; returned_partial: number }> = []
-    const distribution: Array<{ thread_type_id: number; thread_color_id: number | null; line_id: number; returned_full: number; returned_partial: number }> = []
-
     const allMatchingLineIds = matchingLines.map(l => l.id)
 
-    const [{ data: allFullCones }, { data: allPartialCones }] = await Promise.all([
-      supabase
-        .from('thread_inventory')
+    const [allFullCones, allPartialCones] = await Promise.all([
+      from('thread_inventory')
         .select('id, quantity_meters, status, issued_line_id')
         .in('issued_line_id', allMatchingLineIds)
         .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
         .eq('is_partial', false)
-        .order('id', { ascending: true })
-        .limit(10000),
-      supabase
-        .from('thread_inventory')
+        .order({ column: 'id', ascending: true })
+        .limit(10000)
+        .list<{ id: number; quantity_meters: number; status: string; issued_line_id: number }>(),
+      from('thread_inventory')
         .select('id, status, issued_line_id')
         .in('issued_line_id', allMatchingLineIds)
         .in('status', ['IN_PRODUCTION', 'HARD_ALLOCATED'])
         .eq('is_partial', true)
-        .order('id', { ascending: true })
-        .limit(10000),
+        .order({ column: 'id', ascending: true })
+        .limit(10000)
+        .list<{ id: number; status: string; issued_line_id: number }>(),
     ])
 
     const fullConesByLine = new Map<number, Array<{ id: number; quantity_meters: number; status: string }>>()
@@ -403,136 +423,138 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
     }
 
     const uniqueThreadTypeIds = [...new Set(matchingLines.map(l => l.thread_type_id))]
-    const { data: threadTypesData } = await supabase
-      .from('thread_types')
-      .select('id, meters_per_cone')
-      .in('id', uniqueThreadTypeIds)
+    const threadTypesData = uniqueThreadTypeIds.length > 0
+      ? await from('thread_types')
+          .select('id, meters_per_cone')
+          .in('id', uniqueThreadTypeIds)
+          .list<{ id: number; meters_per_cone: number | null }>()
+      : []
 
     const metersPerConeMap = new Map<number, number | null>()
     for (const tt of threadTypesData || []) {
       metersPerConeMap.set(tt.id, tt.meters_per_cone)
     }
 
-    for (const requestLine of requestLines) {
-      const { thread_type_id, thread_color_id, returned_full: reqFull, returned_partial: reqPartial } = requestLine
-      if (reqFull <= 0 && reqPartial <= 0) continue
-
-      const lineTcId: number | null = thread_color_id ?? null
-      const candidateLines = matchingLines.filter(
-        (l) =>
-          l.thread_type_id === thread_type_id &&
-          (l.thread_color_id ?? null) === lineTcId &&
-          (l.issued_full - l.returned_full > 0 || l.issued_partial - l.returned_partial > 0)
-      )
-
-      let remainingFull = reqFull
-      let remainingPartial = reqPartial
-
-      for (const candidate of candidateLines) {
-        if (remainingFull <= 0 && remainingPartial <= 0) break
-
-        const availFull = Math.max(0, candidate.issued_full - candidate.returned_full)
-        const availPartial = Math.max(0, candidate.issued_partial - candidate.returned_partial)
-
-        const allocFull = Math.min(remainingFull, availFull)
-        const remainFullAfterAlloc = availFull - allocFull
-        const allocPartial = Math.min(remainingPartial, availPartial + remainFullAfterAlloc)
-
-        if (allocFull <= 0 && allocPartial <= 0) continue
-
-        const result = await processReturnForLine(
-          candidate.id,
-          candidate,
-          allocFull,
-          allocPartial,
-          performedBy,
-          partialConeRatio,
-          {
-            fullCones: fullConesByLine.get(candidate.id) || [],
-            partialCones: partialConesByLine.get(candidate.id) || [],
-            metersPerCone: metersPerConeMap.get(candidate.thread_type_id) ?? null,
-          },
-        )
-
-        if (!result.success) {
-          await supabase
-            .from('issue_operations_log')
-            .update({
-              status: 'FAILED',
-              succeeded_line_ids: succeededLineIds,
-              error_info: result.error || 'Loi xu ly tra hang',
-              completed_at: new Date().toISOString(),
-            })
-            .eq('idempotency_key', idempotency_key)
-            .eq('operation_type', 'RETURN_GROUPED')
-          return c.json<ThreadApiResponse<null>>(
-            { data: null, error: result.error || 'Loi xu ly tra hang' },
-            400
-          )
-        }
-
-        candidate.returned_full = (candidate.returned_full || 0) + result.returned_full
-        candidate.returned_partial = (candidate.returned_partial || 0) + result.returned_partial
-        remainingFull -= result.returned_full
-        remainingPartial -= result.returned_partial
-
-        if (!succeededLineIds.includes(candidate.id)) {
-          succeededLineIds.push(candidate.id)
-        }
-
-        const issueId = candidate.issue_id
-        returnLogRows.push({ issue_id: issueId, line_id: candidate.id, returned_full: result.returned_full, returned_partial: result.returned_partial })
-        distribution.push({ thread_type_id, thread_color_id: lineTcId, line_id: candidate.id, returned_full: result.returned_full, returned_partial: result.returned_partial })
-      }
-    }
-
-    if (succeededLineIds.length === 0) {
-      await supabase
-        .from('issue_operations_log')
-        .update({ status: 'FAILED', error_info: 'Khong co so luong tra hop le', completed_at: new Date().toISOString() })
-        .eq('idempotency_key', idempotency_key)
-        .eq('operation_type', 'RETURN_GROUPED')
-      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Khong co so luong tra hop le' }, 400)
+    let committed: {
+      succeededLineIds: number[]
+      distribution: Array<{ thread_type_id: number; thread_color_id: number | null; line_id: number; returned_full: number; returned_partial: number }>
     }
 
     try {
-      if (returnLogRows.length > 0) {
-        await supabase
-          .from('thread_issue_return_logs')
-          .insert(returnLogRows.map((r) => ({
-            issue_id: r.issue_id,
-            line_id: r.line_id,
-            returned_full: r.returned_full,
-            returned_partial: r.returned_partial,
-            created_by: performedBy || null,
-          })))
-      }
-    } catch (logError) {
-      console.error('[return-grouped] Failed to insert return logs:', logError)
-    }
+      committed = await tx(async (client) => {
+        const succeededLineIds: number[] = []
+        const returnLogRows: Array<{ issue_id: number; line_id: number; returned_full: number; returned_partial: number }> = []
+        const distribution: Array<{ thread_type_id: number; thread_color_id: number | null; line_id: number; returned_full: number; returned_partial: number }> = []
 
-    const affectedIssueIds = [...new Set(returnLogRows.map((r) => r.issue_id))]
-    for (const issueId of affectedIssueIds) {
-      const { data: issueLines } = await supabase
-        .from('thread_issue_lines')
-        .select('issued_full, issued_partial, returned_full, returned_partial')
-        .eq('issue_id', issueId)
+        for (const requestLine of requestLines) {
+          const { thread_type_id, thread_color_id, returned_full: reqFull, returned_partial: reqPartial } = requestLine
+          if (reqFull <= 0 && reqPartial <= 0) continue
 
-      const allReturned = issueLines?.every(
-        (l) => (l.returned_full + l.returned_partial) >= (l.issued_full + l.issued_partial)
+          const lineTcId: number | null = thread_color_id ?? null
+          const candidateLines = matchingLines.filter(
+            (l) =>
+              l.thread_type_id === thread_type_id &&
+              (l.thread_color_id ?? null) === lineTcId &&
+              (l.issued_full - l.returned_full > 0 || l.issued_partial - l.returned_partial > 0)
+          )
+
+          let remainingFull = reqFull
+          let remainingPartial = reqPartial
+
+          for (const candidate of candidateLines) {
+            if (remainingFull <= 0 && remainingPartial <= 0) break
+
+            const availFull = Math.max(0, candidate.issued_full - candidate.returned_full)
+            const availPartial = Math.max(0, candidate.issued_partial - candidate.returned_partial)
+
+            const allocFull = Math.min(remainingFull, availFull)
+            const remainFullAfterAlloc = availFull - allocFull
+            const allocPartial = Math.min(remainingPartial, availPartial + remainFullAfterAlloc)
+
+            if (allocFull <= 0 && allocPartial <= 0) continue
+
+            const logInsert = await client.query<{ id: number }>(
+              `INSERT INTO thread_issue_return_logs (issue_id, line_id, returned_full, returned_partial, created_by)
+               VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+              [candidate.issue_id, candidate.id, allocFull, allocPartial, performedBy || null]
+            )
+            const returnLogId = logInsert.rows[0]?.id ?? null
+
+            const result = await processReturnForLine(
+              candidate.id,
+              candidate,
+              allocFull,
+              allocPartial,
+              performedBy,
+              partialConeRatio,
+              {
+                fullCones: fullConesByLine.get(candidate.id) || [],
+                partialCones: partialConesByLine.get(candidate.id) || [],
+                metersPerCone: metersPerConeMap.get(candidate.thread_type_id) ?? null,
+              },
+              client,
+              warehouse_id ?? null,
+              returnLogId,
+            )
+
+            if (!result.success) {
+              throw new Error(result.error || 'Lỗi xử lý trả hàng')
+            }
+
+            candidate.returned_full = (candidate.returned_full || 0) + result.returned_full
+            candidate.returned_partial = (candidate.returned_partial || 0) + result.returned_partial
+            remainingFull -= result.returned_full
+            remainingPartial -= result.returned_partial
+
+            if (!succeededLineIds.includes(candidate.id)) {
+              succeededLineIds.push(candidate.id)
+            }
+
+            const issueId = candidate.issue_id
+            returnLogRows.push({ issue_id: issueId, line_id: candidate.id, returned_full: result.returned_full, returned_partial: result.returned_partial })
+            distribution.push({ thread_type_id, thread_color_id: lineTcId, line_id: candidate.id, returned_full: result.returned_full, returned_partial: result.returned_partial })
+          }
+        }
+
+        if (succeededLineIds.length === 0) {
+          throw new Error('Không có số lượng trả hợp lệ')
+        }
+
+        const affectedIssueIds = [...new Set(returnLogRows.map((r) => r.issue_id))]
+        for (const issueId of affectedIssueIds) {
+          const issueLinesResult = await client.query<{ issued_full: number; issued_partial: number; returned_full: number; returned_partial: number }>(
+            `SELECT issued_full, issued_partial, returned_full, returned_partial
+             FROM thread_issue_lines WHERE issue_id = $1`,
+            [issueId]
+          )
+
+          const allReturned = issueLinesResult.rows.every(
+            (l) => (l.returned_full + l.returned_partial) >= (l.issued_full + l.issued_partial)
+          )
+
+          if (allReturned) {
+            await client.query(
+              `UPDATE thread_issues SET status = $1, updated_at = $2 WHERE id = $3`,
+              ['RETURNED', new Date().toISOString(), issueId]
+            )
+          }
+        }
+
+        return { succeededLineIds, distribution }
+      })
+    } catch (txError) {
+      const message = getErrorMessage(txError) || 'Lỗi xử lý trả hàng'
+      await query(
+        `UPDATE issue_operations_log SET status = $1, succeeded_line_ids = $2, error_info = $3, completed_at = $4
+         WHERE idempotency_key = $5 AND operation_type = $6`,
+        ['FAILED', [], message, new Date().toISOString(), idempotency_key, 'RETURN_GROUPED']
       )
-
-      if (allReturned) {
-        await supabase
-          .from('thread_issues')
-          .update({ status: 'RETURNED', updated_at: new Date().toISOString() })
-          .eq('id', issueId)
-      }
+      return c.json<ThreadApiResponse<null>>({ data: null, error: message }, 400)
     }
 
     const resultPayload = {
-      succeeded_line_ids: succeededLineIds,
-      distribution,
+      succeeded_line_ids: committed.succeededLineIds,
+      distribution: committed.distribution,
       po_id,
       style_id,
       style_color_id: style_color_id || null,
@@ -540,13 +562,45 @@ returnGroupedRoutes.post('/return-grouped', async (c) => {
       effective_color_id: effectiveColorId,
     }
 
-    await supabase
-      .from('issue_operations_log')
-      .update({ status: 'COMPLETED', succeeded_line_ids: succeededLineIds, completed_at: new Date().toISOString() })
-      .eq('idempotency_key', idempotency_key)
-      .eq('operation_type', 'RETURN_GROUPED')
+    await query(
+      `UPDATE issue_operations_log SET status = $1, succeeded_line_ids = $2, completed_at = $3
+       WHERE idempotency_key = $4 AND operation_type = $5`,
+      ['COMPLETED', committed.succeededLineIds, new Date().toISOString(), idempotency_key, 'RETURN_GROUPED']
+    )
 
-    return c.json({ data: resultPayload, error: null, message: 'Tra hang theo nhom thanh cong' })
+    return c.json({ data: resultPayload, error: null, message: 'Trả hàng theo nhóm thành công' })
+  } catch (err) {
+    return c.json<ThreadApiResponse<null>>({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+returnGroupedRoutes.post('/return-logs/:logId/revert', async (c) => {
+  try {
+    const logId = parseInt(c.req.param('logId'))
+    if (isNaN(logId)) {
+      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Mã lần trả không hợp lệ' }, 400)
+    }
+
+    const body = await c.req.json().catch(() => ({}))
+    const reason = typeof body?.reason === 'string' ? body.reason.trim() : ''
+    if (!reason) {
+      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Vui lòng nhập lý do hoàn tác' }, 400)
+    }
+
+    const performedBy = getPerformedBy(c)
+
+    let result: Record<string, unknown> | null
+    try {
+      const rows = await query<{ result: Record<string, unknown> }>(
+        'SELECT fn_revert_return_log($1, $2, $3) AS result',
+        [logId, performedBy, reason]
+      )
+      result = rows.length > 0 ? rows[0].result : null
+    } catch (rpcError) {
+      return c.json<ThreadApiResponse<null>>({ data: null, error: getErrorMessage(rpcError) }, 400)
+    }
+
+    return c.json({ data: result, error: null, message: 'Đã hoàn tác lần trả kho' })
   } catch (err) {
     return c.json<ThreadApiResponse<null>>({ data: null, error: getErrorMessage(err) }, 500)
   }
@@ -567,23 +621,39 @@ returnGroupedRoutes.get('/return-groups/logs', async (c) => {
 
     const { po_id, style_id, style_color_id, color_id } = queryParams
 
-    let lineQuery = supabase
-      .from('thread_issue_lines')
-      .select('id, thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(id, issue_code, status, created_at)')
-      .eq('po_id', po_id)
-      .eq('style_id', style_id)
-      .in('thread_issues.status', ['CONFIRMED', 'RETURNED'])
-
+    const lineParams: unknown[] = [po_id, style_id]
+    let whereColor = ''
     if (style_color_id) {
-      lineQuery = lineQuery.eq('style_color_id', style_color_id)
+      lineParams.push(style_color_id)
+      whereColor = ` AND til.style_color_id = $${lineParams.length}`
     } else if (color_id) {
-      lineQuery = lineQuery.eq('color_id', color_id)
+      lineParams.push(color_id)
+      whereColor = ` AND til.color_id = $${lineParams.length}`
     }
+    lineParams.push(['CONFIRMED', 'RETURNED'])
+    const statusPlaceholder = `$${lineParams.length}`
 
-    const { data: issueLines, error: lineError } = await lineQuery
-
-    if (lineError) {
-      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Loi truy van dong phieu xuat' }, 500)
+    let issueLines: Array<Record<string, any>>
+    try {
+      issueLines = await query<Record<string, any>>(
+        `SELECT
+           til.id,
+           til.thread_type_id,
+           til.thread_color_id,
+           til.issued_full,
+           til.issued_partial,
+           til.returned_full,
+           til.returned_partial,
+           json_build_object('id', ti.id, 'issue_code', ti.issue_code, 'status', ti.status, 'created_at', ti.created_at) AS thread_issues
+         FROM thread_issue_lines til
+         INNER JOIN thread_issues ti ON ti.id = til.issue_id
+         WHERE til.po_id = $1
+           AND til.style_id = $2${whereColor}
+           AND ti.status = ANY(${statusPlaceholder})`,
+        lineParams
+      )
+    } catch {
+      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Lỗi truy vấn dòng phiếu xuất' }, 500)
     }
 
     const lineIds = (issueLines || []).map((l: any) => l.id)
@@ -591,15 +661,26 @@ returnGroupedRoutes.get('/return-groups/logs', async (c) => {
       return c.json({ data: [], error: null })
     }
 
-    const { data: returnLogs, error: logError } = await supabase
-      .from('thread_issue_return_logs')
-      .select('id, issue_id, line_id, returned_full, returned_partial, created_by, created_at')
-      .in('line_id', lineIds)
-      .order('created_at', { ascending: false })
-
-    if (logError) {
+    let returnLogs: Array<Record<string, any>>
+    try {
+      returnLogs = await query<Record<string, any>>(
+        `SELECT
+           l.id, l.issue_id, l.line_id, l.returned_full, l.returned_partial,
+           l.created_by, l.created_at, l.reverted_at, l.reverted_by,
+           (
+             l.reverted_at IS NULL
+             AND l.returned_partial = 0
+             AND (SELECT COUNT(*) FROM thread_movements m
+                  WHERE m.return_log_id = l.id AND m.movement_type = 'RETURN') = l.returned_full
+           ) AS can_revert
+         FROM thread_issue_return_logs l
+         WHERE l.line_id = ANY($1)
+         ORDER BY l.created_at DESC`,
+        [lineIds]
+      )
+    } catch (logError) {
       console.error('[return-groups/logs] Log query error:', logError)
-      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Loi truy van lich su tra hang' }, 500)
+      return c.json<ThreadApiResponse<null>>({ data: null, error: 'Lỗi truy vấn lịch sử trả hàng' }, 500)
     }
 
     const lineMap = new Map<number, any>()
@@ -609,9 +690,9 @@ returnGroupedRoutes.get('/return-groups/logs', async (c) => {
     }
 
     const threadTypeIds = [...new Set((issueLines || []).map((l: any) => l.thread_type_id))]
-    const { data: threadTypes } = threadTypeIds.length > 0
-      ? await supabase.from('thread_types').select('id, name, code, supplier_id, tex_number, tex_label').in('id', threadTypeIds)
-      : { data: [] }
+    const threadTypes = threadTypeIds.length > 0
+      ? await from('thread_types').select('id, name, code, supplier_id, tex_number, tex_label').in('id', threadTypeIds).list<{ id: number; name: string; code: string; supplier_id: number | null; tex_number: string | null; tex_label: string | null }>()
+      : []
     const ttMap = new Map((threadTypes || []).map((t) => [t.id, t]))
 
     const logSupplierIds = new Set<number>()
@@ -626,13 +707,13 @@ returnGroupedRoutes.get('/return-groups/logs', async (c) => {
     }
 
     const [logSupplierResult, logThreadColorResult] = await Promise.all([
-      logSupplierIds.size > 0 ? supabase.from('suppliers').select('id, name').in('id', [...logSupplierIds]) : null,
-      logThreadColorIds.size > 0 ? supabase.from('colors').select('id, name').in('id', [...logThreadColorIds]) : null,
+      logSupplierIds.size > 0 ? from('suppliers').select('id, name').in('id', [...logSupplierIds]).list<{ id: number; name: string }>() : null,
+      logThreadColorIds.size > 0 ? from('colors').select('id, name').in('id', [...logThreadColorIds]).list<{ id: number; name: string }>() : null,
     ])
 
-    const logSupplierMap = new Map((logSupplierResult?.data || []).map((s) => [s.id, s.name]))
+    const logSupplierMap = new Map((logSupplierResult || []).map((s) => [s.id, s.name]))
     const logColorNameMap = new Map<number, string>(
-      (logThreadColorResult?.data || []).map((c) => [c.id, c.name])
+      (logThreadColorResult || []).map((c) => [c.id, c.name])
     )
 
     function buildThreadDisplayName(tt: any, tcId: number | null | undefined): string {
@@ -660,6 +741,9 @@ returnGroupedRoutes.get('/return-groups/logs', async (c) => {
         returned_partial: log.returned_partial,
         created_by: log.created_by,
         created_at: log.created_at,
+        reverted_at: log.reverted_at ?? null,
+        reverted_by: log.reverted_by ?? null,
+        can_revert: log.can_revert === true,
       }
     })
 

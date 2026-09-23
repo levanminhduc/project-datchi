@@ -30,6 +30,7 @@ import stylesRouter from './routes/styles'
 import styleThreadSpecsRouter from './routes/styleThreadSpecs'
 import threadCalculationRouter from './routes/threadCalculation'
 import weeklyOrderRouter from './routes/weekly-order'
+import weeklyOrderUnlockRouter from './routes/weeklyOrderUnlock'
 import reconciliationRouter from './routes/reconciliation'
 import settingsRouter from './routes/settings'
 import stockRouter from './routes/stock'
@@ -42,15 +43,18 @@ import importRouter from './routes/import'
 import subArtsRouter from './routes/subArts'
 import styleColorsRouter from './routes/styleColors'
 import deptAllocationsRouter from './routes/deptAllocations'
-import guidesRouter, { guideImages } from './routes/guides'
+import guidesRouter, { guideImages, publicGuideImages } from './routes/guides'
 import adminGuidesRouter from './routes/admin-guides'
 import publicGuidesRouter from './routes/public-guides'
 import announcementsRouter from './routes/announcements'
 import overQuotaRouter from './routes/over-quota'
 import threadConeSummaryRouter from './routes/thread/cone-summary'
 import chatAssistantRouter from './routes/chat-assistant'
+import realtimeRouter from './realtime/stream'
+import { startRealtimeListener, stopRealtimeListener } from './realtime/listener'
 import { authMiddleware } from './middleware/auth'
-import { supabaseAdmin } from './db/supabase'
+import { assertSigningKeyConfigured } from './auth/jwt'
+import { pool } from './db/pool'
 
 const app = new Hono()
 
@@ -70,65 +74,26 @@ app.use(
 )
 
 app.route('/api/guides/images', guideImages)
+app.route('/storage/v1/object/public/guide-images', publicGuideImages)
 app.route('/api/public/guides', publicGuidesRouter)
 app.route('/api/telegram', telegramRouter)
+app.route('/api/realtime', realtimeRouter)
 
-app.post('/api/auth/ensure-auth-user', async (c) => {
-  try {
-    const { employeeId, password } = await c.req.json()
-
-    if (!employeeId || !password) {
-      return c.json({ error: true, message: 'Thiếu mã nhân viên hoặc mật khẩu' }, 400)
-    }
-
-    const { data: employee } = await supabaseAdmin
-      .from('employees')
-      .select('id, employee_id, auth_user_id, is_active, deleted_at')
-      .eq('employee_id', employeeId.trim().toUpperCase())
-      .is('deleted_at', null)
-      .maybeSingle()
-
-    if (!employee) {
-      return c.json({ error: true, message: 'Nhân viên không tồn tại' }, 404)
-    }
-
-    if (!employee.is_active) {
-      return c.json({ error: true, message: 'Tài khoản đã bị vô hiệu hóa' }, 403)
-    }
-
-    if (employee.auth_user_id) {
-      return c.json({ error: false, message: 'Tài khoản đã liên kết', created: false })
-    }
-
-    const email = `${employee.employee_id.toLowerCase()}@internal.datchi.local`
-
-    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    })
-
-    if (authError) {
-      console.error('ensure-auth-user: create auth user error:', authError)
-      return c.json({ error: true, message: 'Không thể tạo tài khoản đăng nhập' }, 500)
-    }
-
-    await supabaseAdmin
-      .from('employees')
-      .update({ auth_user_id: authUser.user.id })
-      .eq('id', employee.id)
-
-    return c.json({ error: false, message: 'Đã tạo tài khoản đăng nhập', created: true })
-  } catch (err) {
-    console.error('ensure-auth-user error:', err)
-    return c.json({ error: true, message: 'Lỗi hệ thống' }, 500)
-  }
-})
+const PUBLIC_AUTH_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/refresh',
+  '/api/auth/logout',
+])
 
 app.use(
   '/api/*',
   async (c, next) => {
-    if (c.req.path.startsWith('/api/guides/images/') || c.req.path.startsWith('/api/public/')) {
+    if (
+      c.req.path.startsWith('/api/guides/images/') ||
+      c.req.path.startsWith('/api/public/') ||
+      c.req.path.startsWith('/api/realtime/') ||
+      PUBLIC_AUTH_PATHS.has(c.req.path)
+    ) {
       return next()
     }
     return authMiddleware(c, next)
@@ -163,6 +128,7 @@ app.route('/api/styles', stylesRouter)
 app.route('/api/style-thread-specs', styleThreadSpecsRouter)
 app.route('/api/thread-calculation', threadCalculationRouter)
 app.route('/api/weekly-orders', weeklyOrderRouter)
+app.route('/api/weekly-order-unlocks', weeklyOrderUnlockRouter)
 app.route('/api/issues/reconciliation', reconciliationRouter)
 app.route('/api/issues/v2', issuesV2Router)
 app.route('/api/issue-history', issueHistoryRouter)
@@ -215,9 +181,46 @@ console.log(`Starting server on port ${PORT}...`)
 console.log(`CORS enabled for: ${FRONTEND_URL}`)
 if (HAS_DIST) console.log('Serving static files from dist/')
 
-serve({
+assertSigningKeyConfigured()
+
+const server = serve({
   fetch: app.fetch,
   port: PORT,
 })
 
+startRealtimeListener().catch((err) => {
+  console.error('Failed to start realtime listener:', err)
+})
+
 console.log(`Server is running at http://localhost:${PORT}`)
+
+let shuttingDown = false
+
+async function gracefulShutdown(): Promise<void> {
+  if (shuttingDown) return
+  shuttingDown = true
+
+  console.log('Nhận tín hiệu tắt, đang dừng server...')
+
+  const forceExit = setTimeout(() => {
+    console.error('Buộc thoát sau 10s chờ')
+    process.exit(1)
+  }, 10000)
+  forceExit.unref()
+
+  try {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve())
+    })
+    await stopRealtimeListener()
+    await pool.end()
+    clearTimeout(forceExit)
+    process.exit(0)
+  } catch (err) {
+    console.error('Lỗi khi tắt server:', err)
+    process.exit(1)
+  }
+}
+
+process.on('SIGTERM', gracefulShutdown)
+process.on('SIGINT', gracefulShutdown)

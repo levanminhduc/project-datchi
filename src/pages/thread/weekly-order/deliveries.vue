@@ -57,6 +57,7 @@
             v-model="hideFullyReceived"
             label="Ẩn đã nhập đủ"
             dense
+            @update:model-value="() => loadTrackingData()"
           />
           <q-space />
           <q-input
@@ -65,7 +66,9 @@
             outlined
             placeholder="Tìm NCC, Tex, Màu, Đơn hàng..."
             clearable
+            debounce="300"
             style="min-width: 250px"
+            @update:model-value="() => loadTrackingData()"
           >
             <template #prepend>
               <q-icon name="search" />
@@ -285,7 +288,7 @@
         <div class="row q-mb-md q-gutter-sm items-center">
           <q-checkbox
             v-model="showReceivedInReceive"
-            label="Hiện đã nhập đủ"
+            label="Chỉ hiện đã nhập đủ"
             dense
             @update:model-value="() => loadReceiveData()"
           />
@@ -441,6 +444,33 @@
               <span class="text-grey-6"> / {{ props.row.quantity_cones || '—' }}</span>
             </q-td>
           </template>
+          <template #body-cell-actions="props">
+            <q-td :props="props">
+              <q-chip
+                v-if="props.row.reverted_at"
+                dense
+                color="grey-4"
+                text-color="grey-8"
+                label="Đã hoàn tác"
+              />
+              <q-btn
+                v-else-if="isRoot"
+                dense
+                flat
+                round
+                color="negative"
+                icon="undo"
+                :disable="!props.row.has_tagged_cones"
+                @click="openRevertDialog(props.row)"
+              >
+                <q-tooltip>
+                  {{ props.row.has_tagged_cones
+                    ? 'Hoàn tác lần nhập này'
+                    : 'Lần nhập cũ chưa gắn được cuộn — dùng điều chỉnh tồn kho của tuần' }}
+                </q-tooltip>
+              </q-btn>
+            </q-td>
+          </template>
         </DataTable>
       </q-tab-panel>
     </q-tab-panels>
@@ -533,8 +563,11 @@
             type="number"
             label="Số lượng nhập *"
             :min="1"
-            :max="selectedReceiveDelivery ? (showReceivedInReceive ? 9999 : getPendingQuantity(selectedReceiveDelivery)) : 9999"
-            :rules="[(v: number) => v > 0 || 'Số lượng phải lớn hơn 0']"
+            :max="isRoot ? undefined : Math.max(receivePendingQuantity, 0)"
+            :rules="[
+              (v: number) => v > 0 || 'Số lượng phải lớn hơn 0',
+              (v: number) => isRoot || v <= receivePendingQuantity || overReceiveDeniedMessage,
+            ]"
             class="q-mt-md"
           />
 
@@ -586,7 +619,7 @@
             color="primary"
             label="Nhập kho"
             :loading="receiving"
-            :disable="!receiveForm.warehouse_id || receiveForm.quantity < 1"
+            :disable="!receiveForm.warehouse_id || receiveForm.quantity < 1 || (!isRoot && receiveExceedsPending)"
             @click="confirmReceive"
           />
         </q-card-actions>
@@ -599,6 +632,12 @@
       :result="receiveResult"
       @update:model-value="onResultDialogClose"
     />
+
+    <RevertReceiveDialog
+      v-model="showRevertDialog"
+      :log="selectedRevertLog"
+      @reverted="onReceiveReverted"
+    />
   </q-page>
 </template>
 
@@ -610,7 +649,7 @@ import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { useAuth } from '@/composables/useAuth'
 import { useWarehouses } from '@/composables/useWarehouses'
-import type { DeliveryRecord, DeliveryReceiveLog } from '@/types/thread'
+import type { DeliveryRecord, DeliveryReceiveLog, DeliveryFilter, ReceiveDeliveryDTO } from '@/types/thread'
 import { DeliveryStatus, InventoryReceiptStatus } from '@/types/thread/enums'
 import AppSelect from '@/components/ui/inputs/AppSelect.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
@@ -618,6 +657,9 @@ import DatePicker from '@/components/ui/pickers/DatePicker.vue'
 import DataTable from '@/components/ui/tables/DataTable.vue'
 import ReceiveResultDialog from '@/components/thread/weekly-order/ReceiveResultDialog.vue'
 import type { ReceiveResult } from '@/components/thread/weekly-order/ReceiveResultDialog.vue'
+import RevertReceiveDialog from '@/components/thread/weekly-order/RevertReceiveDialog.vue'
+import { useConfirm } from '@/composables/useConfirm'
+import { usePermission } from '@/composables/usePermission'
 
 definePage({
   meta: {
@@ -627,6 +669,7 @@ definePage({
 })
 
 const snackbar = useSnackbar()
+const { confirm } = useConfirm()
 const { employee } = useAuth()
 
 // Tab state
@@ -673,6 +716,7 @@ const receiveForm = ref({
   quantity: 0,
   expiry_date: '' as string,
 })
+const receiveIdempotencyKey = ref('')
 const warehouseFilterCache = new Map<number, number[]>()
 const allowedWarehouseIds = ref<number[] | null>(null)
 const receiveWarehouseOptions = computed(() => {
@@ -696,6 +740,20 @@ const historyPagination = ref({
 })
 const weekOptions = ref<Array<{ id: number; week_name: string }>>([])
 
+const { isRoot } = usePermission()
+const showRevertDialog = ref(false)
+const selectedRevertLog = ref<DeliveryReceiveLog | null>(null)
+
+function openRevertDialog(log: DeliveryReceiveLog) {
+  selectedRevertLog.value = log
+  showRevertDialog.value = true
+}
+
+async function onReceiveReverted() {
+  await loadHistoryData()
+  if (activeTab.value === 'tracking') await loadTrackingData()
+}
+
 const weekFilterOptions = computed(() => {
   return [
     { label: 'Tất cả', value: null },
@@ -707,25 +765,8 @@ const currentUser = computed(() => {
   return employee.value?.fullName || 'Chưa đăng nhập'
 })
 
-const filteredDeliveries = computed(() => {
-  let result = deliveries.value
-  if (hideFullyReceived.value) {
-    result = result.filter(d => d.inventory_status !== InventoryReceiptStatus.RECEIVED)
-  }
-  const search = (trackingSearch.value ?? '').trim().toLowerCase()
-  if (search) {
-    result = result.filter(d =>
-      d.supplier_name?.toLowerCase().includes(search)
-      || d.tex_number?.toLowerCase().includes(search)
-      || d.color_name?.toLowerCase().includes(search)
-      || d.week_name?.toLowerCase().includes(search),
-    )
-  }
-  return result
-})
-
 const hasAnyLoans = computed(() => {
-  return filteredDeliveries.value.some((d: DeliveryRecord) => (d.borrowed_in || 0) > 0 || (d.lent_out || 0) > 0)
+  return deliveries.value.some((d: DeliveryRecord) => (d.borrowed_in || 0) > 0 || (d.lent_out || 0) > 0)
 })
 
 interface WeekSummary {
@@ -743,7 +784,7 @@ interface WeekSummary {
 
 const weekGroups = computed(() => {
   const groups = new Map<number, DeliveryRecord[]>()
-  for (const d of filteredDeliveries.value) {
+  for (const d of deliveries.value) {
     const key = d.week_id
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)!.push(d)
@@ -850,6 +891,7 @@ const historyColumns: QTableColumn[] = [
   { name: 'warehouse_name', label: 'Kho nhập', field: 'warehouse_name', align: 'left' },
   { name: 'quantity', label: 'Số lượng (cuộn)', field: 'quantity', align: 'center' },
   { name: 'received_by', label: 'Người nhập', field: 'received_by', align: 'left' },
+  { name: 'actions', label: '', field: '', align: 'center' },
 ]
 
 function formatDate(dateStr: string): string {
@@ -892,6 +934,18 @@ function getPendingQuantity(delivery: DeliveryRecord): number {
   return total - received
 }
 
+const receivePendingQuantity = computed(() =>
+  selectedReceiveDelivery.value ? getPendingQuantity(selectedReceiveDelivery.value) : 0,
+)
+
+const receiveExceedsPending = computed(() => receiveForm.value.quantity > receivePendingQuantity.value)
+
+const overReceiveDeniedMessage = computed(() =>
+  receivePendingQuantity.value > 0
+    ? `Chỉ ROOT mới được nhập vượt số đặt. Đơn này còn thiếu ${receivePendingQuantity.value} cuộn.`
+    : 'Chỉ ROOT mới được nhập vượt số đặt. Đơn này đã nhập đủ số đặt.',
+)
+
 function getInventoryStatusColor(status: string): string {
   switch (status) {
     case InventoryReceiptStatus.RECEIVED: return 'green'
@@ -917,8 +971,11 @@ async function handleDeliveryDateChange(deliveryId: number, val: string | null) 
 async function loadTrackingData() {
   loading.value = true
   try {
-    const filters: { status?: DeliveryStatus } = {}
+    const filters: DeliveryFilter = {}
     if (statusFilter.value) filters.status = statusFilter.value as DeliveryStatus
+    if (hideFullyReceived.value) filters.inventory_status_not = InventoryReceiptStatus.RECEIVED
+    const search = (trackingSearch.value ?? '').trim()
+    if (search) filters.search = search
     const result = await deliveryService.getOverview(filters)
     deliveries.value = result.data
   } catch (err) {
@@ -936,7 +993,7 @@ async function loadReceiveData(searchOverride?: string) {
     const result = await deliveryService.getOverview({
       status: DeliveryStatus.DELIVERED,
       ...(showReceivedInReceive.value
-        ? {}
+        ? { inventory_status: InventoryReceiptStatus.RECEIVED }
         : { inventory_status_not: InventoryReceiptStatus.RECEIVED }),
       page,
       limit: rowsPerPage,
@@ -1068,6 +1125,7 @@ async function openReceiveDialog(delivery: DeliveryRecord) {
     quantity: Math.max(getPendingQuantity(delivery), 1),
     expiry_date: `${day}/${month}/${year}`,
   }
+  receiveIdempotencyKey.value = crypto.randomUUID()
   try {
     let ids = warehouseFilterCache.get(delivery.week_id)
     if (!ids) {
@@ -1083,12 +1141,23 @@ async function openReceiveDialog(delivery: DeliveryRecord) {
 
 async function confirmReceive() {
   if (!selectedReceiveDelivery.value || !receiveForm.value.warehouse_id) return
+  const pending = getPendingQuantity(selectedReceiveDelivery.value)
+  if (receiveForm.value.quantity > pending) {
+    if (!isRoot.value) {
+      snackbar.error(overReceiveDeniedMessage.value)
+      return
+    }
+    const over = receiveForm.value.quantity - Math.max(pending, 0)
+    const ok = await confirm(`Bạn đang nhập dư ${over} cuộn so với số đặt. Tiếp tục?`)
+    if (!ok) return
+  }
   receiving.value = true
   try {
-    const dto: { warehouse_id: number; quantity: number; received_by: string; expiry_date?: string } = {
+    const dto: ReceiveDeliveryDTO = {
       warehouse_id: receiveForm.value.warehouse_id,
       quantity: receiveForm.value.quantity,
       received_by: currentUser.value,
+      idempotency_key: receiveIdempotencyKey.value,
     }
     if (receiveForm.value.expiry_date) {
       dto.expiry_date = fromDatePickerFormat(receiveForm.value.expiry_date)

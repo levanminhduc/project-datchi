@@ -1,4 +1,5 @@
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query } from '../db/query'
+import { from } from '../db/sql-builder'
 import type { ConeStatus } from '../types/thread'
 import type {
   ChatAssistantStockRow,
@@ -13,26 +14,33 @@ import { matchesChatTex, sanitizeSearchTerm } from './chat-assistant-parser'
 
 export async function resolveChatThreadRefs(term: string, tex: string | null) {
   const safe = sanitizeSearchTerm(term)
-  const { data: colors, error: colorError } = await supabase
-    .from('colors')
-    .select('id')
-    .ilike('name', `%${safe}%`)
-    .limit(50)
-  if (colorError) throw colorError
+  const colors = await query<{ id: number }>(
+    `SELECT id FROM colors WHERE name ILIKE $1 LIMIT 50`,
+    [`%${safe}%`]
+  )
 
-  const colorIds = (colors ?? []).map(row => row.id as number)
-  const filters = [`code.ilike.%${safe}%`, `name.ilike.%${safe}%`]
-  if (colorIds.length > 0) filters.push(`color_id.in.(${colorIds.join(',')})`)
+  const colorIds = colors.map(row => row.id as number)
 
-  const { data, error } = await supabase
-    .from('thread_types')
-    .select('id, code, name, tex_number, supplier_id, color_id')
-    .is('deleted_at', null)
-    .or(filters.join(','))
-    .limit(80)
-  if (error) throw error
+  const orParts: string[] = []
+  const params: unknown[] = []
+  params.push(`%${safe}%`)
+  orParts.push(`code ILIKE $${params.length}`)
+  params.push(`%${safe}%`)
+  orParts.push(`name ILIKE $${params.length}`)
+  if (colorIds.length > 0) {
+    params.push(colorIds)
+    orParts.push(`color_id = ANY($${params.length})`)
+  }
 
-  const threadTypes = ((data ?? []) as ThreadLookup[]).filter(row => matchesChatTex(row, tex))
+  const data = await query<ThreadLookup>(
+    `SELECT id, code, name, tex_number, supplier_id, color_id
+     FROM thread_types
+     WHERE deleted_at IS NULL AND (${orParts.join(' OR ')})
+     LIMIT 80`,
+    params
+  )
+
+  const threadTypes = data.filter(row => matchesChatTex(row, tex))
   const resolvedColorIds = new Set(colorIds)
   for (const thread of threadTypes) {
     if (thread.color_id != null) resolvedColorIds.add(thread.color_id)
@@ -43,17 +51,12 @@ export async function resolveChatThreadRefs(term: string, tex: string | null) {
 
 export async function getChatStock(term: string, tex: string | null): Promise<ChatAssistantStockRow[]> {
   const statuses: ConeStatus[] = ['RECEIVED', 'INSPECTED', 'AVAILABLE']
-  const { data, error } = await supabase.rpc('fn_cone_summary_filtered', {
-    p_statuses: statuses,
-    p_warehouse_ids: null,
-    p_supplier_id: null,
-    p_material: null,
-    p_search: `%${sanitizeSearchTerm(term)}%`,
-    p_only_unreserved: true,
-  })
-  if (error) throw error
+  const data = await query<SummaryRpcRow>(
+    'SELECT * FROM fn_cone_summary_filtered($1, $2, $3, $4, $5, $6)',
+    [statuses, null, null, null, `%${sanitizeSearchTerm(term)}%`, true]
+  )
 
-  const rows = ((data ?? []) as SummaryRpcRow[]).filter(row => matchesChatTex(row, tex))
+  const rows = data.filter(row => matchesChatTex(row, tex))
   const suppliers = await supplierNames(rows.map(row => row.supplier_id))
   return rows.map(row => ({
     thread_type_id: row.thread_type_id,
@@ -76,13 +79,14 @@ export async function getChatUsage(threadTypeIds: number[], colorIds: number[]):
   const specIds = [...new Set([...colorSpecIds, ...directRows.map(row => row.id)])]
   if (specIds.length === 0) return []
 
-  const { data: specs, error: specsError } = await supabase
-    .from('style_thread_specs')
-    .select('id, style_id, process_name, meters_per_unit')
-    .in('id', specIds)
-  if (specsError) throw specsError
+  const specs = await query<StyleSpecRow>(
+    `SELECT id, style_id, process_name, meters_per_unit
+     FROM style_thread_specs
+     WHERE id = ANY($1)`,
+    [specIds]
+  )
 
-  const specRows = (specs ?? []) as StyleSpecRow[]
+  const specRows = specs as StyleSpecRow[]
   const specMap = new Map(specRows.map(row => [row.id, row]))
   const { styles, styleColors } = await usageLookups(specRows, colorRows)
   const usage = new Map<string, ChatAssistantUsageRow>()
@@ -118,38 +122,47 @@ export async function getChatUsage(threadTypeIds: number[], colorIds: number[]):
 async function supplierNames(ids: Array<number | null>): Promise<Map<number, string>> {
   const uniqueIds = [...new Set(ids.filter((id): id is number => id != null))]
   if (uniqueIds.length === 0) return new Map()
-  const { data, error } = await supabase.from('suppliers').select('id, name').in('id', uniqueIds)
-  if (error) throw error
-  return new Map((data ?? []).map(row => [row.id as number, row.name as string]))
+  const data = await query<{ id: number; name: string }>(
+    `SELECT id, name FROM suppliers WHERE id = ANY($1)`,
+    [uniqueIds]
+  )
+  return new Map(data.map(row => [row.id as number, row.name as string]))
 }
 
 async function fetchColorSpecs(threadTypeIds: number[], colorIds: number[]): Promise<ColorSpecRow[]> {
-  const filters = [
-    threadTypeIds.length ? `thread_type_id.in.(${threadTypeIds.join(',')})` : null,
-    colorIds.length ? `thread_color_id.in.(${colorIds.join(',')})` : null,
-  ].filter(Boolean) as string[]
-  if (filters.length === 0) return []
-  const { data, error } = await supabase
-    .from('style_color_thread_specs')
-    .select('style_thread_spec_id, style_color_id')
-    .or(filters.join(','))
-    .limit(200)
-  if (error) throw error
-  return (data ?? []) as ColorSpecRow[]
+  const orParts: string[] = []
+  const params: unknown[] = []
+  if (threadTypeIds.length) {
+    params.push(threadTypeIds)
+    orParts.push(`thread_type_id = ANY($${params.length})`)
+  }
+  if (colorIds.length) {
+    params.push(colorIds)
+    orParts.push(`thread_color_id = ANY($${params.length})`)
+  }
+  if (orParts.length === 0) return []
+  const data = await query<ColorSpecRow>(
+    `SELECT style_thread_spec_id, style_color_id
+     FROM style_color_thread_specs
+     WHERE (${orParts.join(' OR ')})
+     LIMIT 200`,
+    params
+  )
+  return data as ColorSpecRow[]
 }
 
 export async function getChatStyles(search: string, limit = 10): Promise<Array<{ id: number; style_code: string; style_name: string | null; fabric_type: string | null }>> {
   const safe = sanitizeSearchTerm(search)
   if (!safe) return []
-  const { data, error } = await supabase
-    .from('styles')
-    .select('id, style_code, style_name, fabric_type')
-    .is('deleted_at', null)
-    .or(`style_code.ilike.%${safe}%,style_name.ilike.%${safe}%`)
-    .order('style_code', { ascending: true })
-    .limit(Math.min(limit, 20))
-  if (error) throw error
-  return (data ?? []) as Array<{ id: number; style_code: string; style_name: string | null; fabric_type: string | null }>
+  const data = await query<{ id: number; style_code: string; style_name: string | null; fabric_type: string | null }>(
+    `SELECT id, style_code, style_name, fabric_type
+     FROM styles
+     WHERE deleted_at IS NULL AND (style_code ILIKE $1 OR style_name ILIKE $1)
+     ORDER BY style_code ASC
+     LIMIT $2`,
+    [`%${safe}%`, Math.min(limit, 20)]
+  )
+  return data as Array<{ id: number; style_code: string; style_name: string | null; fabric_type: string | null }>
 }
 
 export async function getChatPurchaseOrders(params: {
@@ -158,49 +171,55 @@ export async function getChatPurchaseOrders(params: {
   status?: string
   limit?: number
 }): Promise<Array<{ id: number; po_number: string; customer_name: string | null; status: string; order_date: string | null; delivery_date: string | null; week: string | null }>> {
-  let dbQuery = supabase
-    .from('purchase_orders')
+  const builder = from('purchase_orders')
     .select('id, po_number, customer_name, status, order_date, delivery_date, week')
     .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(Math.min(params.limit ?? 10, 20))
 
   if (params.po_number) {
-    dbQuery = dbQuery.ilike('po_number', `%${sanitizeSearchTerm(params.po_number)}%`)
+    builder.ilike('po_number', `%${sanitizeSearchTerm(params.po_number)}%`)
   }
   if (params.customer_name) {
-    dbQuery = dbQuery.ilike('customer_name', `%${sanitizeSearchTerm(params.customer_name)}%`)
+    builder.ilike('customer_name', `%${sanitizeSearchTerm(params.customer_name)}%`)
   }
   if (params.status) {
-    dbQuery = dbQuery.eq('status', params.status)
+    builder.eq('status', params.status)
   }
 
-  const { data, error } = await dbQuery
-  if (error) throw error
-  return (data ?? []) as Array<{ id: number; po_number: string; customer_name: string | null; status: string; order_date: string | null; delivery_date: string | null; week: string | null }>
+  builder.order({ column: 'created_at', ascending: false }).limit(Math.min(params.limit ?? 10, 20))
+
+  const data = await builder.list<{ id: number; po_number: string; customer_name: string | null; status: string; order_date: string | null; delivery_date: string | null; week: string | null }>()
+  return data
 }
 
 async function fetchDirectSpecs(threadTypeIds: number[]): Promise<StyleSpecRow[]> {
   if (threadTypeIds.length === 0) return []
-  const { data, error } = await supabase
-    .from('style_thread_specs')
-    .select('id, style_id, process_name, meters_per_unit')
-    .in('thread_type_id', threadTypeIds)
-    .limit(200)
-  if (error) throw error
-  return (data ?? []) as StyleSpecRow[]
+  const data = await query<StyleSpecRow>(
+    `SELECT id, style_id, process_name, meters_per_unit
+     FROM style_thread_specs
+     WHERE thread_type_id = ANY($1)
+     LIMIT 200`,
+    [threadTypeIds]
+  )
+  return data as StyleSpecRow[]
 }
 
 async function usageLookups(specs: StyleSpecRow[], colorSpecs: ColorSpecRow[]) {
   const styleIds = [...new Set(specs.map(row => row.style_id))]
   const styleColorIds = [...new Set(colorSpecs.map(row => row.style_color_id).filter((id): id is number => id != null))]
-  const [stylesResult, styleColorsResult] = await Promise.all([
-    supabase.from('styles').select('id, style_code, style_name').in('id', styleIds).is('deleted_at', null),
-    styleColorIds.length ? supabase.from('style_colors').select('id, color_name').in('id', styleColorIds) : Promise.resolve({ data: [], error: null }),
+  const [stylesData, styleColorsData] = await Promise.all([
+    query<StyleRow>(
+      `SELECT id, style_code, style_name FROM styles WHERE id = ANY($1) AND deleted_at IS NULL`,
+      [styleIds]
+    ),
+    styleColorIds.length
+      ? query<{ id: number; color_name: string }>(
+          `SELECT id, color_name FROM style_colors WHERE id = ANY($1)`,
+          [styleColorIds]
+        )
+      : Promise.resolve([] as Array<{ id: number; color_name: string }>),
   ])
-  if (stylesResult.error || styleColorsResult.error) throw stylesResult.error || styleColorsResult.error
   return {
-    styles: new Map((stylesResult.data ?? []).map(row => [row.id as number, row as StyleRow])),
-    styleColors: new Map((styleColorsResult.data ?? []).map(row => [row.id as number, row.color_name as string])),
+    styles: new Map(stylesData.map(row => [row.id as number, row as StyleRow])),
+    styleColors: new Map(styleColorsData.map(row => [row.id as number, row.color_name as string])),
   }
 }

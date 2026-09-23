@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne, querySingle, queryCount } from '../db/query'
+import { getErrorMessage } from '../utils/errorHelper'
 import { requirePermission } from '../middleware/auth'
 import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
@@ -48,10 +49,10 @@ batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
     }
 
     // Check for duplicate cone_ids in system
-    const { data: existingCones } = await supabase
-      .from('thread_inventory')
-      .select('cone_id')
-      .in('cone_id', body.cone_ids)
+    const existingCones = await query<{ cone_id: string }>(
+      'SELECT cone_id FROM thread_inventory WHERE cone_id = ANY($1)',
+      [body.cone_ids]
+    )
 
     if (existingCones && existingCones.length > 0) {
       const duplicates = existingCones.map(c => c.cone_id).join(', ')
@@ -67,11 +68,10 @@ batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
     // Create new lot if lot_id not provided
     if (!lotId && lotNumber) {
       // Check for duplicate lot_number
-      const { data: existingLot } = await supabase
-        .from('lots')
-        .select('id')
-        .eq('lot_number', lotNumber)
-        .single()
+      const existingLot = await queryOne<{ id: number }>(
+        'SELECT id FROM lots WHERE lot_number = $1',
+        [lotNumber]
+      )
 
       if (existingLot) {
         return c.json<BatchApiResponse<null>>({
@@ -81,23 +81,26 @@ batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
       }
 
       // Create new lot
-      const { data: newLot, error: lotError } = await supabase
-        .from('lots')
-        .insert({
-          lot_number: lotNumber,
-          thread_type_id: body.thread_type_id,
-          warehouse_id: body.warehouse_id,
-          production_date: body.production_date || null,
-          expiry_date: body.expiry_date || null,
-          notes: body.notes || null,
-          status: 'ACTIVE',
-          total_cones: 0,
-          available_cones: 0
-        })
-        .select()
-        .single()
-
-      if (lotError) {
+      let newLot: LotRow | null
+      try {
+        newLot = await queryOne<LotRow>(
+          `INSERT INTO lots
+             (lot_number, thread_type_id, warehouse_id, production_date, expiry_date, notes, status, total_cones, available_cones)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING *`,
+          [
+            lotNumber,
+            body.thread_type_id,
+            body.warehouse_id,
+            body.production_date || null,
+            body.expiry_date || null,
+            body.notes || null,
+            'ACTIVE',
+            0,
+            0,
+          ]
+        )
+      } catch (lotError) {
         console.error('Lot creation error:', lotError)
         return c.json<BatchApiResponse<null>>({
           data: null,
@@ -108,11 +111,10 @@ batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
       lotId = (newLot as LotRow).id
     } else if (lotId) {
       // Get lot_number from existing lot
-      const { data: existingLot } = await supabase
-        .from('lots')
-        .select('lot_number')
-        .eq('id', lotId)
-        .single()
+      const existingLot = await queryOne<{ lot_number: string }>(
+        'SELECT lot_number FROM lots WHERE id = $1',
+        [lotId]
+      )
 
       if (existingLot) {
         lotNumber = existingLot.lot_number
@@ -120,11 +122,10 @@ batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
     }
 
     // Get thread type for meters calculation + color_id
-    const { data: threadType } = await supabase
-      .from('thread_types')
-      .select('meters_per_cone, density_grams_per_meter, color_id')
-      .eq('id', body.thread_type_id)
-      .single()
+    const threadType = await queryOne<{ meters_per_cone: number | null; density_grams_per_meter: number | null; color_id: number | null }>(
+      'SELECT meters_per_cone, density_grams_per_meter, color_id FROM thread_types WHERE id = $1',
+      [body.thread_type_id]
+    )
 
     const metersPerCone = body.quantity_meters_per_cone || threadType?.meters_per_cone || 5000
     const weightPerCone = body.weight_per_cone_grams || null
@@ -146,16 +147,44 @@ batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
       color_id: threadType?.color_id ?? null,
     }))
 
-    const { data: insertedCones, error: insertError } = await supabase
-      .from('thread_inventory')
-      .insert(cones)
-      .select('id')
+    const valuesClauses: string[] = []
+    const insertParams: unknown[] = []
+    for (const cone of cones) {
+      const base = insertParams.length
+      valuesClauses.push(
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13})`
+      )
+      insertParams.push(
+        cone.cone_id,
+        cone.thread_type_id,
+        cone.warehouse_id,
+        cone.quantity_cones,
+        cone.quantity_meters,
+        cone.weight_grams,
+        cone.is_partial,
+        cone.status,
+        cone.lot_number,
+        cone.lot_id,
+        cone.expiry_date,
+        cone.received_date,
+        cone.color_id,
+      )
+    }
 
-    if (insertError) {
+    let insertedCones: { id: number }[]
+    try {
+      insertedCones = await query<{ id: number }>(
+        `INSERT INTO thread_inventory
+           (cone_id, thread_type_id, warehouse_id, quantity_cones, quantity_meters, weight_grams, is_partial, status, lot_number, lot_id, expiry_date, received_date, color_id)
+         VALUES ${valuesClauses.join(', ')}
+         RETURNING id`,
+        insertParams
+      )
+    } catch (insertError) {
       console.error('Cone insertion error:', insertError)
       return c.json<BatchApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi nhập cuộn: ' + insertError.message
+        error: 'Lỗi khi nhập cuộn: ' + getErrorMessage(insertError)
       }, 500)
     }
 
@@ -164,42 +193,41 @@ batch.post('/receive', requirePermission('thread.batch.receive'), async (c) => {
     // Update lot counts if lot was used
     if (lotId) {
       // Get current cone count for the lot
-      const { count } = await supabase
-        .from('thread_inventory')
-        .select('*', { count: 'exact', head: true })
-        .eq('lot_id', lotId)
+      const count = await queryCount(
+        'SELECT count(*)::int AS count FROM thread_inventory WHERE lot_id = $1',
+        [lotId]
+      )
 
-      const { count: availableCount } = await supabase
-        .from('thread_inventory')
-        .select('*', { count: 'exact', head: true })
-        .eq('lot_id', lotId)
-        .eq('status', 'AVAILABLE')
+      const availableCount = await queryCount(
+        `SELECT count(*)::int AS count FROM thread_inventory WHERE lot_id = $1 AND status = $2`,
+        [lotId, 'AVAILABLE']
+      )
 
-      await supabase
-        .from('lots')
-        .update({
-          total_cones: count || cones.length,
-          available_cones: availableCount || cones.length
-        })
-        .eq('id', lotId)
+      await query(
+        'UPDATE lots SET total_cones = $1, available_cones = $2 WHERE id = $3',
+        [count || cones.length, availableCount || cones.length, lotId]
+      )
     }
 
     // Log transaction
-    const { data: transaction, error: txError } = await supabase
-      .from('batch_transactions')
-      .insert({
-        operation_type: 'RECEIVE',
-        lot_id: lotId || null,
-        to_warehouse_id: body.warehouse_id,
-        cone_ids: coneDbIds,
-        cone_count: cones.length,
-        notes: body.notes || null,
-        performed_at: new Date().toISOString()
-      })
-      .select('id')
-      .single()
-
-    if (txError) {
+    let transaction: { id: number } | null = null
+    try {
+      transaction = await queryOne<{ id: number }>(
+        `INSERT INTO batch_transactions
+           (operation_type, lot_id, to_warehouse_id, cone_ids, cone_count, notes, performed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [
+          'RECEIVE',
+          lotId || null,
+          body.warehouse_id,
+          coneDbIds,
+          cones.length,
+          body.notes || null,
+          new Date().toISOString(),
+        ]
+      )
+    } catch (txError) {
       console.error('Transaction log error:', txError)
     }
 
@@ -237,19 +265,37 @@ batch.get('/transferable-summary', requirePermission('thread.batch.transfer'), a
 
     const TRANSFERABLE_STATUSES = ['AVAILABLE', 'RECEIVED', 'INSPECTED']
 
-    const { data: cones, error: coneError } = await supabase
-      .from('thread_inventory')
-      .select(`
-        id, thread_type_id, color_id, status,
-        reserved_week_id,
-        thread_types!inner(code, name, tex_number, supplier_id, suppliers(name)),
-        colors!color_id(name, hex_code)
-      `)
-      .eq('warehouse_id', warehouseId)
-      .in('status', [...TRANSFERABLE_STATUSES, 'RESERVED_FOR_ORDER'])
-      .limit(150000)
-
-    if (coneError) {
+    let cones: Array<{
+      id: number
+      thread_type_id: number
+      color_id: number | null
+      status: string | null
+      reserved_week_id: number | null
+      thread_types: { code: string; name: string; tex_number: string; supplier_id: number | null; suppliers: { name: string } | null } | null
+      colors: { name: string; hex_code: string | null } | null
+    }>
+    try {
+      cones = await query(
+        `SELECT
+           ti.id, ti.thread_type_id, ti.color_id, ti.status::text AS status,
+           ti.reserved_week_id,
+           json_build_object(
+             'code', tt.code, 'name', tt.name, 'tex_number', tt.tex_number,
+             'supplier_id', tt.supplier_id,
+             'suppliers', CASE WHEN s.id IS NULL THEN NULL ELSE json_build_object('name', s.name) END
+           ) AS thread_types,
+           CASE WHEN co.id IS NULL THEN NULL
+                ELSE json_build_object('name', co.name, 'hex_code', co.hex_code) END AS colors
+         FROM thread_inventory ti
+         JOIN thread_types tt ON tt.id = ti.thread_type_id
+         LEFT JOIN suppliers s ON s.id = tt.supplier_id
+         LEFT JOIN colors co ON co.id = ti.color_id
+         WHERE ti.warehouse_id = $1
+           AND ti.status::text = ANY($2)
+         LIMIT 150000`,
+        [warehouseId, [...TRANSFERABLE_STATUSES, 'RESERVED_FOR_ORDER']]
+      )
+    } catch (coneError) {
       console.error('Transferable summary error:', coneError)
       return c.json<BatchApiResponse<null>>({
         data: null,
@@ -280,10 +326,10 @@ batch.get('/transferable-summary', requirePermission('thread.batch.transfer'), a
 
     const weekMap = new Map<number, string>()
     if (weekIds.size > 0) {
-      const { data: weeks } = await supabase
-        .from('thread_order_weeks')
-        .select('id, week_name')
-        .in('id', [...weekIds])
+      const weeks = await query<{ id: number; week_name: string }>(
+        'SELECT id, week_name FROM thread_order_weeks WHERE id = ANY($1)',
+        [[...weekIds]]
+      )
       for (const w of weeks || []) {
         weekMap.set(w.id, w.week_name)
       }
@@ -394,15 +440,14 @@ batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) =>
       const TRANSFERABLE_STATUSES = ['AVAILABLE', 'RECEIVED', 'INSPECTED']
       let remaining = body.quantity
 
-      const { data: transferableCones } = await supabase
-        .from('thread_inventory')
-        .select('id')
-        .eq('thread_type_id', body.thread_type_id)
-        .eq('color_id', body.color_id)
-        .eq('warehouse_id', body.from_warehouse_id)
-        .in('status', TRANSFERABLE_STATUSES)
-        .order('id', { ascending: true })
-        .limit(remaining)
+      const transferableCones = await query<{ id: number }>(
+        `SELECT id FROM thread_inventory
+         WHERE thread_type_id = $1 AND color_id = $2 AND warehouse_id = $3
+           AND status::text = ANY($4)
+         ORDER BY id ASC
+         LIMIT $5`,
+        [body.thread_type_id, body.color_id, body.from_warehouse_id, TRANSFERABLE_STATUSES, remaining]
+      )
 
       const transferableIds = (transferableCones || []).map(c => c.id)
       transferableMoved = transferableIds.length
@@ -410,15 +455,14 @@ batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) =>
       remaining -= transferableIds.length
 
       if (remaining > 0 && body.include_reserved) {
-        const { data: reservedCones } = await supabase
-          .from('thread_inventory')
-          .select('id')
-          .eq('thread_type_id', body.thread_type_id)
-          .eq('color_id', body.color_id)
-          .eq('warehouse_id', body.from_warehouse_id)
-          .eq('status', 'RESERVED_FOR_ORDER')
-          .order('id', { ascending: true })
-          .limit(remaining)
+        const reservedCones = await query<{ id: number }>(
+          `SELECT id FROM thread_inventory
+           WHERE thread_type_id = $1 AND color_id = $2 AND warehouse_id = $3
+             AND status = $4
+           ORDER BY id ASC
+           LIMIT $5`,
+          [body.thread_type_id, body.color_id, body.from_warehouse_id, 'RESERVED_FOR_ORDER', remaining]
+        )
 
         const reservedIds = (reservedCones || []).map(c => c.id)
         reservedMoved = reservedIds.length
@@ -426,12 +470,11 @@ batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) =>
       }
 
     } else if (body.lot_id) {
-      const { data: lotCones } = await supabase
-        .from('thread_inventory')
-        .select('id, warehouse_id, status')
-        .eq('lot_id', body.lot_id)
-        .eq('warehouse_id', body.from_warehouse_id)
-        .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
+      const lotCones = await query<{ id: number; warehouse_id: number; status: string }>(
+        `SELECT id, warehouse_id, status::text AS status FROM thread_inventory
+         WHERE lot_id = $1 AND warehouse_id = $2 AND status::text = ANY($3)`,
+        [body.lot_id, body.from_warehouse_id, ['AVAILABLE', 'RECEIVED', 'INSPECTED']]
+      )
       coneIds = lotCones?.map(c => c.id) || []
       transferableMoved = coneIds.length
 
@@ -455,10 +498,10 @@ batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) =>
     }
 
     if (!body.thread_type_id) {
-      const { data: validCones } = await supabase
-        .from('thread_inventory')
-        .select('id, warehouse_id, status')
-        .in('id', coneIds)
+      const validCones = await query<{ id: number; warehouse_id: number; status: string }>(
+        'SELECT id, warehouse_id, status::text AS status FROM thread_inventory WHERE id = ANY($1)',
+        [coneIds]
+      )
 
       const invalidCones = validCones?.filter(
         c => c.warehouse_id !== body.from_warehouse_id ||
@@ -474,12 +517,12 @@ batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) =>
     }
 
     // Update warehouse_id for all cones
-    const { error: updateError } = await supabase
-      .from('thread_inventory')
-      .update({ warehouse_id: body.to_warehouse_id })
-      .in('id', coneIds)
-
-    if (updateError) {
+    try {
+      await query(
+        'UPDATE thread_inventory SET warehouse_id = $1 WHERE id = ANY($2)',
+        [body.to_warehouse_id, coneIds]
+      )
+    } catch (updateError) {
       console.error('Transfer error:', updateError)
       return c.json<BatchApiResponse<null>>({
         data: null,
@@ -490,38 +533,39 @@ batch.post('/transfer', requirePermission('thread.batch.transfer'), async (c) =>
     // Update lot warehouse if entire lot was transferred
     if (body.lot_id) {
       // Check if this is a full lot transfer (all cones from lot in source warehouse)
-      const { count: remainingCount } = await supabase
-        .from('thread_inventory')
-        .select('id', { count: 'exact', head: true })
-        .eq('lot_id', body.lot_id)
-        .eq('warehouse_id', body.from_warehouse_id)
-        .in('status', ['AVAILABLE', 'RECEIVED', 'INSPECTED'])
-      
+      const remainingCount = await queryCount(
+        `SELECT count(*)::int AS count FROM thread_inventory
+         WHERE lot_id = $1 AND warehouse_id = $2 AND status::text = ANY($3)`,
+        [body.lot_id, body.from_warehouse_id, ['AVAILABLE', 'RECEIVED', 'INSPECTED']]
+      )
+
       const isFullLotTransfer = remainingCount === 0
-      
+
       if (isFullLotTransfer) {
-        await supabase
-          .from('lots')
-          .update({ warehouse_id: body.to_warehouse_id })
-          .eq('id', body.lot_id)
+        await query(
+          'UPDATE lots SET warehouse_id = $1 WHERE id = $2',
+          [body.to_warehouse_id, body.lot_id]
+        )
       }
     }
 
     // Log transaction
-    const { data: transaction } = await supabase
-      .from('batch_transactions')
-      .insert({
-        operation_type: 'TRANSFER',
-        lot_id: body.lot_id || null,
-        from_warehouse_id: body.from_warehouse_id,
-        to_warehouse_id: body.to_warehouse_id,
-        cone_ids: coneIds,
-        cone_count: coneIds.length,
-        notes: body.notes || null,
-        performed_at: new Date().toISOString()
-      })
-      .select('id')
-      .single()
+    const transaction = await queryOne<{ id: number }>(
+      `INSERT INTO batch_transactions
+         (operation_type, lot_id, from_warehouse_id, to_warehouse_id, cone_ids, cone_count, notes, performed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
+      [
+        'TRANSFER',
+        body.lot_id || null,
+        body.from_warehouse_id,
+        body.to_warehouse_id,
+        coneIds,
+        coneIds.length,
+        body.notes || null,
+        new Date().toISOString(),
+      ]
+    )
 
     return c.json<BatchApiResponse<BatchOperationResult & { transferable_moved?: number; reserved_moved?: number }>>({
       data: {
@@ -570,12 +614,11 @@ batch.post('/issue', requirePermission('thread.batch.issue'), async (c) => {
 
     // Get cones by lot or by explicit IDs
     if (body.lot_id) {
-      const { data: lotCones } = await supabase
-        .from('thread_inventory')
-        .select('id')
-        .eq('lot_id', body.lot_id)
-        .eq('warehouse_id', body.warehouse_id)
-        .eq('status', 'AVAILABLE')
+      const lotCones = await query<{ id: number }>(
+        `SELECT id FROM thread_inventory
+         WHERE lot_id = $1 AND warehouse_id = $2 AND status = $3`,
+        [body.lot_id, body.warehouse_id, 'AVAILABLE']
+      )
 
       coneIds = lotCones?.map(c => c.id) || []
     } else if (body.cone_ids && body.cone_ids.length > 0) {
@@ -597,10 +640,10 @@ batch.post('/issue', requirePermission('thread.batch.issue'), async (c) => {
     }
 
     // Validate all cones are available
-    const { data: validCones } = await supabase
-      .from('thread_inventory')
-      .select('id, warehouse_id, status')
-      .in('id', coneIds)
+    const validCones = await query<{ id: number; warehouse_id: number; status: string }>(
+      'SELECT id, warehouse_id, status::text AS status FROM thread_inventory WHERE id = ANY($1)',
+      [coneIds]
+    )
 
     const invalidCones = validCones?.filter(
       c => c.warehouse_id !== body.warehouse_id || c.status !== 'AVAILABLE'
@@ -614,12 +657,12 @@ batch.post('/issue', requirePermission('thread.batch.issue'), async (c) => {
     }
 
     // Update status for all cones
-    const { error: updateError } = await supabase
-      .from('thread_inventory')
-      .update({ status: 'HARD_ALLOCATED' })
-      .in('id', coneIds)
-
-    if (updateError) {
+    try {
+      await query(
+        'UPDATE thread_inventory SET status = $1 WHERE id = ANY($2)',
+        ['HARD_ALLOCATED', coneIds]
+      )
+    } catch (updateError) {
       console.error('Issue error:', updateError)
       return c.json<BatchApiResponse<null>>({
         data: null,
@@ -629,39 +672,36 @@ batch.post('/issue', requirePermission('thread.batch.issue'), async (c) => {
 
     // Update lot available_cones count
     if (body.lot_id) {
-      const { data: remainingCount } = await supabase
-        .from('thread_inventory')
-        .select('id', { count: 'exact' })
-        .eq('lot_id', body.lot_id)
-        .eq('status', 'AVAILABLE')
+      const remaining = await queryCount(
+        `SELECT count(*)::int AS count FROM thread_inventory
+         WHERE lot_id = $1 AND status = $2`,
+        [body.lot_id, 'AVAILABLE']
+      )
 
-      const remaining = remainingCount?.length || 0
-
-      await supabase
-        .from('lots')
-        .update({
-          available_cones: remaining,
-          status: remaining === 0 ? 'DEPLETED' : 'ACTIVE'
-        })
-        .eq('id', body.lot_id)
+      await query(
+        'UPDATE lots SET available_cones = $1, status = $2 WHERE id = $3',
+        [remaining, remaining === 0 ? 'DEPLETED' : 'ACTIVE', body.lot_id]
+      )
     }
 
     // Log transaction
-    const { data: transaction } = await supabase
-      .from('batch_transactions')
-      .insert({
-        operation_type: 'ISSUE',
-        lot_id: body.lot_id || null,
-        from_warehouse_id: body.warehouse_id,
-        cone_ids: coneIds,
-        cone_count: coneIds.length,
-        recipient: body.recipient,
-        reference_number: body.reference_number || null,
-        notes: body.notes || null,
-        performed_at: new Date().toISOString()
-      })
-      .select('id')
-      .single()
+    const transaction = await queryOne<{ id: number }>(
+      `INSERT INTO batch_transactions
+         (operation_type, lot_id, from_warehouse_id, cone_ids, cone_count, recipient, reference_number, notes, performed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id`,
+      [
+        'ISSUE',
+        body.lot_id || null,
+        body.warehouse_id,
+        coneIds,
+        coneIds.length,
+        body.recipient,
+        body.reference_number || null,
+        body.notes || null,
+        new Date().toISOString(),
+      ]
+    )
 
     return c.json<BatchApiResponse<BatchOperationResult>>({
       data: {
@@ -711,15 +751,12 @@ batch.post('/return', requirePermission('thread.batch.issue'), async (c) => {
     }
 
     // Update status and warehouse for returned cones
-    const { error: updateError } = await supabase
-      .from('thread_inventory')
-      .update({
-        status: 'AVAILABLE',
-        warehouse_id: body.warehouse_id
-      })
-      .in('id', body.cone_ids)
-
-    if (updateError) {
+    try {
+      await query(
+        'UPDATE thread_inventory SET status = $1, warehouse_id = $2 WHERE id = ANY($3)',
+        ['AVAILABLE', body.warehouse_id, body.cone_ids]
+      )
+    } catch (updateError) {
       console.error('Return error:', updateError)
       return c.json<BatchApiResponse<null>>({
         data: null,
@@ -728,18 +765,20 @@ batch.post('/return', requirePermission('thread.batch.issue'), async (c) => {
     }
 
     // Log transaction
-    const { data: transaction } = await supabase
-      .from('batch_transactions')
-      .insert({
-        operation_type: 'RETURN',
-        to_warehouse_id: body.warehouse_id,
-        cone_ids: body.cone_ids,
-        cone_count: body.cone_ids.length,
-        notes: body.notes || null,
-        performed_at: new Date().toISOString()
-      })
-      .select('id')
-      .single()
+    const transaction = await queryOne<{ id: number }>(
+      `INSERT INTO batch_transactions
+         (operation_type, to_warehouse_id, cone_ids, cone_count, notes, performed_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [
+        'RETURN',
+        body.warehouse_id,
+        body.cone_ids,
+        body.cone_ids.length,
+        body.notes || null,
+        new Date().toISOString(),
+      ]
+    )
 
     return c.json<BatchApiResponse<BatchOperationResult>>({
       data: {
@@ -795,43 +834,73 @@ batch.get('/transfer-history', requirePermission('thread.inventory.view'), async
     const safeSortBy = ALLOWED_SORT.includes(sortBy) ? sortBy : 'performed_at'
     const offset = (page - 1) * pageSize
 
-    let query = supabase
-      .from('batch_transactions')
-      .select(`
-        id, from_warehouse_id, to_warehouse_id, cone_ids, cone_count,
-        lot_id, reference_number, notes, performed_by, performed_at,
-        lot:lots(id, lot_number),
-        from_warehouse:warehouses!batch_transactions_from_warehouse_id_fkey(id, code, name),
-        to_warehouse:warehouses!batch_transactions_to_warehouse_id_fkey(id, code, name)
-      `, { count: 'exact' })
-      .eq('operation_type', 'TRANSFER')
+    const conditions: string[] = [`bt.operation_type = 'TRANSFER'`]
+    const params: unknown[] = []
 
-    if (fromWarehouseId) query = query.eq('from_warehouse_id', fromWarehouseId)
-    if (toWarehouseId) query = query.eq('to_warehouse_id', toWarehouseId)
-    if (fromDate) query = query.gte('performed_at', fromDate)
-    if (toDate) query = query.lte('performed_at', toDate + 'T23:59:59')
+    if (fromWarehouseId) {
+      params.push(fromWarehouseId)
+      conditions.push(`bt.from_warehouse_id = $${params.length}`)
+    }
+    if (toWarehouseId) {
+      params.push(toWarehouseId)
+      conditions.push(`bt.to_warehouse_id = $${params.length}`)
+    }
+    if (fromDate) {
+      params.push(fromDate)
+      conditions.push(`bt.performed_at >= $${params.length}`)
+    }
+    if (toDate) {
+      params.push(toDate + 'T23:59:59')
+      conditions.push(`bt.performed_at <= $${params.length}`)
+    }
     if (search) {
       const s = sanitizeFilterValue(search)
-      query = query.or(`notes.ilike.%${s}%,reference_number.ilike.%${s}%,performed_by.ilike.%${s}%`)
+      params.push(`%${s}%`)
+      conditions.push(
+        `(bt.notes ILIKE $${params.length} OR bt.reference_number ILIKE $${params.length} OR bt.performed_by ILIKE $${params.length})`
+      )
     }
 
-    query = query.order(safeSortBy, { ascending: !descending })
-      .range(offset, offset + pageSize - 1)
+    const whereClause = `WHERE ${conditions.join(' AND ')}`
 
-    const { data, error, count } = await query
+    try {
+      const count = await queryCount(
+        `SELECT count(*)::int AS count FROM batch_transactions bt ${whereClause}`,
+        params
+      )
 
-    if (error) {
+      const dataParams = [...params, pageSize, offset]
+      const data = await query<Record<string, unknown>>(
+        `SELECT
+           bt.id, bt.from_warehouse_id, bt.to_warehouse_id, bt.cone_ids, bt.cone_count,
+           bt.lot_id, bt.reference_number, bt.notes, bt.performed_by, bt.performed_at,
+           CASE WHEN l.id IS NULL THEN NULL
+                ELSE json_build_object('id', l.id, 'lot_number', l.lot_number) END AS lot,
+           CASE WHEN fw.id IS NULL THEN NULL
+                ELSE json_build_object('id', fw.id, 'code', fw.code, 'name', fw.name) END AS from_warehouse,
+           CASE WHEN tw.id IS NULL THEN NULL
+                ELSE json_build_object('id', tw.id, 'code', tw.code, 'name', tw.name) END AS to_warehouse
+         FROM batch_transactions bt
+         LEFT JOIN lots l ON l.id = bt.lot_id
+         LEFT JOIN warehouses fw ON fw.id = bt.from_warehouse_id
+         LEFT JOIN warehouses tw ON tw.id = bt.to_warehouse_id
+         ${whereClause}
+         ORDER BY bt.${safeSortBy} ${descending ? 'DESC' : 'ASC'}
+         LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+        dataParams
+      )
+
+      return c.json({
+        data: {
+          items: data || [],
+          total: count || 0,
+        },
+        error: null
+      })
+    } catch (error) {
       console.error('[transfer-history] query error:', error)
       return c.json({ data: null, error: 'Lỗi khi tải lịch sử chuyển kho' }, 500)
     }
-
-    return c.json({
-      data: {
-        items: data || [],
-        total: count || 0,
-      },
-      error: null
-    })
   } catch (err) {
     console.error('[transfer-history] server error:', err)
     return c.json({ data: null, error: 'Lỗi hệ thống' }, 500)
@@ -864,15 +933,37 @@ batch.get('/transfer-history/summary', requirePermission('thread.inventory.view'
     }
 
     const sanitizedSearch = search ? sanitizeFilterValue(search) : null
-    const { data, error } = await supabase.rpc('fn_transfer_history_summary', {
-      p_from_warehouse_id: fromWarehouseId,
-      p_to_warehouse_id: toWarehouseId,
-      p_from_date: fromDate || null,
-      p_to_date: toDate ? toDate + 'T23:59:59' : null,
-      p_search: sanitizedSearch,
-    }).single()
-
-    if (error) {
+    let data: {
+      total_transfers: number
+      total_cones: number
+      top_source_id: number | null
+      top_source_name: string | null
+      top_source_count: number | null
+      top_dest_id: number | null
+      top_dest_name: string | null
+      top_dest_count: number | null
+    }
+    try {
+      data = await querySingle(
+        `SELECT
+           total_transfers::int AS total_transfers,
+           total_cones::int AS total_cones,
+           top_source_id,
+           top_source_name,
+           top_source_count::int AS top_source_count,
+           top_dest_id,
+           top_dest_name,
+           top_dest_count::int AS top_dest_count
+         FROM fn_transfer_history_summary($1, $2, $3, $4, $5)`,
+        [
+          fromWarehouseId,
+          toWarehouseId,
+          fromDate || null,
+          toDate ? toDate + 'T23:59:59' : null,
+          sanitizedSearch,
+        ]
+      )
+    } catch (error) {
       console.error('[transfer-history/summary] RPC error:', error)
       return c.json({ data: null, error: 'Lỗi khi tải thống kê' }, 500)
     }
@@ -903,13 +994,12 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: tx, error: txError } = await supabase
-      .from('batch_transactions')
-      .select('cone_ids, operation_type')
-      .eq('id', id)
-      .single()
+    const tx = await queryOne<{ cone_ids: number[] | null; operation_type: string }>(
+      'SELECT cone_ids, operation_type::text AS operation_type FROM batch_transactions WHERE id = $1',
+      [id]
+    )
 
-    if (txError || !tx) {
+    if (!tx) {
       return c.json({ data: null, error: 'Không tìm thấy phiếu chuyển kho' }, 404)
     }
     if (tx.operation_type !== 'TRANSFER') {
@@ -927,16 +1017,16 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
 
     for (let i = 0; i < coneIds.length; i += BATCH_SIZE) {
       const batch = coneIds.slice(i, i + BATCH_SIZE)
-      const { data, error } = await supabase
-        .from('thread_inventory')
-        .select('thread_type_id, color_id')
-        .in('id', batch)
-
-      if (error) {
+      try {
+        const data = await query<{ thread_type_id: number; color_id: number | null }>(
+          'SELECT thread_type_id, color_id FROM thread_inventory WHERE id = ANY($1)',
+          [batch]
+        )
+        if (data) cones.push(...data)
+      } catch (error) {
         console.error('[cone-summary] cones query error:', error)
-        return c.json({ data: null, error: `Lỗi khi tải thông tin cuộn chỉ: ${error.message}` }, 500)
+        return c.json({ data: null, error: `Lỗi khi tải thông tin cuộn chỉ: ${getErrorMessage(error)}` }, 500)
       }
-      if (data) cones.push(...data)
     }
 
     if (cones.length === 0) {
@@ -950,14 +1040,19 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
     // Query 2: Get thread types with suppliers
     const ttMap = new Map<number, { tex_number: string; supplier_name: string }>()
     if (threadTypeIds.length > 0) {
-      const { data: threadTypes, error: ttError } = await supabase
-        .from('thread_types')
-        .select('id, tex_number, supplier_id, suppliers(name)')
-        .in('id', threadTypeIds)
-
-      if (ttError) {
+      let threadTypes: { id: number; tex_number: string | null; supplier_id: number | null; suppliers: { name: string } | null }[]
+      try {
+        threadTypes = await query(
+          `SELECT tt.id, tt.tex_number, tt.supplier_id,
+             CASE WHEN s.id IS NULL THEN NULL ELSE json_build_object('name', s.name) END AS suppliers
+           FROM thread_types tt
+           LEFT JOIN suppliers s ON s.id = tt.supplier_id
+           WHERE tt.id = ANY($1)`,
+          [threadTypeIds]
+        )
+      } catch (ttError) {
         console.error('[cone-summary] thread_types query error:', ttError)
-        return c.json({ data: null, error: `Lỗi khi tải loại chỉ: ${ttError.message}` }, 500)
+        return c.json({ data: null, error: `Lỗi khi tải loại chỉ: ${getErrorMessage(ttError)}` }, 500)
       }
 
       for (const tt of threadTypes || []) {
@@ -972,14 +1067,15 @@ batch.get('/transfer-history/:id/cone-summary', requirePermission('thread.invent
     // Query 3: Get colors
     const colorMap = new Map<number, { name: string; hex_code: string | null }>()
     if (colorIds.length > 0) {
-      const { data: colors, error: colorError } = await supabase
-        .from('colors')
-        .select('id, name, hex_code')
-        .in('id', colorIds)
-
-      if (colorError) {
+      let colors: { id: number; name: string; hex_code: string | null }[]
+      try {
+        colors = await query(
+          'SELECT id, name, hex_code FROM colors WHERE id = ANY($1)',
+          [colorIds]
+        )
+      } catch (colorError) {
         console.error('[cone-summary] colors query error:', colorError)
-        return c.json({ data: null, error: `Lỗi khi tải màu: ${colorError.message}` }, 500)
+        return c.json({ data: null, error: `Lỗi khi tải màu: ${getErrorMessage(colorError)}` }, 500)
       }
 
       for (const color of colors || []) {
@@ -1037,36 +1133,53 @@ batch.get('/transactions', requirePermission('thread.inventory.view'), async (c)
     const fromDate = c.req.query('from_date')
     const toDate = c.req.query('to_date')
 
-    let query = supabase
-      .from('batch_transactions')
-      .select(`
-        *,
-        lot:lots(id, lot_number),
-        from_warehouse:warehouses!batch_transactions_from_warehouse_id_fkey(id, code, name),
-        to_warehouse:warehouses!batch_transactions_to_warehouse_id_fkey(id, code, name)
-      `)
+    const conditions: string[] = []
+    const params: unknown[] = []
 
     if (operationType) {
-      query = query.eq('operation_type', operationType)
+      params.push(operationType)
+      conditions.push(`bt.operation_type = $${params.length}`)
     }
     if (lotId) {
-      query = query.eq('lot_id', parseInt(lotId))
+      params.push(parseInt(lotId))
+      conditions.push(`bt.lot_id = $${params.length}`)
     }
     if (warehouseId) {
       const whId = parseInt(warehouseId)
-      query = query.or(`from_warehouse_id.eq.${sanitizeFilterValue(String(whId))},to_warehouse_id.eq.${sanitizeFilterValue(String(whId))}`)
+      params.push(whId)
+      conditions.push(`(bt.from_warehouse_id = $${params.length} OR bt.to_warehouse_id = $${params.length})`)
     }
     if (fromDate) {
-      query = query.gte('performed_at', fromDate)
+      params.push(fromDate)
+      conditions.push(`bt.performed_at >= $${params.length}`)
     }
     if (toDate) {
-      query = query.lte('performed_at', toDate + 'T23:59:59')
+      params.push(toDate + 'T23:59:59')
+      conditions.push(`bt.performed_at <= $${params.length}`)
     }
 
-    const { data, error } = await query.order('performed_at', { ascending: false })
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-    if (error) {
-      console.error('Supabase error:', error)
+    let data: BatchTransactionRow[]
+    try {
+      data = await query<BatchTransactionRow>(
+        `SELECT bt.*,
+           CASE WHEN l.id IS NULL THEN NULL
+                ELSE json_build_object('id', l.id, 'lot_number', l.lot_number) END AS lot,
+           CASE WHEN fw.id IS NULL THEN NULL
+                ELSE json_build_object('id', fw.id, 'code', fw.code, 'name', fw.name) END AS from_warehouse,
+           CASE WHEN tw.id IS NULL THEN NULL
+                ELSE json_build_object('id', tw.id, 'code', tw.code, 'name', tw.name) END AS to_warehouse
+         FROM batch_transactions bt
+         LEFT JOIN lots l ON l.id = bt.lot_id
+         LEFT JOIN warehouses fw ON fw.id = bt.from_warehouse_id
+         LEFT JOIN warehouses tw ON tw.id = bt.to_warehouse_id
+         ${whereClause}
+         ORDER BY bt.performed_at DESC`,
+        params
+      )
+    } catch (error) {
+      console.error('Database error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải lịch sử thao tác'
@@ -1074,7 +1187,7 @@ batch.get('/transactions', requirePermission('thread.inventory.view'), async (c)
     }
 
     return c.json<BatchApiResponse<BatchTransactionRow[]>>({
-      data: data as BatchTransactionRow[],
+      data: data,
       error: null,
       message: `Đã tải ${data.length} thao tác`
     })
@@ -1094,33 +1207,40 @@ batch.get('/transactions/:id', requirePermission('thread.inventory.view'), async
   try {
     const id = parseInt(c.req.param('id'))
 
-    const { data, error } = await supabase
-      .from('batch_transactions')
-      .select(`
-        *,
-        lot:lots(id, lot_number, thread_type_id, warehouse_id),
-        from_warehouse:warehouses!batch_transactions_from_warehouse_id_fkey(id, code, name),
-        to_warehouse:warehouses!batch_transactions_to_warehouse_id_fkey(id, code, name)
-      `)
-      .eq('id', id)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<BatchApiResponse<null>>({
-          data: null,
-          error: 'Không tìm thấy thao tác'
-        }, 404)
-      }
-      console.error('Supabase error:', error)
+    let data: BatchTransactionRow | null
+    try {
+      data = await queryOne<BatchTransactionRow>(
+        `SELECT bt.*,
+           CASE WHEN l.id IS NULL THEN NULL
+                ELSE json_build_object('id', l.id, 'lot_number', l.lot_number, 'thread_type_id', l.thread_type_id, 'warehouse_id', l.warehouse_id) END AS lot,
+           CASE WHEN fw.id IS NULL THEN NULL
+                ELSE json_build_object('id', fw.id, 'code', fw.code, 'name', fw.name) END AS from_warehouse,
+           CASE WHEN tw.id IS NULL THEN NULL
+                ELSE json_build_object('id', tw.id, 'code', tw.code, 'name', tw.name) END AS to_warehouse
+         FROM batch_transactions bt
+         LEFT JOIN lots l ON l.id = bt.lot_id
+         LEFT JOIN warehouses fw ON fw.id = bt.from_warehouse_id
+         LEFT JOIN warehouses tw ON tw.id = bt.to_warehouse_id
+         WHERE bt.id = $1`,
+        [id]
+      )
+    } catch (error) {
+      console.error('Database error:', error)
       return c.json<BatchApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải thông tin thao tác'
       }, 500)
     }
 
+    if (!data) {
+      return c.json<BatchApiResponse<null>>({
+        data: null,
+        error: 'Không tìm thấy thao tác'
+      }, 404)
+    }
+
     return c.json<BatchApiResponse<BatchTransactionRow>>({
-      data: data as BatchTransactionRow,
+      data: data,
       error: null
     })
   } catch (err) {

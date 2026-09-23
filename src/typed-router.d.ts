@@ -93,13 +93,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/kho': RouteRecordInfo<
-      '/kho',
-      '/kho',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
     '/ky-thuat': RouteRecordInfo<
       '/ky-thuat',
       '/ky-thuat',
@@ -366,13 +359,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/thread/return/[id]': RouteRecordInfo<
-      '/thread/return/[id]',
-      '/thread/return/:id',
-      { id: ParamValue<true> },
-      { id: ParamValue<false> },
-      | never
-    >,
     '/thread/stocktake': RouteRecordInfo<
       '/thread/stocktake',
       '/thread/stocktake',
@@ -472,6 +458,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/thread/weekly-order/workflow': RouteRecordInfo<
+      '/thread/weekly-order/workflow',
+      '/thread/weekly-order/workflow',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
   }
 
   /**
@@ -542,12 +535,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/ke-hoach.vue': {
       routes:
         | '/ke-hoach'
-      views:
-        | never
-    }
-    'src/pages/kho.vue': {
-      routes:
-        | '/kho'
       views:
         | never
     }
@@ -780,12 +767,6 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/thread/return/[id].vue': {
-      routes:
-        | '/thread/return/[id]'
-      views:
-        | never
-    }
     'src/pages/thread/stocktake.vue': {
       routes:
         | '/thread/stocktake'
@@ -869,6 +850,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/weekly-order/leader-review.vue': {
       routes:
         | '/thread/weekly-order/leader-review'
+      views:
+        | never
+    }
+    'src/pages/thread/weekly-order/workflow.vue': {
+      routes:
+        | '/thread/weekly-order/workflow'
       views:
         | never
     }

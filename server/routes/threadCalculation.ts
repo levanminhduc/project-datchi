@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 
@@ -7,7 +7,7 @@ const threadCalculation = new Hono()
 
 threadCalculation.use('*', requirePermission('thread.inventory.view'))
 
-// ============ Supabase Query Result Types ============
+// ============ Query Result Types ============
 
 /** Row shape from: styles.select('id, style_code, style_name') */
 interface StyleRow {
@@ -149,34 +149,48 @@ interface CalculationResult {
 
 // ============ Shared Helpers ============
 
-const SPEC_SELECT = `
-  id,
-  style_id,
-  process_name,
-  meters_per_unit,
-  thread_type_id,
-  suppliers:supplier_id (id, name, lead_time_days),
-  thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_id, color_data:colors(name, hex_code))
+const SPEC_COLUMNS = `
+  sts.id,
+  sts.style_id,
+  sts.process_name,
+  sts.meters_per_unit::float8 AS meters_per_unit,
+  sts.thread_type_id,
+  CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('id', sup.id, 'name', sup.name, 'lead_time_days', sup.lead_time_days) END AS suppliers,
+  CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+    'id', tt.id, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label, 'name', tt.name,
+    'meters_per_cone', tt.meters_per_cone, 'color_id', tt.color_id,
+    'color_data', CASE WHEN ttcol.id IS NULL THEN NULL ELSE json_build_object('name', ttcol.name, 'hex_code', ttcol.hex_code) END
+  ) END AS thread_types
 ` as const
 
-const COLOR_SPEC_SELECT = `
-  style_thread_spec_id,
-  color_id,
-  style_color_id,
-  thread_type_id,
-  thread_color_id,
-  colors:color_id (id, name),
-  thread_color:colors!thread_color_id (name, hex_code),
-  thread_types:thread_type_id (
-    id,
-    name,
-    tex_number,
-    tex_label,
-    meters_per_cone,
-    supplier_id,
-    suppliers:supplier_id (id, name, lead_time_days),
-    color_data:colors!color_id(name, hex_code)
-  )
+const SPEC_JOINS = `
+  LEFT JOIN suppliers sup ON sup.id = sts.supplier_id
+  LEFT JOIN thread_types tt ON tt.id = sts.thread_type_id
+  LEFT JOIN colors ttcol ON ttcol.id = tt.color_id
+` as const
+
+const COLOR_SPEC_COLUMNS = `
+  scts.style_thread_spec_id,
+  scts.color_id,
+  scts.style_color_id,
+  scts.thread_type_id,
+  scts.thread_color_id,
+  CASE WHEN col.id IS NULL THEN NULL ELSE json_build_object('id', col.id, 'name', col.name) END AS colors,
+  CASE WHEN tcol.id IS NULL THEN NULL ELSE json_build_object('name', tcol.name, 'hex_code', tcol.hex_code) END AS thread_color,
+  CASE WHEN ctt.id IS NULL THEN NULL ELSE json_build_object(
+    'id', ctt.id, 'name', ctt.name, 'tex_number', ctt.tex_number, 'tex_label', ctt.tex_label,
+    'meters_per_cone', ctt.meters_per_cone, 'supplier_id', ctt.supplier_id,
+    'suppliers', CASE WHEN csup.id IS NULL THEN NULL ELSE json_build_object('id', csup.id, 'name', csup.name, 'lead_time_days', csup.lead_time_days) END,
+    'color_data', CASE WHEN cttcol.id IS NULL THEN NULL ELSE json_build_object('name', cttcol.name, 'hex_code', cttcol.hex_code) END
+  ) END AS thread_types
+` as const
+
+const COLOR_SPEC_JOINS = `
+  LEFT JOIN colors col ON col.id = scts.color_id
+  LEFT JOIN colors tcol ON tcol.id = scts.thread_color_id
+  LEFT JOIN thread_types ctt ON ctt.id = scts.thread_type_id
+  LEFT JOIN suppliers csup ON csup.id = ctt.supplier_id
+  LEFT JOIN colors cttcol ON cttcol.id = ctt.color_id
 ` as const
 
 type SupplierMpcMap = Map<string, number>
@@ -192,14 +206,18 @@ async function getSupplierMetersPerCone(
   const map: SupplierMpcMap = new Map()
   if (threadTypeIds.length === 0 || supplierIds.length === 0) return map
 
-  const { data, error } = await supabase
-    .from('thread_type_supplier')
-    .select('thread_type_id, supplier_id, meters_per_cone')
-    .in('thread_type_id', threadTypeIds)
-    .in('supplier_id', supplierIds)
-    .not('meters_per_cone', 'is', null)
+  let data: { thread_type_id: number; supplier_id: number; meters_per_cone: number | null }[] | null = null
+  try {
+    data = await query<{ thread_type_id: number; supplier_id: number; meters_per_cone: number | null }>(
+      `SELECT thread_type_id, supplier_id, meters_per_cone FROM thread_type_supplier
+       WHERE thread_type_id = ANY($1) AND supplier_id = ANY($2) AND meters_per_cone IS NOT NULL`,
+      [threadTypeIds, supplierIds]
+    )
+  } catch {
+    return map
+  }
 
-  if (error || !data) return map
+  if (!data) return map
 
   for (const row of data) {
     if (row.meters_per_cone != null) {
@@ -213,14 +231,12 @@ async function getAvailableInventory(threadTypeIds: number[]): Promise<Map<strin
   if (threadTypeIds.length === 0) return new Map()
 
   const usableStatuses = ['RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED']
-  const { data, error } = await supabase
-    .from('thread_inventory')
-    .select('thread_type_id, color_id')
-    .in('status', usableStatuses)
-    .in('thread_type_id', threadTypeIds)
-    .limit(50000)
-
-  if (error) throw error
+  const data = await query<{ thread_type_id: number; color_id: number | null }>(
+    `SELECT thread_type_id, color_id FROM thread_inventory
+     WHERE status = ANY($1) AND thread_type_id = ANY($2)
+     LIMIT 50000`,
+    [usableStatuses, threadTypeIds]
+  )
 
   const colorIds = [...new Set(
     (data || [])
@@ -230,11 +246,15 @@ async function getAvailableInventory(threadTypeIds: number[]): Promise<Map<strin
 
   const colorIdToName = new Map<number, string>()
   if (colorIds.length > 0) {
-    const { data: colorRows } = await supabase
-      .from('colors')
-      .select('id, name')
-      .in('id', colorIds)
-      .limit(colorIds.length)
+    let colorRows: { id: number; name: string }[] = []
+    try {
+      colorRows = await query<{ id: number; name: string }>(
+        'SELECT id, name FROM colors WHERE id = ANY($1) LIMIT $2',
+        [colorIds, colorIds.length]
+      )
+    } catch {
+      colorRows = []
+    }
 
     for (const c of colorRows || []) {
       colorIdToName.set(c.id, c.name)
@@ -446,24 +466,28 @@ threadCalculation.post('/calculate', async (c) => {
     }
 
     // Get style info
-    const { data: style, error: styleError } = await supabase
-      .from('styles')
-      .select('id, style_code, style_name')
-      .eq('id', body.style_id)
-      .single()
+    let style: StyleRow | null = null
+    try {
+      style = await queryOne<StyleRow>(
+        'SELECT id, style_code, style_name FROM styles WHERE id = $1',
+        [body.style_id]
+      )
+    } catch {
+      style = null
+    }
 
-    if (styleError || !style) {
+    if (!style) {
       return c.json({ data: null, error: 'Khong tim thay ma hang' }, 404)
     }
 
     // Get thread specs for this style
-    const { data: specs, error: specsError } = await supabase
-      .from('style_thread_specs')
-      .select(SPEC_SELECT)
-      .eq('style_id', body.style_id)
-      .limit(500000)
-
-    if (specsError) throw specsError
+    const specs = await query<Record<string, unknown>>(
+      `SELECT ${SPEC_COLUMNS}
+       FROM style_thread_specs sts${SPEC_JOINS}
+       WHERE sts.style_id = $1
+       LIMIT 500000`,
+      [body.style_id]
+    )
 
     if (!specs || specs.length === 0) {
       return c.json({ data: null, error: 'Ma hang chua co dinh muc chi' }, 400)
@@ -477,14 +501,13 @@ threadCalculation.post('/calculate', async (c) => {
       const specIds = typedSpecs.map(s => s.id)
       const colorIds = body.color_breakdown.map(c => c.color_id)
 
-      const { data: cs, error: csError } = await supabase
-        .from('style_color_thread_specs')
-        .select(COLOR_SPEC_SELECT)
-        .in('style_thread_spec_id', specIds)
-        .in('style_color_id', colorIds)
-        .limit(500000)
-
-      if (csError) throw csError
+      const cs = await query<Record<string, unknown>>(
+        `SELECT ${COLOR_SPEC_COLUMNS}
+         FROM style_color_thread_specs scts${COLOR_SPEC_JOINS}
+         WHERE scts.style_thread_spec_id = ANY($1) AND scts.style_color_id = ANY($2)
+         LIMIT 500000`,
+        [specIds, colorIds]
+      )
       colorSpecs = (cs || []) as unknown as ColorSpecRow[]
     }
 
@@ -557,25 +580,24 @@ threadCalculation.post('/calculate-batch', async (c) => {
     const styleIds = [...new Set(body.items.map(item => item.style_id))]
 
     // Bulk query 1: Get all styles
-    const { data: styles, error: stylesError } = await supabase
-      .from('styles')
-      .select('id, style_code, style_name')
-      .in('id', styleIds)
-      .limit(500000)
-
-    if (stylesError) throw stylesError
+    const styles = await query<Record<string, unknown>>(
+      `SELECT id, style_code, style_name FROM styles
+       WHERE id = ANY($1)
+       LIMIT 500000`,
+      [styleIds]
+    )
 
     const typedStyles = (styles || []) as unknown as StyleRow[]
     const styleMap = new Map(typedStyles.map(s => [s.id, s]))
 
     // Bulk query 2: Get all specs for all styles
-    const { data: allSpecs, error: specsError } = await supabase
-      .from('style_thread_specs')
-      .select(SPEC_SELECT)
-      .in('style_id', styleIds)
-      .limit(500000)
-
-    if (specsError) throw specsError
+    const allSpecs = await query<Record<string, unknown>>(
+      `SELECT ${SPEC_COLUMNS}
+       FROM style_thread_specs sts${SPEC_JOINS}
+       WHERE sts.style_id = ANY($1)
+       LIMIT 500000`,
+      [styleIds]
+    )
 
     const typedSpecs = (allSpecs || []) as unknown as SpecRow[]
 
@@ -601,14 +623,13 @@ threadCalculation.post('/calculate-batch', async (c) => {
     // Bulk query 3: Get all color specs (only if any color breakdowns exist)
     let allColorSpecs: ColorSpecRow[] = []
     if (allColorIds.size > 0 && allSpecIds.length > 0) {
-      const { data: cs, error: csError } = await supabase
-        .from('style_color_thread_specs')
-        .select(COLOR_SPEC_SELECT)
-        .in('style_thread_spec_id', allSpecIds)
-        .in('style_color_id', [...allColorIds])
-        .limit(500000)
-
-      if (csError) throw csError
+      const cs = await query<Record<string, unknown>>(
+        `SELECT ${COLOR_SPEC_COLUMNS}
+         FROM style_color_thread_specs scts${COLOR_SPEC_JOINS}
+         WHERE scts.style_thread_spec_id = ANY($1) AND scts.style_color_id = ANY($2)
+         LIMIT 500000`,
+        [allSpecIds, [...allColorIds]]
+      )
       allColorSpecs = (cs || []) as unknown as ColorSpecRow[]
     }
 
@@ -683,16 +704,16 @@ threadCalculation.post('/calculate-by-po', async (c) => {
     }
 
     // Get PO items with styles
-    const { data: poItems, error: poError } = await supabase
-      .from('po_items')
-      .select(`
-        id,
-        quantity,
-        styles:style_id (id, style_code, style_name)
-      `)
-      .eq('po_id', body.po_id)
-
-    if (poError) throw poError
+    const poItems = await query<Record<string, unknown>>(
+      `SELECT
+         pi.id,
+         pi.quantity,
+         CASE WHEN st.id IS NULL THEN NULL ELSE json_build_object('id', st.id, 'style_code', st.style_code, 'style_name', st.style_name) END AS styles
+       FROM po_items pi
+       LEFT JOIN styles st ON st.id = pi.style_id
+       WHERE pi.po_id = $1`,
+      [body.po_id]
+    )
 
     if (!poItems || poItems.length === 0) {
       return c.json({ data: null, error: 'Don hang khong co chi tiet ma hang' }, 400)
@@ -711,12 +732,12 @@ threadCalculation.post('/calculate-by-po', async (c) => {
     const poItemIds = validItems.map(item => item.id)
 
     // Bulk query 1: Get all specs for all styles
-    const { data: allSpecs, error: specsError } = await supabase
-      .from('style_thread_specs')
-      .select(SPEC_SELECT)
-      .in('style_id', styleIds)
-
-    if (specsError) throw specsError
+    const allSpecs = await query<Record<string, unknown>>(
+      `SELECT ${SPEC_COLUMNS}
+       FROM style_thread_specs sts${SPEC_JOINS}
+       WHERE sts.style_id = ANY($1)`,
+      [styleIds]
+    )
 
     const typedSpecs = (allSpecs || []) as unknown as SpecRow[]
 
@@ -729,17 +750,17 @@ threadCalculation.post('/calculate-by-po', async (c) => {
     }
 
     // Bulk query 2: Get all SKUs for all PO items
-    const { data: allSkus, error: skusError } = await supabase
-      .from('skus')
-      .select(`
-        po_item_id,
-        color_id,
-        quantity,
-        colors:color_id (id, name)
-      `)
-      .in('po_item_id', poItemIds)
-
-    if (skusError) throw skusError
+    const allSkus = await query<Record<string, unknown>>(
+      `SELECT
+         s.po_item_id,
+         s.color_id,
+         s.quantity,
+         CASE WHEN col.id IS NULL THEN NULL ELSE json_build_object('id', col.id, 'name', col.name) END AS colors
+       FROM skus s
+       LEFT JOIN colors col ON col.id = s.color_id
+       WHERE s.po_item_id = ANY($1)`,
+      [poItemIds]
+    )
 
     const typedSkus = (allSkus || []) as unknown as SkuRow[]
 
@@ -757,14 +778,13 @@ threadCalculation.post('/calculate-by-po', async (c) => {
 
     let allColorSpecs: ColorSpecRow[] = []
     if (allSpecIds.length > 0 && allColorIds.length > 0) {
-      const { data: cs, error: csError } = await supabase
-        .from('style_color_thread_specs')
-        .select(COLOR_SPEC_SELECT)
-        .in('style_thread_spec_id', allSpecIds)
-        .in('style_color_id', allColorIds)
-        .limit(500000)
-
-      if (csError) throw csError
+      const cs = await query<Record<string, unknown>>(
+        `SELECT ${COLOR_SPEC_COLUMNS}
+         FROM style_color_thread_specs scts${COLOR_SPEC_JOINS}
+         WHERE scts.style_thread_spec_id = ANY($1) AND scts.style_color_id = ANY($2)
+         LIMIT 500000`,
+        [allSpecIds, allColorIds]
+      )
       allColorSpecs = (cs || []) as unknown as ColorSpecRow[]
     }
 

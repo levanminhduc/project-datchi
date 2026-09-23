@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../../db/supabase'
+import { query, queryOne } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import { byWarehouseWeekQuerySchema, poBreakdownQuerySchema } from '../../validation/coneSummary'
 import type { ThreadApiResponse } from '../../types/thread'
@@ -60,6 +60,7 @@ interface PoBreakdownResponse {
   week: { id: number; week_name: string; status: string }
   thread_type_id: number
   thread_color_id: number
+  additional_order: number
   rows: PoBreakdownRow[]
 }
 
@@ -105,14 +106,14 @@ coneSummary.get(
 
       let warehouseIdFilter: number[] | null = null
       if (warehouse_id != null) {
-        const { data: whRow, error: whErr } = await supabase
-          .from('warehouses')
-          .select('id, type')
-          .eq('id', warehouse_id)
-          .is('deleted_at', null)
-          .maybeSingle()
-
-        if (whErr) {
+        let whRow: { id: number; type: string } | null
+        try {
+          whRow = await queryOne<{ id: number; type: string }>(
+            `SELECT id, type FROM warehouses
+             WHERE id = $1 AND deleted_at IS NULL`,
+            [warehouse_id]
+          )
+        } catch (whErr) {
           console.error('[cone-summary/by-warehouse-week] warehouse lookup error:', whErr)
           return c.json<ThreadApiResponse<null>>(
             { data: null, error: 'Lỗi khi tải thông tin kho' },
@@ -128,14 +129,15 @@ coneSummary.get(
         }
 
         if (whRow.type === 'LOCATION') {
-          const { data: children, error: childErr } = await supabase
-            .from('warehouses')
-            .select('id')
-            .eq('parent_id', warehouse_id)
-            .is('deleted_at', null)
-            .limit(1000)
-
-          if (childErr) {
+          let children: { id: number }[]
+          try {
+            children = await query<{ id: number }>(
+              `SELECT id FROM warehouses
+               WHERE parent_id = $1 AND deleted_at IS NULL
+               LIMIT 1000`,
+              [warehouse_id]
+            )
+          } catch (childErr) {
             console.error('[cone-summary/by-warehouse-week] child warehouse lookup error:', childErr)
             return c.json<ThreadApiResponse<null>>(
               { data: null, error: 'Lỗi khi tải kho con' },
@@ -149,22 +151,44 @@ coneSummary.get(
         }
       }
 
-      let query = supabase
-        .from('thread_inventory')
-        .select('warehouse_id, status, reserved_week_id, is_partial, quantity_meters, color_id')
-        .eq('thread_type_id', thread_type_id)
-        .in('status', ['AVAILABLE', 'RESERVED_FOR_ORDER'])
-
+      const coneConditions: string[] = []
+      const coneParams: unknown[] = []
+      coneParams.push(thread_type_id)
+      coneConditions.push(`thread_type_id = $${coneParams.length}`)
+      coneParams.push(['AVAILABLE', 'RESERVED_FOR_ORDER'])
+      coneConditions.push(`status = ANY($${coneParams.length})`)
       if (color_id != null) {
-        query = query.eq('color_id', color_id)
+        coneParams.push(color_id)
+        coneConditions.push(`color_id = $${coneParams.length}`)
       }
       if (warehouseIdFilter != null) {
-        query = query.in('warehouse_id', warehouseIdFilter)
+        coneParams.push(warehouseIdFilter)
+        coneConditions.push(`warehouse_id = ANY($${coneParams.length})`)
       }
 
-      const { data: cones, error: conesError } = await query
-
-      if (conesError) {
+      let cones: {
+        warehouse_id: number | null
+        status: string
+        reserved_week_id: number | null
+        is_partial: boolean | null
+        quantity_meters: number | null
+        color_id: number | null
+      }[]
+      try {
+        cones = await query<{
+          warehouse_id: number | null
+          status: string
+          reserved_week_id: number | null
+          is_partial: boolean | null
+          quantity_meters: number | null
+          color_id: number | null
+        }>(
+          `SELECT warehouse_id, status, reserved_week_id, is_partial, quantity_meters, color_id
+           FROM thread_inventory
+           WHERE ${coneConditions.join(' AND ')}`,
+          coneParams
+        )
+      } catch (conesError) {
         console.error('[cone-summary/by-warehouse-week] query error:', conesError)
         return c.json<ThreadApiResponse<null>>(
           { data: null, error: 'Lỗi khi tải dữ liệu reserve' },
@@ -192,27 +216,31 @@ coneSummary.get(
         )
       )
 
-      const [warehousesResp, weeksResp] = await Promise.all([
-        warehouseIds.length > 0
-          ? supabase
-              .from('warehouses')
-              .select('id, code, name')
-              .in('id', warehouseIds)
-              .is('deleted_at', null)
-          : Promise.resolve({ data: [], error: null }),
-        weekIds.length > 0
-          ? supabase
-              .from('thread_order_weeks')
-              .select('id, week_name, status')
-              .in('id', weekIds)
-              .eq('status', 'CONFIRMED')
-          : Promise.resolve({ data: [], error: null }),
-      ])
-
-      if (warehousesResp.error || weeksResp.error) {
+      let warehousesData: { id: number; code: string; name: string }[]
+      let weeksData: { id: number; week_name: string; status: string }[]
+      try {
+        const [warehousesResp, weeksResp] = await Promise.all([
+          warehouseIds.length > 0
+            ? query<{ id: number; code: string; name: string }>(
+                `SELECT id, code, name FROM warehouses
+                 WHERE id = ANY($1) AND deleted_at IS NULL`,
+                [warehouseIds]
+              )
+            : Promise.resolve([] as { id: number; code: string; name: string }[]),
+          weekIds.length > 0
+            ? query<{ id: number; week_name: string; status: string }>(
+                `SELECT id, week_name, status FROM thread_order_weeks
+                 WHERE id = ANY($1) AND status = 'CONFIRMED'`,
+                [weekIds]
+              )
+            : Promise.resolve([] as { id: number; week_name: string; status: string }[]),
+        ])
+        warehousesData = warehousesResp
+        weeksData = weeksResp
+      } catch (fetchErr) {
         console.error(
           '[cone-summary/by-warehouse-week] fetch warehouses/weeks error:',
-          warehousesResp.error || weeksResp.error
+          fetchErr
         )
         return c.json<ThreadApiResponse<null>>(
           { data: null, error: 'Lỗi khi tải dữ liệu kho/tuần' },
@@ -221,12 +249,12 @@ coneSummary.get(
       }
 
       const warehouseMap = new Map<number, { id: number; code: string; name: string }>()
-      for (const w of warehousesResp.data || []) {
+      for (const w of warehousesData || []) {
         warehouseMap.set(w.id, w)
       }
 
       const confirmedWeekMap = new Map<number, { id: number; week_name: string; status: string }>()
-      for (const wk of weeksResp.data || []) {
+      for (const wk of weeksData || []) {
         confirmedWeekMap.set(wk.id, wk)
       }
 
@@ -338,12 +366,14 @@ coneSummary.get(
 
       const { week_id: weekId, thread_type_id, color_id } = parsed.data
 
-      const { data: weekRow, error: weekErr } = await supabase
-        .from('thread_order_weeks')
-        .select('id, week_name, status')
-        .eq('id', weekId)
-        .maybeSingle()
-      if (weekErr) {
+      let weekRow: { id: number; week_name: string; status: string } | null
+      try {
+        weekRow = await queryOne<{ id: number; week_name: string; status: string }>(
+          `SELECT id, week_name, status FROM thread_order_weeks
+           WHERE id = $1`,
+          [weekId]
+        )
+      } catch (weekErr) {
         console.error('[cone-summary/po-breakdown] week lookup error:', weekErr)
         return c.json<ThreadApiResponse<null>>({ data: null, error: 'Lỗi tải tuần' }, 500)
       }
@@ -356,6 +386,7 @@ coneSummary.get(
             week: { id: weekRow.id, week_name: weekRow.week_name, status: weekRow.status },
             thread_type_id,
             thread_color_id: color_id,
+            additional_order: 0,
             rows: [],
           },
           error: null,
@@ -363,7 +394,7 @@ coneSummary.get(
         })
       }
 
-      const [{ calculation_data }, orderItems, ratio] = await Promise.all([
+      const [{ calculation_data, summary_data }, orderItems, ratio] = await Promise.all([
         fetchCalculationData(weekId),
         fetchOrderItems(weekId),
         getPartialConeRatio(),
@@ -375,6 +406,7 @@ coneSummary.get(
             week: { id: weekRow.id, week_name: weekRow.week_name, status: weekRow.status },
             thread_type_id,
             thread_color_id: color_id,
+            additional_order: 0,
             rows: [],
           },
           error: null,
@@ -390,6 +422,19 @@ coneSummary.get(
       const colorByName = await fetchColorNameToIdMap(threadColorIds)
       const colorById = new Map<number, string>()
       for (const [name, id] of colorByName) colorById.set(id, name)
+
+      let additionalOrder = 0
+      for (const s of summary_data) {
+        if (s.thread_type_id !== thread_type_id) continue
+        const summaryColorId =
+          s.thread_color_id != null && s.thread_color_id > 0
+            ? s.thread_color_id
+            : s.thread_color
+              ? colorByName.get(s.thread_color) ?? null
+              : null
+        if (summaryColorId !== color_id) continue
+        additionalOrder += Number(s.additional_order ?? 0)
+      }
 
       const { poStyleColorThreadMap } = buildPoStyleColorQuotaMap(
         orderItems,
@@ -462,54 +507,64 @@ coneSummary.get(
             week: { id: weekRow.id, week_name: weekRow.week_name, status: weekRow.status },
             thread_type_id,
             thread_color_id: color_id,
+            additional_order: 0,
             rows: [],
           },
           error: null,
         })
       }
 
-      const [posResp, stylesResp, scResp] = await Promise.all([
-        poIdsToFetch.size > 0
-          ? supabase
-              .from('purchase_orders')
-              .select('id, po_number')
-              .in('id', Array.from(poIdsToFetch))
-              .limit(poIdsToFetch.size)
-          : Promise.resolve({ data: [] as Array<{ id: number; po_number: string }>, error: null }),
-        styleIdsToFetch.size > 0
-          ? supabase
-              .from('styles')
-              .select('id, style_code, style_name')
-              .in('id', Array.from(styleIdsToFetch))
-              .limit(styleIdsToFetch.size)
-          : Promise.resolve({ data: [] as Array<{ id: number; style_code: string; style_name: string }>, error: null }),
-        scIdsToFetch.size > 0
-          ? supabase
-              .from('style_colors')
-              .select('id, color_name')
-              .in('id', Array.from(scIdsToFetch))
-              .limit(scIdsToFetch.size)
-          : Promise.resolve({ data: [] as Array<{ id: number; color_name: string }>, error: null }),
-      ])
-
-      if (posResp.error || stylesResp.error || scResp.error) {
+      let posData: Array<{ id: number; po_number: string }>
+      let stylesData: Array<{ id: number; style_code: string; style_name: string }>
+      let scData: Array<{ id: number; color_name: string }>
+      try {
+        const [posResp, stylesResp, scResp] = await Promise.all([
+          poIdsToFetch.size > 0
+            ? query<{ id: number; po_number: string }>(
+                `SELECT id, po_number FROM purchase_orders
+                 WHERE id = ANY($1)
+                 LIMIT $2`,
+                [Array.from(poIdsToFetch), poIdsToFetch.size]
+              )
+            : Promise.resolve([] as Array<{ id: number; po_number: string }>),
+          styleIdsToFetch.size > 0
+            ? query<{ id: number; style_code: string; style_name: string }>(
+                `SELECT id, style_code, style_name FROM styles
+                 WHERE id = ANY($1)
+                 LIMIT $2`,
+                [Array.from(styleIdsToFetch), styleIdsToFetch.size]
+              )
+            : Promise.resolve([] as Array<{ id: number; style_code: string; style_name: string }>),
+          scIdsToFetch.size > 0
+            ? query<{ id: number; color_name: string }>(
+                `SELECT id, color_name FROM style_colors
+                 WHERE id = ANY($1)
+                 LIMIT $2`,
+                [Array.from(scIdsToFetch), scIdsToFetch.size]
+              )
+            : Promise.resolve([] as Array<{ id: number; color_name: string }>),
+        ])
+        posData = posResp
+        stylesData = stylesResp
+        scData = scResp
+      } catch (labelErr) {
         console.error(
           '[cone-summary/po-breakdown] label fetch error:',
-          posResp.error || stylesResp.error || scResp.error,
+          labelErr,
         )
         return c.json<ThreadApiResponse<null>>({ data: null, error: 'Lỗi tải nhãn' }, 500)
       }
 
       const poMap = new Map<number, string>()
-      for (const p of (posResp.data ?? []) as Array<{ id: number; po_number: string }>) {
+      for (const p of posData ?? []) {
         poMap.set(p.id, p.po_number)
       }
       const styleMapLabel = new Map<number, { style_code: string; style_name: string }>()
-      for (const s of (stylesResp.data ?? []) as Array<{ id: number; style_code: string; style_name: string }>) {
+      for (const s of stylesData ?? []) {
         styleMapLabel.set(s.id, { style_code: s.style_code, style_name: s.style_name })
       }
       const scMapLabel = new Map<number, string>()
-      for (const sc of (scResp.data ?? []) as Array<{ id: number; color_name: string }>) {
+      for (const sc of scData ?? []) {
         scMapLabel.set(sc.id, sc.color_name)
       }
 
@@ -534,6 +589,7 @@ coneSummary.get(
           week: { id: weekRow.id, week_name: weekRow.week_name, status: weekRow.status },
           thread_type_id,
           thread_color_id: color_id,
+          additional_order: additionalOrder,
           rows,
         },
         error: null,

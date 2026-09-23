@@ -1,73 +1,41 @@
 import { Context, Next } from 'hono'
-import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from 'jose'
-import { supabaseAdmin } from '../db/supabase'
+import { verifyAccessToken } from '../auth/jwt'
+import { query, queryOne } from '../db/query'
 import type { JwtPayload, AuthContext } from '../types/auth'
 
 export type { JwtPayload, AuthContext }
 
-const DB_RETRY_CODES = new Set(['PGRST000', 'PGRST001', 'PGRST002', 'PGRST503', '57P01', '57P03', '08006'])
+const DB_RETRY_CODES = new Set(['57P01', '57P03', '08006', '08000', '08003', '08004', '53300', 'XX000'])
 const MAX_RETRIES = 2
 const RETRY_DELAY_MS = 300
 
-function isTransientDbError(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false
-  if (error.code && DB_RETRY_CODES.has(error.code)) return true
-  return typeof error.message === 'string' && error.message.includes('recovery mode')
+function isTransientDbError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: string }).code
+  if (code && DB_RETRY_CODES.has(code)) return true
+  const message = (error as { message?: string }).message
+  return typeof message === 'string' && message.includes('recovery mode')
 }
 
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function retryOnDbError<T extends { error: { code?: string; message?: string } | null }>(
-  fn: () => PromiseLike<T>,
-): Promise<T> {
-  let lastResult = await fn()
-  for (let attempt = 1; attempt <= MAX_RETRIES && isTransientDbError(lastResult.error); attempt++) {
-    console.warn(`[Auth] DB transient error (attempt ${attempt}/${MAX_RETRIES}), retrying in ${RETRY_DELAY_MS * attempt}ms...`)
-    await sleep(RETRY_DELAY_MS * attempt)
-    lastResult = await fn()
-  }
-  return lastResult
-}
-
-const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET
-  ? new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET)
-  : null
-
-function resolveSupabaseBaseUrl(): string {
-  const fromEnv =
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.VITE_SUPABASE_URL ||
-    ''
-
-  if (fromEnv && !fromEnv.startsWith('/')) {
-    return fromEnv.replace(/\/$/, '')
-  }
-
-  return 'http://127.0.0.1:55421'
-}
-
-const supabaseJwksUrl = new URL('/auth/v1/.well-known/jwks.json', `${resolveSupabaseBaseUrl()}/`)
-const supabaseJwks = createRemoteJWKSet(supabaseJwksUrl)
-
-async function verifySupabaseToken(token: string): Promise<JWTPayload> {
-  const protectedHeader = decodeProtectedHeader(token)
-
-  if (protectedHeader.alg === 'HS256') {
-    if (!SUPABASE_JWT_SECRET) {
-      throw new Error('SUPABASE_JWT_SECRET is missing for HS256 verification')
+async function retryOnDbError<T>(fn: () => Promise<T>): Promise<T> {
+  let attempt = 0
+  for (;;) {
+    try {
+      return await fn()
+    } catch (err) {
+      if (attempt < MAX_RETRIES && isTransientDbError(err)) {
+        attempt++
+        console.warn(`[Auth] DB transient error (attempt ${attempt}/${MAX_RETRIES}), retrying in ${RETRY_DELAY_MS * attempt}ms...`)
+        await sleep(RETRY_DELAY_MS * attempt)
+        continue
+      }
+      throw err
     }
-    const { payload } = await jwtVerify(token, SUPABASE_JWT_SECRET, {
-      algorithms: ['HS256'],
-    })
-    return payload
   }
-
-  const { payload } = await jwtVerify(token, supabaseJwks, {
-    algorithms: ['RS256', 'ES256'],
-  })
-  return payload
 }
 
 export async function authMiddleware(c: Context, next: Next) {
@@ -80,33 +48,24 @@ export async function authMiddleware(c: Context, next: Next) {
   const token = authHeader.slice(7)
 
   try {
-    const payload = await verifySupabaseToken(token)
-    const jwtPayload = payload as unknown as JwtPayload
+    const jwtPayload = await verifyAccessToken(token)
 
-    let resolvedEmployeeId = jwtPayload.employee_id
-    let resolvedEmployeeCode = jwtPayload.employee_code
-    let roles = Array.isArray(jwtPayload.roles) ? jwtPayload.roles : []
-    let isRoot = jwtPayload.is_root
+    const resolvedEmployeeId = jwtPayload.employee_id
+    const resolvedEmployeeCode = jwtPayload.employee_code
 
-    const missingEmployeeClaims = !resolvedEmployeeId || !resolvedEmployeeCode
+    if (!resolvedEmployeeId || !resolvedEmployeeCode) {
+      return c.json({ error: true, message: 'Token không hợp lệ' }, 401)
+    }
 
-    const { data: employeeStatus, error: employeeStatusError } = await retryOnDbError(() => {
-      if (missingEmployeeClaims) {
-        return supabaseAdmin
-          .from('employees')
-          .select('id, employee_id, is_active, deleted_at')
-          .eq('auth_user_id', jwtPayload.sub)
-          .maybeSingle()
-      }
-
-      return supabaseAdmin
-        .from('employees')
-        .select('id, employee_id, is_active, deleted_at')
-        .eq('id', resolvedEmployeeId)
-        .maybeSingle()
-    })
-
-    if (employeeStatusError) {
+    let employeeStatus: { id: number; employee_id: string; is_active: boolean; deleted_at: string | null } | null
+    try {
+      employeeStatus = await retryOnDbError(() =>
+        queryOne<{ id: number; employee_id: string; is_active: boolean; deleted_at: string | null }>(
+          'SELECT id, employee_id, is_active, deleted_at FROM employees WHERE id = $1 LIMIT 1',
+          [resolvedEmployeeId]
+        )
+      )
+    } catch (employeeStatusError) {
       console.error('Auth middleware: failed to fetch employee status:', employeeStatusError)
       return c.json(
         { error: true, message: 'Hệ thống đang khởi động lại, vui lòng thử lại sau' },
@@ -118,19 +77,21 @@ export async function authMiddleware(c: Context, next: Next) {
       return c.json({ error: true, message: 'Tài khoản không tồn tại hoặc đã bị xóa' }, 403)
     }
 
-    if (missingEmployeeClaims) {
-      resolvedEmployeeId = employeeStatus.id
-      resolvedEmployeeCode = employeeStatus.employee_id
-    }
-
     if (!employeeStatus.is_active) {
       return c.json({ error: true, message: 'Tài khoản đã bị vô hiệu hóa' }, 403)
     }
 
-    if (missingEmployeeClaims || roles.length === 0) {
-      roles = await getEmployeeRoleCodes(resolvedEmployeeId)
-      isRoot = roles.includes('root')
+    let roles: string[]
+    try {
+      roles = await retryOnDbError(() => getEmployeeRoleCodes(resolvedEmployeeId))
+    } catch (roleErr) {
+      console.error('Auth middleware: failed to fetch role codes:', roleErr)
+      return c.json(
+        { error: true, message: 'Hệ thống đang khởi động lại, vui lòng thử lại sau' },
+        503
+      )
     }
+    const isRoot = roles.includes('root')
 
     let permissions: string[]
     if (isRoot) {
@@ -252,61 +213,68 @@ export async function requireRoot(c: Context, next: Next) {
 }
 
 async function getEmployeePermissions(employeeId: number): Promise<string[]> {
-  const { data: rolePerms } = await supabaseAdmin
-    .from('employee_roles')
-    .select(`
-      roles!inner(
-        role_permissions(
-          permissions(code)
-        )
-      )
-    `)
-    .eq('employee_id', employeeId)
-
   const permissionSet = new Set<string>()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  rolePerms?.forEach((er: any) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    er.roles?.role_permissions?.forEach((rp: any) => {
-      if (rp.permissions?.code) {
-        permissionSet.add(rp.permissions.code)
+  try {
+    const rolePerms = await query<{ code: string }>(
+      `SELECT DISTINCT p.code
+       FROM employee_roles er
+       JOIN roles r ON r.id = er.role_id
+       JOIN role_permissions rp ON rp.role_id = r.id
+       JOIN permissions p ON p.id = rp.permission_id
+       WHERE er.employee_id = $1`,
+      [employeeId]
+    )
+
+    rolePerms.forEach((rp) => {
+      if (rp.code) {
+        permissionSet.add(rp.code)
       }
     })
-  })
+  } catch (err) {
+    console.error('Auth middleware: failed to fetch role permissions:', err)
+  }
 
-  const { data: directPerms } = await supabaseAdmin
-    .from('employee_permissions')
-    .select('permissions(code), granted, expires_at')
-    .eq('employee_id', employeeId)
+  try {
+    const directPerms = await query<{ code: string | null; granted: boolean; expires_at: string | null }>(
+      `SELECT p.code, ep.granted, ep.expires_at
+       FROM employee_permissions ep
+       JOIN permissions p ON p.id = ep.permission_id
+       WHERE ep.employee_id = $1`,
+      [employeeId]
+    )
 
-  const now = new Date().toISOString()
+    const now = new Date().toISOString()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  directPerms?.forEach((ep: any) => {
-    const isExpired = ep.expires_at && ep.expires_at < now
-    if (!isExpired && ep.permissions?.code) {
-      if (ep.granted) {
-        permissionSet.add(ep.permissions.code)
-      } else {
-        permissionSet.delete(ep.permissions.code)
+    directPerms.forEach((ep) => {
+      const isExpired = ep.expires_at && ep.expires_at < now
+      if (!isExpired && ep.code) {
+        if (ep.granted) {
+          permissionSet.add(ep.code)
+        } else {
+          permissionSet.delete(ep.code)
+        }
       }
-    }
-  })
+    })
+  } catch (err) {
+    console.error('Auth middleware: failed to fetch direct permissions:', err)
+  }
 
   return Array.from(permissionSet)
 }
 
 async function getEmployeeRoleCodes(employeeId: number): Promise<string[]> {
-  const { data: employeeRoles } = await supabaseAdmin
-    .from('employee_roles')
-    .select('roles(code)')
-    .eq('employee_id', employeeId)
-
-  return (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    employeeRoles?.map((er: any) => er.roles?.code).filter((code: unknown): code is string => typeof code === 'string') ?? []
+  const employeeRoles = await query<{ code: string | null }>(
+    `SELECT r.code
+     FROM employee_roles er
+     JOIN roles r ON r.id = er.role_id
+     WHERE er.employee_id = $1`,
+    [employeeId]
   )
+
+  return employeeRoles
+    .map((er) => er.code)
+    .filter((code: unknown): code is string => typeof code === 'string')
 }
 
 export async function canManageEmployee(
@@ -317,30 +285,37 @@ export async function canManageEmployee(
     return true
   }
 
-  const { data: targetRoles } = await supabaseAdmin
-    .from('employee_roles')
-    .select('roles(code, level)')
-    .eq('employee_id', targetEmployeeId)
+  const targetRoles = await query<{ code: string | null; level: number | null }>(
+    `SELECT r.code, r.level
+     FROM employee_roles er
+     JOIN roles r ON r.id = er.role_id
+     WHERE er.employee_id = $1`,
+    [targetEmployeeId]
+  )
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const isTargetRoot = targetRoles?.some((er: any) => er.roles?.code === 'root')
+  const isTargetRoot = targetRoles.some((er) => er.code === 'root')
   if (isTargetRoot) {
     return false
   }
 
-  const { data: requesterRoles } = await supabaseAdmin
-    .from('employee_roles')
-    .select('roles(level)')
-    .eq('employee_id', requesterAuth.employeeId)
+  const requesterRoles = await query<{ level: number | null }>(
+    `SELECT r.level
+     FROM employee_roles er
+     JOIN roles r ON r.id = er.role_id
+     WHERE er.employee_id = $1`,
+    [requesterAuth.employeeId]
+  )
 
   const requesterMinLevel = Math.min(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ...(requesterRoles?.map((r: any) => r.roles?.level ?? 999) ?? [999])
+    ...(requesterRoles.map((r) => r.level ?? 999).length > 0
+      ? requesterRoles.map((r) => r.level ?? 999)
+      : [999])
   )
 
   const targetMinLevel = Math.min(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ...(targetRoles?.map((r: any) => r.roles?.level ?? 999) ?? [999])
+    ...(targetRoles.map((r) => r.level ?? 999).length > 0
+      ? targetRoles.map((r) => r.level ?? 999)
+      : [999])
   )
 
   return requesterMinLevel < targetMinLevel

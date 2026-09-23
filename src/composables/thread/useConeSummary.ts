@@ -11,7 +11,7 @@ import { useSnackbar } from '../useSnackbar'
 import { useLoading } from '../useLoading'
 import { useRealtime } from '../useRealtime'
 import { getErrorMessage } from '@/utils/errorMessages'
-import { getCacheEntry, setCacheEntry } from '@/lib/api-cache'
+import { getCacheEntry, setCacheEntry, invalidateCache } from '@/lib/api-cache'
 import type { ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeSummaryFilters, ConeReservedByWeekResponse, ConeReservedPoBreakdownRow } from '@/types/thread'
 
 const MESSAGES = {
@@ -205,9 +205,13 @@ export function useConeSummary() {
         threadTypeId,
         colorId,
       })
-      poBreakdownByKey.value.set(key, data.rows)
+      const rowsWithAdditional = data.rows.map((row) => ({
+        ...row,
+        additional_order: data.additional_order,
+      }))
+      poBreakdownByKey.value.set(key, rowsWithAdditional)
       poBreakdownByKey.value = new Map(poBreakdownByKey.value)
-      setCacheEntry(cacheKey, data.rows, CACHE_TTL)
+      setCacheEntry(cacheKey, rowsWithAdditional, CACHE_TTL)
     } catch (err) {
       const errorMessage = getErrorMessage(err)
       poBreakdownErrorByKey.value.set(key, errorMessage || MESSAGES.PO_BREAKDOWN_ERROR)
@@ -255,9 +259,9 @@ export function useConeSummary() {
 
   /**
    * Debounced refresh to batch rapid changes
-   * @param delay - Debounce delay in milliseconds (default: 100ms)
+   * @param delay - Debounce delay in milliseconds (default: 300ms)
    */
-  const debouncedRefresh = (delay: number = 100): void => {
+  const debouncedRefresh = (delay: number = 300): void => {
     if (debounceTimer.value) {
       clearTimeout(debounceTimer.value)
     }
@@ -313,7 +317,8 @@ export function useConeSummary() {
         }
 
         if (shouldRefresh()) {
-          debouncedRefresh(100)
+          invalidateCache('/api/cone-summary')
+          debouncedRefresh()
         }
       }
     )

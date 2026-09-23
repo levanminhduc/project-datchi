@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
-import { supabaseAdmin as supabase } from '../../db/supabase'
+import { query, queryOne, queryCount } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
 import {
@@ -12,6 +12,7 @@ import {
 import type { AppEnv } from '../../types/hono-env'
 import { formatZodError, getPerformerName } from './helpers'
 import { getPartialConeRatio } from '../../utils/settings-helper'
+import { isRootUnlocked, logWeekAudit, getPerformer } from '../../utils/weekly-order-unlock'
 
 const loansReservations = new Hono<AppEnv>()
 
@@ -23,22 +24,24 @@ loansReservations.post('/completion-lookup', requirePermission('thread.allocatio
       return c.json({ data: null, error: 'po_id và style_id là bắt buộc' }, 400)
     }
 
-    let query = supabase
-      .from('thread_order_items')
-      .select('id, week_id, thread_order_weeks!inner(id, week_name, status)')
-      .eq('po_id', po_id)
-      .eq('style_id', style_id)
-      .in('thread_order_weeks.status', ['CONFIRMED', 'COMPLETED'])
+    const params: unknown[] = [po_id, style_id]
+    let sql = `SELECT toi.id, toi.week_id,
+        json_build_object('id', w.id, 'week_name', w.week_name, 'status', w.status) AS thread_order_weeks
+      FROM thread_order_items toi
+      INNER JOIN thread_order_weeks w ON w.id = toi.week_id
+      WHERE toi.po_id = $1 AND toi.style_id = $2
+        AND w.status = ANY($3)`
+    params.push(['CONFIRMED', 'COMPLETED'])
 
     if (style_color_id) {
-      query = query.eq('style_color_id', style_color_id)
+      params.push(style_color_id)
+      sql += ` AND toi.style_color_id = $${params.length}`
     } else {
-      query = query.is('style_color_id', null)
+      sql += ` AND toi.style_color_id IS NULL`
     }
+    sql += ' LIMIT 100'
 
-    const { data, error } = await query.limit(100)
-
-    if (error) throw error
+    const data = await query<{ id: number; week_id: number; thread_order_weeks: any }>(sql, params)
 
     const weekMap = new Map<number, { week_name: string; item_ids: number[] }>()
     for (const row of data || []) {
@@ -74,29 +77,25 @@ loansReservations.post('/batch-complete', requirePermission('thread.allocations.
       return c.json({ data: null, error: 'Tối đa 50 items mỗi lần' }, 400)
     }
 
-    const { data: validItems, error: queryError } = await supabase
-      .from('thread_order_items')
-      .select('id, week_id, thread_order_weeks!inner(status)')
-      .in('id', itemIds)
-      .in('thread_order_weeks.status', ['CONFIRMED', 'COMPLETED'])
-
-    if (queryError) throw queryError
+    const validItems = await query<{ id: number }>(
+      `SELECT toi.id
+       FROM thread_order_items toi
+       INNER JOIN thread_order_weeks w ON w.id = toi.week_id
+       WHERE toi.id = ANY($1) AND w.status = ANY($2)`,
+      [itemIds, ['CONFIRMED', 'COMPLETED']],
+    )
 
     const validIds = (validItems || []).map((i: any) => i.id)
     const claims = c.get('jwtPayload' as never) as any
     const performedBy = claims?.employee_code || claims?.email || 'system'
 
     if (validIds.length > 0) {
-      const upsertRows = validIds.map((itemId: number) => ({
-        item_id: itemId,
-        completed_by: performedBy,
-      }))
-
-      const { error: upsertError } = await supabase
-        .from('thread_order_item_completions')
-        .upsert(upsertRows, { onConflict: 'item_id' })
-
-      if (upsertError) throw upsertError
+      await query(
+        `INSERT INTO thread_order_item_completions (item_id, completed_by)
+         SELECT unnest($1::int[]), $2
+         ON CONFLICT (item_id) DO UPDATE SET completed_by = EXCLUDED.completed_by`,
+        [validIds, performedBy],
+      )
     }
 
     return c.json({
@@ -111,9 +110,8 @@ loansReservations.post('/batch-complete', requirePermission('thread.allocations.
 
 loansReservations.get('/loans/summary', requirePermission('thread.allocations.view'), async (c) => {
   try {
-    const { data, error } = await supabase.rpc('fn_loan_dashboard_summary')
-
-    if (error) throw error
+    const rows = await query<{ result: any }>('SELECT fn_loan_dashboard_summary() AS result')
+    const data = rows.length > 0 ? rows[0].result : null
 
     return c.json({ data, error: null })
   } catch (err) {
@@ -124,21 +122,23 @@ loansReservations.get('/loans/summary', requirePermission('thread.allocations.vi
 
 loansReservations.get('/loans/all', requirePermission('thread.allocations.view'), async (c) => {
   try {
-    const { data: loans, error } = await supabase
-      .from('thread_order_loans')
-      .select(
-        `
-        *,
-        from_week:thread_order_weeks!thread_order_loans_from_week_id_fkey(id, week_name),
-        to_week:thread_order_weeks!thread_order_loans_to_week_id_fkey(id, week_name),
-        thread_type:thread_types(id, code, name, tex_number, supplier:suppliers(name))
-      `,
-      )
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(500)
-
-    if (error) throw error
+    const loans = await query<any>(
+      `SELECT l.*,
+        CASE WHEN fw.id IS NULL THEN NULL ELSE json_build_object('id', fw.id, 'week_name', fw.week_name) END AS from_week,
+        CASE WHEN tw.id IS NULL THEN NULL ELSE json_build_object('id', tw.id, 'week_name', tw.week_name) END AS to_week,
+        CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+          'id', tt.id, 'code', tt.code, 'name', tt.name, 'tex_number', tt.tex_number,
+          'supplier', CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('name', sup.name) END
+        ) END AS thread_type
+       FROM thread_order_loans l
+       LEFT JOIN thread_order_weeks fw ON fw.id = l.from_week_id
+       LEFT JOIN thread_order_weeks tw ON tw.id = l.to_week_id
+       LEFT JOIN thread_types tt ON tt.id = l.thread_type_id
+       LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+       WHERE l.deleted_at IS NULL
+       ORDER BY l.created_at DESC
+       LIMIT 500`,
+    )
 
     const weekIds = [
       ...new Set(
@@ -148,10 +148,10 @@ loansReservations.get('/loans/all', requirePermission('thread.allocations.view')
 
     const summaryMap = new Map<number, Map<number, { supplier_name: string; tex_number: string; thread_color: string }>>()
     if (weekIds.length > 0) {
-      const { data: resultsData } = await supabase
-        .from('thread_order_results')
-        .select('week_id, summary_data')
-        .in('week_id', weekIds)
+      const resultsData = await query<{ week_id: number; summary_data: any }>(
+        `SELECT week_id, summary_data FROM thread_order_results WHERE week_id = ANY($1)`,
+        [weekIds],
+      )
 
       for (const result of resultsData || []) {
         if (result.summary_data && Array.isArray(result.summary_data)) {
@@ -196,13 +196,10 @@ loansReservations.get('/loans/:loanId/return-logs', requirePermission('thread.al
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: logs, error } = await supabase
-      .from('thread_loan_return_logs')
-      .select('*')
-      .eq('loan_id', loanId)
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
+    const logs = await query<any>(
+      `SELECT * FROM thread_loan_return_logs WHERE loan_id = $1 ORDER BY created_at DESC`,
+      [loanId],
+    )
 
     return c.json({ data: logs || [], error: null })
   } catch (err) {
@@ -232,15 +229,15 @@ loansReservations.post('/:weekId/loans/:loanId/manual-return', requirePermission
 
     const returnedBy = await getPerformerName(c)
 
-    const { data: result, error: rpcError } = await supabase.rpc('fn_manual_return_loan', {
-      p_loan_id: loanId,
-      p_quantity: validated.quantity,
-      p_returned_by: returnedBy,
-      p_notes: validated.notes || null,
-    })
-
-    if (rpcError) {
-      return c.json({ data: null, error: rpcError.message }, 400)
+    let result: any
+    try {
+      const rows = await query<{ result: any }>(
+        `SELECT fn_manual_return_loan($1, $2, $3, $4) AS result`,
+        [loanId, validated.quantity, returnedBy, validated.notes || null],
+      )
+      result = rows.length > 0 ? rows[0].result : null
+    } catch (rpcErr) {
+      return c.json({ data: null, error: getErrorMessage(rpcErr) }, 400)
     }
 
     return c.json({ data: result, error: null, message: `Đã trả ${validated.quantity} cuộn thành công` })
@@ -258,40 +255,37 @@ loansReservations.post('/:id/items/:itemId/complete', requirePermission('thread.
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: week, error: weekError } = await supabase
-      .from('thread_order_weeks')
-      .select('id, status')
-      .eq('id', weekId)
-      .single()
+    const week = await queryOne<{ id: number; status: string }>(
+      `SELECT id, status FROM thread_order_weeks WHERE id = $1`,
+      [weekId],
+    )
 
-    if (weekError || !week) {
+    if (!week) {
       return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
-    if (week.status !== 'CONFIRMED') {
+    if (week.status !== 'CONFIRMED' && !(await isRootUnlocked(c, weekId))) {
       return c.json({ data: null, error: 'Chỉ có thể đánh dấu hoàn tất khi tuần ở trạng thái CONFIRMED' }, 400)
     }
 
-    const { data: item, error: itemError } = await supabase
-      .from('thread_order_items')
-      .select('id')
-      .eq('id', itemId)
-      .eq('week_id', weekId)
-      .single()
+    const item = await queryOne<{ id: number }>(
+      `SELECT id FROM thread_order_items WHERE id = $1 AND week_id = $2`,
+      [itemId, weekId],
+    )
 
-    if (itemError || !item) {
+    if (!item) {
       return c.json({ data: null, error: 'Sản phẩm không thuộc tuần này' }, 404)
     }
 
     const claims = c.get('jwtPayload' as never) as any
     const performedBy = claims?.employee_code || claims?.email || 'system'
 
-    const { data, error } = await supabase
-      .from('thread_order_item_completions')
-      .upsert({ item_id: itemId, completed_by: performedBy }, { onConflict: 'item_id' })
-      .select()
-      .single()
-
-    if (error) throw error
+    const data = await queryOne<Record<string, unknown>>(
+      `INSERT INTO thread_order_item_completions (item_id, completed_by)
+       VALUES ($1, $2)
+       ON CONFLICT (item_id) DO UPDATE SET completed_by = EXCLUDED.completed_by
+       RETURNING *`,
+      [itemId, performedBy],
+    )
 
     return c.json({ data, error: null, message: 'Đã đánh dấu hoàn tất xuất chỉ' })
   } catch (err) {
@@ -308,36 +302,31 @@ loansReservations.delete('/:id/items/:itemId/complete', requirePermission('threa
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: week, error: weekError } = await supabase
-      .from('thread_order_weeks')
-      .select('id, status')
-      .eq('id', weekId)
-      .single()
+    const week = await queryOne<{ id: number; status: string }>(
+      `SELECT id, status FROM thread_order_weeks WHERE id = $1`,
+      [weekId],
+    )
 
-    if (weekError || !week) {
+    if (!week) {
       return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
-    if (week.status !== 'CONFIRMED') {
+    if (week.status !== 'CONFIRMED' && !(await isRootUnlocked(c, weekId))) {
       return c.json({ data: null, error: 'Không thể bỏ đánh dấu khi tuần không ở trạng thái CONFIRMED' }, 400)
     }
 
-    const { data: item, error: itemError } = await supabase
-      .from('thread_order_items')
-      .select('id')
-      .eq('id', itemId)
-      .eq('week_id', weekId)
-      .single()
+    const item = await queryOne<{ id: number }>(
+      `SELECT id FROM thread_order_items WHERE id = $1 AND week_id = $2`,
+      [itemId, weekId],
+    )
 
-    if (itemError || !item) {
+    if (!item) {
       return c.json({ data: null, error: 'Sản phẩm không thuộc tuần này' }, 404)
     }
 
-    const { error } = await supabase
-      .from('thread_order_item_completions')
-      .delete()
-      .eq('item_id', itemId)
-
-    if (error) throw error
+    await query(
+      `DELETE FROM thread_order_item_completions WHERE item_id = $1`,
+      [itemId],
+    )
 
     return c.json({ data: null, error: null, message: 'Đã bỏ đánh dấu hoàn tất' })
   } catch (err) {
@@ -353,12 +342,14 @@ loansReservations.get('/:id/completions', requirePermission('thread.allocations.
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('thread_order_item_completions')
-      .select('*, item:thread_order_items!inner(id, week_id)')
-      .eq('item.week_id', weekId)
-
-    if (error) throw error
+    const data = await query<any>(
+      `SELECT toic.*,
+        json_build_object('id', toi.id, 'week_id', toi.week_id) AS item
+       FROM thread_order_item_completions toic
+       INNER JOIN thread_order_items toi ON toi.id = toic.item_id
+       WHERE toi.week_id = $1`,
+      [weekId],
+    )
 
     return c.json({ data: data || [], error: null })
   } catch (err) {
@@ -374,36 +365,31 @@ loansReservations.get('/:id/surplus-preview', requirePermission('thread.allocati
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: week, error: weekError } = await supabase
-      .from('thread_order_weeks')
-      .select('id, status')
-      .eq('id', weekId)
-      .single()
+    const week = await queryOne<{ id: number; status: string }>(
+      `SELECT id, status FROM thread_order_weeks WHERE id = $1`,
+      [weekId],
+    )
 
-    if (weekError || !week) {
+    if (!week) {
       return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
 
-    const { count: totalCones, error: coneError } = await supabase
-      .from('thread_inventory')
-      .select('id', { count: 'exact', head: true })
-      .eq('reserved_week_id', weekId)
-      .eq('status', 'RESERVED_FOR_ORDER')
+    const totalCones = await queryCount(
+      `SELECT count(*)::int AS count FROM thread_inventory
+       WHERE reserved_week_id = $1 AND status = 'RESERVED_FOR_ORDER'`,
+      [weekId],
+    )
 
-    if (coneError) throw coneError
+    const totalItems = await queryCount(
+      `SELECT count(*)::int AS count FROM thread_order_items WHERE week_id = $1`,
+      [weekId],
+    )
 
-    const { count: totalItems } = await supabase
-      .from('thread_order_items')
-      .select('id', { count: 'exact', head: true })
-      .eq('week_id', weekId)
-
-    const { count: completedItems } = await supabase
-      .from('thread_order_item_completions')
-      .select('id', { count: 'exact', head: true })
-      .in(
-        'item_id',
-        (await supabase.from('thread_order_items').select('id').eq('week_id', weekId)).data?.map((i: any) => i.id) || [],
-      )
+    const completedItems = await queryCount(
+      `SELECT count(*)::int AS count FROM thread_order_item_completions
+       WHERE item_id IN (SELECT id FROM thread_order_items WHERE week_id = $1)`,
+      [weekId],
+    )
 
     const allCompleted = (totalItems ?? 0) > 0 && (completedItems ?? 0) >= (totalItems ?? 0)
     const canRelease = allCompleted && week.status === 'CONFIRMED'
@@ -421,17 +407,22 @@ loansReservations.get('/:id/surplus-preview', requirePermission('thread.allocati
       | undefined
 
     try {
-      const { data: cones, error: conesError } = await supabase
-        .from('thread_inventory')
-        .select(
-          `id, thread_type_id, original_week_id,
-          thread_type:thread_types(tex_number, supplier:suppliers(name)),
-          color:colors!color_id(name)`,
-        )
-        .eq('reserved_week_id', weekId)
-        .eq('status', 'RESERVED_FOR_ORDER')
+      const cones = await query<any>(
+        `SELECT inv.id, inv.thread_type_id, inv.original_week_id,
+          CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+            'tex_number', tt.tex_number,
+            'supplier', CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('name', sup.name) END
+          ) END AS thread_type,
+          CASE WHEN col.id IS NULL THEN NULL ELSE json_build_object('name', col.name) END AS color
+         FROM thread_inventory inv
+         LEFT JOIN thread_types tt ON tt.id = inv.thread_type_id
+         LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+         LEFT JOIN colors col ON col.id = inv.color_id
+         WHERE inv.reserved_week_id = $1 AND inv.status = 'RESERVED_FOR_ORDER'`,
+        [weekId],
+      )
 
-      if (!conesError && cones && cones.length > 0) {
+      if (cones && cones.length > 0) {
         const borrowedWeekIds = [
           ...new Set(
             cones
@@ -442,10 +433,10 @@ loansReservations.get('/:id/surplus-preview', requirePermission('thread.allocati
 
         const origWeekMap = new Map<number, { status: string; week_name: string }>()
         if (borrowedWeekIds.length > 0) {
-          const { data: origWeeks } = await supabase
-            .from('thread_order_weeks')
-            .select('id, status, week_name')
-            .in('id', borrowedWeekIds)
+          const origWeeks = await query<{ id: number; status: string; week_name: string }>(
+            `SELECT id, status, week_name FROM thread_order_weeks WHERE id = ANY($1)`,
+            [borrowedWeekIds],
+          )
           for (const w of origWeeks ?? []) {
             origWeekMap.set(w.id, { status: w.status, week_name: w.week_name })
           }
@@ -512,7 +503,7 @@ loansReservations.get('/:id/surplus-preview', requirePermission('thread.allocati
             action: bg.action,
           })),
         }))
-      } else if (!conesError && cones) {
+      } else if (cones) {
         breakdown = []
       }
     } catch (breakdownErr) {
@@ -545,20 +536,23 @@ loansReservations.post('/:id/release-surplus', requirePermission('thread.allocat
     const claims = c.get('jwtPayload' as never) as any
     const performedBy = claims?.employee_code || claims?.email || 'system'
 
-    const { data: rpcResult, error: rpcError } = await supabase.rpc('fn_complete_week_and_release', {
-      p_week_id: weekId,
-      p_performed_by: performedBy,
-    })
-
-    if (rpcError) {
-      if (rpcError.message?.includes('Tuần đã được hoàn tất')) {
+    let rpcResult: any
+    try {
+      const rows = await query<{ result: any }>(
+        `SELECT fn_complete_week_and_release($1, $2) AS result`,
+        [weekId, performedBy],
+      )
+      rpcResult = rows.length > 0 ? rows[0].result : null
+    } catch (rpcError) {
+      const message = rpcError instanceof Error ? rpcError.message : String(rpcError)
+      if (message.includes('Tuần đã được hoàn tất')) {
         return c.json({ data: null, error: 'Tuần đã được hoàn tất' }, 409)
       }
-      if (rpcError.message?.includes('Chưa hoàn tất tất cả')) {
-        return c.json({ data: null, error: rpcError.message }, 400)
+      if (message.includes('Chưa hoàn tất tất cả')) {
+        return c.json({ data: null, error: message }, 400)
       }
-      if (rpcError.message?.includes('CONFIRMED')) {
-        return c.json({ data: null, error: rpcError.message }, 400)
+      if (message.includes('CONFIRMED')) {
+        return c.json({ data: null, error: message }, 400)
       }
       throw rpcError
     }
@@ -581,11 +575,11 @@ loansReservations.get('/:id/loan-detail-by-type', requirePermission('thread.allo
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase.rpc('fn_loan_detail_by_thread_type', {
-      p_week_id: id,
-    })
-
-    if (error) throw error
+    const rows = await query<{ result: any }>(
+      `SELECT fn_loan_detail_by_thread_type($1) AS result`,
+      [id],
+    )
+    const data = rows.length > 0 ? rows[0].result : null
 
     return c.json({ data: data || [], error: null })
   } catch (err) {
@@ -616,17 +610,22 @@ loansReservations.post('/:id/loans', requirePermission('thread.allocations.manag
 
     const createdBy = await getPerformerName(c)
 
-    const { data: result, error: rpcError } = await supabase.rpc('fn_borrow_thread', {
-      p_from_week_id: validated.from_week_id,
-      p_to_week_id: toWeekId,
-      p_thread_type_id: validated.thread_type_id,
-      p_quantity: validated.quantity_cones,
-      p_reason: validated.reason || null,
-      p_user: createdBy,
-    })
-
-    if (rpcError) {
-      return c.json({ data: null, error: rpcError.message }, 400)
+    let result: any
+    try {
+      const rows = await query<{ result: any }>(
+        `SELECT fn_borrow_thread($1, $2, $3, $4, $5, $6) AS result`,
+        [
+          validated.from_week_id,
+          toWeekId,
+          validated.thread_type_id,
+          validated.quantity_cones,
+          validated.reason || null,
+          createdBy,
+        ],
+      )
+      result = rows.length > 0 ? rows[0].result : null
+    } catch (rpcErr) {
+      return c.json({ data: null, error: getErrorMessage(rpcErr) }, 400)
     }
 
     return c.json({
@@ -662,16 +661,21 @@ loansReservations.post('/:id/loans/batch', requirePermission('thread.allocations
 
     const createdBy = await getPerformerName(c)
 
-    const { data: result, error: rpcError } = await supabase.rpc('fn_batch_borrow_thread', {
-      p_from_week_id: validated.from_week_id,
-      p_to_week_id: toWeekId,
-      p_items: JSON.stringify(validated.items),
-      p_reason: validated.reason || null,
-      p_user: createdBy,
-    })
-
-    if (rpcError) {
-      return c.json({ data: null, error: rpcError.message }, 400)
+    let result: any
+    try {
+      const rows = await query<{ result: any }>(
+        `SELECT fn_batch_borrow_thread($1, $2, $3::jsonb, $4, $5) AS result`,
+        [
+          validated.from_week_id,
+          toWeekId,
+          JSON.stringify(validated.items),
+          validated.reason || null,
+          createdBy,
+        ],
+      )
+      result = rows.length > 0 ? rows[0].result : null
+    } catch (rpcErr) {
+      return c.json({ data: null, error: getErrorMessage(rpcErr) }, 400)
     }
 
     return c.json({
@@ -693,21 +697,23 @@ loansReservations.get('/:id/loans', requirePermission('thread.allocations.view')
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: loans, error } = await supabase
-      .from('thread_order_loans')
-      .select(
-        `
-        *,
-        from_week:thread_order_weeks!thread_order_loans_from_week_id_fkey(id, week_name),
-        to_week:thread_order_weeks!thread_order_loans_to_week_id_fkey(id, week_name),
-        thread_type:thread_types(id, code, name, tex_number, supplier:suppliers(name))
-      `,
-      )
-      .or(`from_week_id.eq.${id},to_week_id.eq.${id}`)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
+    const loans = await query<any>(
+      `SELECT l.*,
+        CASE WHEN fw.id IS NULL THEN NULL ELSE json_build_object('id', fw.id, 'week_name', fw.week_name) END AS from_week,
+        CASE WHEN tw.id IS NULL THEN NULL ELSE json_build_object('id', tw.id, 'week_name', tw.week_name) END AS to_week,
+        CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+          'id', tt.id, 'code', tt.code, 'name', tt.name, 'tex_number', tt.tex_number,
+          'supplier', CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('name', sup.name) END
+        ) END AS thread_type
+       FROM thread_order_loans l
+       LEFT JOIN thread_order_weeks fw ON fw.id = l.from_week_id
+       LEFT JOIN thread_order_weeks tw ON tw.id = l.to_week_id
+       LEFT JOIN thread_types tt ON tt.id = l.thread_type_id
+       LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+       WHERE (l.from_week_id = $1 OR l.to_week_id = $1) AND l.deleted_at IS NULL
+       ORDER BY l.created_at DESC`,
+      [id],
+    )
 
     const weekIds = [
       ...new Set(
@@ -717,10 +723,10 @@ loansReservations.get('/:id/loans', requirePermission('thread.allocations.view')
 
     const summaryMap = new Map<number, Map<number, { supplier_name: string; tex_number: string; thread_color: string }>>()
     if (weekIds.length > 0) {
-      const { data: resultsData } = await supabase
-        .from('thread_order_results')
-        .select('week_id, summary_data')
-        .in('week_id', weekIds)
+      const resultsData = await query<{ week_id: number; summary_data: any }>(
+        `SELECT week_id, summary_data FROM thread_order_results WHERE week_id = ANY($1)`,
+        [weekIds],
+      )
 
       for (const result of resultsData || []) {
         if (result.summary_data && Array.isArray(result.summary_data)) {
@@ -773,48 +779,39 @@ loansReservations.get('/:id/reservations', requirePermission('thread.allocations
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const [conesResult, resultsResult] = await Promise.all([
-      supabase
-        .from('thread_inventory')
-        .select(
-          `
-          id,
-          cone_id,
-          thread_type_id,
-          quantity_meters,
-          warehouse_id,
-          lot_number,
-          expiry_date,
-          received_date,
-          thread_type:thread_types(id, code, name, tex_number, supplier:suppliers(name)),
-          warehouse:warehouses(id, code, name)
-        `,
-        )
-        .eq('reserved_week_id', id)
-        .eq('status', 'RESERVED_FOR_ORDER')
-        .order('thread_type_id')
-        .order('expiry_date', { ascending: true, nullsFirst: false }),
-      supabase
-        .from('thread_order_results')
-        .select('summary_data')
-        .eq('week_id', id)
-        .maybeSingle(),
+    const [cones, resultsRow] = await Promise.all([
+      query<any>(
+        `SELECT inv.id, inv.cone_id, inv.thread_type_id, inv.quantity_meters::float8 AS quantity_meters, inv.warehouse_id,
+          inv.lot_number, inv.expiry_date, inv.received_date,
+          CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+            'id', tt.id, 'code', tt.code, 'name', tt.name, 'tex_number', tt.tex_number,
+            'supplier', CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('name', sup.name) END
+          ) END AS thread_type,
+          CASE WHEN wh.id IS NULL THEN NULL ELSE json_build_object('id', wh.id, 'code', wh.code, 'name', wh.name) END AS warehouse
+         FROM thread_inventory inv
+         LEFT JOIN thread_types tt ON tt.id = inv.thread_type_id
+         LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+         LEFT JOIN warehouses wh ON wh.id = inv.warehouse_id
+         WHERE inv.reserved_week_id = $1 AND inv.status = 'RESERVED_FOR_ORDER'
+         ORDER BY inv.thread_type_id ASC, inv.expiry_date ASC NULLS LAST`,
+        [id],
+      ),
+      queryOne<{ summary_data: any }>(
+        `SELECT summary_data FROM thread_order_results WHERE week_id = $1`,
+        [id],
+      ),
     ])
 
-    if (conesResult.error) throw conesResult.error
-
-    const cones = conesResult.data || []
-
     const colorMap = new Map<number, string>()
-    if (resultsResult.data?.summary_data && Array.isArray(resultsResult.data.summary_data)) {
-      for (const row of resultsResult.data.summary_data as Array<{ thread_type_id: number; thread_color?: string }>) {
+    if (resultsRow?.summary_data && Array.isArray(resultsRow.summary_data)) {
+      for (const row of resultsRow.summary_data as Array<{ thread_type_id: number; thread_color?: string }>) {
         if (row.thread_type_id && row.thread_color) {
           colorMap.set(row.thread_type_id, row.thread_color)
         }
       }
     }
 
-    const enrichedCones = cones.map((cone: any) => ({
+    const enrichedCones = (cones || []).map((cone: any) => ({
       ...cone,
       thread_type: cone.thread_type
         ? { ...cone.thread_type, color_name: colorMap.get(cone.thread_type_id) || '' }
@@ -858,11 +855,10 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: bomData, error: bomError } = await supabase.rpc('fn_parse_calculation_cones', {
-      p_week_id: id,
-    })
-
-    if (bomError) throw bomError
+    const bomData = await query<{ thread_type_id: number; color_id: number | null; needed_cones: number }>(
+      `SELECT thread_type_id, color_id, needed_cones FROM fn_parse_calculation_cones($1)`,
+      [id],
+    )
 
     type BomRow = { thread_type_id: number; color_id: number | null; needed_cones: number }
     const bomRows = (bomData || []) as BomRow[]
@@ -874,12 +870,10 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
     const threadTypeIds = Array.from(new Set(bomRows.map((r) => r.thread_type_id)))
     const colorIds = Array.from(new Set(bomRows.map((r) => r.color_id).filter((c): c is number => c !== null)))
 
-    const { data: threadTypes, error: ttError } = await supabase
-      .from('thread_types')
-      .select('id, name')
-      .in('id', threadTypeIds)
-      .limit(threadTypeIds.length)
-    if (ttError) throw ttError
+    const threadTypes = await query<{ id: number; name: string }>(
+      `SELECT id, name FROM thread_types WHERE id = ANY($1) LIMIT $2`,
+      [threadTypeIds, threadTypeIds.length],
+    )
 
     const ttNameMap = new Map<number, string>()
     for (const tt of threadTypes || []) {
@@ -888,12 +882,10 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
 
     const colorNameMap = new Map<number, string>()
     if (colorIds.length > 0) {
-      const { data: colors, error: colorError } = await supabase
-        .from('colors')
-        .select('id, name')
-        .in('id', colorIds)
-        .limit(colorIds.length)
-      if (colorError) throw colorError
+      const colors = await query<{ id: number; name: string }>(
+        `SELECT id, name FROM colors WHERE id = ANY($1) LIMIT $2`,
+        [colorIds, colorIds.length],
+      )
 
       for (const color of colors || []) {
         colorNameMap.set(color.id, color.name || '')
@@ -907,14 +899,13 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
     type ConeQuantity = { physical: number; equivalent: number }
     const emptyQuantity = (): ConeQuantity => ({ physical: 0, equivalent: 0 })
 
-    const { data: reservedCones, error: reservedError } = await supabase
-      .from('thread_inventory')
-      .select('thread_type_id, color_id, is_partial')
-      .eq('reserved_week_id', id)
-      .eq('status', 'RESERVED_FOR_ORDER')
-      .in('thread_type_id', threadTypeIds)
-      .limit(100000)
-    if (reservedError) throw reservedError
+    const reservedCones = await query<{ thread_type_id: number; color_id: number | null; is_partial: boolean | null }>(
+      `SELECT thread_type_id, color_id, is_partial FROM thread_inventory
+       WHERE reserved_week_id = $1 AND status = 'RESERVED_FOR_ORDER'
+         AND thread_type_id = ANY($2)
+       LIMIT 100000`,
+      [id, threadTypeIds],
+    )
 
     const reservedMap = new Map<string, ConeQuantity>()
     for (const r of reservedCones || []) {
@@ -925,27 +916,27 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
       reservedMap.set(key, current)
     }
 
-    const { data: warehouseRows, error: warehouseError } = await supabase
-      .from('thread_order_week_warehouses')
-      .select('warehouse_id')
-      .eq('week_id', id)
-      .limit(100)
-    if (warehouseError) throw warehouseError
+    const warehouseRows = await query<{ warehouse_id: number }>(
+      `SELECT warehouse_id FROM thread_order_week_warehouses WHERE week_id = $1 LIMIT 100`,
+      [id],
+    )
 
     const warehouseIds = (warehouseRows || []).map((row) => row.warehouse_id)
 
-    let availableQuery = supabase
-      .from('thread_inventory')
-      .select('thread_type_id, color_id, is_partial')
-      .eq('status', 'AVAILABLE')
-      .is('reserved_week_id', null)
-      .in('thread_type_id', threadTypeIds)
+    const availableParams: unknown[] = [threadTypeIds]
+    let availableSql = `SELECT thread_type_id, color_id, is_partial FROM thread_inventory
+       WHERE status = 'AVAILABLE' AND reserved_week_id IS NULL
+         AND thread_type_id = ANY($1)`
     if (warehouseIds.length > 0) {
-      availableQuery = availableQuery.in('warehouse_id', warehouseIds)
+      availableParams.push(warehouseIds)
+      availableSql += ` AND warehouse_id = ANY($${availableParams.length})`
     }
+    availableSql += ' LIMIT 100000'
 
-    const { data: availableCones, error: availableError } = await availableQuery.limit(100000)
-    if (availableError) throw availableError
+    const availableCones = await query<{ thread_type_id: number; color_id: number | null; is_partial: boolean | null }>(
+      availableSql,
+      availableParams,
+    )
 
     const availableMap = new Map<string, ConeQuantity>()
     for (const a of availableCones || []) {
@@ -956,13 +947,12 @@ loansReservations.get('/:id/reservation-summary', requirePermission('thread.allo
       availableMap.set(key, current)
     }
 
-    const { data: deliveries, error: deliveryError } = await supabase
-      .from('thread_order_deliveries')
-      .select('thread_type_id')
-      .eq('week_id', id)
-      .in('thread_type_id', threadTypeIds)
-      .limit(threadTypeIds.length)
-    if (deliveryError) throw deliveryError
+    const deliveries = await query<{ thread_type_id: number }>(
+      `SELECT thread_type_id FROM thread_order_deliveries
+       WHERE week_id = $1 AND thread_type_id = ANY($2)
+       LIMIT $3`,
+      [id, threadTypeIds, threadTypeIds.length],
+    )
 
     const deliverySet = new Set((deliveries || []).map((d) => d.thread_type_id))
 
@@ -1021,33 +1011,56 @@ loansReservations.post('/:id/reserve-from-stock', requirePermission('thread.allo
       throw err
     }
 
-    const { data: week, error: weekError } = await supabase
-      .from('thread_order_weeks')
-      .select('id, status')
-      .eq('id', weekId)
-      .single()
+    const week = await queryOne<{ id: number; status: string }>(
+      `SELECT id, status FROM thread_order_weeks WHERE id = $1`,
+      [weekId],
+    )
 
-    if (weekError || !week) {
+    if (!week) {
       return c.json({ data: null, error: 'Không tìm thấy tuần đơn hàng' }, 404)
     }
 
-    if (week.status !== 'CONFIRMED') {
+    const unlockedReserve = week.status !== 'CONFIRMED' && (await isRootUnlocked(c, weekId))
+
+    if (week.status !== 'CONFIRMED' && !unlockedReserve) {
       return c.json({ data: null, error: 'Chỉ có thể lấy từ tồn kho cho tuần đã xác nhận' }, 400)
     }
 
     const createdBy = await getPerformerName(c)
 
-    const { data: result, error: rpcError } = await supabase.rpc('fn_reserve_from_stock', {
-      p_week_id: weekId,
-      p_thread_type_id: validated.thread_type_id,
-      p_quantity: validated.quantity,
-      p_reason: validated.reason || null,
-      p_user: createdBy,
-      p_color_id: validated.color_id,
-    })
+    let result: any
+    try {
+      const rows = await query<{ result: any }>(
+        `SELECT fn_reserve_from_stock($1, $2, $3, $4, $5, $6) AS result`,
+        [
+          weekId,
+          validated.thread_type_id,
+          validated.quantity,
+          validated.reason || null,
+          createdBy,
+          validated.color_id,
+        ],
+      )
+      result = rows.length > 0 ? rows[0].result : null
+    } catch (rpcErr) {
+      return c.json({ data: null, error: getErrorMessage(rpcErr) }, 400)
+    }
 
-    if (rpcError) {
-      return c.json({ data: null, error: rpcError.message }, 400)
+    if (unlockedReserve) {
+      await logWeekAudit({
+        weekId,
+        tableName: 'thread_order_reservations',
+        recordId: validated.thread_type_id,
+        action: 'INSERT',
+        newValues: {
+          thread_type_id: validated.thread_type_id,
+          color_id: validated.color_id,
+          quantity: validated.quantity,
+          reason: validated.reason ?? null,
+          reserved_physical_cones: result?.reserved_physical_cones ?? 0,
+        },
+        performedBy: getPerformer(c),
+      })
     }
 
     return c.json({

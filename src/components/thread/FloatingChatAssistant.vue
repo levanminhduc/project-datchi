@@ -1,12 +1,14 @@
 <template>
   <div
     class="floating-chat-assistant"
-    :class="{ open: isOpen }"
+    :class="{ open: isOpen, dragging: isDragging }"
+    :style="wrapperStyle"
   >
     <transition name="assistant-window">
       <section
         v-if="isOpen"
         class="assistant-window"
+        :style="windowStyle"
         role="dialog"
         aria-label="Trợ lý Chỉ AI"
         @keydown.esc="closeAssistant"
@@ -31,6 +33,7 @@
             <AppButton
               icon="open_in_full"
               variant="flat"
+              color="white"
               round
               dense
               aria-label="Mở trang trợ lý đầy đủ"
@@ -41,6 +44,7 @@
             <AppButton
               icon="close"
               variant="flat"
+              color="white"
               round
               dense
               aria-label="Đóng trợ lý"
@@ -52,6 +56,7 @@
         <div
           ref="messagesEl"
           class="assistant-messages"
+          :style="{ minHeight: messagesMinHeight }"
         >
           <div
             v-for="item in messages"
@@ -178,8 +183,9 @@
       class="assistant-launcher"
       type="button"
       :aria-expanded="isOpen"
-      :aria-label="isOpen ? 'Đóng trợ lý Chỉ AI' : 'Mở trợ lý Chỉ AI'"
-      @click="toggleAssistant"
+      :aria-label="isOpen ? 'Đóng trợ lý Chỉ AI' : 'Mở trợ lý Chỉ AI. Kéo để di chuyển'"
+      @pointerdown="onLauncherPointerDown"
+      @click="onLauncherClick"
     >
       <span class="launcher-halo" />
       <span class="launcher-core">
@@ -196,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppInput from '@/components/ui/inputs/AppInput.vue'
@@ -248,6 +254,193 @@ function toggleAssistant() {
   isOpen.value = !isOpen.value
   if (isOpen.value) scrollToBottom()
 }
+
+// --- Draggable launcher: snaps to nearest left/right edge, never mid-screen ---
+
+type DockSide = 'left' | 'right'
+
+const LAUNCHER_SIZE = 46
+const EDGE_MARGIN = 18
+const WINDOW_GAP = 16
+const DRAG_THRESHOLD_PX = 6
+const POSITION_STORAGE_KEY = 'floating-chat-assistant-position'
+
+const viewport = ref(
+  typeof window === 'undefined'
+    ? { width: 1024, height: 768 }
+    : { width: window.innerWidth, height: window.innerHeight },
+)
+const dockSide = ref<DockSide>('right')
+const dockTop = ref<number | null>(null)
+const isDragging = ref(false)
+const dragPos = ref({ x: 0, y: 0 })
+
+let dragStartX = 0
+let dragStartY = 0
+let dragOriginX = 0
+let dragOriginY = 0
+let dragMoved = false
+let suppressClick = false
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max))
+}
+
+const maxLauncherTop = computed(() => viewport.value.height - LAUNCHER_SIZE - EDGE_MARGIN)
+
+const defaultLauncherTop = computed(() => maxLauncherTop.value)
+
+const settledTop = computed(() =>
+  clamp(dockTop.value ?? defaultLauncherTop.value, EDGE_MARGIN, maxLauncherTop.value),
+)
+
+const settledLeft = computed(() =>
+  dockSide.value === 'left'
+    ? EDGE_MARGIN
+    : viewport.value.width - LAUNCHER_SIZE - EDGE_MARGIN,
+)
+
+const effectiveLeft = computed(() => (isDragging.value ? dragPos.value.x : settledLeft.value))
+const effectiveTop = computed(() => (isDragging.value ? dragPos.value.y : settledTop.value))
+
+const wrapperStyle = computed(() => ({
+  left: `${effectiveLeft.value}px`,
+  top: `${effectiveTop.value}px`,
+}))
+
+const windowOpensRight = computed(
+  () => effectiveLeft.value + LAUNCHER_SIZE / 2 < viewport.value.width / 2,
+)
+
+const windowMaxHeight = computed(() => {
+  const spaceAbove = effectiveTop.value - WINDOW_GAP - 8
+  const spaceBelow = viewport.value.height - (effectiveTop.value + LAUNCHER_SIZE + WINDOW_GAP) - 8
+  const available = Math.max(spaceAbove, spaceBelow)
+  return Math.max(260, Math.min(650, viewport.value.height - 24, available))
+})
+
+const windowStyle = computed(() => {
+  const spaceAbove = effectiveTop.value - WINDOW_GAP - 8
+  const spaceBelow = viewport.value.height - (effectiveTop.value + LAUNCHER_SIZE + WINDOW_GAP) - 8
+  const openBelow = spaceBelow > spaceAbove
+
+  return {
+    left: windowOpensRight.value ? '0' : 'auto',
+    right: windowOpensRight.value ? 'auto' : '0',
+    ...(openBelow
+      ? { top: `${LAUNCHER_SIZE + WINDOW_GAP}px`, bottom: 'auto' }
+      : { bottom: `${LAUNCHER_SIZE + WINDOW_GAP}px`, top: 'auto' }),
+    maxHeight: `${windowMaxHeight.value}px`,
+  }
+})
+
+// Header (~72px) + quick row (~46px) + composer (~84px) + paddings ~= 214px
+const messagesMinHeight = computed(
+  () => `${Math.max(48, Math.min(260, windowMaxHeight.value - 214))}px`,
+)
+
+function onLauncherPointerDown(event: PointerEvent) {
+  if (event.button !== 0) return
+
+  dragStartX = event.clientX
+  dragStartY = event.clientY
+  dragOriginX = effectiveLeft.value
+  dragOriginY = effectiveTop.value
+  dragMoved = false
+
+  window.addEventListener('pointermove', onLauncherPointerMove)
+  window.addEventListener('pointerup', onLauncherPointerUp)
+  window.addEventListener('pointercancel', onLauncherPointerCancel)
+}
+
+function onLauncherPointerMove(event: PointerEvent) {
+  const deltaX = event.clientX - dragStartX
+  const deltaY = event.clientY - dragStartY
+
+  if (!dragMoved && Math.hypot(deltaX, deltaY) > DRAG_THRESHOLD_PX) {
+    dragMoved = true
+    isDragging.value = true
+  }
+
+  if (!dragMoved) return
+
+  dragPos.value = {
+    x: clamp(dragOriginX + deltaX, 0, viewport.value.width - LAUNCHER_SIZE),
+    y: clamp(dragOriginY + deltaY, 0, viewport.value.height - LAUNCHER_SIZE),
+  }
+}
+
+function onLauncherPointerUp() {
+  removeDragListeners()
+
+  if (!dragMoved) return
+  dragMoved = false
+  isDragging.value = false
+  suppressClick = true
+
+  const launcherCenterX = dragPos.value.x + LAUNCHER_SIZE / 2
+  dockSide.value = launcherCenterX < viewport.value.width / 2 ? 'left' : 'right'
+  dockTop.value = clamp(dragPos.value.y, EDGE_MARGIN, maxLauncherTop.value)
+  persistPosition()
+}
+
+function onLauncherPointerCancel() {
+  removeDragListeners()
+  dragMoved = false
+  isDragging.value = false
+}
+
+function removeDragListeners() {
+  window.removeEventListener('pointermove', onLauncherPointerMove)
+  window.removeEventListener('pointerup', onLauncherPointerUp)
+  window.removeEventListener('pointercancel', onLauncherPointerCancel)
+}
+
+function onLauncherClick() {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
+  toggleAssistant()
+}
+
+function persistPosition() {
+  try {
+    localStorage.setItem(
+      POSITION_STORAGE_KEY,
+      JSON.stringify({ side: dockSide.value, top: dockTop.value }),
+    )
+  } catch {
+    // Ignore storage errors (private mode, quota, ...)
+  }
+}
+
+function restorePosition() {
+  try {
+    const raw = localStorage.getItem(POSITION_STORAGE_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw) as { side?: DockSide; top?: number }
+    if (saved.side === 'left' || saved.side === 'right') dockSide.value = saved.side
+    if (typeof saved.top === 'number' && Number.isFinite(saved.top)) dockTop.value = saved.top
+  } catch {
+    // Ignore malformed storage data
+  }
+}
+
+function onViewportResize() {
+  viewport.value = { width: window.innerWidth, height: window.innerHeight }
+}
+
+onMounted(() => {
+  onViewportResize()
+  restorePosition()
+  window.addEventListener('resize', onViewportResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onViewportResize)
+  removeDragListeners()
+})
 
 function closeAssistant() {
   isOpen.value = false
@@ -326,10 +519,16 @@ function formatNumber(value: number): string {
 <style scoped lang="scss">
 .floating-chat-assistant {
   position: fixed;
-  right: 18px;
-  bottom: 18px;
+  left: 0;
+  top: 0;
   z-index: 3200;
   pointer-events: none;
+  transition: left 0.24s ease, top 0.24s ease;
+}
+
+.floating-chat-assistant.dragging {
+  transition: none;
+  user-select: none;
 }
 
 .assistant-launcher,
@@ -343,10 +542,15 @@ function formatNumber(value: number): string {
   height: 46px;
   border: 0;
   border-radius: 50%;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
   color: #fff;
   background: transparent;
   filter: drop-shadow(0 10px 18px rgba(0, 90, 210, 0.3));
+}
+
+.floating-chat-assistant.dragging .assistant-launcher {
+  cursor: grabbing;
 }
 
 .assistant-launcher:focus-visible {
@@ -406,10 +610,7 @@ function formatNumber(value: number): string {
 
 .assistant-window {
   position: absolute;
-  right: 0;
-  bottom: 62px;
   width: min(430px, calc(100vw - 28px));
-  max-height: min(650px, calc(100vh - 116px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -428,7 +629,7 @@ function formatNumber(value: number): string {
   justify-content: space-between;
   gap: 12px;
   padding: 14px;
-  background: linear-gradient(135deg, #0969f0, #1555de 55%, #0aa782);
+  background: #0969f0;
   color: #fff;
 }
 
@@ -485,7 +686,6 @@ function formatNumber(value: number): string {
 
 .assistant-messages {
   flex: 1;
-  min-height: 260px;
   max-height: 390px;
   overflow-y: auto;
   scrollbar-color: rgba(44, 92, 130, 0.32) transparent;
@@ -821,16 +1021,8 @@ function formatNumber(value: number): string {
 }
 
 @media (max-width: 599px) {
-  .floating-chat-assistant {
-    right: 12px;
-    bottom: 12px;
-  }
-
   .assistant-window {
-    right: -2px;
-    bottom: 58px;
     width: calc(100vw - 24px);
-    max-height: calc(100vh - 104px);
     border-radius: 18px;
   }
 

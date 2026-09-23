@@ -68,6 +68,7 @@ export const ReceiveDeliverySchema = z.object({
   quantity: z.number({ error:'Số lượng là bắt buộc' }).int().positive('Số lượng phải lớn hơn 0'),
   received_by: z.string({ error:'Người nhập là bắt buộc' }).min(1, 'Người nhập không được để trống'),
   expiry_date: z.string().optional(),
+  idempotency_key: z.string().max(64, 'idempotency_key tối đa 64 ký tự').optional(),
 })
 
 export const UpdateQuotaConesSchema = z.object({

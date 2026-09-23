@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../../db/supabase'
+import { queryOne, query } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import type { AppEnv } from '../../types/hono-env'
 import { getPartialConeRatio } from '../../utils/settings-helper'
@@ -317,27 +317,26 @@ async function fetchIssueSourceByPoStyleColorMultiWeek(
 ): Promise<IssueSourceRow[]> {
   if (weekIds.length === 0) return []
 
-  const { data: items, error: itemsErr } = await supabaseAdmin
-    .from('thread_order_items')
-    .select('po_id, style_id, style_color_id')
-    .in('week_id', weekIds)
-    .not('po_id', 'is', null)
-    .limit(50000)
-  if (itemsErr) throw itemsErr
+  const items = await query<{ po_id: number | null; style_id: number | null; style_color_id: number | null }>(
+    `SELECT po_id, style_id, style_color_id FROM thread_order_items
+     WHERE week_id = ANY($1) AND po_id IS NOT NULL
+     LIMIT 50000`,
+    [weekIds],
+  )
   if (!items || items.length === 0) return []
 
   const poIds = Array.from(new Set(items.map(i => i.po_id).filter((v): v is number => v != null)))
   const styleColorIds = Array.from(new Set(items.map(i => i.style_color_id).filter((v): v is number => v != null)))
   if (poIds.length === 0 || styleColorIds.length === 0) return []
 
-  const { data: lines, error: linesErr } = await supabaseAdmin
-    .from('thread_issue_lines')
-    .select('id, po_id, style_id, style_color_id, thread_type_id, thread_color_id, thread_issues!inner(status)')
-    .in('po_id', poIds)
-    .in('style_color_id', styleColorIds)
-    .eq('thread_issues.status', 'CONFIRMED')
-    .limit(100000)
-  if (linesErr) throw linesErr
+  const lines = await query<IssueSourceLineRow>(
+    `SELECT l.id, l.po_id, l.style_id, l.style_color_id, l.thread_type_id, l.thread_color_id
+     FROM thread_issue_lines l
+     INNER JOIN thread_issues ti ON ti.id = l.issue_id
+     WHERE l.po_id = ANY($1) AND l.style_color_id = ANY($2) AND ti.status = 'CONFIRMED'
+     LIMIT 100000`,
+    [poIds, styleColorIds],
+  )
   if (!lines || lines.length === 0) return []
 
   const validKeys = new Set<string>()
@@ -353,12 +352,10 @@ async function fetchIssueSourceByPoStyleColorMultiWeek(
   const threadTypeIds = Array.from(new Set(issueLines.map(line => line.thread_type_id)))
   const metersPerConeByThreadType = new Map<number, number>()
   for (const chunk of chunkArray(threadTypeIds, 500)) {
-    const { data, error } = await supabaseAdmin
-      .from('thread_types')
-      .select('id, meters_per_cone')
-      .in('id', chunk)
-      .limit(chunk.length)
-    if (error) throw error
+    const data = await query<{ id: number; meters_per_cone: number | string | null }>(
+      `SELECT id, meters_per_cone FROM thread_types WHERE id = ANY($1) LIMIT $2`,
+      [chunk, chunk.length],
+    )
     for (const row of (data ?? []) as Array<{ id: number; meters_per_cone: number | string | null }>) {
       metersPerConeByThreadType.set(row.id, toFiniteNumber(row.meters_per_cone) ?? 0)
     }
@@ -367,14 +364,12 @@ async function fetchIssueSourceByPoStyleColorMultiWeek(
   const lineById = new Map(issueLines.map(line => [line.id, line]))
   const issueMovements: IssueMovementRow[] = []
   for (const chunk of chunkArray(Array.from(lineById.keys()).map(String), 500)) {
-    const { data, error } = await supabaseAdmin
-      .from('thread_movements')
-      .select('reference_id, quantity_meters, from_status')
-      .in('reference_id', chunk)
-      .eq('movement_type', 'ISSUE')
-      .eq('reference_type', 'ISSUE_LINE')
-      .limit(100000)
-    if (error) throw error
+    const data = await query<IssueMovementRow>(
+      `SELECT reference_id, quantity_meters, from_status FROM thread_movements
+       WHERE reference_id = ANY($1) AND movement_type = 'ISSUE' AND reference_type = 'ISSUE_LINE'
+       LIMIT 100000`,
+      [chunk],
+    )
     issueMovements.push(...((data ?? []) as IssueMovementRow[]))
   }
   if (issueMovements.length === 0) return []
@@ -500,36 +495,36 @@ function buildProcessTracePoLineMap(
 }
 
 async function fetchDisplayMaps(poIds: number[], styleIds: number[], styleColorIds: number[]): Promise<DisplayMaps> {
-  const [poRes, styleRes, styleColorRes] = await Promise.all([
+  const [poData, styleData, styleColorData] = await Promise.all([
     poIds.length
-      ? supabaseAdmin.from('purchase_orders').select('id, po_number').in('id', poIds).limit(poIds.length)
-      : Promise.resolve({ data: [], error: null }),
+      ? query<PoDisplayRow>(`SELECT id, po_number FROM purchase_orders WHERE id = ANY($1) LIMIT $2`, [poIds, poIds.length])
+      : Promise.resolve([] as PoDisplayRow[]),
     styleIds.length
-      ? supabaseAdmin.from('styles').select('id, style_code, style_name').in('id', styleIds).limit(styleIds.length)
-      : Promise.resolve({ data: [], error: null }),
+      ? query<StyleDisplayRow>(`SELECT id, style_code, style_name FROM styles WHERE id = ANY($1) LIMIT $2`, [styleIds, styleIds.length])
+      : Promise.resolve([] as StyleDisplayRow[]),
     styleColorIds.length
-      ? supabaseAdmin.from('style_colors').select('id, color_name').in('id', styleColorIds).limit(styleColorIds.length)
-      : Promise.resolve({ data: [], error: null }),
+      ? query<StyleColorDisplayRow>(`SELECT id, color_name FROM style_colors WHERE id = ANY($1) LIMIT $2`, [styleColorIds, styleColorIds.length])
+      : Promise.resolve([] as StyleColorDisplayRow[]),
   ])
-  if (poRes.error) throw poRes.error
-  if (styleRes.error) throw styleRes.error
-  if (styleColorRes.error) throw styleColorRes.error
 
   return {
-    poNumbers: new Map(((poRes.data ?? []) as PoDisplayRow[]).map(p => [p.id, p.po_number])),
-    styles: new Map(((styleRes.data ?? []) as StyleDisplayRow[]).map(s => [s.id, { style_code: s.style_code, style_name: s.style_name }])),
-    styleColors: new Map(((styleColorRes.data ?? []) as StyleColorDisplayRow[]).map(s => [s.id, s.color_name])),
+    poNumbers: new Map(((poData ?? []) as PoDisplayRow[]).map(p => [p.id, p.po_number])),
+    styles: new Map(((styleData ?? []) as StyleDisplayRow[]).map(s => [s.id, { style_code: s.style_code, style_name: s.style_name }])),
+    styleColors: new Map(((styleColorData ?? []) as StyleColorDisplayRow[]).map(s => [s.id, s.color_name])),
   }
 }
 
 async function fetchReservedByWarehouse(weekId: number, ratio: number) {
-  const { data, error } = await supabaseAdmin
-    .from('thread_inventory')
-    .select('thread_type_id, color_id, warehouse_id, is_partial, warehouse:warehouses(id, code, name)')
-    .eq('reserved_week_id', weekId)
-    .eq('status', 'RESERVED_FOR_ORDER')
-    .limit(500000)
-  if (error) throw error
+  const data = await query<ReservedConeRow>(
+    `SELECT ti.thread_type_id, ti.color_id, ti.warehouse_id, ti.is_partial,
+       CASE WHEN w.id IS NULL THEN NULL
+            ELSE json_build_object('id', w.id, 'code', w.code, 'name', w.name) END AS warehouse
+     FROM thread_inventory ti
+     LEFT JOIN warehouses w ON w.id = ti.warehouse_id
+     WHERE ti.reserved_week_id = $1 AND ti.status = 'RESERVED_FOR_ORDER'
+     LIMIT 500000`,
+    [weekId],
+  )
 
   const map = new Map<TraceKey, Map<number, TraceWarehouse>>()
   for (const cone of (data ?? []) as unknown as ReservedConeRow[]) {
@@ -560,19 +555,26 @@ async function fillThreadDisplay(rows: Map<TraceKey, TraceRow>) {
   const threadTypeIds = Array.from(new Set(Array.from(rows.values()).map(row => row.thread_type_id)))
   const colorIds = Array.from(new Set(Array.from(rows.values()).map(row => row.thread_color_id).filter((id): id is number => id != null)))
 
-  const [threadTypesRes, colorsRes] = await Promise.all([
+  const [threadTypesData, colorsData] = await Promise.all([
     threadTypeIds.length
-      ? supabaseAdmin.from('thread_types').select('id, tex_number, suppliers(name), color_data:colors!color_id(name)').in('id', threadTypeIds).limit(threadTypeIds.length)
-      : Promise.resolve({ data: [], error: null }),
+      ? query<ThreadTypeDisplayRow>(
+          `SELECT tt.id, tt.tex_number,
+             CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('name', sup.name) END AS suppliers,
+             CASE WHEN col.id IS NULL THEN NULL ELSE json_build_object('name', col.name) END AS color_data
+           FROM thread_types tt
+           LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+           LEFT JOIN colors col ON col.id = tt.color_id
+           WHERE tt.id = ANY($1) LIMIT $2`,
+          [threadTypeIds, threadTypeIds.length],
+        )
+      : Promise.resolve([] as ThreadTypeDisplayRow[]),
     colorIds.length
-      ? supabaseAdmin.from('colors').select('id, name').in('id', colorIds).limit(colorIds.length)
-      : Promise.resolve({ data: [], error: null }),
+      ? query<ColorDisplayRow>(`SELECT id, name FROM colors WHERE id = ANY($1) LIMIT $2`, [colorIds, colorIds.length])
+      : Promise.resolve([] as ColorDisplayRow[]),
   ])
-  if (threadTypesRes.error) throw threadTypesRes.error
-  if (colorsRes.error) throw colorsRes.error
 
   const threadTypeMap = new Map<number, { supplier_name: string; tex_number: string; color_name: string }>()
-  for (const threadType of (threadTypesRes.data ?? []) as unknown as ThreadTypeDisplayRow[]) {
+  for (const threadType of (threadTypesData ?? []) as unknown as ThreadTypeDisplayRow[]) {
     const supplier = Array.isArray(threadType.suppliers) ? threadType.suppliers[0] : threadType.suppliers
     const color = Array.isArray(threadType.color_data) ? threadType.color_data[0] : threadType.color_data
     threadTypeMap.set(threadType.id, {
@@ -581,7 +583,7 @@ async function fillThreadDisplay(rows: Map<TraceKey, TraceRow>) {
       color_name: color?.name ?? '',
     })
   }
-  const colorMap = new Map<number, string>(((colorsRes.data ?? []) as ColorDisplayRow[]).map(color => [color.id, color.name]))
+  const colorMap = new Map<number, string>(((colorsData ?? []) as ColorDisplayRow[]).map(color => [color.id, color.name]))
 
   for (const row of rows.values()) {
     const threadType = threadTypeMap.get(row.thread_type_id)
@@ -601,12 +603,10 @@ router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view
     }
     const weekId = Number(weekIdRaw)
 
-    const { data: week, error: weekErr } = await supabaseAdmin
-      .from('thread_order_weeks')
-      .select('id, week_name, status')
-      .eq('id', weekId)
-      .maybeSingle()
-    if (weekErr) throw weekErr
+    const week = await queryOne<{ id: number; week_name: string; status: string }>(
+      `SELECT id, week_name, status FROM thread_order_weeks WHERE id = $1`,
+      [weekId],
+    )
     if (!week) return c.json({ data: null, error: 'Tuần không tồn tại' }, 404)
 
     const [{ calculation_data, summary_data }, orderItems, ratio, deliverySummary] = await Promise.all([

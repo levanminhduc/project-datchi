@@ -96,6 +96,7 @@ export interface ConeSummaryRow {
   partial_weight_grams: number
   total_full_cones: number
   total_partial_cones: number
+  idle_days: number | null
 }
 
 /**
@@ -177,11 +178,13 @@ export interface ConeReservedPoBreakdownRow {
   returned_cones: number
   net_issued: number
   pending_cones: number
+  additional_order?: number
 }
 
 export interface ConeReservedPoBreakdownResponse {
   week: { id: number; week_name: string; status: string }
   thread_type_id: number
   thread_color_id: number
+  additional_order: number
   rows: ConeReservedPoBreakdownRow[]
 }

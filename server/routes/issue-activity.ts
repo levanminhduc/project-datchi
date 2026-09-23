@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../db/supabase'
+import { from } from '../db/sql-builder'
 import type { AppEnv } from '../types/hono-env'
 import { getPartialConeRatio } from '../utils/settings-helper'
 import {
@@ -29,12 +29,11 @@ issueActivity.get(
       const department = query.department || undefined
       const search = query.search?.trim() || undefined
 
-      const { data: weeks, error: weeksErr } = await supabaseAdmin
-        .from('thread_order_weeks')
+      const weeks = await from('thread_order_weeks')
         .select('id')
         .eq('status', 'CONFIRMED')
         .limit(1000)
-      if (weeksErr) throw weeksErr
+        .list<{ id: number }>()
       if (!weeks || weeks.length === 0) {
         return c.json({
           data: { pos: [], total: 0, page, limit },
@@ -63,12 +62,12 @@ issueActivity.get(
       let activePoIds = allPoIds.filter(id => lastIssuedMap.has(id))
 
       if (search && activePoIds.length > 0) {
-        const { data: matchedPos } = await supabaseAdmin
-          .from('purchase_orders')
+        const matchedPos = await from('purchase_orders')
           .select('id')
           .in('id', activePoIds)
           .ilike('po_number', `%${search}%`)
           .limit(activePoIds.length)
+          .list<{ id: number }>()
         const matchedSet = new Set((matchedPos ?? []).map((p: { id: number }) => p.id))
         activePoIds = activePoIds.filter(id => matchedSet.has(id))
       }
@@ -180,12 +179,11 @@ issueActivity.get(
 
       const poNumbersMap = new Map<number, string>()
       if (pagePoIds.length > 0) {
-        const { data: pos, error: posErr } = await supabaseAdmin
-          .from('purchase_orders')
+        const pos = await from('purchase_orders')
           .select('id, po_number')
           .in('id', pagePoIds)
           .limit(pagePoIds.length)
-        if (posErr) throw posErr
+          .list<{ id: number; po_number: string }>()
         for (const p of (pos ?? []) as Array<{ id: number; po_number: string }>) {
           poNumbersMap.set(p.id, p.po_number)
         }
@@ -201,12 +199,11 @@ issueActivity.get(
       const styleInfoMap = new Map<number, { style_code: string; style_name: string }>()
       if (allStyleIds.size > 0) {
         const styleIdArr = Array.from(allStyleIds)
-        const { data: stylesData, error: stylesErr } = await supabaseAdmin
-          .from('styles')
+        const stylesData = await from('styles')
           .select('id, style_code, style_name')
           .in('id', styleIdArr)
           .limit(styleIdArr.length)
-        if (stylesErr) throw stylesErr
+          .list<{ id: number; style_code: string; style_name: string }>()
         for (const s of (stylesData ?? []) as Array<{ id: number; style_code: string; style_name: string }>) {
           styleInfoMap.set(s.id, { style_code: s.style_code, style_name: s.style_name })
         }
@@ -224,12 +221,11 @@ issueActivity.get(
       const styleColorNameMap = new Map<number, string>()
       if (allStyleColorIds.size > 0) {
         const scIdArr = Array.from(allStyleColorIds)
-        const { data: scData, error: scErr } = await supabaseAdmin
-          .from('style_colors')
+        const scData = await from('style_colors')
           .select('id, color_name')
           .in('id', scIdArr)
           .limit(scIdArr.length)
-        if (scErr) throw scErr
+          .list<{ id: number; color_name: string }>()
         for (const sc of (scData ?? []) as Array<{ id: number; color_name: string }>) {
           styleColorNameMap.set(sc.id, sc.color_name)
         }

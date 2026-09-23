@@ -7,7 +7,7 @@
         round
         icon="arrow_back"
         color="primary"
-        @click="$router.push('/kho')"
+        @click="$router.push('/')"
       />
       <div class="q-ml-md">
         <h1 class="text-h5 q-my-none text-weight-bold text-primary">

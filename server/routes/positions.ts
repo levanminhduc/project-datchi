@@ -20,7 +20,8 @@
  */
 
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
+import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import type {
   Position,
@@ -42,26 +43,18 @@ positions.use('*', requirePermission('employees.view'))
 positions.get('/', async (c) => {
   try {
     const activeOnly = c.req.query('active_only') === 'true'
-    
-    let query = supabase
-      .from('positions')
+
+    const builder = from('positions')
       .select('id, name, display_name, is_active, created_at, updated_at')
-      .order('display_name', { ascending: true })
-    
+
     // Only filter by is_active if explicitly requested
     if (activeOnly) {
-      query = query.eq('is_active', true)
+      builder.eq('is_active', true)
     }
-    
-    const { data, error } = await query
 
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<ApiResponse<null>>(
-        { data: null, error: 'Lỗi khi tải danh sách chức vụ' },
-        500
-      )
-    }
+    builder.order({ column: 'display_name', ascending: true })
+
+    const data = await builder.list<Position>()
 
     const safeData: Position[] = (data || []).map((pos) => ({
       id: pos.id,
@@ -92,23 +85,15 @@ positions.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
-    const { data, error } = await supabase
-      .from('positions')
-      .select('id, name, display_name, is_active, created_at, updated_at')
-      .eq('id', id)
-      .single()
+    const data = await queryOne<Position>(
+      'SELECT id, name, display_name, is_active, created_at, updated_at FROM positions WHERE id = $1',
+      [id]
+    )
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<ApiResponse<null>>(
-          { data: null, error: 'Không tìm thấy chức vụ' },
-          404
-        )
-      }
-      console.error('Supabase error:', error)
+    if (!data) {
       return c.json<ApiResponse<null>>(
-        { data: null, error: 'Lỗi khi tải thông tin chức vụ' },
-        500
+        { data: null, error: 'Không tìm thấy chức vụ' },
+        404
       )
     }
 
@@ -149,11 +134,10 @@ positions.post('/', async (c) => {
     }
 
     // Check for duplicate name
-    const { data: existing } = await supabase
-      .from('positions')
-      .select('id')
-      .eq('name', body.name)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM positions WHERE name = $1',
+      [body.name]
+    )
 
     if (existing) {
       return c.json<ApiResponse<null>>(
@@ -162,17 +146,15 @@ positions.post('/', async (c) => {
       )
     }
 
-    const { data, error } = await supabase
-      .from('positions')
-      .insert({
-        name: body.name.trim(),
-        display_name: body.display_name.trim(),
-      })
-      .select()
-      .single()
+    const data = await queryOne<Position>(
+      `INSERT INTO positions (name, display_name)
+       VALUES ($1, $2)
+       RETURNING id, name, display_name, is_active, created_at, updated_at`,
+      [body.name.trim(), body.display_name.trim()]
+    )
 
-    if (error) {
-      console.error('Supabase error:', error)
+    if (!data) {
+      console.error('Insert position returned no row')
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Thêm chức vụ thất bại' },
         500
@@ -211,13 +193,12 @@ positions.put('/:id', async (c) => {
     const id = c.req.param('id')
     const body = await c.req.json<UpdatePositionDTO>()
 
-    const { data: existing, error: findError } = await supabase
-      .from('positions')
-      .select('id')
-      .eq('id', id)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM positions WHERE id = $1',
+      [id]
+    )
 
-    if (findError || !existing) {
+    if (!existing) {
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Không tìm thấy chức vụ' },
         404
@@ -226,12 +207,10 @@ positions.put('/:id', async (c) => {
 
     // Check for duplicate name if updating name
     if (body.name) {
-      const { data: duplicate } = await supabase
-        .from('positions')
-        .select('id')
-        .eq('name', body.name)
-        .neq('id', id)
-        .single()
+      const duplicate = await queryOne<{ id: number }>(
+        'SELECT id FROM positions WHERE name = $1 AND id <> $2',
+        [body.name, id]
+      )
 
       if (duplicate) {
         return c.json<ApiResponse<null>>(
@@ -241,20 +220,30 @@ positions.put('/:id', async (c) => {
       }
     }
 
-    const updateData: Record<string, unknown> = {}
-    if (body.name !== undefined) updateData.name = body.name.trim()
-    if (body.display_name !== undefined) updateData.display_name = body.display_name.trim()
-    if (body.is_active !== undefined) updateData.is_active = body.is_active
+    const sets: string[] = []
+    const params: unknown[] = []
+    if (body.name !== undefined) {
+      params.push(body.name.trim())
+      sets.push(`name = $${params.length}`)
+    }
+    if (body.display_name !== undefined) {
+      params.push(body.display_name.trim())
+      sets.push(`display_name = $${params.length}`)
+    }
+    if (body.is_active !== undefined) {
+      params.push(body.is_active)
+      sets.push(`is_active = $${params.length}`)
+    }
 
-    const { data, error } = await supabase
-      .from('positions')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single()
+    params.push(id)
+    const data = await queryOne<Position>(
+      `UPDATE positions SET ${sets.join(', ')} WHERE id = $${params.length}
+       RETURNING id, name, display_name, is_active, created_at, updated_at`,
+      params
+    )
 
-    if (error) {
-      console.error('Supabase error:', error)
+    if (!data) {
+      console.error('Update position returned no row')
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Cập nhật thất bại. Vui lòng thử lại' },
         500
@@ -289,31 +278,19 @@ positions.delete('/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
-    const { data: existing, error: findError } = await supabase
-      .from('positions')
-      .select('id')
-      .eq('id', id)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      'SELECT id FROM positions WHERE id = $1',
+      [id]
+    )
 
-    if (findError || !existing) {
+    if (!existing) {
       return c.json<ApiResponse<null>>(
         { data: null, error: 'Không tìm thấy chức vụ' },
         404
       )
     }
 
-    const { error } = await supabase
-      .from('positions')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<ApiResponse<null>>(
-        { data: null, error: 'Xóa thất bại. Vui lòng thử lại' },
-        500
-      )
-    }
+    await query('DELETE FROM positions WHERE id = $1', [id])
 
     return c.json<ApiResponse<{ success: boolean }>>({
       data: { success: true },

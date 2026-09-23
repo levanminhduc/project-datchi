@@ -1,6 +1,6 @@
 import { format } from 'date-fns'
 import { useSnackbar } from '@/composables/useSnackbar'
-import type { AggregatedRow, WeekHistoryGroup } from '@/types/thread'
+import type { AggregatedRow, WeekHistoryGroup, ThreadOrderItem, StyleOrderEntry } from '@/types/thread'
 
 type Worksheet = import('exceljs').Worksheet
 type Workbook = import('exceljs').Workbook
@@ -71,9 +71,8 @@ const COLUMN_DEFS: Array<{ header: string; key: string; width: number }> = [
   { header: 'Tổng mét', key: 'total_meters', width: 15 },
   { header: 'Mét/cuộn', key: 'meters_per_cone', width: 12 },
   { header: 'Nhu Cầu', key: 'total_cones', width: 12 },
-  { header: 'Tồn kho KD', key: 'inventory_cones', width: 12 },
-  { header: 'Cuộn Nguyên TT', key: 'full_cones', width: 14 },
-  { header: 'Cuộn Lẻ TT', key: 'partial_cones', width: 14 },
+  { header: 'Cuộn Nguyên KD', key: 'full_cones', width: 14 },
+  { header: 'Cuộn Lẻ KD', key: 'partial_cones', width: 14 },
   { header: 'Tồn kho QĐ', key: 'equivalent_cones', width: 12 },
   { header: 'SL cần đặt', key: 'sl_can_dat', width: 12 },
   { header: 'Đặt thêm', key: 'additional_order', width: 12 },
@@ -239,7 +238,6 @@ async function buildOrderWorkbook(
   worksheet.getColumn('total_meters').numFmt = numFmt2
   worksheet.getColumn('meters_per_cone').numFmt = numFmt
   worksheet.getColumn('total_cones').numFmt = numFmt
-  worksheet.getColumn('inventory_cones').numFmt = numFmt
   worksheet.getColumn('full_cones').numFmt = numFmt
   worksheet.getColumn('partial_cones').numFmt = numFmt
   worksheet.getColumn('equivalent_cones').numFmt = 'General'
@@ -257,7 +255,6 @@ async function buildOrderWorkbook(
       total_meters: Number(r.total_meters.toFixed(2)),
       meters_per_cone: r.meters_per_cone || '',
       total_cones: r.total_cones > 0 ? r.total_cones : '',
-      inventory_cones: r.inventory_cones || '',
       full_cones: r.full_cones ?? '',
       partial_cones: r.partial_cones ?? '',
       equivalent_cones: r.equivalent_cones ?? '',
@@ -454,6 +451,228 @@ export async function exportOrderHistory(
     snackbar.success('Đã xuất file Excel')
   } catch (err) {
     console.error('[history-by-week] export error:', err)
+    snackbar.error('Không thể xuất file Excel')
+  }
+}
+
+export interface WeekItemExportRow {
+  po_number: string
+  style_code: string
+  style_name: string
+  sub_art_code: string
+  color_name: string
+  quantity: number
+}
+
+function splitSubArtFromColorName(colorName: string, fallbackSubArt: string): { subArt: string; color: string } {
+  const idx = colorName.indexOf(' - ')
+  if (idx === -1) return { subArt: fallbackSubArt, color: colorName }
+  return { subArt: colorName.substring(0, idx), color: colorName.substring(idx + 3) }
+}
+
+export function weekItemsToExportRows(items: ThreadOrderItem[]): WeekItemExportRow[] {
+  return items.map((item) => {
+    const colorName = item.style_color?.color_name ?? item.color?.name ?? ''
+    const parsed = splitSubArtFromColorName(colorName, item.sub_art?.sub_art_code ?? '')
+    return {
+      po_number: item.po?.po_number ?? '',
+      style_code: item.style?.style_code ?? '',
+      style_name: item.style?.style_name ?? '',
+      sub_art_code: parsed.subArt,
+      color_name: parsed.color,
+      quantity: item.quantity,
+    }
+  })
+}
+
+export function orderEntriesToExportRows(entries: StyleOrderEntry[]): WeekItemExportRow[] {
+  return entries.flatMap((entry) =>
+    entry.colors
+      .filter((c) => c.quantity > 0)
+      .map((c) => {
+        const parsed = splitSubArtFromColorName(c.color_name, entry.sub_art_code ?? '')
+        return {
+          po_number: entry.po_number,
+          style_code: entry.style_code,
+          style_name: entry.style_name,
+          sub_art_code: parsed.subArt,
+          color_name: parsed.color,
+          quantity: c.quantity,
+        }
+      }),
+  )
+}
+
+const ITEM_COLUMN_DEFS: Array<{ header: string; key: string; width: number }> = [
+  { header: 'STT', key: 'stt', width: 6 },
+  { header: 'PO', key: 'po_number', width: 18 },
+  { header: 'Mã hàng', key: 'style_code', width: 20 },
+  { header: 'Subart', key: 'sub_art_code', width: 14 },
+  { header: 'Màu hàng', key: 'color_name', width: 24 },
+  { header: 'Số lượng', key: 'quantity', width: 12 },
+]
+
+const ITEM_LAST_COL_LETTER = String.fromCharCode(64 + ITEM_COLUMN_DEFS.length)
+const ITEM_HEADER_ROW = 5
+
+function renderItemDocHeader(worksheet: Worksheet, week: ExportWeekMeta) {
+  worksheet.mergeCells(`A1:${ITEM_LAST_COL_LETTER}1`)
+  const r1 = worksheet.getCell('A1')
+  r1.value = 'DANH SÁCH ĐẶT HÀNG'
+  r1.font = { bold: true, size: 14 }
+  r1.alignment = { horizontal: 'center' }
+
+  worksheet.mergeCells(`A2:${ITEM_LAST_COL_LETTER}2`)
+  const r2 = worksheet.getCell('A2')
+  r2.value = `Đơn hàng: ${week.week_name}`
+  r2.font = { bold: true, size: 11 }
+  r2.alignment = { horizontal: 'center' }
+
+  worksheet.mergeCells(`A3:${ITEM_LAST_COL_LETTER}3`)
+  const r3 = worksheet.getCell('A3')
+  const parts = [`Ngày xuất: ${format(new Date(), 'dd/MM/yyyy')}`]
+  if (week.created_by) parts.push(`Người tạo: ${week.created_by}`)
+  r3.value = parts.join('   —   ')
+  r3.font = { italic: true, size: 10 }
+  r3.alignment = { horizontal: 'center' }
+}
+
+async function buildWeekItemsWorkbook(
+  rows: WeekItemExportRow[],
+  week: ExportWeekMeta,
+): Promise<Workbook> {
+  const ExcelJS = await import('exceljs')
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('Danh Sách Đặt Hàng')
+
+  renderItemDocHeader(worksheet, week)
+
+  ITEM_COLUMN_DEFS.forEach((col, idx) => {
+    const wsCol = worksheet.getColumn(idx + 1)
+    wsCol.key = col.key
+    wsCol.width = col.width
+  })
+
+  const headerRow = worksheet.getRow(ITEM_HEADER_ROW)
+  ITEM_COLUMN_DEFS.forEach((col, idx) => {
+    const cell = headerRow.getCell(idx + 1)
+    cell.value = col.header
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1976D2' } }
+    cell.alignment = { horizontal: 'center', vertical: 'middle' }
+    cell.border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' },
+    }
+  })
+  headerRow.commit()
+
+  const sortedRows = [...rows].sort((a, b) =>
+    a.po_number.localeCompare(b.po_number, 'vi')
+    || a.style_code.localeCompare(b.style_code, 'vi')
+    || a.sub_art_code.localeCompare(b.sub_art_code, 'vi')
+    || a.color_name.localeCompare(b.color_name, 'vi'),
+  )
+
+  sortedRows.forEach((row, idx) => {
+    worksheet.addRow({
+      stt: idx + 1,
+      po_number: row.po_number,
+      style_code: row.style_code,
+      sub_art_code: row.sub_art_code,
+      color_name: row.color_name,
+      quantity: row.quantity,
+    })
+  })
+
+  worksheet.getColumn('quantity').numFmt = '#,##0'
+
+  const lastDataRow = ITEM_HEADER_ROW + sortedRows.length
+
+  const mergeRepeatedCells = (colLetters: string[], keyOf: (r: WeekItemExportRow) => string) => {
+    let groupStart = 0
+    const groupKey = (idx: number) => keyOf(sortedRows[idx]!)
+    for (let i = 1; i <= sortedRows.length; i++) {
+      if (i === sortedRows.length || groupKey(i) !== groupKey(groupStart)) {
+        if (i - groupStart > 1) {
+          const startRow = ITEM_HEADER_ROW + 1 + groupStart
+          const endRow = ITEM_HEADER_ROW + i
+          for (const letter of colLetters) {
+            worksheet.mergeCells(`${letter}${startRow}:${letter}${endRow}`)
+          }
+        }
+        groupStart = i
+      }
+    }
+  }
+
+  mergeRepeatedCells(['B'], (r) => r.po_number)
+  mergeRepeatedCells(['C'], (r) => `${r.po_number}|${r.style_code}`)
+  mergeRepeatedCells(['D'], (r) => `${r.po_number}|${r.style_code}|${r.sub_art_code}`)
+
+  for (let rowIdx = ITEM_HEADER_ROW + 1; rowIdx <= lastDataRow; rowIdx++) {
+    const row = worksheet.getRow(rowIdx)
+    for (let colIdx = 1; colIdx <= ITEM_COLUMN_DEFS.length; colIdx++) {
+      const cell = row.getCell(colIdx)
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      }
+      if (colIdx === 1) {
+        cell.alignment = { horizontal: 'center' }
+      } else if (colIdx >= 2 && colIdx <= 4) {
+        cell.alignment = { vertical: 'middle' }
+      }
+    }
+    row.commit()
+  }
+
+  const totalRowIdx = lastDataRow + 1
+  const totalRow = worksheet.getRow(totalRowIdx)
+  worksheet.mergeCells(`A${totalRowIdx}:E${totalRowIdx}`)
+  const totalLabel = worksheet.getCell(`A${totalRowIdx}`)
+  totalLabel.value = 'TỔNG CỘNG'
+  totalLabel.font = { bold: true }
+  totalLabel.alignment = { horizontal: 'right' }
+  const totalValue = worksheet.getCell(`${ITEM_LAST_COL_LETTER}${totalRowIdx}`)
+  totalValue.value = rows.reduce((sum, r) => sum + (r.quantity || 0), 0)
+  totalValue.font = { bold: true }
+  totalValue.numFmt = '#,##0'
+  for (let colIdx = 1; colIdx <= ITEM_COLUMN_DEFS.length; colIdx++) {
+    totalRow.getCell(colIdx).border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' },
+    }
+  }
+  totalRow.commit()
+
+  return workbook
+}
+
+export async function exportWeekItems(
+  rows: WeekItemExportRow[],
+  week: ExportWeekMeta,
+) {
+  const snackbar = useSnackbar()
+
+  if (rows.length === 0) {
+    snackbar.warning('Chưa có mục nào để xuất')
+    return
+  }
+
+  try {
+    const workbook = await buildWeekItemsWorkbook(rows, week)
+    const baseName = sanitizeFilename(week.week_name || 'tuan')
+    await downloadWorkbook(workbook, `danh-sach-dat-hang-${baseName}.xlsx`)
+    snackbar.success('Đã xuất file Excel')
+  } catch (err) {
+    console.error('[weekly-order] export items error:', err)
     snackbar.error('Không thể xuất file Excel')
   }
 }

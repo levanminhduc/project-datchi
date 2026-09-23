@@ -7,6 +7,7 @@ export interface Employee {
   is_active: boolean
   created_at: string
   updated_at: string
+  locked_until: string | null
 }
 
 export interface EmployeeDetail extends Employee {
@@ -14,7 +15,6 @@ export interface EmployeeDetail extends Employee {
   must_change_password: boolean | null
   password_changed_at: string | null
   failed_login_attempts: number | null
-  locked_until: string | null
 }
 
 export interface CreateEmployeeDTO {

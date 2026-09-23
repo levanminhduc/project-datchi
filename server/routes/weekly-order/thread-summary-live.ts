@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../../db/supabase'
+import { queryOne, query } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
 import type { AppEnv } from '../../types/hono-env'
@@ -13,34 +13,28 @@ threadSummaryLive.get('/:id/thread-summary-live', requirePermission('thread.allo
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const [summaryResult, reservedResult, pendingResult] = await Promise.all([
-      supabase
-        .from('thread_order_results')
-        .select('summary_data')
-        .eq('week_id', id)
-        .single(),
-      supabase
-        .from('thread_inventory')
-        .select('thread_type_id')
-        .eq('reserved_week_id', id)
-        .eq('status', 'RESERVED_FOR_ORDER')
-        .limit(500000),
-      supabase
-        .from('thread_order_deliveries')
-        .select('thread_type_id, quantity_cones')
-        .eq('week_id', id)
-        .eq('status', 'PENDING')
-        .limit(500000),
+    const [summaryRow, reservedRows, pendingRows] = await Promise.all([
+      queryOne<{ summary_data: unknown }>(
+        `SELECT summary_data FROM thread_order_results WHERE week_id = $1`,
+        [id],
+      ),
+      query<{ thread_type_id: number }>(
+        `SELECT thread_type_id FROM thread_inventory
+         WHERE reserved_week_id = $1 AND status = 'RESERVED_FOR_ORDER' LIMIT 500000`,
+        [id],
+      ),
+      query<{ thread_type_id: number; quantity_cones: number | null }>(
+        `SELECT thread_type_id, quantity_cones FROM thread_order_deliveries
+         WHERE week_id = $1 AND status = 'PENDING' LIMIT 500000`,
+        [id],
+      ),
     ])
 
-    if (summaryResult.error) {
-      if (summaryResult.error.code === 'PGRST116') {
-        return c.json({ data: [], error: null })
-      }
-      throw summaryResult.error
+    if (!summaryRow) {
+      return c.json({ data: [], error: null })
     }
 
-    const summaryData = (summaryResult.data?.summary_data || []) as Array<{
+    const summaryData = (summaryRow.summary_data || []) as Array<{
       thread_type_id: number
       thread_type_name: string
       supplier_name: string
@@ -56,12 +50,12 @@ threadSummaryLive.get('/:id/thread-summary-live', requirePermission('thread.allo
     }
 
     const reservedMap = new Map<number, number>()
-    for (const row of reservedResult.data || []) {
+    for (const row of reservedRows || []) {
       reservedMap.set(row.thread_type_id, (reservedMap.get(row.thread_type_id) || 0) + 1)
     }
 
     const pendingMap = new Map<number, number>()
-    for (const row of pendingResult.data || []) {
+    for (const row of pendingRows || []) {
       pendingMap.set(row.thread_type_id, (pendingMap.get(row.thread_type_id) || 0) + (row.quantity_cones || 0))
     }
 

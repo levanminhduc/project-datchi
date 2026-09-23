@@ -313,12 +313,36 @@ export function usePermissionManagement() {
   // Employee Permissions API
   // ============================================
 
-  async function searchEmployees(query: string): Promise<EmployeeSearchResult[]> {
-    if (!query || query.length < 2) return []
+  async function searchEmployees(
+    query: string,
+    department?: string
+  ): Promise<{ data: EmployeeSearchResult[]; total: number }> {
+    if ((!query || query.length < 2) && !department) return { data: [], total: 0 }
 
     try {
+      const params = new URLSearchParams()
+      if (query) params.set('q', query)
+      if (department) params.set('department', department)
+
       const response = await authService.authenticatedFetch(
-        `${API_URL}/api/auth/employees/search?q=${encodeURIComponent(query)}`
+        `${API_URL}/api/auth/employees/search?${params.toString()}`
+      )
+      const result = await response.json()
+
+      if (!response.ok || result.error) {
+        return { data: [], total: 0 }
+      }
+
+      return { data: result.data, total: result.total ?? result.data.length }
+    } catch {
+      return { data: [], total: 0 }
+    }
+  }
+
+  async function fetchEmployeeDepartments(): Promise<string[]> {
+    try {
+      const response = await authService.authenticatedFetch(
+        `${API_URL}/api/auth/employees/departments`
       )
       const result = await response.json()
 
@@ -446,6 +470,7 @@ export function usePermissionManagement() {
 
     // Employee methods
     searchEmployees,
+    fetchEmployeeDepartments,
     getEmployeeRolesPermissions,
     updateEmployeeRoles,
     updateEmployeePermissions,

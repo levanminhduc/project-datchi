@@ -1,4 +1,67 @@
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
+
+type SpecRow = {
+  thread_type_id: number
+  thread_color_id: number | null
+  style_thread_specs: { style_id: number; meters_per_unit: number } | null
+}
+type TypeRow = { id: number; meters_per_cone: number | null }
+type OrderItemRow = { quantity: number }
+type IssueLineRow = {
+  thread_type_id: number
+  thread_color_id: number | null
+  issued_full: number
+  issued_partial: number
+  returned_full: number
+  returned_partial: number
+}
+
+const SPEC_SELECT = `SELECT scts.thread_type_id, scts.thread_color_id,
+    CASE WHEN sts.id IS NULL THEN NULL
+      ELSE json_build_object('style_id', sts.style_id, 'meters_per_unit', sts.meters_per_unit)
+    END AS style_thread_specs
+  FROM style_color_thread_specs scts
+  LEFT JOIN style_thread_specs sts ON sts.id = scts.style_thread_spec_id
+  WHERE scts.style_color_id = $1 AND scts.thread_type_id = ANY($2)
+  LIMIT 10000`
+
+async function fetchConfirmedOrderItems(
+  poId: number,
+  styleId: number,
+  colorId: number
+): Promise<OrderItemRow[]> {
+  return query<OrderItemRow>(
+    `SELECT toi.quantity
+     FROM thread_order_items toi
+     INNER JOIN thread_order_weeks tow ON tow.id = toi.week_id
+     WHERE toi.po_id = $1 AND toi.style_id = $2 AND toi.style_color_id = $3
+       AND tow.status = 'CONFIRMED'
+     LIMIT 10000`,
+    [poId, styleId, colorId]
+  ).catch(() => [] as OrderItemRow[])
+}
+
+async function fetchConfirmedIssueLines(
+  poId: number,
+  styleId: number,
+  colorId: number,
+  threadTypeIds: number[],
+  department?: string
+): Promise<IssueLineRow[]> {
+  const params: unknown[] = [poId, styleId, colorId, threadTypeIds]
+  let sql = `SELECT til.thread_type_id, til.thread_color_id, til.issued_full, til.issued_partial,
+      til.returned_full, til.returned_partial
+    FROM thread_issue_lines til
+    INNER JOIN thread_issues ti ON ti.id = til.issue_id
+    WHERE til.po_id = $1 AND til.style_id = $2 AND til.style_color_id = $3
+      AND til.thread_type_id = ANY($4) AND ti.status = 'CONFIRMED'`
+  if (department) {
+    params.push(department)
+    sql += ` AND ti.department = $${params.length}`
+  }
+  sql += ' LIMIT 10000'
+  return query<IssueLineRow>(sql, params).catch(() => [] as IssueLineRow[])
+}
 
 export type ThreadColorItem = { threadTypeId: number; threadColorId: number | null }
 
@@ -65,32 +128,26 @@ function buildIssuedMap(data: any[], ratio: number, withReturns: boolean): Map<s
 }
 
 async function fetchSpecsAndTypes(threadTypeIds: number[], colorId: number) {
-  const [specsResult, typesResult] = await Promise.all([
-    supabase
-      .from('style_color_thread_specs')
-      .select('thread_type_id, thread_color_id, style_thread_specs:style_thread_spec_id(style_id, meters_per_unit)')
-      .eq('style_color_id', colorId)
-      .in('thread_type_id', threadTypeIds)
-      .limit(10000),
-    supabase
-      .from('thread_types')
-      .select('id, meters_per_cone')
-      .in('id', threadTypeIds)
-      .limit(1000),
+  const [specs, types] = await Promise.all([
+    query<SpecRow>(SPEC_SELECT, [colorId, threadTypeIds]).catch(() => [] as SpecRow[]),
+    query<TypeRow>(
+      `SELECT id, meters_per_cone FROM thread_types WHERE id = ANY($1) LIMIT 1000`,
+      [threadTypeIds]
+    ).catch(() => [] as TypeRow[]),
   ])
-  return { specs: specsResult.data || [], types: typesResult.data || [] }
+  return { specs: specs || [], types: types || [] }
 }
 
 async function getTotalAllocatedQty(
   poId: number, styleId: number, colorId: number
 ): Promise<number> {
-  const { data } = await supabase
-    .from('dept_product_allocations')
-    .select('product_quantity')
-    .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-    .is('deleted_at', null)
-    .limit(1000)
-  return (data || []).reduce((sum: number, a: any) => sum + (a.product_quantity || 0), 0)
+  const data = await query<{ product_quantity: number | null }>(
+    `SELECT product_quantity FROM dept_product_allocations
+     WHERE po_id = $1 AND style_id = $2 AND style_color_id = $3 AND deleted_at IS NULL
+     LIMIT 1000`,
+    [poId, styleId, colorId]
+  ).catch(() => [] as Array<{ product_quantity: number | null }>)
+  return (data || []).reduce((sum: number, a) => sum + (a.product_quantity || 0), 0)
 }
 
 export async function batchGetBaseQuotaCones(
@@ -105,28 +162,25 @@ export async function batchGetBaseQuotaCones(
   const threadTypeIds = [...new Set(items.map((i) => i.threadTypeId))]
 
   if (department) {
-    const { data: allocation } = await supabase
-      .from('dept_product_allocations')
-      .select('id, product_quantity')
-      .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-      .eq('department', department).is('deleted_at', null).maybeSingle()
+    const allocation = await queryOne<{ id: number; product_quantity: number }>(
+      `SELECT id, product_quantity FROM dept_product_allocations
+       WHERE po_id = $1 AND style_id = $2 AND style_color_id = $3
+         AND department = $4 AND deleted_at IS NULL`,
+      [poId, styleId, colorId, department]
+    ).catch(() => null)
 
     if (allocation) {
       const { specs, types } = await fetchSpecsAndTypes(threadTypeIds, colorId)
       return computeQuotaPerItem(items, allocation.product_quantity, specs, types, styleId, new Map())
     }
 
-    const [totalAllocated, orderResult, { specs, types }] = await Promise.all([
+    const [totalAllocated, orderRows, { specs, types }] = await Promise.all([
       getTotalAllocatedQty(poId, styleId, colorId),
-      supabase
-        .from('thread_order_items')
-        .select('quantity, thread_order_weeks!inner(status)')
-        .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-        .eq('thread_order_weeks.status', 'CONFIRMED').limit(10000),
+      fetchConfirmedOrderItems(poId, styleId, colorId),
       fetchSpecsAndTypes(threadTypeIds, colorId),
     ])
 
-    const globalTotal = (orderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+    const globalTotal = orderRows.reduce((s: number, i) => s + (i.quantity || 0), 0)
     const remaining = Math.max(0, globalTotal - totalAllocated)
     if (remaining <= 0) {
       const r = new Map<string, number | null>()
@@ -136,16 +190,12 @@ export async function batchGetBaseQuotaCones(
     return computeQuotaPerItem(items, remaining, specs, types, styleId, new Map())
   }
 
-  const [orderResult, { specs, types }] = await Promise.all([
-    supabase
-      .from('thread_order_items')
-      .select('quantity, thread_order_weeks!inner(status)')
-      .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-      .eq('thread_order_weeks.status', 'CONFIRMED').limit(10000),
+  const [orderRows, { specs, types }] = await Promise.all([
+    fetchConfirmedOrderItems(poId, styleId, colorId),
     fetchSpecsAndTypes(threadTypeIds, colorId),
   ])
 
-  const totalQty = (orderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+  const totalQty = orderRows.reduce((s: number, i) => s + (i.quantity || 0), 0)
   if (totalQty <= 0) {
     const r = new Map<string, number | null>()
     for (const item of items) r.set(compositeKey(item.threadTypeId, item.threadColorId), null)
@@ -193,47 +243,32 @@ export async function batchGetQuotaCones(
   const threadTypeIds = [...new Set(items.map((i) => i.threadTypeId))]
 
   if (department) {
-    const { data: allocation } = await supabase
-      .from('dept_product_allocations')
-      .select('id, product_quantity')
-      .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-      .eq('department', department).is('deleted_at', null).maybeSingle()
+    const allocation = await queryOne<{ id: number; product_quantity: number }>(
+      `SELECT id, product_quantity FROM dept_product_allocations
+       WHERE po_id = $1 AND style_id = $2 AND style_color_id = $3
+         AND department = $4 AND deleted_at IS NULL`,
+      [poId, styleId, colorId, department]
+    ).catch(() => null)
 
     if (allocation) {
-      const [{ specs, types }, issuedResult, globalIssuedResult, globalOrderResult] = await Promise.all([
+      const [{ specs, types }, issuedLines, globalIssuedLines, globalOrderRows] = await Promise.all([
         fetchSpecsAndTypes(threadTypeIds, colorId),
-        supabase
-          .from('thread_issue_lines')
-          .select('thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status, department)')
-          .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-          .in('thread_type_id', threadTypeIds)
-          .eq('thread_issues.status', 'CONFIRMED').eq('thread_issues.department', department)
-          .limit(10000),
-        supabase
-          .from('thread_issue_lines')
-          .select('thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status)')
-          .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-          .in('thread_type_id', threadTypeIds)
-          .eq('thread_issues.status', 'CONFIRMED')
-          .limit(10000),
-        supabase
-          .from('thread_order_items')
-          .select('quantity, thread_order_weeks!inner(status)')
-          .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-          .eq('thread_order_weeks.status', 'CONFIRMED').limit(10000),
+        fetchConfirmedIssueLines(poId, styleId, colorId, threadTypeIds, department),
+        fetchConfirmedIssueLines(poId, styleId, colorId, threadTypeIds),
+        fetchConfirmedOrderItems(poId, styleId, colorId),
       ])
 
-      const issuedByKey = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
+      const issuedByKey = buildIssuedMap(issuedLines, ratio, true)
       const deptResult = computeQuotaPerItem(items, allocation.product_quantity, specs, types, styleId, issuedByKey)
 
-      const globalTotalQty = (globalOrderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+      const globalTotalQty = globalOrderRows.reduce((s: number, i) => s + (i.quantity || 0), 0)
       if (globalTotalQty <= 0) {
         const r = new Map<string, number | null>()
         for (const item of items) r.set(compositeKey(item.threadTypeId, item.threadColorId), null)
         return r
       }
 
-      const globalIssuedByKey = buildIssuedMap((globalIssuedResult.data || []) as any[], ratio, true)
+      const globalIssuedByKey = buildIssuedMap(globalIssuedLines, ratio, true)
       const globalResult = computeQuotaPerItem(items, globalTotalQty, specs, types, styleId, globalIssuedByKey)
 
       const clamped = new Map<string, number | null>()
@@ -248,31 +283,15 @@ export async function batchGetQuotaCones(
       return clamped
     }
 
-    const [totalAllocated, orderResult, { specs, types }, issuedResult, globalIssuedResult] = await Promise.all([
+    const [totalAllocated, orderRows, { specs, types }, issuedLines, globalIssuedLines] = await Promise.all([
       getTotalAllocatedQty(poId, styleId, colorId),
-      supabase
-        .from('thread_order_items')
-        .select('quantity, thread_order_weeks!inner(status)')
-        .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-        .eq('thread_order_weeks.status', 'CONFIRMED').limit(10000),
+      fetchConfirmedOrderItems(poId, styleId, colorId),
       fetchSpecsAndTypes(threadTypeIds, colorId),
-      supabase
-        .from('thread_issue_lines')
-        .select('thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status, department)')
-        .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-        .in('thread_type_id', threadTypeIds)
-        .eq('thread_issues.status', 'CONFIRMED').eq('thread_issues.department', department)
-        .limit(10000),
-      supabase
-        .from('thread_issue_lines')
-        .select('thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status)')
-        .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-        .in('thread_type_id', threadTypeIds)
-        .eq('thread_issues.status', 'CONFIRMED')
-        .limit(10000),
+      fetchConfirmedIssueLines(poId, styleId, colorId, threadTypeIds, department),
+      fetchConfirmedIssueLines(poId, styleId, colorId, threadTypeIds),
     ])
 
-    const globalTotal = (orderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+    const globalTotal = orderRows.reduce((s: number, i) => s + (i.quantity || 0), 0)
     const remaining = Math.max(0, globalTotal - totalAllocated)
     if (remaining <= 0) {
       const r = new Map<string, number | null>()
@@ -280,10 +299,10 @@ export async function batchGetQuotaCones(
       return r
     }
 
-    const issuedByKey = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
+    const issuedByKey = buildIssuedMap(issuedLines, ratio, true)
     const deptResult = computeQuotaPerItem(items, remaining, specs, types, styleId, issuedByKey)
 
-    const globalIssuedByKey = buildIssuedMap((globalIssuedResult.data || []) as any[], ratio, true)
+    const globalIssuedByKey = buildIssuedMap(globalIssuedLines, ratio, true)
     const globalResult = computeQuotaPerItem(items, globalTotal, specs, types, styleId, globalIssuedByKey)
 
     const clamped = new Map<string, number | null>()
@@ -298,28 +317,19 @@ export async function batchGetQuotaCones(
     return clamped
   }
 
-  const [orderResult, { specs, types }, issuedResult] = await Promise.all([
-    supabase
-      .from('thread_order_items')
-      .select('quantity, thread_order_weeks!inner(status)')
-      .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-      .eq('thread_order_weeks.status', 'CONFIRMED').limit(10000),
+  const [orderRows, { specs, types }, issuedLines] = await Promise.all([
+    fetchConfirmedOrderItems(poId, styleId, colorId),
     fetchSpecsAndTypes(threadTypeIds, colorId),
-    supabase
-      .from('thread_issue_lines')
-      .select('thread_type_id, thread_color_id, issued_full, issued_partial, returned_full, returned_partial, thread_issues!inner(status)')
-      .eq('po_id', poId).eq('style_id', styleId).eq('style_color_id', colorId)
-      .in('thread_type_id', threadTypeIds)
-      .eq('thread_issues.status', 'CONFIRMED').limit(10000),
+    fetchConfirmedIssueLines(poId, styleId, colorId, threadTypeIds),
   ])
 
-  const totalQty = (orderResult.data || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+  const totalQty = orderRows.reduce((s: number, i) => s + (i.quantity || 0), 0)
   if (totalQty <= 0) {
     const r = new Map<string, number | null>()
     for (const item of items) r.set(compositeKey(item.threadTypeId, item.threadColorId), null)
     return r
   }
 
-  const issuedByKey = buildIssuedMap((issuedResult.data || []) as any[], ratio, true)
+  const issuedByKey = buildIssuedMap(issuedLines, ratio, true)
   return computeQuotaPerItem(items, totalQty, specs, types, styleId, issuedByKey)
 }

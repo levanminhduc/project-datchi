@@ -1,7 +1,3 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-import type { OverQuotaQuery } from '../validation/overQuota'
-import { parseQueryArray } from '../validation/overQuota'
-
 interface ViewRow {
   issue_id: number
   issue_code: string
@@ -27,37 +23,6 @@ interface ViewRow {
 }
 
 export type { ViewRow }
-
-export function applyFilters(
-  query: ReturnType<SupabaseClient['from']>,
-  filters: OverQuotaQuery,
-) {
-  let q = query.eq('issue_status', 'CONFIRMED')
-
-  if (filters.date_from) q = q.gte('issue_date', filters.date_from)
-  if (filters.date_to) q = q.lte('issue_date', filters.date_to + 'T23:59:59')
-
-  const poIds = parseQueryArray(filters.po_ids)
-  if (poIds.length > 0) q = q.in('po_id', poIds.map(Number))
-
-  const styleIds = parseQueryArray(filters.style_ids)
-  if (styleIds.length > 0) q = q.in('style_id', styleIds.map(Number))
-
-  const departments = parseQueryArray(filters.departments)
-  if (departments.length > 0) q = q.in('department', departments)
-
-  if (filters.reason === 'ky_thuat') {
-    q = q.ilike('over_quota_notes', '%Ky Thuat%')
-  } else if (filters.reason === 'rai_dau_may') {
-    q = q.ilike('over_quota_notes', '%rai dau may%')
-  }
-
-  if (filters.only_over_quota === 'true') {
-    q = q.eq('is_over_quota', true)
-  }
-
-  return q
-}
 
 export function categorizeReason(notes: string | null): string {
   if (!notes) return 'khac'

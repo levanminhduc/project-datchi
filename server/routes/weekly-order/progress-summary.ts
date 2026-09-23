@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../../db/supabase'
+import { queryOne, query } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import type { AppEnv } from '../../types/hono-env'
 import { getPartialConeRatio } from '../../utils/settings-helper'
@@ -33,12 +33,10 @@ router.get(
       }
       const weekId = Number(weekIdRaw)
 
-      const { data: weekRow, error: weekErr } = await supabaseAdmin
-        .from('thread_order_weeks')
-        .select('id, week_name, status')
-        .eq('id', weekId)
-        .maybeSingle()
-      if (weekErr) throw weekErr
+      const weekRow = await queryOne<{ id: number; week_name: string; status: string }>(
+        `SELECT id, week_name, status FROM thread_order_weeks WHERE id = $1`,
+        [weekId],
+      )
       if (!weekRow) return c.json({ data: null, error: 'Tuần không tồn tại' }, 404)
 
       const [{ calculation_data, summary_data }, orderItems, ratio] = await Promise.all([
@@ -110,12 +108,10 @@ router.get(
       const poNumbersMap = new Map<number, string>()
       const poIdsToFetch = poOrder.map(p => p.po_id).filter((id): id is number => id != null)
       if (poIdsToFetch.length > 0) {
-        const { data: pos, error: posErr } = await supabaseAdmin
-          .from('purchase_orders')
-          .select('id, po_number')
-          .in('id', poIdsToFetch)
-          .limit(poIdsToFetch.length)
-        if (posErr) throw posErr
+        const pos = await query<{ id: number; po_number: string }>(
+          `SELECT id, po_number FROM purchase_orders WHERE id = ANY($1) LIMIT $2`,
+          [poIdsToFetch, poIdsToFetch.length],
+        )
         for (const p of (pos ?? []) as Array<{ id: number; po_number: string }>) {
           poNumbersMap.set(p.id, p.po_number)
         }
@@ -129,12 +125,10 @@ router.get(
       const styleInfoMap = new Map<number, { style_code: string; style_name: string }>()
       if (allStyleIds.size > 0) {
         const styleIdArr = Array.from(allStyleIds)
-        const { data: stylesData, error: stylesErr } = await supabaseAdmin
-          .from('styles')
-          .select('id, style_code, style_name')
-          .in('id', styleIdArr)
-          .limit(styleIdArr.length)
-        if (stylesErr) throw stylesErr
+        const stylesData = await query<{ id: number; style_code: string; style_name: string }>(
+          `SELECT id, style_code, style_name FROM styles WHERE id = ANY($1) LIMIT $2`,
+          [styleIdArr, styleIdArr.length],
+        )
         for (const s of (stylesData ?? []) as Array<{ id: number; style_code: string; style_name: string }>) {
           styleInfoMap.set(s.id, { style_code: s.style_code, style_name: s.style_name })
         }
@@ -150,12 +144,10 @@ router.get(
       const styleColorNameMap = new Map<number, string>()
       if (allStyleColorIds.size > 0) {
         const scIdArr = Array.from(allStyleColorIds)
-        const { data: scData, error: scErr } = await supabaseAdmin
-          .from('style_colors')
-          .select('id, color_name')
-          .in('id', scIdArr)
-          .limit(scIdArr.length)
-        if (scErr) throw scErr
+        const scData = await query<{ id: number; color_name: string }>(
+          `SELECT id, color_name FROM style_colors WHERE id = ANY($1) LIMIT $2`,
+          [scIdArr, scIdArr.length],
+        )
         for (const sc of (scData ?? []) as Array<{ id: number; color_name: string }>) {
           styleColorNameMap.set(sc.id, sc.color_name)
         }

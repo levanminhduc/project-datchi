@@ -2,17 +2,15 @@ import assert from 'node:assert/strict'
 import { Hono } from 'hono'
 import processTraceRoutes from './process-trace'
 import type { AppEnv } from '../../types/hono-env'
-import { supabaseAdmin } from '../../db/supabase'
+import { queryOne } from '../../db/query'
 
 async function testProcessTraceRowsFollowSummarySnapshot() {
   const weekId = 67
-  const { data: result, error } = await supabaseAdmin
-    .from('thread_order_results')
-    .select('summary_data')
-    .eq('week_id', weekId)
-    .maybeSingle()
+  const result = await queryOne<{ summary_data: unknown }>(
+    'SELECT summary_data FROM thread_order_results WHERE week_id = $1',
+    [weekId]
+  )
 
-  if (error) throw error
   const summaryData = Array.isArray(result?.summary_data) ? result.summary_data : []
   if (summaryData.length === 0) {
     console.warn(`process-trace test skipped: week ${weekId} has no summary_data`)

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../db/supabase'
+import { query, queryOne, queryCount } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import { notificationQuerySchema, type NotificationRow } from '../types/notification'
 import type { AppEnv } from '../types/hono-env'
@@ -27,24 +27,33 @@ notifications.get('/', async (c) => {
   const { limit, offset, type, is_read } = parsed.data
 
   try {
-    let query = supabaseAdmin
-      .from('notifications')
-      .select('*')
-      .eq('employee_id', auth.employeeId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1)
+    const conditions: string[] = ['employee_id = $1', 'deleted_at IS NULL']
+    const params: unknown[] = [auth.employeeId]
 
     if (type) {
-      query = query.eq('type', type)
+      params.push(type)
+      conditions.push(`type = $${params.length}`)
     }
     if (is_read !== undefined) {
-      query = query.eq('is_read', is_read)
+      params.push(is_read)
+      conditions.push(`is_read = $${params.length}`)
     }
 
-    const { data, error } = await query
+    params.push(limit)
+    const limitPlaceholder = `$${params.length}`
+    params.push(offset)
+    const offsetPlaceholder = `$${params.length}`
 
-    if (error) {
+    let data: NotificationRow[]
+    try {
+      data = await query<NotificationRow>(
+        `SELECT * FROM notifications
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY created_at DESC
+         LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
+        params
+      )
+    } catch (error) {
       console.error('List notifications error:', error)
       return c.json({ data: null, error: 'Lỗi khi tải thông báo' }, 500)
     }
@@ -60,14 +69,14 @@ notifications.get('/unread-count', async (c) => {
   const auth = c.get('auth')
 
   try {
-    const { count, error } = await supabaseAdmin
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('employee_id', auth.employeeId)
-      .eq('is_read', false)
-      .is('deleted_at', null)
-
-    if (error) {
+    let count: number
+    try {
+      count = await queryCount(
+        `SELECT count(*)::int AS count FROM notifications
+         WHERE employee_id = $1 AND is_read = false AND deleted_at IS NULL`,
+        [auth.employeeId]
+      )
+    } catch (error) {
       console.error('Unread count error:', error)
       return c.json({ data: null, error: 'Lỗi khi đếm thông báo chưa đọc' }, 500)
     }
@@ -83,14 +92,13 @@ notifications.patch('/read-all', async (c) => {
   const auth = c.get('auth')
 
   try {
-    const { error } = await supabaseAdmin
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('employee_id', auth.employeeId)
-      .eq('is_read', false)
-      .is('deleted_at', null)
-
-    if (error) {
+    try {
+      await query(
+        `UPDATE notifications SET is_read = true
+         WHERE employee_id = $1 AND is_read = false AND deleted_at IS NULL`,
+        [auth.employeeId]
+      )
+    } catch (error) {
       console.error('Mark all read error:', error)
       return c.json({ data: null, error: 'Lỗi khi đánh dấu đã đọc' }, 500)
     }
@@ -111,21 +119,21 @@ notifications.patch('/:id/read', async (c) => {
   }
 
   try {
-    const { data, error } = await supabaseAdmin
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', id)
-      .eq('employee_id', auth.employeeId)
-      .is('deleted_at', null)
-      .select()
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy thông báo' }, 404)
-      }
+    let data: NotificationRow | null
+    try {
+      data = await queryOne<NotificationRow>(
+        `UPDATE notifications SET is_read = true
+         WHERE id = $1 AND employee_id = $2 AND deleted_at IS NULL
+         RETURNING *`,
+        [id, auth.employeeId]
+      )
+    } catch (error) {
       console.error('Mark read error:', error)
       return c.json({ data: null, error: 'Lỗi khi đánh dấu đã đọc' }, 500)
+    }
+
+    if (!data) {
+      return c.json({ data: null, error: 'Không tìm thấy thông báo' }, 404)
     }
 
     return c.json({ data: data as NotificationRow, error: null })
@@ -144,21 +152,21 @@ notifications.delete('/:id', async (c) => {
   }
 
   try {
-    const { error } = await supabaseAdmin
-      .from('notifications')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', id)
-      .eq('employee_id', auth.employeeId)
-      .is('deleted_at', null)
-      .select()
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy thông báo' }, 404)
-      }
+    let deleted: { id: number } | null
+    try {
+      deleted = await queryOne<{ id: number }>(
+        `UPDATE notifications SET deleted_at = $1
+         WHERE id = $2 AND employee_id = $3 AND deleted_at IS NULL
+         RETURNING id`,
+        [new Date().toISOString(), id, auth.employeeId]
+      )
+    } catch (error) {
       console.error('Delete notification error:', error)
       return c.json({ data: null, error: 'Lỗi khi xóa thông báo' }, 500)
+    }
+
+    if (!deleted) {
+      return c.json({ data: null, error: 'Không tìm thấy thông báo' }, 404)
     }
 
     return c.json({ data: { id }, error: null, message: 'Đã xóa thông báo' })

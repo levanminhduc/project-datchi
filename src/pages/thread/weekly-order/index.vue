@@ -332,6 +332,13 @@
           @click="handleSave()"
         />
         <AppButton
+          color="secondary"
+          icon="list_alt"
+          label="Xuất DS Đặt Hàng"
+          :disable="!hasOrderItemsToExport"
+          @click="handleExportOrderItems"
+        />
+        <AppButton
           color="positive"
           icon="check_circle"
           label="Xác Nhận Đặt Hàng"
@@ -388,6 +395,7 @@ import { OrderWeekStatus } from '@/types/thread/enums'
 import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
 import AssignmentControlDialog from '@/components/thread/weekly-order/AssignmentControlDialog.vue'
 import ConfirmProgressDialog from '@/components/thread/weekly-order/ConfirmProgressDialog.vue'
+import { exportWeekItems, orderEntriesToExportRows } from '@/composables/thread/useWeeklyOrderExport'
 import type { ConfirmStep } from '@/components/thread/weekly-order/ConfirmProgressDialog.vue'
 
 definePage({
@@ -744,6 +752,19 @@ const handleUpdateSummaryDeliveryDate = (threadTypeId: number, date: string, thr
 
 const handleReorder = async (newOrder: CalculationResult[]) => {
   await reorderResults(newOrder)
+}
+
+const orderItemExportRows = computed(() => orderEntriesToExportRows(orderEntries.value))
+
+const hasOrderItemsToExport = computed(() => orderItemExportRows.value.length > 0)
+
+const handleExportOrderItems = async () => {
+  await exportWeekItems(orderItemExportRows.value, {
+    id: selectedWeek.value?.id ?? 0,
+    week_name: weekName.value || selectedWeek.value?.week_name || 'Đơn hàng mới',
+    created_by: selectedWeek.value?.created_by,
+    created_at: selectedWeek.value?.created_at,
+  })
 }
 
 const handleSave = async (options?: { skipReset?: boolean }) => {

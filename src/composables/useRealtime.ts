@@ -1,40 +1,18 @@
-/**
- * Supabase Real-time Subscription Composable
- *
- * Provides reactive real-time subscriptions to Supabase table changes.
- * Auto-cleanup on component unmount, handles reconnection gracefully.
- */
-
 import { ref, onUnmounted, readonly } from 'vue'
-import { supabase } from '@/lib/supabase'
+import { getAccessToken, isTokenExpiringSoon } from '@/lib/auth-token-store'
+import { getRefreshedAccessToken } from '@/services/api'
 
-/**
- * Connection status for real-time channel
- */
 export type RealtimeStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
-/**
- * Supported real-time events
- */
 export type RealtimeEvent = 'INSERT' | 'UPDATE' | 'DELETE' | '*'
 
-/**
- * Options for subscribing to real-time changes
- */
 export interface UseRealtimeOptions {
-  /** Table name to subscribe to */
   table: string
-  /** Database schema (default: 'public') */
   schema?: string
-  /** Event type to listen for (default: '*' for all) */
   event?: RealtimeEvent
-  /** Filter expression (e.g., 'thread_type_id=eq.5') */
   filter?: string
 }
 
-/**
- * Payload received from real-time subscription
- */
 export interface RealtimePayload<T = Record<string, unknown>> {
   eventType: 'INSERT' | 'UPDATE' | 'DELETE'
   new: T | null
@@ -44,14 +22,23 @@ export interface RealtimePayload<T = Record<string, unknown>> {
   commitTimestamp: string
 }
 
-/**
- * Callback function for real-time events
- */
 export type RealtimeCallback<T = Record<string, unknown>> = (payload: RealtimePayload<T>) => void
 
-/**
- * Vietnamese messages for user feedback
- */
+interface ServerEvent {
+  table: string
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE'
+  id: number | string
+  warehouse_id?: number | null
+  thread_type_id?: number | null
+  status?: string | null
+}
+
+interface Registration {
+  options: UseRealtimeOptions
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  callback: RealtimeCallback<any>
+}
+
 const MESSAGES = {
   CONNECTED: 'Đã kết nối real-time',
   DISCONNECTED: 'Mất kết nối real-time',
@@ -60,234 +47,194 @@ const MESSAGES = {
   SUBSCRIBE_ERROR: 'Không thể đăng ký nhận cập nhật',
 }
 
-/**
- * Generate unique channel name
- */
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+
+const registrations = new Map<string, Registration>()
+let source: EventSource | null = null
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let reconnectCount = 0
+const MAX_RECONNECT = 5
+
+const sharedStatus = ref<RealtimeStatus>('disconnected')
+const sharedError = ref<string | null>(null)
+
 function generateChannelName(options: UseRealtimeOptions): string {
   const { table, schema = 'public', event = '*', filter } = options
   const filterPart = filter ? `-${filter.replace(/[=.]/g, '_')}` : ''
-  return `${schema}:${table}:${event}${filterPart}-${Date.now()}`
+  return `${schema}:${table}:${event}${filterPart}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
-// Store channel references with their names
-// Using 'unknown' type to avoid Supabase internal type conflicts
-type ChannelRef = ReturnType<typeof supabase.channel>
+function matchesFilter(filter: string | undefined, rec: Record<string, unknown>): boolean {
+  if (!filter) return true
+  const m = filter.match(/^([\w]+)=eq\.(.+)$/)
+  if (!m) return true
+  const col = m[1]
+  const val = m[2]
+  if (!col) return true
+  return String(rec[col] ?? '') === val
+}
 
-/**
- * Real-time Subscription Composable
- *
- * Provides methods to subscribe to Supabase real-time table changes.
- * Automatically cleans up subscriptions on component unmount.
- *
- * @example
- * ```ts
- * const { status, subscribe, unsubscribe, unsubscribeAll } = useRealtime()
- *
- * // Subscribe to all changes on inventory table
- * subscribe({ table: 'thread_inventory', event: '*' }, (payload) => {
- *   console.log('Change:', payload.eventType, payload.new)
- * })
- *
- * // Subscribe with filter
- * subscribe({ table: 'allocations', event: 'UPDATE', filter: 'status=eq.PENDING' }, (payload) => {
- *   console.log('Allocation updated:', payload.new)
- * })
- * ```
- */
+function dispatch(event: ServerEvent): void {
+  const partial: Record<string, unknown> = {
+    id: event.id,
+    warehouse_id: event.warehouse_id,
+    thread_type_id: event.thread_type_id,
+    status: event.status,
+  }
+
+  for (const reg of registrations.values()) {
+    const { table, event: evt = '*', filter } = reg.options
+    if (reg.options.schema && reg.options.schema !== 'public') continue
+    if (table !== event.table) continue
+    if (evt !== '*' && evt !== event.eventType) continue
+    if (!matchesFilter(filter, partial)) continue
+
+    reg.callback({
+      eventType: event.eventType,
+      new: event.eventType === 'DELETE' ? null : partial,
+      old: event.eventType === 'INSERT' ? null : partial,
+      table: event.table,
+      schema: 'public',
+      commitTimestamp: new Date().toISOString(),
+    })
+  }
+}
+
+async function openConnection(): Promise<void> {
+  if (source || registrations.size === 0) return
+
+  let token = getAccessToken()
+  if (!token) {
+    sharedStatus.value = 'error'
+    sharedError.value = MESSAGES.SUBSCRIBE_ERROR
+    return
+  }
+
+  if (isTokenExpiringSoon(token)) {
+    try {
+      token = await getRefreshedAccessToken()
+    } catch {
+      sharedStatus.value = 'error'
+      sharedError.value = MESSAGES.SUBSCRIBE_ERROR
+      return
+    }
+  }
+
+  sharedStatus.value = 'connecting'
+  sharedError.value = null
+
+  const url = `${API_BASE_URL}/api/realtime/stream?token=${encodeURIComponent(token)}`
+  source = new EventSource(url)
+
+  source.addEventListener('connected', () => {
+    sharedStatus.value = 'connected'
+    reconnectCount = 0
+    console.log(`[useRealtime] ${MESSAGES.CONNECTED}`)
+  })
+
+  source.addEventListener('change', (e) => {
+    try {
+      const data = JSON.parse((e as MessageEvent).data) as ServerEvent
+      dispatch(data)
+    } catch (err) {
+      console.error('[useRealtime] failed to parse event:', err)
+    }
+  })
+
+  source.onerror = () => {
+    sharedStatus.value = 'error'
+    sharedError.value = MESSAGES.ERROR
+    closeConnection()
+    scheduleReconnect()
+  }
+}
+
+function closeConnection(): void {
+  if (source) {
+    source.close()
+    source = null
+  }
+}
+
+function scheduleReconnect(): void {
+  if (reconnectTimer || registrations.size === 0) return
+  if (reconnectCount >= MAX_RECONNECT) {
+    console.error('[useRealtime] Max reconnect attempts reached')
+    return
+  }
+  reconnectCount++
+  const delay = Math.min(1000 * 2 ** reconnectCount, 30000)
+  console.log(`[useRealtime] ${MESSAGES.RECONNECTING} (attempt ${reconnectCount}/${MAX_RECONNECT})`)
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    void openConnection()
+  }, delay)
+}
+
 export function useRealtime() {
-  // State
-  const status = ref<RealtimeStatus>('disconnected')
-  const channelNames = ref<Set<string>>(new Set())
-  const channelMap = new Map<string, ChannelRef>()
-  const lastError = ref<string | null>(null)
+  const status = sharedStatus
+  const lastError = sharedError
   const reconnectAttempts = ref(0)
-  const maxReconnectAttempts = 5
+  const localChannels = ref<Set<string>>(new Set())
 
-  /**
-   * Subscribe to real-time changes on a table
-   * @param options - Subscription options (table, schema, event, filter)
-   * @param callback - Function called when changes occur
-   * @returns Channel name for unsubscribing
-   */
   const subscribe = <T extends Record<string, unknown> = Record<string, unknown>>(
     options: UseRealtimeOptions,
     callback: RealtimeCallback<T>
   ): string => {
     const channelName = generateChannelName(options)
-    const { table, schema = 'public', event = '*', filter } = options
-
-    status.value = 'connecting'
-    lastError.value = null
-
-    try {
-      // Build the subscription configuration
-      const subscriptionConfig: {
-        event: 'INSERT' | 'UPDATE' | 'DELETE' | '*'
-        schema: string
-        table: string
-        filter?: string
-      } = {
-        event,
-        schema,
-        table,
-      }
-
-      // Add filter if provided
-      if (filter) {
-        subscriptionConfig.filter = filter
-      }
-
-      // Create channel and subscribe
-      const channel = supabase.channel(channelName)
-
-      // Use type assertion for the on() call due to Supabase's complex generics
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(channel as any).on(
-        'postgres_changes',
-        subscriptionConfig,
-        (payload: {
-          eventType: string
-          new: Record<string, unknown>
-          old: Record<string, unknown>
-          table: string
-          schema: string
-          commit_timestamp: string
-        }) => {
-          const realtimePayload: RealtimePayload<T> = {
-            eventType: payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
-            new: (payload.new ?? null) as T | null,
-            old: (payload.old ?? null) as T | null,
-            table: payload.table,
-            schema: payload.schema,
-            commitTimestamp: payload.commit_timestamp,
-          }
-          callback(realtimePayload)
-        }
-      )
-
-      channel.subscribe((subscriptionStatus: string) => {
-        switch (subscriptionStatus) {
-          case 'SUBSCRIBED':
-            status.value = 'connected'
-            reconnectAttempts.value = 0
-            console.log(`[useRealtime] ${MESSAGES.CONNECTED}: ${channelName}`)
-            break
-          case 'CHANNEL_ERROR':
-            status.value = 'error'
-            lastError.value = MESSAGES.ERROR
-            console.error(`[useRealtime] ${MESSAGES.ERROR}: ${channelName}`)
-            handleReconnect(options, callback)
-            break
-          case 'TIMED_OUT':
-            status.value = 'error'
-            lastError.value = MESSAGES.SUBSCRIBE_ERROR
-            console.error(`[useRealtime] ${MESSAGES.SUBSCRIBE_ERROR}: ${channelName}`)
-            handleReconnect(options, callback)
-            break
-          case 'CLOSED':
-            status.value = 'disconnected'
-            console.log(`[useRealtime] ${MESSAGES.DISCONNECTED}: ${channelName}`)
-            break
-        }
-      })
-
-      channelMap.set(channelName, channel)
-      channelNames.value.add(channelName)
-      return channelName
-    } catch (err) {
-      status.value = 'error'
-      lastError.value = err instanceof Error ? err.message : MESSAGES.SUBSCRIBE_ERROR
-      console.error('[useRealtime] Subscribe error:', err)
-      return channelName
-    }
+    registrations.set(channelName, { options, callback: callback as RealtimeCallback })
+    localChannels.value.add(channelName)
+    void openConnection()
+    return channelName
   }
 
-  /**
-   * Handle reconnection with exponential backoff
-   */
-  const handleReconnect = <T extends Record<string, unknown> = Record<string, unknown>>(
-    options: UseRealtimeOptions,
-    callback: RealtimeCallback<T>
-  ): void => {
-    if (reconnectAttempts.value >= maxReconnectAttempts) {
-      console.error('[useRealtime] Max reconnect attempts reached')
-      return
-    }
-
-    reconnectAttempts.value++
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.value), 30000)
-
-    console.log(`[useRealtime] ${MESSAGES.RECONNECTING} (attempt ${reconnectAttempts.value}/${maxReconnectAttempts})`)
-
-    setTimeout(() => {
-      // Unsubscribe from failed channel first
-      const channelName = generateChannelName(options)
-      unsubscribe(channelName)
-
-      // Re-subscribe
-      subscribe(options, callback)
-    }, delay)
-  }
-
-  /**
-   * Unsubscribe from a specific channel
-   * @param channelName - Name of the channel to unsubscribe from
-   */
   const unsubscribe = (channelName: string): void => {
-    const channel = channelMap.get(channelName)
-    if (channel) {
-      supabase.removeChannel(channel)
-      channelMap.delete(channelName)
-      channelNames.value.delete(channelName)
+    if (registrations.delete(channelName)) {
+      localChannels.value.delete(channelName)
       console.log(`[useRealtime] Unsubscribed: ${channelName}`)
     }
-
-    // Update status if no channels remain
-    if (channelMap.size === 0) {
-      status.value = 'disconnected'
+    if (registrations.size === 0) {
+      closeConnection()
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      sharedStatus.value = 'disconnected'
     }
   }
 
-  /**
-   * Unsubscribe from all active channels
-   */
   const unsubscribeAll = (): void => {
-    channelMap.forEach((channel, name) => {
-      supabase.removeChannel(channel)
-      console.log(`[useRealtime] Unsubscribed: ${name}`)
-    })
-    channelMap.clear()
-    channelNames.value.clear()
-    status.value = 'disconnected'
+    for (const name of localChannels.value) {
+      registrations.delete(name)
+    }
+    localChannels.value.clear()
+    if (registrations.size === 0) {
+      closeConnection()
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      sharedStatus.value = 'disconnected'
+    }
   }
 
-  /**
-   * Check if connected to any channel
-   */
   const isConnected = (): boolean => {
-    return status.value === 'connected' && channelMap.size > 0
+    return sharedStatus.value === 'connected' && registrations.size > 0
   }
 
-  /**
-   * Get count of active subscriptions
-   */
   const getSubscriptionCount = (): number => {
-    return channelMap.size
+    return localChannels.value.size
   }
 
-  // Auto cleanup on component unmount
   onUnmounted(() => {
     unsubscribeAll()
   })
 
   return {
-    // State (readonly for external use)
     status: readonly(status),
     lastError: readonly(lastError),
     reconnectAttempts: readonly(reconnectAttempts),
-    activeChannels: readonly(channelNames),
-
-    // Methods
+    activeChannels: readonly(localChannels),
     subscribe,
     unsubscribe,
     unsubscribeAll,

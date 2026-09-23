@@ -75,4 +75,4 @@ try {
 ## ANTI-PATTERNS
 
 - Don't call `fetch()` directly → use `fetchApi()`
-- Don't call Supabase from frontend → use services
+- Don't query the database from frontend → all CRUD via Hono API services

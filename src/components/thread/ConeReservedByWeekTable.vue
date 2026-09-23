@@ -271,6 +271,9 @@
                               ĐM cone
                             </th>
                             <th class="text-center">
+                              Đặt thêm
+                            </th>
+                            <th class="text-center">
                               Đã xuất
                             </th>
                             <th class="text-center">
@@ -305,6 +308,15 @@
                             </td>
                             <td class="text-center">
                               {{ formatNumber(row.quota_cones) }}
+                            </td>
+                            <td class="text-center">
+                              <span v-if="row.additional_order && row.additional_order > 0">
+                                {{ formatNumber(row.additional_order) }}
+                              </span>
+                              <span
+                                v-else
+                                class="text-grey"
+                              >-</span>
                             </td>
                             <td class="text-center">
                               {{ formatNumber(row.issued_cones) }}
@@ -405,6 +417,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import type { QTableColumn } from 'quasar'
 import { useConeSummary } from '@/composables/thread/useConeSummary'
+import { openRouteInTab } from '@/utils/open-tab'
 import type {
   ConeReservedAggregate,
   ConeReservedWarehouseEntry,
@@ -509,7 +522,7 @@ const hasOtherReserved = (a: ConeReservedAggregate): boolean =>
 const formatNumber = (n: number): string => new Intl.NumberFormat('vi-VN').format(n)
 
 const openWeekOrder = (weekId: number): void => {
-  window.open(`/thread/weekly-order/${weekId}`, '_blank')
+  openRouteInTab(`/thread/weekly-order/${weekId}`)
 }
 
 const reload = async (): Promise<void> => {

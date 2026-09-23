@@ -30,101 +30,107 @@
       bordered
       class="settings-card"
     >
-      <q-card-section>
-        <div class="text-subtitle1 text-weight-medium q-mb-md">
-          Cài đặt xuất kho
-        </div>
+      <q-expansion-item
+        label="Cài đặt xuất kho"
+        header-class="text-subtitle1 text-weight-medium"
+        expand-icon-class="text-primary"
+      >
+        <q-card-section class="q-pt-none">
+          <!-- Partial Cone Ratio Setting -->
+          <div class="row q-col-gutter-md items-end">
+            <div class="col-12 col-md-6 col-lg-4">
+              <AppInput
+                v-model.number="partialConeRatio"
+                label="Tỷ lệ quy đổi cuộn lẻ"
+                type="number"
+                step="0.1"
+                min="0"
+                max="1"
+                hint="Giá trị từ 0 đến 1 (ví dụ: 0.3 = 30%)"
+                :disable="isLoading"
+                outlined
+                dense
+              >
+                <template #prepend>
+                  <q-icon name="percent" />
+                </template>
+              </AppInput>
+            </div>
 
-        <!-- Partial Cone Ratio Setting -->
-        <div class="row q-col-gutter-md items-end">
-          <div class="col-12 col-md-6 col-lg-4">
-            <AppInput
-              v-model.number="partialConeRatio"
-              label="Tỷ lệ quy đổi cuộn lẻ"
-              type="number"
-              step="0.1"
-              min="0"
-              max="1"
-              hint="Giá trị từ 0 đến 1 (ví dụ: 0.3 = 30%)"
-              :disable="isLoading"
-              outlined
-              dense
-            >
-              <template #prepend>
-                <q-icon name="percent" />
-              </template>
-            </AppInput>
+            <div class="col-12 col-md-auto">
+              <AppButton
+                label="Lưu thay đổi"
+                color="primary"
+                icon="save"
+                :loading="isLoading"
+                :disable="!hasChanges"
+                @click="handleSave"
+              />
+            </div>
           </div>
 
-          <div class="col-12 col-md-auto">
-            <AppButton
-              label="Lưu thay đổi"
-              color="primary"
-              icon="save"
-              :loading="isLoading"
-              :disable="!hasChanges"
-              @click="handleSave"
+          <!-- Description -->
+          <div class="q-mt-md text-caption text-grey-7">
+            <q-icon
+              name="info"
+              size="xs"
+              class="q-mr-xs"
             />
+            Tỷ lệ quy đổi cuộn lẻ được sử dụng để tính toán số lượng cuộn lẻ khi xuất kho sản xuất.
+            Giá trị mặc định là 0.3 (tương đương 30% cuộn nguyên).
           </div>
-        </div>
+        </q-card-section>
+      </q-expansion-item>
 
-        <!-- Description -->
-        <div class="q-mt-md text-caption text-grey-7">
-          <q-icon
-            name="info"
-            size="xs"
-            class="q-mr-xs"
-          />
-          Tỷ lệ quy đổi cuộn lẻ được sử dụng để tính toán số lượng cuộn lẻ khi xuất kho sản xuất.
-          Giá trị mặc định là 0.3 (tương đương 30% cuộn nguyên).
-        </div>
+      <q-separator />
 
-        <!-- Reserve Priority Setting -->
-        <q-separator class="q-my-lg" />
+      <!-- Reserve Priority Setting -->
+      <q-expansion-item
+        label="Ưu tiên reserve cuộn"
+        header-class="text-subtitle1 text-weight-medium"
+        expand-icon-class="text-primary"
+      >
+        <q-card-section class="q-pt-none">
+          <div class="row q-col-gutter-md items-end">
+            <div class="col-12 col-md-6 col-lg-4">
+              <AppSelect
+                v-model="reservePriority"
+                label="Ưu tiên khi reserve cuộn cho tuần"
+                :options="reservePriorityOptions"
+                emit-value
+                map-options
+                :disable="isLoading"
+                outlined
+                dense
+              >
+                <template #prepend>
+                  <q-icon name="sort" />
+                </template>
+              </AppSelect>
+            </div>
 
-        <div class="text-subtitle1 text-weight-medium q-mb-md">
-          Ưu tiên reserve cuộn
-        </div>
-
-        <div class="row q-col-gutter-md items-end">
-          <div class="col-12 col-md-6 col-lg-4">
-            <AppSelect
-              v-model="reservePriority"
-              label="Ưu tiên khi reserve cuộn cho tuần"
-              :options="reservePriorityOptions"
-              emit-value
-              map-options
-              :disable="isLoading"
-              outlined
-              dense
-            >
-              <template #prepend>
-                <q-icon name="sort" />
-              </template>
-            </AppSelect>
+            <div class="col-12 col-md-auto">
+              <AppButton
+                label="Lưu ưu tiên"
+                color="primary"
+                icon="save"
+                :loading="isSavingReservePriority"
+                :disable="!hasReservePriorityChanges"
+                @click="handleSaveReservePriority"
+              />
+            </div>
           </div>
 
-          <div class="col-12 col-md-auto">
-            <AppButton
-              label="Lưu ưu tiên"
-              color="primary"
-              icon="save"
-              :loading="isSavingReservePriority"
-              :disable="!hasReservePriorityChanges"
-              @click="handleSaveReservePriority"
+          <div class="q-mt-md text-caption text-grey-7">
+            <q-icon
+              name="info"
+              size="xs"
+              class="q-mr-xs"
             />
+            Khi xác nhận tuần đặt hàng, hệ thống sẽ ưu tiên reserve cuộn lẻ hoặc cuộn nguyên trước tùy theo cài đặt này.
           </div>
-        </div>
-
-        <div class="q-mt-md text-caption text-grey-7">
-          <q-icon
-            name="info"
-            size="xs"
-            class="q-mr-xs"
-          />
-          Khi xác nhận tuần đặt hàng, hệ thống sẽ ưu tiên reserve cuộn lẻ hoặc cuộn nguyên trước tùy theo cài đặt này.
-        </div>
-      </q-card-section>
+        </q-card-section>
+      </q-expansion-item>
     </q-card>
 
     <!-- Department Settings for Issue (ROOT only) -->
@@ -134,92 +140,94 @@
       bordered
       class="settings-card q-mt-lg"
     >
-      <q-card-section>
-        <div class="text-subtitle1 text-weight-medium q-mb-md">
-          Cài đặt Bộ Phận — Phiếu Xuất
-        </div>
-
-        <div
-          v-if="isLoadingDepts"
-          class="q-py-md"
-        >
-          <q-spinner-dots
-            size="30px"
-            color="primary"
-          />
-        </div>
-
-        <template v-else>
-          <div class="text-body2 q-mb-sm text-grey-8">
-            Bộ phận từ nhân viên (tick = hiển thị):
-          </div>
-          <div class="q-gutter-sm q-mb-md">
-            <q-checkbox
-              v-for="item in deptCheckboxItems"
-              :key="item.name"
-              :model-value="item.checked"
-              :label="item.name"
-              dense
-              @update:model-value="toggleDept(item.name, $event as boolean)"
+      <q-expansion-item
+        label="Cài đặt Bộ Phận — Phiếu Xuất"
+        header-class="text-subtitle1 text-weight-medium"
+        expand-icon-class="text-primary"
+      >
+        <q-card-section class="q-pt-none">
+          <div
+            v-if="isLoadingDepts"
+            class="q-py-md"
+          >
+            <q-spinner-dots
+              size="30px"
+              color="primary"
             />
           </div>
 
-          <q-separator class="q-my-md" />
+          <template v-else>
+            <div class="text-body2 q-mb-sm text-grey-8">
+              Bộ phận từ nhân viên (tick = hiển thị):
+            </div>
+            <div class="q-gutter-sm q-mb-md">
+              <q-checkbox
+                v-for="item in deptCheckboxItems"
+                :key="item.name"
+                :model-value="item.checked"
+                :label="item.name"
+                dense
+                @update:model-value="toggleDept(item.name, $event as boolean)"
+              />
+            </div>
 
-          <div class="text-body2 q-mb-sm text-grey-8">
-            Bộ phận bổ sung:
-          </div>
-          <div class="q-gutter-sm q-mb-md">
-            <q-chip
-              v-for="dept in deptConfig.custom"
-              :key="dept"
-              removable
+            <q-separator class="q-my-md" />
+
+            <div class="text-body2 q-mb-sm text-grey-8">
+              Bộ phận bổ sung:
+            </div>
+            <div class="q-gutter-sm q-mb-md">
+              <q-chip
+                v-for="dept in deptConfig.custom"
+                :key="dept"
+                removable
+                color="primary"
+                text-color="white"
+                @remove="removeCustomDept(dept)"
+              >
+                {{ dept }}
+              </q-chip>
+              <span
+                v-if="!deptConfig.custom.length"
+                class="text-grey-5 text-caption"
+              >Chưa có</span>
+            </div>
+
+            <div class="row q-col-gutter-sm items-end">
+              <div class="col-12 col-md-4">
+                <AppInput
+                  v-model="newCustomDept"
+                  label="Thêm bộ phận"
+                  dense
+                  outlined
+                  @keyup.enter="addCustomDept"
+                />
+              </div>
+              <div class="col-auto">
+                <AppButton
+                  label="Thêm"
+                  color="secondary"
+                  icon="add"
+                  :disable="!newCustomDept.trim()"
+                  dense
+                  @click="addCustomDept"
+                />
+              </div>
+            </div>
+          </template>
+
+          <div class="row q-mt-lg">
+            <AppButton
+              label="Lưu cấu hình bộ phận"
               color="primary"
-              text-color="white"
-              @remove="removeCustomDept(dept)"
-            >
-              {{ dept }}
-            </q-chip>
-            <span
-              v-if="!deptConfig.custom.length"
-              class="text-grey-5 text-caption"
-            >Chưa có</span>
+              icon="save"
+              :loading="isSavingDeptConfig"
+              :disable="!hasDeptChanges"
+              @click="handleSaveDeptConfig"
+            />
           </div>
-
-          <div class="row q-col-gutter-sm items-end">
-            <div class="col-12 col-md-4">
-              <AppInput
-                v-model="newCustomDept"
-                label="Thêm bộ phận"
-                dense
-                outlined
-                @keyup.enter="addCustomDept"
-              />
-            </div>
-            <div class="col-auto">
-              <AppButton
-                label="Thêm"
-                color="secondary"
-                icon="add"
-                :disable="!newCustomDept.trim()"
-                dense
-                @click="addCustomDept"
-              />
-            </div>
-          </div>
-        </template>
-
-        <div class="row q-mt-lg">
-          <AppButton
-            label="Lưu cấu hình bộ phận"
-            color="primary"
-            icon="save"
-            :loading="isSavingDeptConfig"
-            :disable="!hasDeptChanges"
-            @click="handleSaveDeptConfig"
-          />
-        </div>
-      </q-card-section>
+        </q-card-section>
+      </q-expansion-item>
     </q-card>
 
     <!-- Import NCC-Tex Mapping (ROOT only) -->
@@ -229,127 +237,129 @@
       bordered
       class="settings-card q-mt-lg"
     >
-      <q-card-section>
-        <div class="text-subtitle1 text-weight-medium q-mb-md">
-          Cài đặt Import NCC-Tex
-        </div>
+      <q-expansion-item
+        label="Cài đặt Import NCC-Tex"
+        header-class="text-subtitle1 text-weight-medium"
+        expand-icon-class="text-primary"
+      >
+        <q-card-section class="q-pt-none">
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-md-4">
+              <AppInput
+                v-model.number="texMapping.sheet_index"
+                label="Sheet"
+                type="number"
+                min="0"
+                hint="Vị trí sheet (bắt đầu từ 0)"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-12 col-md-4">
+              <AppInput
+                v-model.number="texMapping.header_row"
+                label="Dòng header"
+                type="number"
+                min="1"
+                hint="Dòng chứa tiêu đề cột"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-12 col-md-4">
+              <AppInput
+                v-model.number="texMapping.data_start_row"
+                label="Dòng data bắt đầu"
+                type="number"
+                min="1"
+                hint="Dòng bắt đầu dữ liệu"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+          </div>
 
-        <div class="row q-col-gutter-md">
-          <div class="col-12 col-md-4">
-            <AppInput
-              v-model.number="texMapping.sheet_index"
-              label="Sheet"
-              type="number"
-              min="0"
-              hint="Vị trí sheet (bắt đầu từ 0)"
-              :disable="isLoading"
-              outlined
-              dense
-            />
+          <div class="row q-col-gutter-md q-mt-sm">
+            <div class="col-6 col-md-3">
+              <AppSelect
+                v-model="texMapping.columns.supplier_name"
+                label="Cột Nhà cung cấp"
+                :options="columnOptions"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-3">
+              <AppSelect
+                v-model="texMapping.columns.tex_number"
+                label="Cột Tex"
+                :options="columnOptions"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-3">
+              <AppSelect
+                v-model="texMapping.columns.meters_per_cone"
+                label="Cột Mét/Cuộn"
+                :options="columnOptions"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-3">
+              <AppSelect
+                v-model="texMapping.columns.unit_price"
+                label="Cột Giá/Cuộn VND"
+                :options="columnOptions"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-3">
+              <AppSelect
+                v-model="texMapping.columns.supplier_item_code"
+                label="Cột Mã hàng NCC (tuỳ chọn)"
+                :options="columnOptions"
+                :disable="isLoading"
+                clearable
+                outlined
+                dense
+              />
+            </div>
           </div>
-          <div class="col-12 col-md-4">
-            <AppInput
-              v-model.number="texMapping.header_row"
-              label="Dòng header"
-              type="number"
-              min="1"
-              hint="Dòng chứa tiêu đề cột"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-12 col-md-4">
-            <AppInput
-              v-model.number="texMapping.data_start_row"
-              label="Dòng data bắt đầu"
-              type="number"
-              min="1"
-              hint="Dòng bắt đầu dữ liệu"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-        </div>
 
-        <div class="row q-col-gutter-md q-mt-sm">
-          <div class="col-6 col-md-3">
-            <AppSelect
-              v-model="texMapping.columns.supplier_name"
-              label="Cột Nhà cung cấp"
-              :options="columnOptions"
-              :disable="isLoading"
-              outlined
-              dense
-            />
+          <div class="row q-col-gutter-md q-mt-md items-center">
+            <div class="col-auto">
+              <AppButton
+                label="Lưu"
+                color="primary"
+                icon="save"
+                :loading="isSavingTexMapping"
+                :disable="isLoading"
+                @click="handleSaveTexMapping"
+              />
+            </div>
+            <div class="col-auto">
+              <AppButton
+                label="Tải file mẫu"
+                color="secondary"
+                icon="download"
+                variant="outlined"
+                :disable="isLoading"
+                @click="handleDownloadTexTemplate"
+              />
+            </div>
           </div>
-          <div class="col-6 col-md-3">
-            <AppSelect
-              v-model="texMapping.columns.tex_number"
-              label="Cột Tex"
-              :options="columnOptions"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-3">
-            <AppSelect
-              v-model="texMapping.columns.meters_per_cone"
-              label="Cột Mét/Cuộn"
-              :options="columnOptions"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-3">
-            <AppSelect
-              v-model="texMapping.columns.unit_price"
-              label="Cột Giá/Cuộn VND"
-              :options="columnOptions"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-3">
-            <AppSelect
-              v-model="texMapping.columns.supplier_item_code"
-              label="Cột Mã hàng NCC (tuỳ chọn)"
-              :options="columnOptions"
-              :disable="isLoading"
-              clearable
-              outlined
-              dense
-            />
-          </div>
-        </div>
-
-        <div class="row q-col-gutter-md q-mt-md items-center">
-          <div class="col-auto">
-            <AppButton
-              label="Lưu"
-              color="primary"
-              icon="save"
-              :loading="isSavingTexMapping"
-              :disable="isLoading"
-              @click="handleSaveTexMapping"
-            />
-          </div>
-          <div class="col-auto">
-            <AppButton
-              label="Tải file mẫu"
-              color="secondary"
-              icon="download"
-              variant="outlined"
-              :disable="isLoading"
-              @click="handleDownloadTexTemplate"
-            />
-          </div>
-        </div>
-      </q-card-section>
+        </q-card-section>
+      </q-expansion-item>
     </q-card>
 
     <!-- Import Colors Mapping (ROOT only) -->
@@ -359,97 +369,99 @@
       bordered
       class="settings-card q-mt-lg"
     >
-      <q-card-section>
-        <div class="text-subtitle1 text-weight-medium q-mb-md">
-          Cài đặt Import Màu NCC
-        </div>
+      <q-expansion-item
+        label="Cài đặt Import Màu NCC"
+        header-class="text-subtitle1 text-weight-medium"
+        expand-icon-class="text-primary"
+      >
+        <q-card-section class="q-pt-none">
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-md-4">
+              <AppInput
+                v-model.number="colorMapping.sheet_index"
+                label="Sheet"
+                type="number"
+                min="0"
+                hint="Vị trí sheet (bắt đầu từ 0)"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-12 col-md-4">
+              <AppInput
+                v-model.number="colorMapping.header_row"
+                label="Dòng header"
+                type="number"
+                min="1"
+                hint="Dòng chứa tiêu đề cột"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-12 col-md-4">
+              <AppInput
+                v-model.number="colorMapping.data_start_row"
+                label="Dòng data bắt đầu"
+                type="number"
+                min="1"
+                hint="Dòng bắt đầu dữ liệu"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+          </div>
 
-        <div class="row q-col-gutter-md">
-          <div class="col-12 col-md-4">
-            <AppInput
-              v-model.number="colorMapping.sheet_index"
-              label="Sheet"
-              type="number"
-              min="0"
-              hint="Vị trí sheet (bắt đầu từ 0)"
-              :disable="isLoading"
-              outlined
-              dense
-            />
+          <div class="row q-col-gutter-md q-mt-sm">
+            <div class="col-6 col-md-3">
+              <AppSelect
+                v-model="colorMapping.columns.color_name"
+                label="Cột Tên Màu"
+                :options="columnOptions"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-3">
+              <AppSelect
+                v-model="colorMapping.columns.supplier_color_code"
+                label="Cột Mã màu NCC (tuỳ chọn)"
+                :options="columnOptions"
+                :disable="isLoading"
+                clearable
+                outlined
+                dense
+              />
+            </div>
           </div>
-          <div class="col-12 col-md-4">
-            <AppInput
-              v-model.number="colorMapping.header_row"
-              label="Dòng header"
-              type="number"
-              min="1"
-              hint="Dòng chứa tiêu đề cột"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-12 col-md-4">
-            <AppInput
-              v-model.number="colorMapping.data_start_row"
-              label="Dòng data bắt đầu"
-              type="number"
-              min="1"
-              hint="Dòng bắt đầu dữ liệu"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-        </div>
 
-        <div class="row q-col-gutter-md q-mt-sm">
-          <div class="col-6 col-md-3">
-            <AppSelect
-              v-model="colorMapping.columns.color_name"
-              label="Cột Tên Màu"
-              :options="columnOptions"
-              :disable="isLoading"
-              outlined
-              dense
-            />
+          <div class="row q-col-gutter-md q-mt-md items-center">
+            <div class="col-auto">
+              <AppButton
+                label="Lưu"
+                color="primary"
+                icon="save"
+                :loading="isSavingColorMapping"
+                :disable="isLoading"
+                @click="handleSaveColorMapping"
+              />
+            </div>
+            <div class="col-auto">
+              <AppButton
+                label="Tải file mẫu"
+                color="secondary"
+                icon="download"
+                variant="outlined"
+                :disable="isLoading"
+                @click="handleDownloadColorTemplate"
+              />
+            </div>
           </div>
-          <div class="col-6 col-md-3">
-            <AppSelect
-              v-model="colorMapping.columns.supplier_color_code"
-              label="Cột Mã màu NCC (tuỳ chọn)"
-              :options="columnOptions"
-              :disable="isLoading"
-              clearable
-              outlined
-              dense
-            />
-          </div>
-        </div>
-
-        <div class="row q-col-gutter-md q-mt-md items-center">
-          <div class="col-auto">
-            <AppButton
-              label="Lưu"
-              color="primary"
-              icon="save"
-              :loading="isSavingColorMapping"
-              :disable="isLoading"
-              @click="handleSaveColorMapping"
-            />
-          </div>
-          <div class="col-auto">
-            <AppButton
-              label="Tải file mẫu"
-              color="secondary"
-              icon="download"
-              variant="outlined"
-              :disable="isLoading"
-              @click="handleDownloadColorTemplate"
-            />
-          </div>
-        </div>
-      </q-card-section>
+        </q-card-section>
+      </q-expansion-item>
     </q-card>
 
     <!-- Import PO Mapping (ROOT only) -->
@@ -459,150 +471,155 @@
       bordered
       class="settings-card q-mt-lg"
     >
-      <q-card-section>
-        <div class="text-subtitle1 text-weight-medium q-mb-md">
-          Cài đặt Import Đơn Hàng (PO)
-        </div>
+      <q-expansion-item
+        label="Cài đặt Import Đơn Hàng (PO)"
+        header-class="text-subtitle1 text-weight-medium"
+        expand-icon-class="text-primary"
+      >
+        <q-card-section class="q-pt-none">
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-md-4">
+              <AppInput
+                v-model.number="poMapping.sheet_index"
+                label="Sheet"
+                type="number"
+                min="0"
+                hint="Vị trí sheet (bắt đầu từ 0)"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-12 col-md-4">
+              <AppInput
+                v-model.number="poMapping.header_row"
+                label="Dòng header"
+                type="number"
+                min="1"
+                hint="Dòng chứa tiêu đề cột"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-12 col-md-4">
+              <AppInput
+                v-model.number="poMapping.data_start_row"
+                label="Dòng data bắt đầu"
+                type="number"
+                min="1"
+                hint="Dòng bắt đầu dữ liệu"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+          </div>
 
-        <div class="row q-col-gutter-md">
-          <div class="col-12 col-md-4">
-            <AppInput
-              v-model.number="poMapping.sheet_index"
-              label="Sheet"
-              type="number"
-              min="0"
-              hint="Vị trí sheet (bắt đầu từ 0)"
-              :disable="isLoading"
-              outlined
-              dense
-            />
+          <div class="row q-col-gutter-md q-mt-sm">
+            <div class="col-6 col-md-2">
+              <AppSelect
+                v-model="poMapping.columns.customer_name"
+                label="Cột Khách hàng"
+                :options="columnOptions"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-2">
+              <AppSelect
+                v-model="poMapping.columns.po_number"
+                label="Cột Số PO"
+                :options="columnOptions"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-2">
+              <AppSelect
+                v-model="poMapping.columns.style_code"
+                label="Cột Mã hàng"
+                :options="columnOptions"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-2">
+              <AppSelect
+                v-model="poMapping.columns.week"
+                label="Cột Week"
+                :options="columnOptions"
+                :disable="isLoading"
+                clearable
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-2">
+              <AppSelect
+                v-model="poMapping.columns.description"
+                label="Cột Mô tả"
+                :options="columnOptions"
+                :disable="isLoading"
+                clearable
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-2">
+              <AppSelect
+                v-model="poMapping.columns.finished_product_code"
+                label="Cột Mã TP KT"
+                :options="columnOptions"
+                :disable="isLoading"
+                clearable
+                outlined
+                dense
+              />
+            </div>
+            <div class="col-6 col-md-2">
+              <AppSelect
+                v-model="poMapping.columns.quantity"
+                label="Cột SL SP"
+                :options="columnOptions"
+                :disable="isLoading"
+                outlined
+                dense
+              />
+            </div>
           </div>
-          <div class="col-12 col-md-4">
-            <AppInput
-              v-model.number="poMapping.header_row"
-              label="Dòng header"
-              type="number"
-              min="1"
-              hint="Dòng chứa tiêu đề cột"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-12 col-md-4">
-            <AppInput
-              v-model.number="poMapping.data_start_row"
-              label="Dòng data bắt đầu"
-              type="number"
-              min="1"
-              hint="Dòng bắt đầu dữ liệu"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-        </div>
 
-        <div class="row q-col-gutter-md q-mt-sm">
-          <div class="col-6 col-md-2">
-            <AppSelect
-              v-model="poMapping.columns.customer_name"
-              label="Cột Khách hàng"
-              :options="columnOptions"
-              :disable="isLoading"
-              outlined
-              dense
-            />
+          <div class="row q-col-gutter-md q-mt-md items-center">
+            <div class="col-auto">
+              <AppButton
+                label="Lưu"
+                color="primary"
+                icon="save"
+                :loading="isSavingPOMapping"
+                :disable="isLoading"
+                @click="handleSavePOMapping"
+              />
+            </div>
+            <div class="col-auto">
+              <AppButton
+                label="Tải file mẫu"
+                color="secondary"
+                icon="download"
+                variant="outlined"
+                :disable="isLoading"
+                @click="handleDownloadPOTemplate"
+              />
+            </div>
           </div>
-          <div class="col-6 col-md-2">
-            <AppSelect
-              v-model="poMapping.columns.po_number"
-              label="Cột Số PO"
-              :options="columnOptions"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-2">
-            <AppSelect
-              v-model="poMapping.columns.style_code"
-              label="Cột Mã hàng"
-              :options="columnOptions"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-2">
-            <AppSelect
-              v-model="poMapping.columns.week"
-              label="Cột Week"
-              :options="columnOptions"
-              :disable="isLoading"
-              clearable
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-2">
-            <AppSelect
-              v-model="poMapping.columns.description"
-              label="Cột Mô tả"
-              :options="columnOptions"
-              :disable="isLoading"
-              clearable
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-2">
-            <AppSelect
-              v-model="poMapping.columns.finished_product_code"
-              label="Cột Mã TP KT"
-              :options="columnOptions"
-              :disable="isLoading"
-              clearable
-              outlined
-              dense
-            />
-          </div>
-          <div class="col-6 col-md-2">
-            <AppSelect
-              v-model="poMapping.columns.quantity"
-              label="Cột SL SP"
-              :options="columnOptions"
-              :disable="isLoading"
-              outlined
-              dense
-            />
-          </div>
-        </div>
-
-        <div class="row q-col-gutter-md q-mt-md items-center">
-          <div class="col-auto">
-            <AppButton
-              label="Lưu"
-              color="primary"
-              icon="save"
-              :loading="isSavingPOMapping"
-              :disable="isLoading"
-              @click="handleSavePOMapping"
-            />
-          </div>
-          <div class="col-auto">
-            <AppButton
-              label="Tải file mẫu"
-              color="secondary"
-              icon="download"
-              variant="outlined"
-              :disable="isLoading"
-              @click="handleDownloadPOTemplate"
-            />
-          </div>
-        </div>
-      </q-card-section>
+        </q-card-section>
+      </q-expansion-item>
     </q-card>
+
+    <!-- Weekly Order Edit Unlock (ROOT only) -->
+    <WeeklyOrderUnlockCard v-if="isRoot && hasLoaded" />
   </q-page>
 </template>
 
@@ -614,6 +631,7 @@ import { useSnackbar } from '@/composables/useSnackbar'
 import { importService } from '@/services/importService'
 import { settingsService } from '@/services/settingsService'
 import { employeeService } from '@/services/employeeService'
+import WeeklyOrderUnlockCard from '@/components/settings/WeeklyOrderUnlockCard.vue'
 
 const PARTIAL_CONE_RATIO_KEY = 'partial_cone_ratio'
 const RESERVE_PRIORITY_KEY = 'reserve_priority'

@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
+import { from } from '../db/sql-builder'
+import { putObject, getObject, removeObjects } from '../storage/local-storage'
 import { requirePermission } from '../middleware/auth'
 import {
   CreateGuideSchema,
@@ -10,8 +12,19 @@ import { sanitizeHtml } from '../utils/sanitize-html'
 import { linkImagesToGuide } from '../utils/guide-image-linker'
 import type { AppEnv } from '../types/hono-env'
 
+function contentTypeByExt(filePath: string): string {
+  const ext = filePath.split('.').pop()?.toLowerCase()
+  return ext === 'webp' ? 'image/webp'
+    : ext === 'png' ? 'image/png'
+    : ext === 'gif' ? 'image/gif'
+    : 'image/jpeg'
+}
+
 const guides = new Hono<AppEnv>()
 const guideImages = new Hono()
+const publicGuideImages = new Hono()
+
+const PUBLIC_IMAGE_PREFIX = '/storage/v1/object/public/guide-images/'
 
 function generateSlug(title: string): string {
   const vietnameseMap: Record<string, string> = {
@@ -64,18 +77,17 @@ async function ensureUniqueSlug(baseSlug: string, excludeId?: string): Promise<s
   let counter = 1
 
   while (true) {
-    const query = supabase
-      .from('guides')
+    const builder = from('guides')
       .select('id')
       .eq('slug', slug)
       .is('deleted_at', null)
       .limit(1)
 
     if (excludeId) {
-      query.neq('id', excludeId)
+      builder.neq('id', excludeId)
     }
 
-    const { data } = await query.maybeSingle()
+    const data = await builder.maybeSingle<{ id: string }>()
 
     if (!data) return slug
 
@@ -129,25 +141,22 @@ guides.post('/upload-image', requirePermission('guides.create'), async (c) => {
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`
     const filePath = `guides/${fileName}`
 
-    const { error: uploadError } = await supabase.storage
-      .from('guide-images')
-      .upload(filePath, processed, {
-        contentType: 'image/webp',
-        upsert: false,
-      })
-
-    if (uploadError) {
+    try {
+      await putObject(filePath, processed, { upsert: false })
+    } catch (uploadError) {
       console.error('Upload guide image error:', uploadError)
       return c.json({ data: null, error: 'Lỗi khi tải ảnh lên' }, 500)
     }
 
     const relativeUrl = `/api/guides/images/${filePath}`
 
-    const { error: trackError } = await supabase
-      .from('guide_images')
-      .insert({ storage_path: filePath, file_size: processed.length, mime_type: 'image/webp', status: 'PENDING' })
-
-    if (trackError) {
+    try {
+      await query(
+        `INSERT INTO guide_images (storage_path, file_size, mime_type, status)
+         VALUES ($1, $2, $3, $4)`,
+        [filePath, processed.length, 'image/webp', 'PENDING']
+      )
+    } catch (trackError) {
       console.error('Upload: insert guide_images row error:', trackError)
     }
 
@@ -165,24 +174,15 @@ guideImages.get('/*', async (c) => {
       return c.json({ data: null, error: 'Đường dẫn không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase.storage
-      .from('guide-images')
-      .download(filePath)
+    const buffer = await getObject(filePath)
 
-    if (error || !data) {
+    if (!buffer) {
       return c.json({ data: null, error: 'Không tìm thấy ảnh' }, 404)
     }
 
-    const buffer = Buffer.from(await data.arrayBuffer())
-    const ext = filePath.split('.').pop()?.toLowerCase()
-    const contentType = ext === 'webp' ? 'image/webp'
-      : ext === 'png' ? 'image/png'
-      : ext === 'gif' ? 'image/gif'
-      : 'image/jpeg'
-
     return new Response(buffer, {
       headers: {
-        'Content-Type': contentType,
+        'Content-Type': contentTypeByExt(filePath),
         'Cache-Control': 'public, max-age=31536000, immutable',
       },
     })
@@ -192,32 +192,69 @@ guideImages.get('/*', async (c) => {
   }
 })
 
+publicGuideImages.get('/*', async (c) => {
+  try {
+    const filePath = c.req.path.replace(PUBLIC_IMAGE_PREFIX, '')
+    if (!filePath || filePath.includes('..')) {
+      return c.body(null, 404)
+    }
+
+    const buffer = await getObject(filePath)
+
+    if (!buffer) {
+      return c.body(null, 404)
+    }
+
+    return new Response(buffer, {
+      headers: {
+        'Content-Type': contentTypeByExt(filePath),
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      },
+    })
+  } catch (err) {
+    console.error('Public guide image error:', err)
+    return c.body(null, 404)
+  }
+})
+
 guides.get('/', async (c) => {
   try {
     const auth = c.get('auth')
     const isAdmin = auth.isRoot || auth.isAdmin
     const search = c.req.query('search')
 
-    let query = supabase
-      .from('guides')
-      .select('id, title, slug, cover_image_url, status, sort_order, published_at, created_at, updated_at, author_id, employees!author_id(full_name)')
-      .is('deleted_at', null)
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: false })
-      .limit(200)
+    const conditions: string[] = ['g.deleted_at IS NULL']
+    const params: unknown[] = []
 
     if (!isAdmin) {
-      query = query.eq('status', 'PUBLISHED')
+      params.push('PUBLISHED')
+      conditions.push(`g.status = $${params.length}`)
     }
 
     if (search) {
-      query = query.ilike('title', `%${search}%`)
+      params.push(`%${search}%`)
+      conditions.push(`g.title ILIKE $${params.length}`)
     }
 
-    const { data, error } = await query
+    params.push(200)
+    const limitPlaceholder = `$${params.length}`
 
-    if (error) {
-      console.error('List guides error:', error)
+    let data: Record<string, unknown>[]
+    try {
+      data = await query<Record<string, unknown>>(
+        `SELECT g.id, g.title, g.slug, g.cover_image_url, g.status, g.sort_order,
+                g.published_at, g.created_at, g.updated_at, g.author_id,
+                CASE WHEN e.id IS NULL THEN NULL
+                     ELSE json_build_object('full_name', e.full_name) END AS employees
+         FROM guides g
+         LEFT JOIN employees e ON e.id = g.author_id
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY g.sort_order ASC, g.created_at DESC
+         LIMIT ${limitPlaceholder}`,
+        params
+      )
+    } catch (queryErr) {
+      console.error('List guides error:', queryErr)
       return c.json({ data: null, error: 'Lỗi khi tải danh sách hướng dẫn' }, 500)
     }
 
@@ -241,14 +278,13 @@ guides.patch('/:id/publish', requirePermission('guides.edit'), async (c) => {
   try {
     const id = c.req.param('id')
 
-    const { data: guide, error: fetchError } = await supabase
-      .from('guides')
+    const guide = await from('guides')
       .select('id, status')
       .eq('id', id)
       .is('deleted_at', null)
-      .single()
+      .maybeSingle<{ id: string; status: string }>()
 
-    if (fetchError || !guide) {
+    if (!guide) {
       return c.json({ data: null, error: 'Không tìm thấy hướng dẫn' }, 404)
     }
 
@@ -263,15 +299,21 @@ guides.patch('/:id/publish', requirePermission('guides.edit'), async (c) => {
       updateData.published_at = now
     }
 
-    const { data, error } = await supabase
-      .from('guides')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Toggle publish error:', error)
+    let data: Record<string, unknown> | null
+    try {
+      const sets: string[] = []
+      const params: unknown[] = []
+      for (const [key, value] of Object.entries(updateData)) {
+        params.push(value)
+        sets.push(`${key} = $${params.length}`)
+      }
+      params.push(id)
+      data = await queryOne<Record<string, unknown>>(
+        `UPDATE guides SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+        params
+      )
+    } catch (updateErr) {
+      console.error('Toggle publish error:', updateErr)
       return c.json({ data: null, error: 'Lỗi khi cập nhật trạng thái' }, 500)
     }
 
@@ -295,20 +337,21 @@ guides.patch('/:id/reorder', requirePermission('guides.edit'), async (c) => {
 
     const { sort_order } = parseResult.data
 
-    const { data, error } = await supabase
-      .from('guides')
-      .update({ sort_order, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .is('deleted_at', null)
-      .select()
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy hướng dẫn' }, 404)
-      }
-      console.error('Reorder guide error:', error)
+    let data: Record<string, unknown> | null
+    try {
+      data = await queryOne<Record<string, unknown>>(
+        `UPDATE guides SET sort_order = $1, updated_at = $2
+         WHERE id = $3 AND deleted_at IS NULL
+         RETURNING *`,
+        [sort_order, new Date().toISOString(), id]
+      )
+    } catch (updateErr) {
+      console.error('Reorder guide error:', updateErr)
       return c.json({ data: null, error: 'Lỗi khi cập nhật thứ tự' }, 500)
+    }
+
+    if (!data) {
+      return c.json({ data: null, error: 'Không tìm thấy hướng dẫn' }, 404)
     }
 
     return c.json({ data, error: null, message: 'Đã cập nhật thứ tự' })
@@ -326,20 +369,24 @@ guides.get('/:slugOrId', async (c) => {
 
     const isUuid = UUID_REGEX.test(slugOrId)
 
-    let query = supabase
-      .from('guides')
+    const builder = from('guides')
       .select('*')
       .is('deleted_at', null)
 
     if (isUuid) {
-      query = query.eq('id', slugOrId)
+      builder.eq('id', slugOrId)
     } else {
-      query = query.eq('slug', slugOrId)
+      builder.eq('slug', slugOrId)
     }
 
-    const { data: guide, error } = await query.single()
+    const guide = await builder.maybeSingle<{
+      status: string
+      content_html: string | null
+      content: unknown
+      [key: string]: unknown
+    }>()
 
-    if (error || !guide) {
+    if (!guide) {
       return c.json({ data: null, error: 'Không tìm thấy hướng dẫn' }, 404)
     }
 
@@ -376,38 +423,40 @@ guides.post('/', requirePermission('guides.create'), async (c) => {
     const baseSlug = generateSlug(validated.title)
     const slug = await ensureUniqueSlug(baseSlug)
 
-    const { data: maxOrder } = await supabase
-      .from('guides')
+    const maxOrder = await from('guides')
       .select('sort_order')
       .is('deleted_at', null)
-      .order('sort_order', { ascending: false })
+      .order({ column: 'sort_order', ascending: false })
       .limit(1)
-      .maybeSingle()
+      .maybeSingle<{ sort_order: number }>()
 
     const nextOrder = (maxOrder?.sort_order ?? -1) + 1
 
-    const { data, error } = await supabase
-      .from('guides')
-      .insert({
-        title: validated.title,
-        slug,
-        content: validated.content,
-        content_html: validated.content_html ? sanitizeHtml(validated.content_html) : validated.content_html,
-        cover_image_url: validated.cover_image_url || null,
-        status: validated.status,
-        sort_order: nextOrder,
-        author_id: auth.employeeId,
-        published_at: validated.status === 'PUBLISHED' ? new Date().toISOString() : null,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Create guide error:', error)
+    let data: Record<string, unknown> | null
+    try {
+      data = await queryOne<Record<string, unknown>>(
+        `INSERT INTO guides
+           (title, slug, content, content_html, cover_image_url, status, sort_order, author_id, published_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+          validated.title,
+          slug,
+          validated.content,
+          validated.content_html ? sanitizeHtml(validated.content_html) : validated.content_html,
+          validated.cover_image_url || null,
+          validated.status,
+          nextOrder,
+          auth.employeeId,
+          validated.status === 'PUBLISHED' ? new Date().toISOString() : null,
+        ]
+      )
+    } catch (insertErr) {
+      console.error('Create guide error:', insertErr)
       return c.json({ data: null, error: 'Lỗi khi tạo hướng dẫn' }, 500)
     }
 
-    await linkImagesToGuide(supabase, data.id, data.content_html)
+    await linkImagesToGuide(data!.id as string, data!.content_html as string | null)
 
     return c.json({ data, error: null, message: 'Đã tạo hướng dẫn mới' }, 201)
   } catch (err) {
@@ -428,14 +477,13 @@ guides.put('/:id', requirePermission('guides.edit'), async (c) => {
 
     const validated = parseResult.data
 
-    const { data: existing, error: fetchError } = await supabase
-      .from('guides')
+    const existing = await from('guides')
       .select('id, title, slug')
       .eq('id', id)
       .is('deleted_at', null)
-      .single()
+      .maybeSingle<{ id: string; title: string; slug: string }>()
 
-    if (fetchError || !existing) {
+    if (!existing) {
       return c.json({ data: null, error: 'Không tìm thấy hướng dẫn' }, 404)
     }
 
@@ -457,19 +505,25 @@ guides.put('/:id', requirePermission('guides.edit'), async (c) => {
       updateData.published_at = new Date().toISOString()
     }
 
-    const { data, error } = await supabase
-      .from('guides')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Update guide error:', error)
+    let data: Record<string, unknown> | null
+    try {
+      const sets: string[] = []
+      const params: unknown[] = []
+      for (const [key, value] of Object.entries(updateData)) {
+        params.push(value)
+        sets.push(`${key} = $${params.length}`)
+      }
+      params.push(id)
+      data = await queryOne<Record<string, unknown>>(
+        `UPDATE guides SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+        params
+      )
+    } catch (updateErr) {
+      console.error('Update guide error:', updateErr)
       return c.json({ data: null, error: 'Lỗi khi cập nhật hướng dẫn' }, 500)
     }
 
-    await linkImagesToGuide(supabase, data.id, data.content_html)
+    await linkImagesToGuide(data!.id as string, data!.content_html as string | null)
 
     return c.json({ data, error: null, message: 'Đã cập nhật hướng dẫn' })
   } catch (err) {
@@ -482,36 +536,41 @@ guides.delete('/:id', requirePermission('guides.edit'), async (c) => {
   try {
     const id = c.req.param('id')
 
-    const { data: imageRows } = await supabase
-      .from('guide_images')
-      .select('storage_path')
-      .eq('guide_id', id)
-      .limit(500)
+    let imageRows: { storage_path: string }[] = []
+    try {
+      imageRows = await from('guide_images')
+        .select('storage_path')
+        .eq('guide_id', id)
+        .limit(500)
+        .list<{ storage_path: string }>()
+    } catch (selectErr) {
+      console.error('Delete guide: select guide_images error:', selectErr)
+    }
 
     if (imageRows && imageRows.length > 0) {
       const paths = imageRows.map((r: { storage_path: string }) => r.storage_path)
-      const { error: storageError } = await supabase.storage
-        .from('guide-images')
-        .remove(paths)
-      if (storageError) {
+      try {
+        await removeObjects(paths)
+      } catch (storageError) {
         console.error('Delete guide: storage remove error:', storageError)
       }
     }
 
-    const { data, error } = await supabase
-      .from('guides')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', id)
-      .is('deleted_at', null)
-      .select('id')
-      .single()
-
-    if (error || !data) {
-      if (error?.code === 'PGRST116' || !data) {
-        return c.json({ data: null, error: 'Không tìm thấy hướng dẫn' }, 404)
-      }
-      console.error('Delete guide error:', error)
+    let data: { id: string } | null
+    try {
+      data = await queryOne<{ id: string }>(
+        `UPDATE guides SET deleted_at = $1
+         WHERE id = $2 AND deleted_at IS NULL
+         RETURNING id`,
+        [new Date().toISOString(), id]
+      )
+    } catch (updateErr) {
+      console.error('Delete guide error:', updateErr)
       return c.json({ data: null, error: 'Lỗi khi xóa hướng dẫn' }, 500)
+    }
+
+    if (!data) {
+      return c.json({ data: null, error: 'Không tìm thấy hướng dẫn' }, 404)
     }
 
     return c.json({ data: { id: data.id }, error: null, message: 'Đã xóa hướng dẫn' })
@@ -521,5 +580,5 @@ guides.delete('/:id', requirePermission('guides.edit'), async (c) => {
   }
 })
 
-export { guideImages }
+export { guideImages, publicGuideImages }
 export default guides

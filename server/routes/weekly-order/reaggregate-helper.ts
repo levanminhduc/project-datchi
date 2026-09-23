@@ -53,6 +53,13 @@ export function reaggregateSummary(
     oldMeta.set(groupKey(row.thread_type_id, row.thread_color as string), row)
   }
 
+  const issueGroupMeters = new Map<string, Map<string, number>>()
+  const addIssueGroupMeters = (key: string, issueKey: string, meters: number) => {
+    const groups = issueGroupMeters.get(key) ?? new Map<string, number>()
+    groups.set(issueKey, (groups.get(issueKey) ?? 0) + meters)
+    issueGroupMeters.set(key, groups)
+  }
+
   const agg = new Map<string, {
     thread_type_id: number
     thread_color: string | null
@@ -73,6 +80,7 @@ export function reaggregateSummary(
       if (breakdowns && breakdowns.length > 0) {
         for (const cb of breakdowns) {
           const key = groupKey(cb.thread_type_id, cb.thread_color)
+          addIssueGroupMeters(key, `${style.style_id}_${cb.color_id}_${cb.thread_color ?? ''}`, cb.total_meters || 0)
           const existing = agg.get(key)
           if (existing) {
             existing.total_meters += cb.total_meters || 0
@@ -94,6 +102,7 @@ export function reaggregateSummary(
         }
       } else if (calc.thread_type_id && calc.total_meters) {
         const key = groupKey(calc.thread_type_id, calc.thread_color)
+        addIssueGroupMeters(key, `${style.style_id}__${calc.thread_color ?? ''}`, calc.total_meters)
         const existing = agg.get(key)
         if (existing) {
           existing.total_meters += calc.total_meters
@@ -120,8 +129,11 @@ export function reaggregateSummary(
   for (const row of agg.values()) {
     if (row.meters_per_cone <= 0) continue
 
-    const quota_cones = Math.ceil(row.total_meters / row.meters_per_cone)
     const key = groupKey(row.thread_type_id, row.thread_color)
+    const groups = issueGroupMeters.get(key)
+    const quota_cones = groups
+      ? Array.from(groups.values()).reduce((sum, meters) => sum + Math.ceil(meters / row.meters_per_cone), 0)
+      : Math.ceil(row.total_meters / row.meters_per_cone)
     const old = oldMeta.get(key)
 
     result.push({

@@ -1,4 +1,4 @@
-import { supabaseAdmin as supabase } from '../../db/supabase'
+import { queryOne, query } from '../../db/query'
 import { enrichWithInventory } from './enrich-helper'
 
 export interface InventoryDiffRow {
@@ -40,13 +40,11 @@ type StoredSummaryRow = {
 }
 
 export async function getInventoryDiffForWeek(weekId: number): Promise<InventoryDiffResult> {
-  const { data: resultsRow, error: resultsError } = await supabase
-    .from('thread_order_results')
-    .select('summary_data')
-    .eq('week_id', weekId)
-    .maybeSingle()
+  const resultsRow = await queryOne<{ summary_data: unknown }>(
+    `SELECT summary_data FROM thread_order_results WHERE week_id = $1`,
+    [weekId],
+  )
 
-  if (resultsError) throw resultsError
   if (!resultsRow?.summary_data || !Array.isArray(resultsRow.summary_data)) {
     return { has_changed: false, diff: [] }
   }
@@ -56,11 +54,10 @@ export async function getInventoryDiffForWeek(weekId: number): Promise<Inventory
     return { has_changed: false, diff: [] }
   }
 
-  const { data: warehouseRows } = await supabase
-    .from('thread_order_week_warehouses')
-    .select('warehouse_id')
-    .eq('week_id', weekId)
-    .limit(100)
+  const warehouseRows = await query<{ warehouse_id: number }>(
+    `SELECT warehouse_id FROM thread_order_week_warehouses WHERE week_id = $1 LIMIT 100`,
+    [weekId],
+  )
 
   const warehouseIds = (warehouseRows || []).map((r) => r.warehouse_id)
 

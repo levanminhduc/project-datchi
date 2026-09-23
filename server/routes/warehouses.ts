@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import type { WarehouseRow, WarehouseTreeNode, ThreadApiResponse } from '../types/thread'
 
@@ -35,23 +35,13 @@ warehouses.get('/', async (c) => {
   try {
     const format = c.req.query('format') || 'flat'
 
-    const { data, error } = await supabase
-      .from('warehouses')
+    const warehouseList = await from('warehouses')
       .select('*')
       .eq('is_active', true)
       .is('deleted_at', null)
-      .order('parent_id', { ascending: true, nullsFirst: true })
-      .order('sort_order', { ascending: true })
-
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<ThreadApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi tải danh sách kho'
-      }, 500)
-    }
-
-    const warehouseList = data as Warehouse[]
+      .order({ column: 'parent_id', ascending: true, nullsFirst: true })
+      .order({ column: 'sort_order', ascending: true })
+      .list<Warehouse>()
 
     if (format === 'tree') {
       const tree = buildWarehouseTree(warehouseList)
@@ -80,21 +70,13 @@ warehouses.get('/', async (c) => {
 // GET /api/warehouses/locations - List only LOCATION type warehouses
 warehouses.get('/locations', async (c) => {
   try {
-    const { data, error } = await supabase
-      .from('warehouses')
+    const data = await from('warehouses')
       .select('*')
       .eq('is_active', true)
       .is('deleted_at', null)
       .eq('type', 'LOCATION')
-      .order('sort_order', { ascending: true })
-
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<ThreadApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi tải danh sách địa điểm'
-      }, 500)
-    }
+      .order({ column: 'sort_order', ascending: true })
+      .list<Warehouse>()
 
     return c.json<ThreadApiResponse<Warehouse[]>>({
       data: data as Warehouse[],
@@ -116,8 +98,7 @@ warehouses.get('/storage', async (c) => {
   try {
     const locationId = c.req.query('location_id')
 
-    let query = supabase
-      .from('warehouses')
+    const builder = from('warehouses')
       .select('*')
       .eq('is_active', true)
       .is('deleted_at', null)
@@ -125,20 +106,13 @@ warehouses.get('/storage', async (c) => {
 
     // Filter by parent location if provided
     if (locationId) {
-      query = query.eq('parent_id', parseInt(locationId))
+      builder.eq('parent_id', parseInt(locationId))
     }
 
-    const { data, error } = await query
-      .order('parent_id', { ascending: true })
-      .order('sort_order', { ascending: true })
-
-    if (error) {
-      console.error('Supabase error:', error)
-      return c.json<ThreadApiResponse<null>>({
-        data: null,
-        error: 'Lỗi khi tải danh sách kho'
-      }, 500)
-    }
+    const data = await builder
+      .order({ column: 'parent_id', ascending: true })
+      .order({ column: 'sort_order', ascending: true })
+      .list<Warehouse>()
 
     return c.json<ThreadApiResponse<Warehouse[]>>({
       data: data as Warehouse[],

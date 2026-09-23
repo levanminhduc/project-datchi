@@ -1,15 +1,16 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
+import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 
 const styleColors = new Hono()
 
 async function validateSubArtColorName(styleId: number, colorName: string): Promise<string | null> {
-  const { data: subArts } = await supabase
-    .from('sub_arts')
+  const subArts = await from('sub_arts')
     .select('sub_art_code')
     .eq('style_id', styleId)
+    .list<{ sub_art_code: string }>()
 
   if (!subArts || subArts.length === 0) return null
 
@@ -41,14 +42,12 @@ styleColors.post('/:styleId/clone', requirePermission('thread.styles.create'), a
       return c.json({ data: null, error: 'source_color_id và color_name là bắt buộc' }, 400)
     }
 
-    const { data: sourceColor, error: sourceErr } = await supabase
-      .from('style_colors')
-      .select('id')
-      .eq('id', source_color_id)
-      .eq('style_id', styleId)
-      .single()
+    const sourceColor = await queryOne<{ id: number }>(
+      'SELECT id FROM style_colors WHERE id = $1 AND style_id = $2',
+      [source_color_id, styleId]
+    )
 
-    if (sourceErr || !sourceColor) {
+    if (!sourceColor) {
       return c.json({ data: null, error: 'Màu hàng nguồn không tồn tại' }, 400)
     }
 
@@ -57,39 +56,34 @@ styleColors.post('/:styleId/clone', requirePermission('thread.styles.create'), a
       return c.json({ data: null, error: validationError }, 400)
     }
 
-    const { data: newColor, error: insertErr } = await supabase
-      .from('style_colors')
-      .insert([{
-        style_id: styleId,
-        color_name: color_name.trim(),
-        hex_code: hex_code || '#808080',
-      }])
-      .select()
-      .single()
-
-    if (insertErr) {
-      if (insertErr.code === '23505') {
+    let newColor: { id: number } & Record<string, unknown>
+    try {
+      const inserted = await queryOne<{ id: number } & Record<string, unknown>>(
+        `INSERT INTO style_colors (style_id, color_name, hex_code)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [styleId, color_name.trim(), hex_code || '#808080']
+      )
+      newColor = inserted as { id: number } & Record<string, unknown>
+    } catch (insertErr) {
+      if ((insertErr as { code?: string }).code === '23505') {
         return c.json({ data: null, error: 'Màu này đã tồn tại cho mã hàng' }, 400)
       }
       throw insertErr
     }
 
-    const { data: parentSpecs, error: parentErr } = await supabase
-      .from('style_thread_specs')
+    const parentSpecs = await from('style_thread_specs')
       .select('id, thread_type_id')
       .eq('style_id', styleId)
       .limit(500)
-
-    if (parentErr) throw parentErr
+      .list<{ id: number; thread_type_id: number | null }>()
 
     if (parentSpecs && parentSpecs.length > 0) {
-      const { data: sourceSpecs, error: sourceSpecsErr } = await supabase
-        .from('style_color_thread_specs')
+      const sourceSpecs = await from('style_color_thread_specs')
         .select('style_thread_spec_id, thread_color_id, notes')
         .eq('style_color_id', source_color_id)
         .limit(500)
-
-      if (sourceSpecsErr) throw sourceSpecsErr
+        .list<{ style_thread_spec_id: number; thread_color_id: number | null; notes: string | null }>()
 
       const sourceMap = new Map(
         (sourceSpecs || []).map(s => [s.style_thread_spec_id, s])
@@ -108,11 +102,21 @@ styleColors.post('/:styleId/clone', requirePermission('thread.styles.create'), a
         }
       })
 
-      const { error: cloneErr } = await supabase
-        .from('style_color_thread_specs')
-        .insert(clonedRows)
-
-      if (cloneErr) throw cloneErr
+      if (clonedRows.length > 0) {
+        const valueParts: string[] = []
+        const params: unknown[] = []
+        for (const row of clonedRows) {
+          params.push(row.style_thread_spec_id, row.style_color_id, row.thread_type_id, row.thread_color_id, row.notes)
+          const base = params.length - 5
+          valueParts.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`)
+        }
+        await query(
+          `INSERT INTO style_color_thread_specs
+             (style_thread_spec_id, style_color_id, thread_type_id, thread_color_id, notes)
+           VALUES ${valueParts.join(', ')}`,
+          params
+        )
+      }
     }
 
     return c.json({ data: newColor, error: null, message: 'Copy màu hàng thành công' })
@@ -124,14 +128,12 @@ styleColors.post('/:styleId/clone', requirePermission('thread.styles.create'), a
 
 styleColors.get('/hex-palette', requirePermission('thread.styles.view'), async (c) => {
   try {
-    const { data, error } = await supabase
-      .from('style_colors')
+    const data = await from('style_colors')
       .select('color_name, hex_code')
       .eq('is_active', true)
-      .order('color_name', { ascending: true })
+      .order({ column: 'color_name', ascending: true })
       .limit(500)
-
-    if (error) throw error
+      .list<{ color_name: string; hex_code: string }>()
 
     const seen = new Set<string>()
     const unique = (data || []).filter(row => {
@@ -154,14 +156,13 @@ styleColors.get('/:styleId', requirePermission('thread.styles.view'), async (c) 
       return c.json({ data: null, error: 'Style ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('style_colors')
+    const data = await from('style_colors')
       .select('*')
       .eq('style_id', styleId)
       .eq('is_active', true)
-      .order('color_name', { ascending: true })
+      .order({ column: 'color_name', ascending: true })
+      .list()
 
-    if (error) throw error
     return c.json({ data, error: null })
   } catch (err) {
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
@@ -185,21 +186,19 @@ styleColors.post('/:styleId', requirePermission('thread.styles.create'), async (
       return c.json({ data: null, error: validationError }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('style_colors')
-      .insert([{
-        style_id: styleId,
-        color_name: body.color_name.trim(),
-        hex_code: body.hex_code || '#808080',
-      }])
-      .select()
-      .single()
-
-    if (error) {
-      if (error.code === '23505') {
+    let data: Record<string, unknown> | null
+    try {
+      data = await queryOne<Record<string, unknown>>(
+        `INSERT INTO style_colors (style_id, color_name, hex_code)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [styleId, body.color_name.trim(), body.hex_code || '#808080']
+      )
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') {
         return c.json({ data: null, error: 'Màu này đã tồn tại cho mã hàng' }, 400)
       }
-      throw error
+      throw err
     }
 
     return c.json({ data, error: null, message: 'Thêm màu hàng thành công' })
@@ -225,22 +224,31 @@ styleColors.put('/:styleId/:id', requirePermission('thread.styles.edit'), async 
       }
     }
 
-    const { data, error } = await supabase
-      .from('style_colors')
-      .update({
-        color_name: body.color_name,
-        hex_code: body.hex_code,
-        is_active: body.is_active,
-      })
-      .eq('id', id)
-      .select()
-      .single()
+    const updateData: Record<string, unknown> = {}
+    if (body.color_name !== undefined) updateData.color_name = body.color_name
+    if (body.hex_code !== undefined) updateData.hex_code = body.hex_code
+    if (body.is_active !== undefined) updateData.is_active = body.is_active
 
-    if (error) {
-      if (error.code === '23505') return c.json({ data: null, error: 'Tên màu đã tồn tại' }, 400)
-      if (error.code === 'PGRST116') return c.json({ data: null, error: 'Không tìm thấy' }, 404)
-      throw error
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updateData)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
     }
+    params.push(id)
+
+    let data: Record<string, unknown> | null
+    try {
+      data = await queryOne<Record<string, unknown>>(
+        `UPDATE style_colors SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+        params
+      )
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') return c.json({ data: null, error: 'Tên màu đã tồn tại' }, 400)
+      throw err
+    }
+
+    if (!data) return c.json({ data: null, error: 'Không tìm thấy' }, 404)
 
     return c.json({ data, error: null, message: 'Cập nhật thành công' })
   } catch (err) {
@@ -255,17 +263,12 @@ styleColors.delete('/:styleId/:id', requirePermission('thread.styles.delete'), a
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('style_colors')
-      .update({ is_active: false })
-      .eq('id', id)
-      .select()
-      .single()
+    const data = await queryOne<Record<string, unknown>>(
+      `UPDATE style_colors SET is_active = false WHERE id = $1 RETURNING *`,
+      [id]
+    )
 
-    if (error) {
-      if (error.code === 'PGRST116') return c.json({ data: null, error: 'Không tìm thấy' }, 404)
-      throw error
-    }
+    if (!data) return c.json({ data: null, error: 'Không tìm thấy' }, 404)
 
     return c.json({ data, error: null, message: 'Đã xóa màu hàng' })
   } catch (err) {

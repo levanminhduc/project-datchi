@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
-import { supabaseAdmin as supabase } from '../../db/supabase'
+import { queryOne, query } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
 import {
@@ -63,36 +63,32 @@ calculation.put('/items/:id/quota', requirePermission('thread.allocations.manage
 
     const { thread_type_id, quota_cones } = validated
 
-    const { error: weekError } = await supabase
-      .from('thread_order_weeks')
-      .select('id')
-      .eq('id', weekId)
-      .single()
+    const week = await queryOne<{ id: number }>(
+      `SELECT id FROM thread_order_weeks WHERE id = $1`,
+      [weekId],
+    )
 
-    if (weekError) {
-      if (weekError.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
-      }
-      throw weekError
+    if (!week) {
+      return c.json({ data: null, error: 'Không tìm thấy tuần đặt hàng' }, 404)
     }
 
-    const { data: results, error: resultsError } = await supabase
-      .from('thread_order_results')
-      .select('*')
-      .eq('week_id', weekId)
-      .single()
+    const results = await queryOne<{ summary_data: unknown }>(
+      `SELECT summary_data FROM thread_order_results WHERE week_id = $1`,
+      [weekId],
+    )
 
-    if (resultsError) {
-      if (resultsError.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Chưa có kết quả tính toán cho tuần này' }, 404)
-      }
-      throw resultsError
+    if (!results) {
+      return c.json({ data: null, error: 'Chưa có kết quả tính toán cho tuần này' }, 404)
     }
 
     let updated = false
     const summaryData = results.summary_data as any[]
     for (const row of summaryData) {
       if (row.thread_type_id === thread_type_id) {
+        const totalCones = Number(row.total_cones ?? 0)
+        if (quota_cones > totalCones) {
+          return c.json({ data: null, error: `Nhu cầu chỉ được giảm, tối đa ${totalCones} cuộn` }, 400)
+        }
         row.quota_cones = quota_cones
         updated = true
         break
@@ -103,16 +99,10 @@ calculation.put('/items/:id/quota', requirePermission('thread.allocations.manage
       return c.json({ data: null, error: 'Không tìm thấy loại chỉ trong kết quả tuần này' }, 404)
     }
 
-    const { error: updateError } = await supabase
-      .from('thread_order_results')
-      .update({
-        summary_data: summaryData,
-      })
-      .eq('week_id', weekId)
-      .select()
-      .single()
-
-    if (updateError) throw updateError
+    await query(
+      `UPDATE thread_order_results SET summary_data = $1::jsonb WHERE week_id = $2`,
+      [JSON.stringify(summaryData), weekId],
+    )
 
     return c.json({
       data: { thread_type_id, quota_cones },
@@ -135,17 +125,13 @@ calculation.get('/:id/results', requirePermission('thread.allocations.view'), as
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('thread_order_results')
-      .select('*')
-      .eq('week_id', id)
-      .single()
+    const data = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM thread_order_results WHERE week_id = $1`,
+      [id],
+    )
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Chưa có kết quả tính toán cho tuần này' }, 404)
-      }
-      throw error
+    if (!data) {
+      return c.json({ data: null, error: 'Chưa có kết quả tính toán cho tuần này' }, 404)
     }
 
     return c.json({ data, error: null })

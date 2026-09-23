@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import type {
   ImportTexRequest,
@@ -34,10 +34,10 @@ async function fetchAllColors() {
   const batchSize = 1000
 
   while (true) {
-    const { data } = await supabase
-      .from('colors')
-      .select('id, name')
-      .range(offset, offset + batchSize - 1)
+    const data = await query<{ id: number; name: string }>(
+      'SELECT id, name FROM colors LIMIT $1 OFFSET $2',
+      [batchSize, offset]
+    )
 
     if (!data || data.length === 0) break
 
@@ -50,6 +50,13 @@ async function fetchAllColors() {
   }
 
   return colorMap
+}
+
+const getPgError = (err: unknown): { code?: string; message?: string } => {
+  if (err && typeof err === 'object') {
+    return err as { code?: string; message?: string }
+  }
+  return {}
 }
 
 const isSupplierItemCodeConflict = (error: { code?: string; message?: string }) =>
@@ -146,11 +153,10 @@ const normalizeTexNumber = (raw: string): string => {
 }
 
 const getMappingConfig = async (key: string, fallback: ImportMappingConfig): Promise<ImportMappingConfig> => {
-  const { data: setting } = await supabase
-    .from('system_settings')
-    .select('value')
-    .eq('key', key)
-    .single()
+  const setting = await queryOne<{ value: ImportMappingConfig }>(
+    'SELECT value FROM system_settings WHERE key = $1',
+    [key]
+  )
 
   return setting?.value || fallback
 }
@@ -159,10 +165,9 @@ const buildSupplierAndTexCaches = async () => {
   const supplierCache = new Map<string, number>()
   const threadTypeCache = new Map<string, number>()
 
-  const { data: existingSuppliers } = await supabase
-    .from('suppliers')
-    .select('id, name')
-    .is('deleted_at', null)
+  const existingSuppliers = await query<{ id: number; name: string }>(
+    'SELECT id, name FROM suppliers WHERE deleted_at IS NULL'
+  )
 
   if (existingSuppliers) {
     for (const s of existingSuppliers) {
@@ -170,11 +175,9 @@ const buildSupplierAndTexCaches = async () => {
     }
   }
 
-  const { data: existingThreadTypes } = await supabase
-    .from('thread_types')
-    .select('id, tex_number, supplier_id')
-    .not('tex_number', 'is', null)
-    .is('deleted_at', null)
+  const existingThreadTypes = await query<{ id: number; tex_number: string | number | null; supplier_id: number | null }>(
+    'SELECT id, tex_number, supplier_id FROM thread_types WHERE tex_number IS NOT NULL AND deleted_at IS NULL'
+  )
 
   if (existingThreadTypes) {
     for (const t of existingThreadTypes) {
@@ -332,16 +335,18 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
       let supplierId = supplierCache.get(normalizeText(previewRow.supplier_name))
       if (!supplierId) {
         const code = `NCC-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
-        const { data: newSupplier, error: supplierError } = await supabase
-          .from('suppliers')
-          .insert({
-            code: code.toUpperCase(),
-            name: previewRow.supplier_name,
-            is_active: true,
-            lead_time_days: 7
-          })
-          .select('id')
-          .single()
+        let newSupplier: { id: number } | null = null
+        let supplierError: { code?: string; message?: string } | null = null
+        try {
+          newSupplier = await queryOne<{ id: number }>(
+            `INSERT INTO suppliers (code, name, is_active, lead_time_days)
+             VALUES ($1, $2, $3, $4)
+             RETURNING id`,
+            [code.toUpperCase(), previewRow.supplier_name, true, 7]
+          )
+        } catch (err) {
+          supplierError = getPgError(err)
+        }
 
         if (supplierError || !newSupplier) {
           skipRow(`Không thể tạo NCC: ${supplierError?.message || 'Lỗi không xác định'}`)
@@ -357,40 +362,55 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
       const texCacheKey = `${supplierId}-${texNorm}`
       let threadTypeId = threadTypeCache.get(texCacheKey)
       if (threadTypeId) {
-        const updateFields: Record<string, unknown> = {
-          meters_per_cone: previewRow.meters_per_cone,
-        }
+        const setParts = ['meters_per_cone = $1']
+        const updateParams: unknown[] = [previewRow.meters_per_cone]
         if (previewRow.tex_number !== texNorm) {
-          updateFields.tex_label = previewRow.tex_number
+          updateParams.push(previewRow.tex_number)
+          setParts.push(`tex_label = $${updateParams.length}`)
         }
-        await supabase.from('thread_types').update(updateFields).eq('id', threadTypeId)
+        updateParams.push(threadTypeId)
+        try {
+          await query(
+            `UPDATE thread_types SET ${setParts.join(', ')} WHERE id = $${updateParams.length}`,
+            updateParams
+          )
+        } catch (err) {
+          console.warn('Update thread_types meta error (ignored):', getPgError(err).message)
+        }
       } else {
         const texNumeric = parseFloat(texNorm) || 0
         const densityGramsPerMeter = texNumeric / 1000
         const uniqueCode = `T-${supplierId}-TEX${texNorm}`
-        const { data: newThreadType, error: threadTypeError } = await supabase
-          .from('thread_types')
-          .insert({
-            code: uniqueCode,
-            name: `Chỉ TEX ${texNorm}`,
-            tex_number: texNorm,
-            tex_label: previewRow.tex_number,
-            density_grams_per_meter: densityGramsPerMeter,
-            meters_per_cone: previewRow.meters_per_cone,
-            supplier_id: supplierId,
-            is_active: true
-          })
-          .select('id')
-          .single()
+        let newThreadType: { id: number } | null = null
+        let threadTypeError: { code?: string; message?: string } | null = null
+        try {
+          newThreadType = await queryOne<{ id: number }>(
+            `INSERT INTO thread_types
+               (code, name, tex_number, tex_label, density_grams_per_meter, meters_per_cone, supplier_id, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id`,
+            [
+              uniqueCode,
+              `Chỉ TEX ${texNorm}`,
+              texNorm,
+              previewRow.tex_number,
+              densityGramsPerMeter,
+              previewRow.meters_per_cone,
+              supplierId,
+              true
+            ]
+          )
+        } catch (err) {
+          threadTypeError = getPgError(err)
+        }
 
         if (threadTypeError || !newThreadType) {
-          const { data: existingTypes } = await supabase
-            .from('thread_types')
-            .select('id')
-            .eq('tex_number', texNorm)
-            .eq('supplier_id', supplierId)
-            .is('deleted_at', null)
-            .limit(1)
+          const existingTypes = await query<{ id: number }>(
+            `SELECT id FROM thread_types
+             WHERE tex_number = $1 AND supplier_id = $2 AND deleted_at IS NULL
+             LIMIT 1`,
+            [texNorm, supplierId]
+          )
 
           if (!existingTypes?.length) {
             skipRow(`Không thể tạo/tìm loại chỉ TEX ${texNorm}: ${threadTypeError?.message || 'Lỗi không xác định'}`)
@@ -398,13 +418,21 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
           }
 
           threadTypeId = existingTypes[0].id
-          const fallbackUpdateFields: Record<string, unknown> = {
-            meters_per_cone: previewRow.meters_per_cone,
-          }
+          const fallbackSetParts = ['meters_per_cone = $1']
+          const fallbackParams: unknown[] = [previewRow.meters_per_cone]
           if (previewRow.tex_number !== texNorm) {
-            fallbackUpdateFields.tex_label = previewRow.tex_number
+            fallbackParams.push(previewRow.tex_number)
+            fallbackSetParts.push(`tex_label = $${fallbackParams.length}`)
           }
-          await supabase.from('thread_types').update(fallbackUpdateFields).eq('id', threadTypeId)
+          fallbackParams.push(threadTypeId)
+          try {
+            await query(
+              `UPDATE thread_types SET ${fallbackSetParts.join(', ')} WHERE id = $${fallbackParams.length}`,
+              fallbackParams
+            )
+          } catch (err) {
+            console.warn('Update thread_types meta (fallback) error (ignored):', getPgError(err).message)
+          }
         } else {
           threadTypeId = newThreadType.id
           thread_types_created++
@@ -415,37 +443,41 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
 
       const supplierItemCode = previewRow.supplier_item_code || `${previewRow.supplier_name}-TEX${texNorm}`
 
-      const { data: existingLinks } = await supabase
-        .from('thread_type_supplier')
-        .select('id')
-        .eq('thread_type_id', threadTypeId)
-        .eq('supplier_id', supplierId)
-        .limit(1)
+      const existingLinks = await query<{ id: number }>(
+        `SELECT id FROM thread_type_supplier
+         WHERE thread_type_id = $1 AND supplier_id = $2
+         LIMIT 1`,
+        [threadTypeId, supplierId]
+      )
 
       const existingLink = existingLinks?.[0]
       if (existingLink) {
-        const { error: updateError } = await supabase
-          .from('thread_type_supplier')
-          .update({
-            unit_price: previewRow.unit_price,
-            meters_per_cone: previewRow.meters_per_cone,
-            supplier_item_code: supplierItemCode,
-            is_active: true
-          })
-          .eq('id', existingLink.id)
+        let updateError: { code?: string; message?: string } | null = null
+        try {
+          await query(
+            `UPDATE thread_type_supplier
+             SET unit_price = $1, meters_per_cone = $2, supplier_item_code = $3, is_active = $4
+             WHERE id = $5`,
+            [previewRow.unit_price, previewRow.meters_per_cone, supplierItemCode, true, existingLink.id]
+          )
+        } catch (err) {
+          updateError = getPgError(err)
+        }
 
         if (updateError) {
           if (isSupplierItemCodeConflict(updateError)) {
             const suffixedCode = `${supplierItemCode}-${threadTypeId}`
-            const { error: retryUpdateError } = await supabase
-              .from('thread_type_supplier')
-              .update({
-                unit_price: previewRow.unit_price,
-                meters_per_cone: previewRow.meters_per_cone,
-                supplier_item_code: suffixedCode,
-                is_active: true
-              })
-              .eq('id', existingLink.id)
+            let retryUpdateError: { code?: string; message?: string } | null = null
+            try {
+              await query(
+                `UPDATE thread_type_supplier
+                 SET unit_price = $1, meters_per_cone = $2, supplier_item_code = $3, is_active = $4
+                 WHERE id = $5`,
+                [previewRow.unit_price, previewRow.meters_per_cone, suffixedCode, true, existingLink.id]
+              )
+            } catch (err) {
+              retryUpdateError = getPgError(err)
+            }
 
             if (retryUpdateError) {
               skipRow(`Không thể cập nhật liên kết NCC-Tex: ${retryUpdateError.message}`)
@@ -457,53 +489,56 @@ importRouter.post('/supplier-tex', requirePermission('thread.suppliers.manage'),
           }
         }
       } else {
-        const { error: insertError } = await supabase
-          .from('thread_type_supplier')
-          .insert({
-            thread_type_id: threadTypeId,
-            supplier_id: supplierId,
-            supplier_item_code: supplierItemCode,
-            unit_price: previewRow.unit_price,
-            meters_per_cone: previewRow.meters_per_cone,
-            is_active: true
-          })
+        let insertError: { code?: string; message?: string } | null = null
+        try {
+          await query(
+            `INSERT INTO thread_type_supplier
+               (thread_type_id, supplier_id, supplier_item_code, unit_price, meters_per_cone, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [threadTypeId, supplierId, supplierItemCode, previewRow.unit_price, previewRow.meters_per_cone, true]
+          )
+        } catch (err) {
+          insertError = getPgError(err)
+        }
 
         if (insertError) {
           if (isSupplierItemCodeConflict(insertError)) {
             const suffixedCode = `${supplierItemCode}-${threadTypeId}`
-            const { error: retryError } = await supabase
-              .from('thread_type_supplier')
-              .insert({
-                thread_type_id: threadTypeId,
-                supplier_id: supplierId,
-                supplier_item_code: suffixedCode,
-                unit_price: previewRow.unit_price,
-                meters_per_cone: previewRow.meters_per_cone,
-                is_active: true
-              })
+            let retryError: { code?: string; message?: string } | null = null
+            try {
+              await query(
+                `INSERT INTO thread_type_supplier
+                   (thread_type_id, supplier_id, supplier_item_code, unit_price, meters_per_cone, is_active)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [threadTypeId, supplierId, suffixedCode, previewRow.unit_price, previewRow.meters_per_cone, true]
+              )
+            } catch (err) {
+              retryError = getPgError(err)
+            }
 
             if (retryError) {
               skipRow(`Không thể tạo liên kết NCC-Tex: ${retryError.message}`)
               continue
             }
           } else if (insertError.code === '23505') {
-            const { data: raceLink } = await supabase
-              .from('thread_type_supplier')
-              .select('id')
-              .eq('thread_type_id', threadTypeId)
-              .eq('supplier_id', supplierId)
-              .single()
+            const raceLink = await queryOne<{ id: number }>(
+              `SELECT id FROM thread_type_supplier
+               WHERE thread_type_id = $1 AND supplier_id = $2`,
+              [threadTypeId, supplierId]
+            )
 
             if (raceLink) {
-              const { error: raceUpdateError } = await supabase
-                .from('thread_type_supplier')
-                .update({
-                  unit_price: previewRow.unit_price,
-                  meters_per_cone: previewRow.meters_per_cone,
-                  supplier_item_code: supplierItemCode,
-                  is_active: true
-                })
-                .eq('id', raceLink.id)
+              let raceUpdateError: { code?: string; message?: string } | null = null
+              try {
+                await query(
+                  `UPDATE thread_type_supplier
+                   SET unit_price = $1, meters_per_cone = $2, supplier_item_code = $3, is_active = $4
+                   WHERE id = $5`,
+                  [previewRow.unit_price, previewRow.meters_per_cone, supplierItemCode, true, raceLink.id]
+                )
+              } catch (err) {
+                raceUpdateError = getPgError(err)
+              }
 
               if (raceUpdateError) {
                 skipRow(`Không thể cập nhật liên kết NCC-Tex: ${raceUpdateError.message}`)
@@ -556,12 +591,10 @@ importRouter.post('/supplier-colors/stream', requirePermission('thread.suppliers
     return c.json<ImportApiResponse<null>>({ data: null, error: 'Không có dữ liệu' }, 400)
   }
 
-  const { data: supplier } = await supabase
-    .from('suppliers')
-    .select('id')
-    .eq('id', body.supplier_id)
-    .is('deleted_at', null)
-    .single()
+  const supplier = await queryOne<{ id: number }>(
+    'SELECT id FROM suppliers WHERE id = $1 AND deleted_at IS NULL',
+    [body.supplier_id]
+  )
 
   if (!supplier) {
     return c.json<ImportApiResponse<null>>({ data: null, error: 'Không tìm thấy nhà cung cấp' }, 404)
@@ -598,13 +631,19 @@ importRouter.post('/supplier-colors/stream', requirePermission('thread.suppliers
       for (let i = 0; i < totalNewColors; i += CHUNK_SIZE) {
         if (aborted) break
         const chunk = uniqueNewColors.slice(i, i + CHUNK_SIZE)
-        const { data: inserted } = await supabase
-          .from('colors')
-          .upsert(
-            chunk.map(name => ({ name, hex_code: '#808080', is_active: true })),
-            { onConflict: 'name', ignoreDuplicates: true }
-          )
-          .select('id, name')
+        const insertParams: unknown[] = []
+        const valueGroups = chunk.map((name) => {
+          insertParams.push(name, '#808080', true)
+          const base = insertParams.length
+          return `($${base - 2}, $${base - 1}, $${base})`
+        })
+        const inserted = await query<{ id: number; name: string }>(
+          `INSERT INTO colors (name, hex_code, is_active)
+           VALUES ${valueGroups.join(', ')}
+           ON CONFLICT (name) DO NOTHING
+           RETURNING id, name`,
+          insertParams
+        )
 
         if (inserted) {
           for (const color of inserted) {
@@ -633,11 +672,12 @@ importRouter.post('/supplier-colors/stream', requirePermission('thread.suppliers
       const existingLinks = new Set<number>()
       let linkOffset = 0
       while (true) {
-        const { data: links } = await supabase
-          .from('color_supplier')
-          .select('color_id')
-          .eq('supplier_id', body.supplier_id)
-          .range(linkOffset, linkOffset + 999)
+        const links = await query<{ color_id: number }>(
+          `SELECT color_id FROM color_supplier
+           WHERE supplier_id = $1
+           LIMIT 1000 OFFSET $2`,
+          [body.supplier_id, linkOffset]
+        )
 
         if (!links || links.length === 0) break
         for (const link of links) existingLinks.add(link.color_id)
@@ -673,9 +713,22 @@ importRouter.post('/supplier-colors/stream', requirePermission('thread.suppliers
       for (let i = 0; i < totalLinks; i += CHUNK_SIZE) {
         if (aborted) break
         const chunk = newLinks.slice(i, i + CHUNK_SIZE)
-        const { error: insertError } = await supabase
-          .from('color_supplier')
-          .insert(chunk)
+        const insertParams: unknown[] = []
+        const valueGroups = chunk.map((link) => {
+          insertParams.push(link.color_id, link.supplier_id, link.is_active)
+          const base = insertParams.length
+          return `($${base - 2}, $${base - 1}, $${base})`
+        })
+        let insertError: { code?: string; message?: string } | null = null
+        try {
+          await query(
+            `INSERT INTO color_supplier (color_id, supplier_id, is_active)
+             VALUES ${valueGroups.join(', ')}`,
+            insertParams
+          )
+        } catch (err) {
+          insertError = getPgError(err)
+        }
 
         if (insertError) {
           console.error('Batch insert links error:', insertError)
@@ -726,12 +779,10 @@ importRouter.post('/supplier-colors', requirePermission('thread.suppliers.manage
       }, 400)
     }
 
-    const { data: supplier } = await supabase
-      .from('suppliers')
-      .select('id')
-      .eq('id', body.supplier_id)
-      .is('deleted_at', null)
-      .single()
+    const supplier = await queryOne<{ id: number }>(
+      'SELECT id FROM suppliers WHERE id = $1 AND deleted_at IS NULL',
+      [body.supplier_id]
+    )
 
     if (!supplier) {
       return c.json<ImportApiResponse<null>>({
@@ -746,9 +797,9 @@ importRouter.post('/supplier-colors', requirePermission('thread.suppliers.manage
 
     const colorCache = new Map<string, number>()
 
-    const { data: existingColors } = await supabase
-      .from('colors')
-      .select('id, name')
+    const existingColors = await query<{ id: number; name: string }>(
+      'SELECT id, name FROM colors'
+    )
 
     if (existingColors) {
       for (const color of existingColors) {
@@ -764,15 +815,18 @@ importRouter.post('/supplier-colors', requirePermission('thread.suppliers.manage
 
       let colorId = colorCache.get(row.color_name.toLowerCase())
       if (!colorId) {
-        const { data: newColor, error: colorError } = await supabase
-          .from('colors')
-          .insert({
-            name: row.color_name,
-            hex_code: '#808080',
-            is_active: true
-          })
-          .select('id')
-          .single()
+        let newColor: { id: number } | null = null
+        let colorError: { code?: string; message?: string } | null = null
+        try {
+          newColor = await queryOne<{ id: number }>(
+            `INSERT INTO colors (name, hex_code, is_active)
+             VALUES ($1, $2, $3)
+             RETURNING id`,
+            [row.color_name, '#808080', true]
+          )
+        } catch (err) {
+          colorError = getPgError(err)
+        }
 
         if (colorError || !newColor) {
           skipped++
@@ -784,25 +838,26 @@ importRouter.post('/supplier-colors', requirePermission('thread.suppliers.manage
         colors_created++
       }
 
-      const { data: existingLink } = await supabase
-        .from('color_supplier')
-        .select('id')
-        .eq('color_id', colorId)
-        .eq('supplier_id', body.supplier_id)
-        .single()
+      const existingLink = await queryOne<{ id: number }>(
+        'SELECT id FROM color_supplier WHERE color_id = $1 AND supplier_id = $2',
+        [colorId, body.supplier_id]
+      )
 
       if (existingLink) {
         skipped++
         continue
       }
 
-      const { error: linkError } = await supabase
-        .from('color_supplier')
-        .insert({
-          color_id: colorId,
-          supplier_id: body.supplier_id,
-          is_active: true
-        })
+      let linkError: { code?: string; message?: string } | null = null
+      try {
+        await query(
+          `INSERT INTO color_supplier (color_id, supplier_id, is_active)
+           VALUES ($1, $2, $3)`,
+          [colorId, body.supplier_id, true]
+        )
+      } catch (err) {
+        linkError = getPgError(err)
+      }
 
       if (linkError) {
         skipped++
@@ -945,11 +1000,9 @@ importRouter.get('/template/supplier-colors', requirePermission('thread.supplier
 })
 
 const getPOImportMappingConfig = async (): Promise<POImportMappingConfig> => {
-  const { data: setting } = await supabase
-    .from('system_settings')
-    .select('value')
-    .eq('key', 'import_po_items_mapping')
-    .single()
+  const setting = await queryOne<{ value: unknown }>(
+    "SELECT value FROM system_settings WHERE key = 'import_po_items_mapping'"
+  )
 
   return normalizePOImportMappingConfig(setting?.value)
 }
@@ -984,25 +1037,22 @@ importRouter.post('/po-items/parse', requirePermission('thread.purchase-orders.i
 
     const { rows } = parseResult.data
 
-    const { data: styles } = await supabase
-      .from('styles')
-      .select('id, style_code, style_name, description')
-      .is('deleted_at', null)
+    const styles = await query<{ id: number; style_code: string; style_name: string; description: string | null }>(
+      'SELECT id, style_code, style_name, description FROM styles WHERE deleted_at IS NULL'
+    )
 
     const styleMap = new Map<string, { id: number; style_code: string; style_name: string; description: string | null }>()
     styles?.forEach(s => styleMap.set(s.style_code.toLowerCase(), s))
 
-    const { data: existingPOs } = await supabase
-      .from('purchase_orders')
-      .select('id, po_number, customer_name, week')
-      .is('deleted_at', null)
+    const existingPOs = await query<{ id: number; po_number: string; customer_name: string | null; week: string | null }>(
+      'SELECT id, po_number, customer_name, week FROM purchase_orders WHERE deleted_at IS NULL'
+    )
 
     const poMap = new Map<string, { id: number; customer_name: string | null; week: string | null }>()
 
-    const { data: existingItems } = await supabase
-      .from('po_items')
-      .select('po_id, style_id, quantity, finished_product_code')
-      .is('deleted_at', null)
+    const existingItems = await query<{ po_id: number; style_id: number; quantity: number; finished_product_code: string | null }>(
+      'SELECT po_id, style_id, quantity, finished_product_code FROM po_items WHERE deleted_at IS NULL'
+    )
 
     const itemMap = new Map<string, { quantity: number; finished_product_code: string | null }>()
     existingItems?.forEach(item => {
@@ -1165,10 +1215,9 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
     let skippedItems = 0
     let failedItems = 0
 
-    const { data: existingStyles } = await supabase
-      .from('styles')
-      .select('id, style_code, style_name, description')
-      .is('deleted_at', null)
+    const existingStyles = await query<{ id: number; style_code: string; style_name: string; description: string | null }>(
+      'SELECT id, style_code, style_name, description FROM styles WHERE deleted_at IS NULL'
+    )
 
     const styleMap = new Map<string, { id: number; style_name: string; description: string | null }>()
     existingStyles?.forEach(style => {
@@ -1193,24 +1242,26 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
       let styleId = row.style_id || styleEntry?.id
 
       if (!styleId) {
-        const { data: newStyle, error: styleError } = await supabase
-          .from('styles')
-          .insert({
-            style_code: row.style_code,
-            style_name: row.style_code,
-            description
-          })
-          .select('id, style_name, description')
-          .single()
+        let newStyle: { id: number; style_name: string; description: string | null } | null = null
+        let styleError: { code?: string; message?: string } | null = null
+        try {
+          newStyle = await queryOne<{ id: number; style_name: string; description: string | null }>(
+            `INSERT INTO styles (style_code, style_name, description)
+             VALUES ($1, $2, $3)
+             RETURNING id, style_name, description`,
+            [row.style_code, row.style_code, description]
+          )
+        } catch (err) {
+          styleError = getPgError(err)
+        }
 
         if (styleError) {
           if (styleError.code === '23505') {
-            const { data: existingStyle } = await supabase
-              .from('styles')
-              .select('id, style_name, description')
-              .eq('style_code', row.style_code)
-              .is('deleted_at', null)
-              .single()
+            const existingStyle = await queryOne<{ id: number; style_name: string; description: string | null }>(
+              `SELECT id, style_name, description FROM styles
+               WHERE style_code = $1 AND deleted_at IS NULL`,
+              [row.style_code]
+            )
             styleId = existingStyle?.id
             if (existingStyle) {
               styleMap.set(styleKey, {
@@ -1224,7 +1275,7 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
             failedItems++
             continue
           }
-        } else {
+        } else if (newStyle) {
           styleId = newStyle.id
           styleMap.set(styleKey, {
             id: newStyle.id,
@@ -1243,10 +1294,14 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
       row.style_id = styleId
 
       if (description !== null && description !== normalizeOptionalText(styleEntry.description)) {
-        await supabase
-          .from('styles')
-          .update({ description, updated_at: new Date().toISOString() })
-          .eq('id', styleId)
+        try {
+          await query(
+            'UPDATE styles SET description = $1, updated_at = $2 WHERE id = $3',
+            [description, new Date().toISOString(), styleId]
+          )
+        } catch (err) {
+          console.warn('Update style description error (ignored):', getPgError(err).message)
+        }
 
         styleMap.set(styleKey, { ...styleEntry, description })
       }
@@ -1257,33 +1312,36 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
       let poEntry = poMap.get(poKey)
 
       if (!poEntry) {
-        const { data: newPO, error: poError } = await supabase
-          .from('purchase_orders')
-          .insert({
-            po_number: row.po_number,
-            customer_name: customerName,
-            week,
-            status: 'PENDING'
-          })
-          .select('id')
-          .single()
+        let newPO: { id: number } | null = null
+        let poError: { code?: string; message?: string } | null = null
+        let poThrown: unknown = null
+        try {
+          newPO = await queryOne<{ id: number }>(
+            `INSERT INTO purchase_orders (po_number, customer_name, week, status)
+             VALUES ($1, $2, $3, $4)
+             RETURNING id`,
+            [row.po_number, customerName, week, 'PENDING']
+          )
+        } catch (err) {
+          poError = getPgError(err)
+          poThrown = err
+        }
 
         if (poError) {
           if (poError.code === '23505') {
-            const { data: existingPO } = await supabase
-              .from('purchase_orders')
-              .select('id')
-              .eq('po_number', row.po_number)
-              .is('deleted_at', null)
-              .single()
+            const existingPO = await queryOne<{ id: number }>(
+              `SELECT id FROM purchase_orders
+               WHERE po_number = $1 AND deleted_at IS NULL`,
+              [row.po_number]
+            )
             if (existingPO) {
               poEntry = { id: existingPO.id }
               poMap.set(poKey, poEntry)
             }
           } else {
-            throw poError
+            throw poThrown
           }
-        } else {
+        } else if (newPO) {
           poEntry = { id: newPO.id }
           poMap.set(poKey, poEntry)
           createdPOs++
@@ -1296,19 +1354,21 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
       }
 
       const finishedProductCode = normalizeOptionalText(row.finished_product_code)
-      const { data: newItem, error: insertError } = await supabase
-        .from('po_items')
-        .insert({
-          po_id: poEntry.id,
-          style_id: styleId,
-          quantity: row.quantity,
-          finished_product_code: finishedProductCode
-        })
-        .select('id')
-        .single()
+      let newItem: { id: number } | null = null
+      let insertError: { code?: string; message?: string } | null = null
+      try {
+        newItem = await queryOne<{ id: number }>(
+          `INSERT INTO po_items (po_id, style_id, quantity, finished_product_code)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id`,
+          [poEntry.id, styleId, row.quantity, finishedProductCode]
+        )
+      } catch (err) {
+        insertError = getPgError(err)
+      }
 
-      if (insertError) {
-        if (insertError.code === '23505') {
+      if (insertError || !newItem) {
+        if (insertError?.code === '23505') {
           skippedItems++
         } else {
           console.error('Insert PO item error:', insertError)
@@ -1317,14 +1377,16 @@ importRouter.post('/po-items/execute', requirePermission('thread.purchase-orders
         continue
       }
 
-      await supabase.from('po_item_history').insert({
-        po_item_id: newItem.id,
-        change_type: 'CREATE',
-        previous_quantity: null,
-        new_quantity: row.quantity,
-        changed_by: auth.employeeId,
-        notes: 'Import từ Excel'
-      })
+      try {
+        await query(
+          `INSERT INTO po_item_history
+             (po_item_id, change_type, previous_quantity, new_quantity, changed_by, notes)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [newItem.id, 'CREATE', null, row.quantity, auth.employeeId, 'Import từ Excel']
+        )
+      } catch (err) {
+        console.warn('Insert po_item_history error (ignored):', getPgError(err).message)
+      }
 
       createdItems++
     }

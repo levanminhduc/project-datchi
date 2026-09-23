@@ -112,6 +112,16 @@
           <div class="col-12 col-sm-auto">
             <div class="row q-gutter-sm">
               <q-btn
+                v-if="activeTab === 'summary'"
+                color="green-7"
+                icon="download"
+                label="Xuất Excel"
+                outline
+                :loading="exporting"
+                class="full-width-xs"
+                @click="openExportDialog"
+              />
+              <q-btn
                 v-if="canReceive"
                 color="teal"
                 icon="edit_note"
@@ -763,6 +773,128 @@
       v-model="showIssueHistoryDialog"
       :thread-type="issueHistoryRow"
     />
+
+    <!-- Export Excel Dialog -->
+    <AppDialog
+      :model-value="showExportDialog"
+      @update:model-value="showExportDialog = $event"
+    >
+      <template #header>
+        Xuất Excel tồn kho theo NCC
+      </template>
+
+      <div class="export-dialog-body">
+        <div class="text-caption text-grey-7 q-mb-md">
+          Chọn kho và NCC cần xuất. Tất cả sẽ nằm trong 1 file Excel.
+        </div>
+
+        <div class="text-weight-medium q-mb-xs">
+          Kho
+        </div>
+
+        <div class="q-mb-sm">
+          <AppCheckbox
+            :model-value="allExportWarehousesSelected"
+            label="Chọn tất cả"
+            dense
+            @update:model-value="toggleAllExportWarehouses"
+          />
+        </div>
+
+        <q-separator class="q-mb-sm" />
+
+        <div
+          class="export-option-list"
+          style="max-height: 200px"
+        >
+          <AppCheckbox
+            v-for="w in storageOptions"
+            :key="w.value"
+            :model-value="selectedExportWarehouses.includes(w.value)"
+            :label="w.label"
+            dense
+            @update:model-value="
+              $event
+                ? selectedExportWarehouses.push(w.value)
+                : (selectedExportWarehouses = selectedExportWarehouses.filter((id: number) => id !== w.value))
+            "
+          />
+        </div>
+
+        <div class="text-caption text-grey-7 q-mt-sm q-mb-md">
+          Đã chọn: {{ selectedExportWarehouses.length }}/{{ storageOptions.length }} kho
+        </div>
+
+        <div class="text-weight-medium q-mb-xs">
+          Nhà cung cấp
+        </div>
+
+        <div class="q-mb-sm">
+          <AppCheckbox
+            :model-value="allSuppliersSelected"
+            label="Chọn tất cả"
+            dense
+            @update:model-value="toggleAllExportSuppliers"
+          />
+        </div>
+
+        <q-separator class="q-mb-sm" />
+
+        <div
+          class="export-option-list"
+          style="max-height: 260px"
+        >
+          <AppCheckbox
+            v-for="s in suppliers"
+            :key="s.id"
+            :model-value="selectedExportSuppliers.includes(s.id)"
+            :label="s.name"
+            dense
+            @update:model-value="
+              $event
+                ? selectedExportSuppliers.push(s.id)
+                : (selectedExportSuppliers = selectedExportSuppliers.filter((id: number) => id !== s.id))
+            "
+          />
+        </div>
+
+        <div class="text-caption text-grey-7 q-mt-md q-mb-md">
+          Đã chọn: {{ selectedExportSuppliers.length }}/{{ suppliers.length }} NCC
+        </div>
+
+        <q-separator class="q-mb-sm" />
+
+        <AppCheckbox
+          :model-value="exportMergeSupplierCells"
+          label="Gộp ô Nhà cung cấp"
+          dense
+          @update:model-value="toggleExportMergeSupplierCells"
+        />
+
+        <div class="text-caption text-grey-7 q-mt-xs">
+          {{
+            exportMergeSupplierCells
+              ? 'Mỗi NCC gộp thành 1 ô, dễ nhìn nhưng không lọc/sắp xếp được trong Excel.'
+              : 'Mỗi dòng ghi đủ tên NCC và bật sẵn bộ lọc, lọc/sắp xếp theo số lượng được.'
+          }}
+        </div>
+      </div>
+
+      <template #actions>
+        <AppButton
+          flat
+          label="Hủy"
+          @click="showExportDialog = false"
+        />
+        <AppButton
+          color="primary"
+          :label="`Xuất (${selectedExportWarehouses.length} kho, ${selectedExportSuppliers.length} NCC)`"
+          :disable="selectedExportSuppliers.length === 0 || selectedExportWarehouses.length === 0"
+          :loading="exporting"
+          @click="handleExportConfirm"
+        />
+      </template>
+    </AppDialog>
   </q-page>
 </template>
 
@@ -770,6 +902,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useQuasar, type QTableColumn } from 'quasar'
 import { useInventory, useThreadTypes, useSnackbar, useWarehouses, useConeSummary, useSuppliers } from '@/composables'
+import { useInventoryExport } from '@/composables/thread/useInventoryExport'
 import { useAuth } from '@/composables/useAuth'
 import { ConeStatus } from '@/types/thread/enums'
 import type { Cone, ReceiveStockDTO, ConeSummaryRow } from '@/types/thread/inventory'
@@ -779,6 +912,9 @@ import ConeSummaryTable from '@/components/thread/ConeSummaryTable.vue'
 import ConeWarehouseBreakdownDialog from '@/components/thread/ConeWarehouseBreakdownDialog.vue'
 import ManualEntryHistoryDialog from '@/components/thread/ManualEntryHistoryDialog.vue'
 import IssueHistoryByThreadDialog from '@/components/thread/IssueHistoryByThreadDialog.vue'
+import AppDialog from '@/components/ui/dialogs/AppDialog.vue'
+import AppButton from '@/components/ui/buttons/AppButton.vue'
+import AppCheckbox from '@/components/ui/inputs/AppCheckbox.vue'
 import type { ConeLabelData } from '@/types/qr-label'
 import { threadService } from '@/services/threadService'
 import { stockService } from '@/services/stockService'
@@ -830,6 +966,60 @@ const summaryWarehouseOptions = computed(() => {
 })
 
 const { suppliers, fetchSuppliers, loading: suppliersLoading } = useSuppliers()
+
+// Export Excel
+const { exporting, exportBySuppliers } = useInventoryExport()
+const showExportDialog = ref(false)
+const selectedExportSuppliers = ref<number[]>([])
+
+const selectedExportWarehouses = ref<number[]>([])
+const exportMergeSupplierCells = ref(true)
+
+const allSuppliersSelected = computed(() =>
+  suppliers.value.length > 0 && selectedExportSuppliers.value.length === suppliers.value.length,
+)
+
+const allExportWarehousesSelected = computed(() =>
+  storageOptions.value.length > 0
+  && selectedExportWarehouses.value.length === storageOptions.value.length,
+)
+
+function toggleAllExportSuppliers() {
+  if (allSuppliersSelected.value) {
+    selectedExportSuppliers.value = []
+  } else {
+    selectedExportSuppliers.value = suppliers.value.map((s) => s.id)
+  }
+}
+
+function toggleAllExportWarehouses() {
+  if (allExportWarehousesSelected.value) {
+    selectedExportWarehouses.value = []
+  } else {
+    selectedExportWarehouses.value = storageOptions.value.map((w) => w.value)
+  }
+}
+
+function toggleExportMergeSupplierCells() {
+  exportMergeSupplierCells.value = !exportMergeSupplierCells.value
+}
+
+function openExportDialog() {
+  selectedExportSuppliers.value = suppliers.value.map((s) => s.id)
+  selectedExportWarehouses.value = storageOptions.value.map((w) => w.value)
+  showExportDialog.value = true
+}
+
+async function handleExportConfirm() {
+  const selected = suppliers.value.filter((s) =>
+    selectedExportSuppliers.value.includes(s.id),
+  )
+  const warehouseIds = allExportWarehousesSelected.value
+    ? null
+    : [...selectedExportWarehouses.value]
+  showExportDialog.value = false
+  await exportBySuppliers(selected, warehouseIds, exportMergeSupplierCells.value)
+}
 
 // Cone Summary Composable
 const {
@@ -1454,6 +1644,30 @@ onUnmounted(() => {
 
 .rounded-borders {
   border-radius: 4px;
+}
+
+.export-dialog-body {
+  width: min(460px, 84vw);
+  max-width: 100%;
+}
+
+.export-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+
+  :deep(.q-checkbox) {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  :deep(.q-checkbox__label) {
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
 }
 
 /* Horizontal scroll wrapper for mobile */

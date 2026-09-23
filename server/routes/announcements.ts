@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../db/supabase'
+import { query, queryOne, querySingle, queryCount } from '../db/query'
 import { requireRoot } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 import { sanitizeHtml } from '../utils/sanitize-html'
@@ -18,16 +18,13 @@ announcements.get('/pending', async (c) => {
   const { employeeId } = c.get('auth')
 
   try {
-    const { data, error } = await supabaseAdmin
-      .from('announcements')
-      .select('id, title, content, priority, created_at')
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('priority', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(20)
-
-    if (error) throw error
+    const data = await query<{ id: number; title: string; content: string; priority: number; created_at: string }>(
+      `SELECT id, title, content, priority, created_at
+       FROM announcements
+       WHERE is_active = true AND deleted_at IS NULL
+       ORDER BY priority DESC, created_at DESC
+       LIMIT 20`
+    )
 
     if (!data || data.length === 0) {
       return c.json({ data: [], error: null })
@@ -35,13 +32,11 @@ announcements.get('/pending', async (c) => {
 
     const announcementIds = data.map((a) => a.id)
 
-    const { data: dismissals, error: dError } = await supabaseAdmin
-      .from('announcement_dismissals')
-      .select('announcement_id')
-      .eq('employee_id', employeeId)
-      .in('announcement_id', announcementIds)
-
-    if (dError) throw dError
+    const dismissals = await query<{ announcement_id: number }>(
+      `SELECT announcement_id FROM announcement_dismissals
+       WHERE employee_id = $1 AND announcement_id = ANY($2)`,
+      [employeeId, announcementIds]
+    )
 
     const dismissedSet = new Set((dismissals || []).map((d) => d.announcement_id))
     const pending = data.filter((a) => !dismissedSet.has(a.id))
@@ -61,14 +56,12 @@ announcements.post('/:id/dismiss', async (c) => {
   }
 
   try {
-    const { error } = await supabaseAdmin
-      .from('announcement_dismissals')
-      .upsert(
-        { announcement_id: id, employee_id: employeeId },
-        { onConflict: 'announcement_id,employee_id' }
-      )
-
-    if (error) throw error
+    await query(
+      `INSERT INTO announcement_dismissals (announcement_id, employee_id)
+       VALUES ($1, $2)
+       ON CONFLICT (announcement_id, employee_id) DO NOTHING`,
+      [id, employeeId]
+    )
 
     return c.json({ data: null, error: null, message: 'Đã đánh dấu đã đọc' })
   } catch (err) {
@@ -100,28 +93,35 @@ announcements.get('/', async (c) => {
 
     const offset = (page - 1) * pageSize
 
-    const { data, error, count } = await supabaseAdmin
-      .from('announcements')
-      .select('*, employees!announcements_created_by_fkey(full_name)', { count: 'exact' })
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + pageSize - 1)
+    const data = await query<Record<string, unknown> & { id: number; employees: { full_name: string } | null }>(
+      `SELECT a.*,
+              CASE WHEN e.id IS NULL THEN NULL
+                   ELSE json_build_object('full_name', e.full_name) END AS employees
+       FROM announcements a
+       LEFT JOIN employees e ON e.id = a.created_by
+       WHERE a.deleted_at IS NULL
+       ORDER BY a.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [pageSize, offset]
+    )
 
-    if (error) throw error
+    const count = await queryCount(
+      `SELECT count(*)::int AS count FROM announcements WHERE deleted_at IS NULL`
+    )
 
-    const { count: totalEmployees } = await supabaseAdmin
-      .from('employees')
-      .select('id', { count: 'exact', head: true })
-      .eq('is_active', true)
+    const totalEmployees = await queryCount(
+      `SELECT count(*)::int AS count FROM employees WHERE is_active = true`
+    )
 
     const announcementIds = (data || []).map((a) => a.id)
     const dismissalCounts: Record<number, number> = {}
 
     if (announcementIds.length > 0) {
-      const { data: dismissals } = await supabaseAdmin
-        .from('announcement_dismissals')
-        .select('announcement_id')
-        .in('announcement_id', announcementIds)
+      const dismissals = await query<{ announcement_id: number }>(
+        `SELECT announcement_id FROM announcement_dismissals
+         WHERE announcement_id = ANY($1)`,
+        [announcementIds]
+      )
 
       if (dismissals) {
         for (const d of dismissals) {
@@ -163,18 +163,12 @@ announcements.post('/', async (c) => {
 
     const { title, content, priority } = parsed.data
 
-    const { data, error } = await supabaseAdmin
-      .from('announcements')
-      .insert({
-        title,
-        content: sanitizeHtml(content),
-        priority,
-        created_by: employeeId,
-      })
-      .select()
-      .single()
-
-    if (error) throw error
+    const data = await queryOne(
+      `INSERT INTO announcements (title, content, priority, created_by)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [title, sanitizeHtml(content), priority, employeeId]
+    )
 
     return c.json({ data, error: null, message: 'Đã tạo thông báo' }, 201)
   } catch (err) {
@@ -204,15 +198,20 @@ announcements.put('/:id', async (c) => {
     if (parsed.data.content !== undefined) updates.content = sanitizeHtml(parsed.data.content)
     if (parsed.data.priority !== undefined) updates.priority = parsed.data.priority
 
-    const { data, error } = await supabaseAdmin
-      .from('announcements')
-      .update(updates)
-      .eq('id', id)
-      .is('deleted_at', null)
-      .select()
-      .single()
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updates)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
+    }
+    params.push(id)
 
-    if (error) throw error
+    const data = await querySingle(
+      `UPDATE announcements SET ${sets.join(', ')}
+       WHERE id = $${params.length} AND deleted_at IS NULL
+       RETURNING *`,
+      params
+    )
 
     return c.json({ data, error: null, message: 'Đã cập nhật thông báo' })
   } catch (err) {
@@ -227,23 +226,19 @@ announcements.patch('/:id/toggle', async (c) => {
   }
 
   try {
-    const { data: current, error: fetchError } = await supabaseAdmin
-      .from('announcements')
-      .select('is_active')
-      .eq('id', id)
-      .is('deleted_at', null)
-      .single()
+    const current = await querySingle<{ is_active: boolean }>(
+      `SELECT is_active FROM announcements
+       WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    )
 
-    if (fetchError) throw fetchError
-
-    const { data, error } = await supabaseAdmin
-      .from('announcements')
-      .update({ is_active: !current.is_active, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (error) throw error
+    const data = await querySingle<{ is_active: boolean }>(
+      `UPDATE announcements
+       SET is_active = $1, updated_at = $2
+       WHERE id = $3
+       RETURNING *`,
+      [!current.is_active, new Date().toISOString(), id]
+    )
 
     return c.json({
       data,
@@ -262,13 +257,11 @@ announcements.delete('/:id', async (c) => {
   }
 
   try {
-    const { error } = await supabaseAdmin
-      .from('announcements')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', id)
-      .is('deleted_at', null)
-
-    if (error) throw error
+    await query(
+      `UPDATE announcements SET deleted_at = $1
+       WHERE id = $2 AND deleted_at IS NULL`,
+      [new Date().toISOString(), id]
+    )
 
     return c.json({ data: null, error: null, message: 'Đã xoá thông báo' })
   } catch (err) {

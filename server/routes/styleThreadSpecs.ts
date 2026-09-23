@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne } from '../db/query'
+import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
 import type { AppEnv } from '../types/hono-env'
@@ -13,11 +14,10 @@ const AUDIT_IGNORE_FIELDS = new Set([
 async function resolvePerformer(c: Context<AppEnv>): Promise<string> {
   const auth = c.get('auth')
   if (!auth?.employeeId) return 'system'
-  const { data } = await supabase
-    .from('employees')
-    .select('full_name')
-    .eq('id', auth.employeeId)
-    .single()
+  const data = await queryOne<{ full_name: string }>(
+    'SELECT full_name FROM employees WHERE id = $1',
+    [auth.employeeId]
+  )
   return data?.full_name || `employee#${auth.employeeId}`
 }
 
@@ -63,16 +63,24 @@ async function logAudit(args: LogAuditInput): Promise<void> {
     })
     if (changedFields.length === 0) return
   }
-  const { error } = await supabase.from('thread_audit_log').insert({
-    table_name: args.tableName,
-    record_id: args.recordId,
-    action: args.action,
-    old_values: oldClean,
-    new_values: newClean,
-    changed_fields: changedFields,
-    performed_by: args.performedBy,
-  })
-  if (error) console.error('[styleThreadSpecs] audit log insert failed:', error)
+  try {
+    await query(
+      `INSERT INTO thread_audit_log
+         (table_name, record_id, action, old_values, new_values, changed_fields, performed_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        args.tableName,
+        args.recordId,
+        args.action,
+        oldClean ? JSON.stringify(oldClean) : null,
+        newClean ? JSON.stringify(newClean) : null,
+        changedFields,
+        args.performedBy,
+      ]
+    )
+  } catch (error) {
+    console.error('[styleThreadSpecs] audit log insert failed:', error)
+  }
 }
 
 interface RawAuditRow {
@@ -145,17 +153,21 @@ async function buildLookups(rows: RawAuditRow[]) {
   const styleColors = new Map<number, string>()
 
   if (supplierIds.size > 0) {
-    const { data } = await supabase
-      .from('suppliers')
+    const data = await from('suppliers')
       .select('id, name')
       .in('id', [...supplierIds])
+      .list<{ id: number; name: string }>()
     for (const r of data ?? []) suppliers.set(r.id, r.name)
   }
   if (threadTypeIds.size > 0) {
-    const { data } = await supabase
-      .from('thread_types')
-      .select('id, tex_number, tex_label, name, suppliers:supplier_id(name)')
-      .in('id', [...threadTypeIds])
+    const data = await query<{ id: number; tex_number: string | null; tex_label: string | null; name: string | null; suppliers: { name?: string } | null }>(
+      `SELECT tt.id, tt.tex_number, tt.tex_label, tt.name,
+              CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('name', sup.name) END AS suppliers
+       FROM thread_types tt
+       LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+       WHERE tt.id = ANY($1)`,
+      [[...threadTypeIds]]
+    )
     for (const r of data ?? []) {
       const tex = formatTex(r)
       const sup = (r as { suppliers?: { name?: string } | null }).suppliers?.name
@@ -163,17 +175,17 @@ async function buildLookups(rows: RawAuditRow[]) {
     }
   }
   if (colorIds.size > 0) {
-    const { data } = await supabase
-      .from('colors')
+    const data = await from('colors')
       .select('id, name')
       .in('id', [...colorIds])
+      .list<{ id: number; name: string }>()
     for (const r of data ?? []) colors.set(r.id, r.name)
   }
   if (styleColorIds.size > 0) {
-    const { data } = await supabase
-      .from('style_colors')
+    const data = await from('style_colors')
       .select('id, color_name')
       .in('id', [...styleColorIds])
+      .list<{ id: number; color_name: string }>()
     for (const r of data ?? []) styleColors.set(r.id, r.color_name)
   }
 
@@ -267,32 +279,36 @@ async function ensureColorSpecs(
 ) {
   if (!threadTypeId) return
 
-  const { data: styleColors } = await supabase
-    .from('style_colors')
+  const styleColors = await from('style_colors')
     .select('id')
     .eq('style_id', styleId)
+    .list<{ id: number }>()
 
   if (!styleColors || styleColors.length === 0) return
 
-  const { data: existing } = await supabase
-    .from('style_color_thread_specs')
+  const existing = await from('style_color_thread_specs')
     .select('*')
     .eq('style_thread_spec_id', specId)
+    .list<{ id: number; style_color_id: number; thread_type_id: number | null } & Record<string, unknown>>()
 
   const existingColorIds = new Set((existing || []).map(e => e.style_color_id))
   const missing = styleColors.filter(sc => !existingColorIds.has(sc.id))
 
   if (missing.length > 0) {
-    const { data: inserted } = await supabase
-      .from('style_color_thread_specs')
-      .insert(missing.map(sc => ({
-        style_thread_spec_id: specId,
-        style_color_id: sc.id,
-        thread_type_id: threadTypeId,
-        created_by: performedBy,
-        updated_by: performedBy,
-      })))
-      .select('*')
+    const valueParts: string[] = []
+    const params: unknown[] = []
+    for (const sc of missing) {
+      params.push(specId, sc.id, threadTypeId, performedBy, performedBy)
+      const base = params.length - 5
+      valueParts.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`)
+    }
+    const inserted = await query<{ id: number } & Record<string, unknown>>(
+      `INSERT INTO style_color_thread_specs
+         (style_thread_spec_id, style_color_id, thread_type_id, created_by, updated_by)
+       VALUES ${valueParts.join(', ')}
+       RETURNING *`,
+      params
+    )
 
     for (const row of inserted ?? []) {
       await logAudit({
@@ -311,15 +327,13 @@ async function ensureColorSpecs(
 
     if (stale.length > 0) {
       const staleIds = stale.map(s => s.id)
-      const { data: updated } = await supabase
-        .from('style_color_thread_specs')
-        .update({
-          thread_type_id: threadTypeId,
-          updated_at: new Date().toISOString(),
-          updated_by: performedBy,
-        })
-        .in('id', staleIds)
-        .select('*')
+      const updated = await query<{ id: number } & Record<string, unknown>>(
+        `UPDATE style_color_thread_specs
+           SET thread_type_id = $1, updated_at = $2, updated_by = $3
+         WHERE id = ANY($4)
+         RETURNING *`,
+        [threadTypeId, new Date().toISOString(), performedBy, staleIds]
+      )
 
       for (const newRow of updated ?? []) {
         const oldRow = stale.find(s => s.id === newRow.id)
@@ -343,29 +357,45 @@ async function ensureColorSpecs(
  */
 styleThreadSpecs.get('/', requirePermission('thread.styles.view'), async (c) => {
   try {
-    const query = c.req.query()
-    
-    let dbQuery = supabase
-      .from('style_thread_specs')
-      .select(`
-        *,
-        styles:style_id (id, style_code, style_name),
-        suppliers:supplier_id (id, name),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_data:colors!color_id(name, hex_code))
-      `)
-      .order('display_order', { ascending: true })
+    const reqQuery = c.req.query()
 
-    // Apply filters
-    if (query.style_id) {
-      dbQuery = dbQuery.eq('style_id', query.style_id)
+    const conditions: string[] = []
+    const params: unknown[] = []
+
+    if (reqQuery.style_id) {
+      params.push(reqQuery.style_id)
+      conditions.push(`sts.style_id = $${params.length}`)
     }
-    if (query.supplier_id) {
-      dbQuery = dbQuery.eq('supplier_id', query.supplier_id)
+    if (reqQuery.supplier_id) {
+      params.push(reqQuery.supplier_id)
+      conditions.push(`sts.supplier_id = $${params.length}`)
     }
 
-    const { data, error } = await dbQuery
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-    if (error) throw error
+    const data = await query<Record<string, unknown>>(
+      `SELECT
+         sts.*,
+         CASE WHEN st.id IS NULL THEN NULL
+              ELSE json_build_object('id', st.id, 'style_code', st.style_code, 'style_name', st.style_name) END AS styles,
+         CASE WHEN sup.id IS NULL THEN NULL
+              ELSE json_build_object('id', sup.id, 'name', sup.name) END AS suppliers,
+         CASE WHEN tt.id IS NULL THEN NULL
+              ELSE json_build_object(
+                'id', tt.id, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label,
+                'name', tt.name, 'meters_per_cone', tt.meters_per_cone,
+                'color_data', CASE WHEN tc.id IS NULL THEN NULL
+                                   ELSE json_build_object('name', tc.name, 'hex_code', tc.hex_code) END
+              ) END AS thread_types
+       FROM style_thread_specs sts
+       LEFT JOIN styles st ON st.id = sts.style_id
+       LEFT JOIN suppliers sup ON sup.id = sts.supplier_id
+       LEFT JOIN thread_types tt ON tt.id = sts.thread_type_id
+       LEFT JOIN colors tc ON tc.id = tt.color_id
+       ${whereClause}
+       ORDER BY sts.display_order ASC`,
+      params
+    )
 
     return c.json({ data, error: null })
   } catch (err) {
@@ -379,14 +409,12 @@ styleThreadSpecs.get('/', requirePermission('thread.styles.view'), async (c) => 
  */
 styleThreadSpecs.get('/process-names', requirePermission('thread.styles.view'), async (c) => {
   try {
-    const { data, error } = await supabase
-      .from('style_thread_specs')
-      .select('process_name')
-      .not('process_name', 'eq', '')
-      .not('process_name', 'is', null)
-      .order('process_name')
-
-    if (error) throw error
+    const data = await query<{ process_name: string }>(
+      `SELECT process_name FROM style_thread_specs
+       WHERE process_name <> '' AND process_name IS NOT NULL
+       ORDER BY process_name ASC`,
+      []
+    )
 
     const names = [...new Set((data || []).map(r => r.process_name as string))]
     return c.json({ data: names, error: null })
@@ -406,15 +434,14 @@ styleThreadSpecs.get('/color-specs/:id/audit-history', requirePermission('thread
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('thread_audit_log')
-      .select('id, action, performed_by, created_at, changed_fields, old_values, new_values')
-      .eq('table_name', 'style_color_thread_specs')
-      .eq('record_id', id)
-      .order('created_at', { ascending: false })
-      .limit(200)
-
-    if (error) throw error
+    const data = await query<RawAuditRow>(
+      `SELECT id, action, performed_by, created_at, changed_fields, old_values, new_values
+       FROM thread_audit_log
+       WHERE table_name = $1 AND record_id = $2
+       ORDER BY created_at DESC
+       LIMIT 200`,
+      ['style_color_thread_specs', id]
+    )
 
     const enriched = await enrichAuditEntries('style_color_thread_specs', (data ?? []) as RawAuditRow[])
     return c.json({ data: enriched, error: null })
@@ -435,15 +462,14 @@ styleThreadSpecs.get('/:id/audit-history', requirePermission('thread.styles.view
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('thread_audit_log')
-      .select('id, action, performed_by, created_at, changed_fields, old_values, new_values')
-      .eq('table_name', 'style_thread_specs')
-      .eq('record_id', id)
-      .order('created_at', { ascending: false })
-      .limit(200)
-
-    if (error) throw error
+    const data = await query<RawAuditRow>(
+      `SELECT id, action, performed_by, created_at, changed_fields, old_values, new_values
+       FROM thread_audit_log
+       WHERE table_name = $1 AND record_id = $2
+       ORDER BY created_at DESC
+       LIMIT 200`,
+      ['style_thread_specs', id]
+    )
 
     const enriched = await enrichAuditEntries('style_thread_specs', (data ?? []) as RawAuditRow[])
     return c.json({ data: enriched, error: null })
@@ -464,22 +490,31 @@ styleThreadSpecs.get('/:id', requirePermission('thread.styles.view'), async (c) 
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('style_thread_specs')
-      .select(`
-        *,
-        styles:style_id (id, style_code, style_name),
-        suppliers:supplier_id (id, name),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_data:colors!color_id(name, hex_code))
-      `)
-      .eq('id', id)
-      .single()
+    const data = await queryOne<Record<string, unknown>>(
+      `SELECT
+         sts.*,
+         CASE WHEN st.id IS NULL THEN NULL
+              ELSE json_build_object('id', st.id, 'style_code', st.style_code, 'style_name', st.style_name) END AS styles,
+         CASE WHEN sup.id IS NULL THEN NULL
+              ELSE json_build_object('id', sup.id, 'name', sup.name) END AS suppliers,
+         CASE WHEN tt.id IS NULL THEN NULL
+              ELSE json_build_object(
+                'id', tt.id, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label,
+                'name', tt.name, 'meters_per_cone', tt.meters_per_cone,
+                'color_data', CASE WHEN tc.id IS NULL THEN NULL
+                                   ELSE json_build_object('name', tc.name, 'hex_code', tc.hex_code) END
+              ) END AS thread_types
+       FROM style_thread_specs sts
+       LEFT JOIN styles st ON st.id = sts.style_id
+       LEFT JOIN suppliers sup ON sup.id = sts.supplier_id
+       LEFT JOIN thread_types tt ON tt.id = sts.thread_type_id
+       LEFT JOIN colors tc ON tc.id = tt.color_id
+       WHERE sts.id = $1`,
+      [id]
+    )
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
-      }
-      throw error
+    if (!data) {
+      return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
     }
 
     return c.json({ data, error: null })
@@ -507,11 +542,10 @@ styleThreadSpecs.post('/', requirePermission('thread.styles.create'), async (c) 
     const auth = c.get('auth')
     let createdBy: string | null = null
     if (auth?.employeeId) {
-      const { data: emp } = await supabase
-        .from('employees')
-        .select('full_name')
-        .eq('id', auth.employeeId)
-        .single()
+      const emp = await queryOne<{ full_name: string }>(
+        'SELECT full_name FROM employees WHERE id = $1',
+        [auth.employeeId]
+      )
       createdBy = emp?.full_name || null
     }
 
@@ -519,38 +553,42 @@ styleThreadSpecs.post('/', requirePermission('thread.styles.create'), async (c) 
     let displayOrder = 0
 
     if (addToTop) {
-      await supabase.rpc('fn_increment_style_thread_spec_order', { p_style_id: body.style_id })
+      await query('SELECT fn_increment_style_thread_spec_order($1)', [body.style_id])
       displayOrder = 0
     } else {
       // Get MAX display_order + 1 for this style
-      const { data: maxRow } = await supabase
-        .from('style_thread_specs')
-        .select('display_order')
-        .eq('style_id', body.style_id)
-        .order('display_order', { ascending: false })
-        .limit(1)
-        .single()
-      
+      const maxRow = await queryOne<{ display_order: number }>(
+        `SELECT display_order FROM style_thread_specs
+         WHERE style_id = $1
+         ORDER BY display_order DESC
+         LIMIT 1`,
+        [body.style_id]
+      )
+
       displayOrder = maxRow ? maxRow.display_order + 1 : 0
     }
 
-    const { data, error } = await supabase
-      .from('style_thread_specs')
-      .insert([{
-        style_id: body.style_id,
-        supplier_id: body.supplier_id,
-        process_name: body.process_name,
-        thread_type_id: body.thread_type_id,
-        meters_per_unit: body.meters_per_unit || 0,
-        notes: body.notes,
-        display_order: displayOrder,
-        created_by: createdBy,
-        updated_by: createdBy,
-      }])
-      .select()
-      .single()
+    const data = await queryOne<{ id: number; style_id: number } & Record<string, unknown>>(
+      `INSERT INTO style_thread_specs
+         (style_id, supplier_id, process_name, thread_type_id, meters_per_unit, notes, display_order, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        body.style_id,
+        body.supplier_id,
+        body.process_name ?? null,
+        body.thread_type_id ?? null,
+        body.meters_per_unit || 0,
+        body.notes ?? null,
+        displayOrder,
+        createdBy,
+        createdBy,
+      ]
+    )
 
-    if (error) throw error
+    if (!data) {
+      return c.json({ data: null, error: 'Tạo định mức chỉ thất bại' }, 500)
+    }
 
     await ensureColorSpecs(data.id, body.style_id, body.thread_type_id, createdBy ?? 'system')
 
@@ -583,26 +621,21 @@ styleThreadSpecs.put('/:id', requirePermission('thread.styles.edit'), async (c) 
 
     const body = await c.req.json()
 
-    const { data: oldRow, error: oldErr } = await supabase
-      .from('style_thread_specs')
-      .select('*')
-      .eq('id', id)
-      .single()
-    if (oldErr) {
-      if (oldErr.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
-      }
-      throw oldErr
+    const oldRow = await queryOne<{ id: number; supplier_id: number | null; style_id: number } & Record<string, unknown>>(
+      'SELECT * FROM style_thread_specs WHERE id = $1',
+      [id]
+    )
+    if (!oldRow) {
+      return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
     }
 
     const auth = c.get('auth')
     let updatedBy: string | null = null
     if (auth?.employeeId) {
-      const { data: emp } = await supabase
-        .from('employees')
-        .select('full_name')
-        .eq('id', auth.employeeId)
-        .single()
+      const emp = await queryOne<{ full_name: string }>(
+        'SELECT full_name FROM employees WHERE id = $1',
+        [auth.employeeId]
+      )
       updatedBy = emp?.full_name || null
     }
 
@@ -624,23 +657,42 @@ styleThreadSpecs.put('/:id', requirePermission('thread.styles.edit'), async (c) 
       updatePayload.thread_type_id = null
     }
 
-    const { data, error } = await supabase
-      .from('style_thread_specs')
-      .update(updatePayload)
-      .eq('id', id)
-      .select(`
-        *,
-        suppliers:supplier_id (id, name),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_data:colors!color_id(name, hex_code))
-      `)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
-      }
-      throw error
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updatePayload)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
     }
+    params.push(id)
+
+    const updatedBase = await queryOne<{ id: number; style_id: number } & Record<string, unknown>>(
+      `UPDATE style_thread_specs SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
+    )
+
+    if (!updatedBase) {
+      return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
+    }
+
+    const data = await queryOne<{ id: number; style_id: number } & Record<string, unknown>>(
+      `SELECT
+         sts.*,
+         CASE WHEN sup.id IS NULL THEN NULL
+              ELSE json_build_object('id', sup.id, 'name', sup.name) END AS suppliers,
+         CASE WHEN tt.id IS NULL THEN NULL
+              ELSE json_build_object(
+                'id', tt.id, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label,
+                'name', tt.name, 'meters_per_cone', tt.meters_per_cone,
+                'color_data', CASE WHEN tc.id IS NULL THEN NULL
+                                   ELSE json_build_object('name', tc.name, 'hex_code', tc.hex_code) END
+              ) END AS thread_types
+       FROM style_thread_specs sts
+       LEFT JOIN suppliers sup ON sup.id = sts.supplier_id
+       LEFT JOIN thread_types tt ON tt.id = sts.thread_type_id
+       LEFT JOIN colors tc ON tc.id = tt.color_id
+       WHERE sts.id = $1`,
+      [id]
+    ) as { id: number; style_id: number } & Record<string, unknown>
 
     if (body.thread_type_id) {
       const styleId = body.style_id || data.style_id
@@ -675,24 +727,15 @@ styleThreadSpecs.delete('/:id', requirePermission('thread.styles.delete'), async
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: oldRow, error: selErr } = await supabase
-      .from('style_thread_specs')
-      .select('*')
-      .eq('id', id)
-      .single()
-    if (selErr) {
-      if (selErr.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
-      }
-      throw selErr
+    const oldRow = await queryOne<{ id: number } & Record<string, unknown>>(
+      'SELECT * FROM style_thread_specs WHERE id = $1',
+      [id]
+    )
+    if (!oldRow) {
+      return c.json({ data: null, error: 'Không tìm thấy định mức chỉ' }, 404)
     }
 
-    const { error } = await supabase
-      .from('style_thread_specs')
-      .delete()
-      .eq('id', id)
-
-    if (error) throw error
+    await query('DELETE FROM style_thread_specs WHERE id = $1', [id])
 
     const performedBy = await resolvePerformer(c)
     await logAudit({
@@ -722,18 +765,29 @@ styleThreadSpecs.get('/:id/color-specs', requirePermission('thread.styles.view')
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('style_color_thread_specs')
-      .select(`
-        *,
-        style_color:style_colors!style_color_id (id, color_name, hex_code, style_id),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_data:colors!color_id(name, hex_code), supplier_id),
-        thread_color:colors!thread_color_id (id, name, hex_code)
-      `)
-      .eq('style_thread_spec_id', id)
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
+    const data = await query<Record<string, unknown>>(
+      `SELECT
+         scts.*,
+         CASE WHEN sc.id IS NULL THEN NULL
+              ELSE json_build_object('id', sc.id, 'color_name', sc.color_name, 'hex_code', sc.hex_code, 'style_id', sc.style_id) END AS style_color,
+         CASE WHEN tt.id IS NULL THEN NULL
+              ELSE json_build_object(
+                'id', tt.id, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label,
+                'name', tt.name, 'meters_per_cone', tt.meters_per_cone, 'supplier_id', tt.supplier_id,
+                'color_data', CASE WHEN ttc.id IS NULL THEN NULL
+                                   ELSE json_build_object('name', ttc.name, 'hex_code', ttc.hex_code) END
+              ) END AS thread_types,
+         CASE WHEN tcol.id IS NULL THEN NULL
+              ELSE json_build_object('id', tcol.id, 'name', tcol.name, 'hex_code', tcol.hex_code) END AS thread_color
+       FROM style_color_thread_specs scts
+       LEFT JOIN style_colors sc ON sc.id = scts.style_color_id
+       LEFT JOIN thread_types tt ON tt.id = scts.thread_type_id
+       LEFT JOIN colors ttc ON ttc.id = tt.color_id
+       LEFT JOIN colors tcol ON tcol.id = scts.thread_color_id
+       WHERE scts.style_thread_spec_id = $1
+       ORDER BY scts.created_at DESC`,
+      [id]
+    )
 
     return c.json({ data, error: null })
   } catch (err) {
@@ -761,28 +815,51 @@ styleThreadSpecs.post('/:id/color-specs', requirePermission('thread.styles.creat
 
     const performedBy = await resolvePerformer(c)
 
-    const insertData: Record<string, unknown> = {
-      style_thread_spec_id: styleThreadSpecId,
-      style_color_id: body.style_color_id,
-      notes: body.notes,
-      created_by: performedBy,
-      updated_by: performedBy,
+    const cols = ['style_thread_spec_id', 'style_color_id', 'notes', 'created_by', 'updated_by']
+    const vals: unknown[] = [styleThreadSpecId, body.style_color_id, body.notes ?? null, performedBy, performedBy]
+    if (body.thread_type_id) {
+      cols.push('thread_type_id')
+      vals.push(body.thread_type_id)
     }
-    if (body.thread_type_id) insertData.thread_type_id = body.thread_type_id
-    if (body.thread_color_id) insertData.thread_color_id = body.thread_color_id
+    if (body.thread_color_id) {
+      cols.push('thread_color_id')
+      vals.push(body.thread_color_id)
+    }
+    const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ')
 
-    const { data, error } = await supabase
-      .from('style_color_thread_specs')
-      .insert([insertData])
-      .select(`
-        *,
-        style_color:style_colors!style_color_id (id, color_name, hex_code, style_id),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, meters_per_cone, color_data:colors!color_id(name, hex_code), supplier_id),
-        thread_color:colors!thread_color_id (id, name, hex_code)
-      `)
-      .single()
+    const inserted = await queryOne<{ id: number }>(
+      `INSERT INTO style_color_thread_specs (${cols.join(', ')})
+       VALUES (${placeholders})
+       RETURNING id`,
+      vals
+    )
 
-    if (error) throw error
+    if (!inserted) {
+      return c.json({ data: null, error: 'Them dinh muc chi theo mau that bai' }, 500)
+    }
+
+    const data = await queryOne<{ id: number } & Record<string, unknown>>(
+      `SELECT
+         scts.*,
+         CASE WHEN sc.id IS NULL THEN NULL
+              ELSE json_build_object('id', sc.id, 'color_name', sc.color_name, 'hex_code', sc.hex_code, 'style_id', sc.style_id) END AS style_color,
+         CASE WHEN tt.id IS NULL THEN NULL
+              ELSE json_build_object(
+                'id', tt.id, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label,
+                'name', tt.name, 'meters_per_cone', tt.meters_per_cone, 'supplier_id', tt.supplier_id,
+                'color_data', CASE WHEN ttc.id IS NULL THEN NULL
+                                   ELSE json_build_object('name', ttc.name, 'hex_code', ttc.hex_code) END
+              ) END AS thread_types,
+         CASE WHEN tcol.id IS NULL THEN NULL
+              ELSE json_build_object('id', tcol.id, 'name', tcol.name, 'hex_code', tcol.hex_code) END AS thread_color
+       FROM style_color_thread_specs scts
+       LEFT JOIN style_colors sc ON sc.id = scts.style_color_id
+       LEFT JOIN thread_types tt ON tt.id = scts.thread_type_id
+       LEFT JOIN colors ttc ON ttc.id = tt.color_id
+       LEFT JOIN colors tcol ON tcol.id = scts.thread_color_id
+       WHERE scts.id = $1`,
+      [inserted.id]
+    ) as { id: number } & Record<string, unknown>
 
     await logAudit({
       tableName: 'style_color_thread_specs',
@@ -814,12 +891,10 @@ styleThreadSpecs.get('/by-style/:styleId/all-color-specs', requirePermission('th
     }
 
     // First get all spec IDs for this style
-    const { data: specs, error: specsError } = await supabase
-      .from('style_thread_specs')
+    const specs = await from('style_thread_specs')
       .select('id')
       .eq('style_id', styleId)
-
-    if (specsError) throw specsError
+      .list<{ id: number }>()
 
     if (!specs || specs.length === 0) {
       return c.json({ data: [], error: null })
@@ -828,18 +903,29 @@ styleThreadSpecs.get('/by-style/:styleId/all-color-specs', requirePermission('th
     const specIds = specs.map(s => s.id)
 
     // Fetch all color specs for these spec IDs
-    const { data, error } = await supabase
-      .from('style_color_thread_specs')
-      .select(`
-        *,
-        style_color:style_colors!style_color_id (id, color_name, hex_code, style_id),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, color_data:colors!color_id(name, hex_code), supplier_id, meters_per_cone),
-        thread_color:colors!thread_color_id (id, name, hex_code)
-      `)
-      .in('style_thread_spec_id', specIds)
-      .order('created_at', { ascending: true })
-
-    if (error) throw error
+    const data = await query<Record<string, unknown>>(
+      `SELECT
+         scts.*,
+         CASE WHEN sc.id IS NULL THEN NULL
+              ELSE json_build_object('id', sc.id, 'color_name', sc.color_name, 'hex_code', sc.hex_code, 'style_id', sc.style_id) END AS style_color,
+         CASE WHEN tt.id IS NULL THEN NULL
+              ELSE json_build_object(
+                'id', tt.id, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label,
+                'name', tt.name, 'meters_per_cone', tt.meters_per_cone, 'supplier_id', tt.supplier_id,
+                'color_data', CASE WHEN ttc.id IS NULL THEN NULL
+                                   ELSE json_build_object('name', ttc.name, 'hex_code', ttc.hex_code) END
+              ) END AS thread_types,
+         CASE WHEN tcol.id IS NULL THEN NULL
+              ELSE json_build_object('id', tcol.id, 'name', tcol.name, 'hex_code', tcol.hex_code) END AS thread_color
+       FROM style_color_thread_specs scts
+       LEFT JOIN style_colors sc ON sc.id = scts.style_color_id
+       LEFT JOIN thread_types tt ON tt.id = scts.thread_type_id
+       LEFT JOIN colors ttc ON ttc.id = tt.color_id
+       LEFT JOIN colors tcol ON tcol.id = scts.thread_color_id
+       WHERE scts.style_thread_spec_id = ANY($1)
+       ORDER BY scts.created_at ASC`,
+      [specIds]
+    )
 
     return c.json({ data, error: null })
   } catch (err) {
@@ -861,16 +947,12 @@ styleThreadSpecs.put('/color-specs/:id', requirePermission('thread.styles.edit')
 
     const body = await c.req.json()
 
-    const { data: oldRow, error: oldErr } = await supabase
-      .from('style_color_thread_specs')
-      .select('*')
-      .eq('id', id)
-      .single()
-    if (oldErr) {
-      if (oldErr.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy định mức màu' }, 404)
-      }
-      throw oldErr
+    const oldRow = await queryOne<{ id: number } & Record<string, unknown>>(
+      'SELECT * FROM style_color_thread_specs WHERE id = $1',
+      [id]
+    )
+    if (!oldRow) {
+      return c.json({ data: null, error: 'Không tìm thấy định mức màu' }, 404)
     }
 
     const performedBy = await resolvePerformer(c)
@@ -886,24 +968,45 @@ styleThreadSpecs.put('/color-specs/:id', requirePermission('thread.styles.edit')
     if (body.thread_color_id !== undefined) updateData.thread_color_id = body.thread_color_id
     if (body.notes !== undefined) updateData.notes = body.notes
 
-    const { data, error } = await supabase
-      .from('style_color_thread_specs')
-      .update(updateData)
-      .eq('id', id)
-      .select(`
-        *,
-        style_color:style_colors!style_color_id (id, color_name, hex_code, style_id),
-        thread_types:thread_type_id (id, tex_number, tex_label, name, color_data:colors!color_id(name, hex_code), supplier_id, meters_per_cone),
-        thread_color:colors!thread_color_id (id, name, hex_code)
-      `)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy định mức màu' }, 404)
-      }
-      throw error
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updateData)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
     }
+    params.push(id)
+
+    const updatedBase = await queryOne<{ id: number }>(
+      `UPDATE style_color_thread_specs SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id`,
+      params
+    )
+
+    if (!updatedBase) {
+      return c.json({ data: null, error: 'Không tìm thấy định mức màu' }, 404)
+    }
+
+    const data = await queryOne<{ id: number } & Record<string, unknown>>(
+      `SELECT
+         scts.*,
+         CASE WHEN sc.id IS NULL THEN NULL
+              ELSE json_build_object('id', sc.id, 'color_name', sc.color_name, 'hex_code', sc.hex_code, 'style_id', sc.style_id) END AS style_color,
+         CASE WHEN tt.id IS NULL THEN NULL
+              ELSE json_build_object(
+                'id', tt.id, 'tex_number', tt.tex_number, 'tex_label', tt.tex_label,
+                'name', tt.name, 'meters_per_cone', tt.meters_per_cone, 'supplier_id', tt.supplier_id,
+                'color_data', CASE WHEN ttc.id IS NULL THEN NULL
+                                   ELSE json_build_object('name', ttc.name, 'hex_code', ttc.hex_code) END
+              ) END AS thread_types,
+         CASE WHEN tcol.id IS NULL THEN NULL
+              ELSE json_build_object('id', tcol.id, 'name', tcol.name, 'hex_code', tcol.hex_code) END AS thread_color
+       FROM style_color_thread_specs scts
+       LEFT JOIN style_colors sc ON sc.id = scts.style_color_id
+       LEFT JOIN thread_types tt ON tt.id = scts.thread_type_id
+       LEFT JOIN colors ttc ON ttc.id = tt.color_id
+       LEFT JOIN colors tcol ON tcol.id = scts.thread_color_id
+       WHERE scts.id = $1`,
+      [id]
+    ) as { id: number } & Record<string, unknown>
 
     await logAudit({
       tableName: 'style_color_thread_specs',
@@ -934,19 +1037,16 @@ styleThreadSpecs.delete('/color-specs/by-style-color/:styleColorId', requirePerm
       return c.json({ data: null, error: 'Style Color ID không hợp lệ' }, 400)
     }
 
-    const { data: oldRows, error: selErr } = await supabase
-      .from('style_color_thread_specs')
+    const oldRows = await from('style_color_thread_specs')
       .select('*')
       .eq('style_color_id', styleColorId)
+      .list<{ id: number } & Record<string, unknown>>()
 
-    if (selErr) throw selErr
-
-    const { error, count } = await supabase
-      .from('style_color_thread_specs')
-      .delete({ count: 'exact' })
-      .eq('style_color_id', styleColorId)
-
-    if (error) throw error
+    const deleted = await query<{ id: number }>(
+      'DELETE FROM style_color_thread_specs WHERE style_color_id = $1 RETURNING id',
+      [styleColorId]
+    )
+    const count = deleted.length
 
     const performedBy = await resolvePerformer(c)
     for (const row of oldRows ?? []) {
@@ -978,24 +1078,15 @@ styleThreadSpecs.delete('/color-specs/:id', requirePermission('thread.styles.del
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const { data: oldRow, error: selErr } = await supabase
-      .from('style_color_thread_specs')
-      .select('*')
-      .eq('id', id)
-      .single()
-    if (selErr) {
-      if (selErr.code === 'PGRST116') {
-        return c.json({ data: null, error: 'Không tìm thấy định mức màu' }, 404)
-      }
-      throw selErr
+    const oldRow = await queryOne<{ id: number } & Record<string, unknown>>(
+      'SELECT * FROM style_color_thread_specs WHERE id = $1',
+      [id]
+    )
+    if (!oldRow) {
+      return c.json({ data: null, error: 'Không tìm thấy định mức màu' }, 404)
     }
 
-    const { error } = await supabase
-      .from('style_color_thread_specs')
-      .delete()
-      .eq('id', id)
-
-    if (error) throw error
+    await query('DELETE FROM style_color_thread_specs WHERE id = $1', [id])
 
     const performedBy = await resolvePerformer(c)
     await logAudit({

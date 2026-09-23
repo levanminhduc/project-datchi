@@ -48,6 +48,13 @@
           />
           <template v-else>
             <span class="cell-value">{{ props.row.full_name }}</span>
+            <q-badge
+              v-if="isAccountLocked(props.row)"
+              color="negative"
+              class="q-ml-xs"
+            >
+              Đã khóa
+            </q-badge>
             <q-icon
               name="edit"
               size="xs"
@@ -168,6 +175,14 @@
             <AppTooltip text="Sửa (Modal)" />
           </IconButton>
           <IconButton
+            v-if="isRoot && isAccountLocked(props.row)"
+            icon="lock_reset"
+            color="warning"
+            @click="openResetPasswordDialog(props.row)"
+          >
+            <AppTooltip text="Đặt lại mật khẩu & mở khóa" />
+          </IconButton>
+          <IconButton
             icon="delete"
             color="negative"
             @click="confirmDelete(props.row)"
@@ -236,12 +251,43 @@
         </AppSelect>
 
         <AppInput
-          v-if="formDialog.mode === 'edit'"
+          v-if="formDialog.mode === 'edit' && isRoot"
           v-model="newPassword"
           label="Mật khẩu mới"
           type="password"
           prepend-icon="lock"
           autocomplete="new-password"
+        />
+      </div>
+    </FormDialog>
+
+    <FormDialog
+      v-model="resetPasswordDialog.isOpen"
+      title="Đặt Lại Mật Khẩu"
+      submit-text="Đặt lại"
+      cancel-text="Hủy"
+      :loading="resetPasswordDialog.loading"
+      persistent
+      max-width="450px"
+      @submit="handleResetPassword"
+      @cancel="closeResetPasswordDialog"
+    >
+      <div class="q-gutter-md">
+        <div
+          v-if="resetPasswordDialog.employee"
+          class="text-body2"
+        >
+          Tài khoản <b>{{ resetPasswordDialog.employee.full_name }} ({{ resetPasswordDialog.employee.employee_id }})</b>
+          đang bị khóa do nhập sai mật khẩu quá 5 lần.
+          Đặt lại mật khẩu sẽ mở khóa tài khoản và yêu cầu đổi mật khẩu ở lần đăng nhập kế tiếp.
+        </div>
+        <AppInput
+          v-model="resetPasswordDialog.newPassword"
+          label="Mật khẩu mới"
+          type="password"
+          prepend-icon="lock_reset"
+          autocomplete="new-password"
+          required
         />
       </div>
     </FormDialog>
@@ -506,6 +552,18 @@ const detailDialog = reactive<DetailDialogState>({
   employee: null,
 })
 
+const resetPasswordDialog = reactive<{
+  isOpen: boolean
+  loading: boolean
+  employee: Employee | null
+  newPassword: string
+}>({
+  isOpen: false,
+  loading: false,
+  employee: null,
+  newPassword: '',
+})
+
 const defaultDetailFields: DetailFieldConfig[] = [
   { key: 'employee_id', label: 'Mã Nhân Viên', visible: true, required: true },
   { key: 'full_name', label: 'Tên Nhân Viên', visible: true, required: true },
@@ -757,6 +815,48 @@ const handleDelete = async () => {
   if (success) {
     deleteDialog.isOpen = false
     deleteDialog.employee = null
+  }
+}
+
+const isAccountLocked = (employee: Employee): boolean => {
+  return !!employee.locked_until && new Date(employee.locked_until) > new Date()
+}
+
+const openResetPasswordDialog = (employee: Employee) => {
+  resetPasswordDialog.employee = employee
+  resetPasswordDialog.newPassword = ''
+  resetPasswordDialog.isOpen = true
+}
+
+const closeResetPasswordDialog = () => {
+  resetPasswordDialog.isOpen = false
+  resetPasswordDialog.employee = null
+  resetPasswordDialog.newPassword = ''
+}
+
+const handleResetPassword = async () => {
+  if (!resetPasswordDialog.employee) return
+
+  const password = resetPasswordDialog.newPassword.trim()
+  if (password.length < 8) {
+    snackbar.warning('Mật khẩu mới phải có ít nhất 8 ký tự')
+    return
+  }
+
+  resetPasswordDialog.loading = true
+  try {
+    const success = await employeeService.resetPassword(resetPasswordDialog.employee.id, password)
+    if (success) {
+      snackbar.success('Đã đặt lại mật khẩu và mở khóa tài khoản')
+      closeResetPasswordDialog()
+      await fetchEmployees()
+    } else {
+      snackbar.error('Đặt lại mật khẩu thất bại')
+    }
+  } catch {
+    snackbar.error('Đặt lại mật khẩu thất bại')
+  } finally {
+    resetPasswordDialog.loading = false
   }
 }
 

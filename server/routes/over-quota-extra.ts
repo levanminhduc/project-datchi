@@ -1,20 +1,48 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../db/supabase'
+import { from, type SqlBuilder } from '../db/sql-builder'
 import {
   overQuotaTrendQuerySchema,
   overQuotaDetailQuerySchema,
   parseQueryArray,
 } from '../validation/overQuota'
 import {
-  applyFilters,
   categorizeReason,
   excessCones,
 } from '../utils/over-quota-helpers'
 import type { ViewRow } from '../utils/over-quota-helpers'
+import type { OverQuotaQuery } from '../validation/overQuota'
 import type { AppEnv } from '../types/hono-env'
 
 const VIEW = 'v_issue_reconciliation'
 const BATCH_SIZE = 5000
+
+function applyViewFilters(q: SqlBuilder, filters: OverQuotaQuery): SqlBuilder {
+  q.eq('issue_status', 'CONFIRMED')
+
+  if (filters.date_from) q.gte('issue_date', filters.date_from)
+  if (filters.date_to) q.lte('issue_date', filters.date_to + 'T23:59:59')
+
+  const poIds = parseQueryArray(filters.po_ids)
+  if (poIds.length > 0) q.in('po_id', poIds.map(Number))
+
+  const styleIds = parseQueryArray(filters.style_ids)
+  if (styleIds.length > 0) q.in('style_id', styleIds.map(Number))
+
+  const departments = parseQueryArray(filters.departments)
+  if (departments.length > 0) q.in('department', departments)
+
+  if (filters.reason === 'ky_thuat') {
+    q.ilike('over_quota_notes', '%Ky Thuat%')
+  } else if (filters.reason === 'rai_dau_may') {
+    q.ilike('over_quota_notes', '%rai dau may%')
+  }
+
+  if (filters.only_over_quota === 'true') {
+    q.eq('is_over_quota', true)
+  }
+
+  return q
+}
 
 const overQuotaExtra = new Hono<AppEnv>()
 
@@ -25,12 +53,11 @@ overQuotaExtra.get('/trend', async (c) => {
     let offset = 0
     let hasMore = true
     while (hasMore) {
-      const q = applyFilters(
-        supabaseAdmin.from(VIEW).select('*'),
-        filters,
-      ).range(offset, offset + BATCH_SIZE - 1)
-      const { data, error } = await q
-      if (error) throw new Error(error.message)
+      const q = applyViewFilters(from(VIEW).select('*'), filters).range(
+        offset,
+        offset + BATCH_SIZE - 1,
+      )
+      const data = await q.list<ViewRow & Record<string, unknown>>()
       if (!data || data.length === 0) break
       rows.push(...(data as unknown as ViewRow[]))
       hasMore = data.length === BATCH_SIZE
@@ -92,9 +119,8 @@ overQuotaExtra.get('/detail', async (c) => {
     const pageSize = filters.page_size
     const offset = (page - 1) * pageSize
 
-    let q = supabaseAdmin
-      .from(VIEW)
-      .select('*', { count: 'exact' })
+    let q = from(VIEW)
+      .select('*')
       .eq('issue_status', 'CONFIRMED')
 
     if (filters.date_from) q = q.gte('issue_date', filters.date_from)
@@ -116,11 +142,11 @@ overQuotaExtra.get('/detail', async (c) => {
     }
     const rawSort = filters.sort_by || 'issue_date'
     const sortCol = SORT_MAP[rawSort] || rawSort
-    q = q.order(sortCol, { ascending: filters.descending !== 'true', nullsFirst: false })
-    q = q.range(offset, offset + pageSize - 1)
+    q = q.order({ column: sortCol, ascending: filters.descending !== 'true', nullsFirst: false })
 
-    const { data, error, count } = await q
-    if (error) throw new Error(error.message)
+    const count = await q.count()
+    q = q.range(offset, offset + pageSize - 1)
+    const data = await q.list<ViewRow & Record<string, unknown>>()
 
     const rows = (data as unknown as ViewRow[]).map((r) => ({
       issue_id: r.issue_id,

@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne, queryCount } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import { sanitizeFilterValue } from '../utils/sanitize'
+import { getKdExcludedSupplierIds, isKdExcluded } from '../utils/kd-excluded-suppliers'
 import type { ThreadApiResponse, ConeRow, ReceiveStockDTO, StocktakeDTO, StocktakeResult, ConeSummaryRow, ConeWarehouseBreakdown, SupplierBreakdown, ConeStatus } from '../types/thread'
 
 const inventory = new Hono()
@@ -27,38 +28,75 @@ inventory.get('/', requirePermission('thread.inventory.view'), async (c) => {
 
     const offset = (page - 1) * pageSize
 
-    let query = supabase
-      .from('thread_inventory')
-      .select('*, thread_types(code, name, color_data:colors!color_id(name, hex_code))', { count: 'exact' })
-      .order(safeSortBy, { ascending: !descending })
-      .range(offset, offset + pageSize - 1)
+    const conditions: string[] = []
+    const filterParams: unknown[] = []
 
     if (search) {
       const s = sanitizeFilterValue(search)
-      query = query.or(`cone_id.ilike.%${s}%,lot_number.ilike.%${s}%`)
+      filterParams.push(`%${s}%`)
+      const p = `$${filterParams.length}`
+      conditions.push(`(ti.cone_id ILIKE ${p} OR ti.lot_number ILIKE ${p})`)
     }
     if (threadTypeId) {
       const parsedThreadTypeId = parseInt(threadTypeId)
       if (!isNaN(parsedThreadTypeId)) {
-        query = query.eq('thread_type_id', parsedThreadTypeId)
+        filterParams.push(parsedThreadTypeId)
+        conditions.push(`ti.thread_type_id = $${filterParams.length}`)
       }
     }
     if (warehouseId) {
       const parsedWarehouseId = parseInt(warehouseId)
       if (!isNaN(parsedWarehouseId)) {
-        query = query.eq('warehouse_id', parsedWarehouseId)
+        filterParams.push(parsedWarehouseId)
+        conditions.push(`ti.warehouse_id = $${filterParams.length}`)
       }
     }
     if (status) {
-      query = query.eq('status', status)
+      filterParams.push(status)
+      conditions.push(`ti.status = $${filterParams.length}`)
     }
     if (isPartial !== undefined && isPartial !== '') {
-      query = query.eq('is_partial', isPartial === 'true')
+      filterParams.push(isPartial === 'true')
+      conditions.push(`ti.is_partial = $${filterParams.length}`)
     }
 
-    const { data, error, count } = await query
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-    if (error) {
+    let count: number
+    try {
+      count = await queryCount(
+        `SELECT count(*)::int AS count FROM thread_inventory ti ${whereClause}`,
+        filterParams
+      )
+    } catch (err) {
+      console.error('Inventory count error:', err)
+      return c.json<ThreadApiResponse<null>>({
+        data: null,
+        error: 'Lỗi khi tải danh sách tồn kho'
+      }, 500)
+    }
+
+    const dataParams = [...filterParams, pageSize, offset]
+    let data: ConeRow[]
+    try {
+      data = await query<ConeRow & Record<string, unknown>>(
+        `SELECT ti.*,
+           CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+             'code', tt.code,
+             'name', tt.name,
+             'color_data', CASE WHEN col.id IS NULL THEN NULL
+                                ELSE json_build_object('name', col.name, 'hex_code', col.hex_code) END
+           ) END AS thread_types
+         FROM thread_inventory ti
+         LEFT JOIN thread_types tt ON tt.id = ti.thread_type_id
+         LEFT JOIN colors col ON col.id = tt.color_id
+         ${whereClause}
+         ORDER BY ti.${safeSortBy} ${descending ? 'DESC' : 'ASC'}
+         LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+        dataParams
+      )
+    } catch (err) {
+      console.error('Inventory list error:', err)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải danh sách tồn kho'
@@ -88,21 +126,27 @@ inventory.get('/available/summary', requirePermission('thread.inventory.view'), 
   try {
     const threadTypeId = c.req.query('thread_type_id')
 
-    let query = supabase
-      .from('thread_inventory')
-      .select('thread_type_id, quantity_meters, is_partial')
-      .eq('status', 'AVAILABLE')
+    const conditions: string[] = ['status = $1']
+    const params: unknown[] = ['AVAILABLE']
 
     if (threadTypeId) {
       const parsedId = parseInt(threadTypeId)
       if (!isNaN(parsedId)) {
-        query = query.eq('thread_type_id', parsedId)
+        params.push(parsedId)
+        conditions.push(`thread_type_id = $${params.length}`)
       }
     }
 
-    const { data, error } = await query
-
-    if (error) {
+    let data: Array<{ thread_type_id: number; quantity_meters: number; is_partial: boolean }>
+    try {
+      data = await query<{ thread_type_id: number; quantity_meters: number; is_partial: boolean }>(
+        `SELECT thread_type_id, quantity_meters, is_partial
+         FROM thread_inventory
+         WHERE ${conditions.join(' AND ')}`,
+        params
+      )
+    } catch (err) {
+      console.error('Available summary error:', err)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải tồn kho khả dụng'
@@ -143,13 +187,25 @@ inventory.get('/by-barcode/:coneId', requirePermission('thread.inventory.view'),
   try {
     const coneId = c.req.param('coneId')
 
-    const { data, error } = await supabase
-      .from('thread_inventory')
-      .select('*, thread_types(code, name, color_data:colors!color_id(name, hex_code), density_grams_per_meter), warehouses(name)')
-      .eq('cone_id', coneId)
-      .single()
+    const data = await queryOne<ConeRow & Record<string, unknown>>(
+      `SELECT ti.*,
+         CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+           'code', tt.code,
+           'name', tt.name,
+           'color_data', CASE WHEN col.id IS NULL THEN NULL
+                              ELSE json_build_object('name', col.name, 'hex_code', col.hex_code) END,
+           'density_grams_per_meter', tt.density_grams_per_meter
+         ) END AS thread_types,
+         CASE WHEN wh.id IS NULL THEN NULL ELSE json_build_object('name', wh.name) END AS warehouses
+       FROM thread_inventory ti
+       LEFT JOIN thread_types tt ON tt.id = ti.thread_type_id
+       LEFT JOIN colors col ON col.id = tt.color_id
+       LEFT JOIN warehouses wh ON wh.id = ti.warehouse_id
+       WHERE ti.cone_id = $1`,
+      [coneId]
+    )
 
-    if (error || !data) {
+    if (!data) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Không tìm thấy cuộn chỉ với mã vạch này'
@@ -188,15 +244,23 @@ inventory.get('/by-warehouse/:warehouseId', requirePermission('thread.inventory.
     let hasMore = true
 
     while (hasMore) {
-      const { data, error } = await supabase
-        .from('thread_inventory')
-        .select('id, cone_id, thread_type_id, lot_number, weight_grams, quantity_meters, status, is_partial, thread_types(code, name)')
-        .eq('warehouse_id', parsedId)
-        .in('status', ['AVAILABLE', 'ALLOCATED', 'RECEIVED'])
-        .order('cone_id', { ascending: true })
-        .range(offset, offset + BATCH_SIZE - 1)
-
-      if (error) {
+      let data: Partial<ConeRow>[]
+      try {
+        data = await query<Partial<ConeRow> & Record<string, unknown>>(
+          `SELECT ti.id, ti.cone_id, ti.thread_type_id, ti.lot_number, ti.weight_grams,
+                  ti.quantity_meters, ti.status, ti.is_partial,
+                  CASE WHEN tt.id IS NULL THEN NULL
+                       ELSE json_build_object('code', tt.code, 'name', tt.name) END AS thread_types
+           FROM thread_inventory ti
+           LEFT JOIN thread_types tt ON tt.id = ti.thread_type_id
+           WHERE ti.warehouse_id = $1
+             AND ti.status IN ('AVAILABLE', 'ALLOCATED', 'RECEIVED')
+           ORDER BY ti.cone_id ASC
+           LIMIT $2 OFFSET $3`,
+          [parsedId, BATCH_SIZE, offset]
+        )
+      } catch (err) {
+        console.error('By-warehouse list error:', err)
         return c.json<ThreadApiResponse<null>>({
           data: null,
           error: 'Lỗi khi tải danh sách tồn kho'
@@ -275,19 +339,17 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
 
     let warehouseIds: number[] | null = null
     if (parsedWarehouseId) {
-      const { data: wh } = await supabase
-        .from('warehouses')
-        .select('id, type')
-        .eq('id', parsedWarehouseId)
-        .single()
+      const wh = await queryOne<{ id: number; type: string }>(
+        'SELECT id, type FROM warehouses WHERE id = $1',
+        [parsedWarehouseId]
+      )
 
       if (wh?.type === 'LOCATION') {
-        const { data: children } = await supabase
-          .from('warehouses')
-          .select('id')
-          .eq('parent_id', parsedWarehouseId)
-          .eq('is_active', true)
-          .is('deleted_at', null)
+        const children = await query<{ id: number }>(
+          `SELECT id FROM warehouses
+           WHERE parent_id = $1 AND is_active = TRUE AND deleted_at IS NULL`,
+          [parsedWarehouseId]
+        )
         warehouseIds = children?.map(c => c.id) ?? []
       } else {
         warehouseIds = [parsedWarehouseId]
@@ -307,27 +369,26 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
     // KD columns: only free cones.
     const kdStatuses: ConeStatus[] = ['RECEIVED', 'INSPECTED', 'AVAILABLE']
 
-    const [totalResult, kdResult] = await Promise.all([
-      supabase.rpc('fn_cone_summary_filtered', {
-        p_statuses: totalStatuses,
-        p_warehouse_ids: warehouseIds,
-        p_supplier_id: parsedSupplierId,
-        p_material: material || null,
-        p_search: sanitizedSearch,
-        p_only_unreserved: false,
-      }),
-      supabase.rpc('fn_cone_summary_filtered', {
-        p_statuses: kdStatuses,
-        p_warehouse_ids: warehouseIds,
-        p_supplier_id: parsedSupplierId,
-        p_material: material || null,
-        p_search: sanitizedSearch,
-        p_only_unreserved: true,
-      })
-    ])
-
-    if (totalResult.error || kdResult.error) {
-      console.error('RPC error:', totalResult.error || kdResult.error)
+    let totalRpcRows: SummaryViewRow[]
+    let kdRpcRows: SummaryViewRow[]
+    let kdExcludedSupplierIds: Set<number>
+    try {
+      const [totalResult, kdResult, excludedIds] = await Promise.all([
+        query<SummaryViewRow>(
+          'SELECT * FROM fn_cone_summary_filtered($1, $2, $3, $4, $5, $6)',
+          [totalStatuses, warehouseIds, parsedSupplierId, material || null, sanitizedSearch, false]
+        ),
+        query<SummaryViewRow>(
+          'SELECT * FROM fn_cone_summary_filtered($1, $2, $3, $4, $5, $6)',
+          [kdStatuses, warehouseIds, parsedSupplierId, material || null, sanitizedSearch, true]
+        ),
+        getKdExcludedSupplierIds()
+      ])
+      totalRpcRows = totalResult
+      kdRpcRows = kdResult
+      kdExcludedSupplierIds = excludedIds
+    } catch (err) {
+      console.error('RPC error:', err)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải tổng hợp tồn kho'
@@ -338,12 +399,14 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       `${row.thread_type_id}|${row.color_id ?? 'null'}|${row.supplier_id ?? 'null'}`
 
     const kdMap = new Map<string, SummaryViewRow>()
-    for (const row of (kdResult.data || []) as SummaryViewRow[]) {
+    for (const row of kdRpcRows) {
       kdMap.set(makeSummaryKey(row), row)
     }
 
-    const summaryData: SummaryViewRow[] = ((totalResult.data || []) as SummaryViewRow[]).map((row) => {
-      const kd = kdMap.get(makeSummaryKey(row))
+    const summaryData: SummaryViewRow[] = totalRpcRows.map((row) => {
+      const kd = isKdExcluded(kdExcludedSupplierIds, row.supplier_id)
+        ? undefined
+        : kdMap.get(makeSummaryKey(row))
 
       return {
         ...row,
@@ -359,14 +422,19 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
     const priceMap = new Map<number, number>()
     const texMap = new Map<number, { tex_number: string | null; tex_label: string | null }>()
     const supplierNameMap = new Map<number, string>()
+    const idleMap = new Map<string, number>()
+
+    const makeIdleKey = (threadTypeId: number, colorId: number | null): string =>
+      `${threadTypeId}|${colorId ?? 'null'}`
 
     if (threadTypeIds.length > 0) {
-      const { data: threadTypes, error: threadTypesError } = await supabase
-        .from('thread_types')
-        .select('id, tex_number, tex_label')
-        .in('id', threadTypeIds)
-
-      if (threadTypesError) {
+      let threadTypes: Array<{ id: number; tex_number: string | number | null; tex_label: string | null }>
+      try {
+        threadTypes = await query<{ id: number; tex_number: string | number | null; tex_label: string | null }>(
+          `SELECT id, tex_number, tex_label FROM thread_types WHERE id = ANY($1)`,
+          [threadTypeIds]
+        )
+      } catch (threadTypesError) {
         console.error('Thread type tex lookup error:', threadTypesError)
         return c.json<ThreadApiResponse<null>>({
           data: null,
@@ -382,20 +450,21 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       }
 
       if (supplierIds.length > 0) {
-        const { data: suppliers } = await supabase
-          .from('suppliers')
-          .select('id, name')
-          .in('id', supplierIds)
+        const suppliers = await query<{ id: number; name: string }>(
+          `SELECT id, name FROM suppliers WHERE id = ANY($1)`,
+          [supplierIds]
+        )
         for (const s of suppliers || []) {
           supplierNameMap.set(s.id, s.name)
         }
       }
 
-      const { data: prices } = await supabase
-        .from('thread_type_supplier')
-        .select('thread_type_id, supplier_id, unit_price')
-        .in('thread_type_id', threadTypeIds)
-        .eq('is_active', true)
+      const prices = await query<{ thread_type_id: number; supplier_id: number; unit_price: number | null }>(
+        `SELECT thread_type_id, supplier_id, unit_price
+         FROM thread_type_supplier
+         WHERE thread_type_id = ANY($1) AND is_active = TRUE`,
+        [threadTypeIds]
+      )
 
       if (prices) {
         const supplierMap = new Map<number, number | null>()
@@ -410,6 +479,40 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
             priceMap.set(p.thread_type_id, Number(p.unit_price))
           }
         }
+      }
+
+      try {
+        const idleRows = await query<{ thread_type_id: number; color_id: number | null; idle_days: number | null }>(
+          `SELECT
+             g.thread_type_id,
+             g.color_id,
+             EXTRACT(DAY FROM now() - COALESCE(li.last_issue, g.last_created))::int AS idle_days
+           FROM (
+             SELECT thread_type_id, color_id, MAX(created_at) AS last_created
+             FROM thread_inventory
+             WHERE thread_type_id = ANY($1)
+             GROUP BY thread_type_id, color_id
+           ) g
+           LEFT JOIN (
+             SELECT ti.thread_type_id, ti.color_id, MAX(mv.created_at) AS last_issue
+             FROM thread_movements mv
+             JOIN thread_inventory ti ON ti.id = mv.cone_id
+             WHERE mv.movement_type = 'ISSUE'
+               AND ti.thread_type_id = ANY($1)
+             GROUP BY ti.thread_type_id, ti.color_id
+           ) li
+             ON li.thread_type_id = g.thread_type_id
+             AND li.color_id IS NOT DISTINCT FROM g.color_id`,
+          [threadTypeIds]
+        )
+
+        for (const r of idleRows || []) {
+          if (r.idle_days != null) {
+            idleMap.set(makeIdleKey(r.thread_type_id, r.color_id ?? null), Number(r.idle_days))
+          }
+        }
+      } catch (idleError) {
+        console.error('Idle days lookup error:', idleError)
       }
     }
 
@@ -442,6 +545,7 @@ inventory.get('/summary/by-cone', requirePermission('thread.inventory.view'), as
       partial_weight_grams: Number(row.partial_weight_grams),
       total_full_cones: Number(row.total_full_cones),
       total_partial_cones: Number(row.total_partial_cones),
+      idle_days: idleMap.get(makeIdleKey(row.thread_type_id, row.color_id ?? null)) ?? null,
       }
     })
 
@@ -497,36 +601,38 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
     // fn_supplier_breakdown (cùng usableStatuses, cùng COALESCE supplier from
     // lot/thread_type, cùng metrics) để tránh cross-warehouse leak.
     if (warehouseId == null) {
-      const [warehouseResult, supplierResult] = await Promise.all([
-        supabase.rpc('fn_warehouse_breakdown', {
-          p_thread_type_id: threadTypeId,
-          p_statuses: usableStatuses,
-          p_color_id: colorId,
-        }),
-        supabase.rpc('fn_supplier_breakdown', {
-          p_thread_type_id: threadTypeId,
-          p_statuses: usableStatuses,
-          p_color_id: colorId,
-        }),
-      ])
-
-      if (warehouseResult.error || supplierResult.error) {
-        console.error('RPC error:', warehouseResult.error || supplierResult.error)
+      let warehouseRows: Array<{ warehouse_id: number; warehouse_code: string; warehouse_name: string; locations: string | null; full_cones: number; partial_cones: number; partial_meters: number }>
+      let supplierRows: SupplierBreakdown[]
+      try {
+        const [warehouseResult, supplierResult] = await Promise.all([
+          query<{ warehouse_id: number; warehouse_code: string; warehouse_name: string; locations: string | null; full_cones: number; partial_cones: number; partial_meters: number }>(
+            'SELECT * FROM fn_warehouse_breakdown($1, $2, $3)',
+            [threadTypeId, usableStatuses, colorId]
+          ),
+          query<SupplierBreakdown>(
+            'SELECT * FROM fn_supplier_breakdown($1, $2, $3)',
+            [threadTypeId, usableStatuses, colorId]
+          ),
+        ])
+        warehouseRows = warehouseResult
+        supplierRows = supplierResult
+      } catch (err) {
+        console.error('RPC error:', err)
         return c.json<ThreadApiResponse<null>>({
           data: null,
           error: 'Lỗi khi tải chi tiết kho'
         }, 500)
       }
 
-      const breakdownList: ConeWarehouseBreakdown[] = (warehouseResult.data || []).map(
-        (row: { warehouse_id: number; warehouse_code: string; warehouse_name: string; locations: string | null; full_cones: number; partial_cones: number; partial_meters: number }) => ({
+      const breakdownList: ConeWarehouseBreakdown[] = warehouseRows.map(
+        (row) => ({
           ...row,
           location: row.locations,
           locations: undefined,
         })
       )
 
-      const supplierBreakdown: SupplierBreakdown[] = supplierResult.data || []
+      const supplierBreakdown: SupplierBreakdown[] = supplierRows || []
 
       return c.json<ThreadApiResponse<ConeWarehouseBreakdown[]> & { supplier_breakdown: SupplierBreakdown[] }>({
         data: breakdownList,
@@ -537,24 +643,24 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
     }
 
     // Path B: warehouse_id present
-    const warehouseResult = await supabase.rpc('fn_warehouse_breakdown', {
-      p_thread_type_id: threadTypeId,
-      p_statuses: usableStatuses,
-      p_color_id: colorId,
-    })
-
-    if (warehouseResult.error) {
-      console.error('RPC error:', warehouseResult.error)
+    let warehouseRowsB: Array<{ warehouse_id: number; warehouse_code: string; warehouse_name: string; locations: string | null; full_cones: number; partial_cones: number; partial_meters: number }>
+    try {
+      warehouseRowsB = await query<{ warehouse_id: number; warehouse_code: string; warehouse_name: string; locations: string | null; full_cones: number; partial_cones: number; partial_meters: number }>(
+        'SELECT * FROM fn_warehouse_breakdown($1, $2, $3)',
+        [threadTypeId, usableStatuses, colorId]
+      )
+    } catch (err) {
+      console.error('RPC error:', err)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải chi tiết kho'
       }, 500)
     }
 
-    const breakdownList: ConeWarehouseBreakdown[] = (warehouseResult.data || [])
-      .filter((row: { warehouse_id: number }) => row.warehouse_id === warehouseId)
+    const breakdownList: ConeWarehouseBreakdown[] = warehouseRowsB
+      .filter((row) => row.warehouse_id === warehouseId)
       .map(
-        (row: { warehouse_id: number; warehouse_code: string; warehouse_name: string; locations: string | null; full_cones: number; partial_cones: number; partial_meters: number }) => ({
+        (row) => ({
           ...row,
           location: row.locations,
           locations: undefined,
@@ -562,18 +668,21 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
       )
 
     // Query thread_inventory cho warehouse được chọn để re-derive supplier breakdown
-    let coneQuery = supabase
-      .from('thread_inventory')
-      .select('is_partial, quantity_meters, lot_id, thread_type_id, color_id')
-      .eq('thread_type_id', threadTypeId)
-      .eq('warehouse_id', warehouseId)
-      .in('status', usableStatuses)
+    const coneConditions: string[] = ['thread_type_id = $1', 'warehouse_id = $2', 'status = ANY($3)']
+    const coneParams: unknown[] = [threadTypeId, warehouseId, usableStatuses]
     if (colorId != null) {
-      coneQuery = coneQuery.eq('color_id', colorId)
+      coneParams.push(colorId)
+      coneConditions.push(`color_id = $${coneParams.length}`)
     }
-    const { data: coneRows, error: coneErr } = await coneQuery
-
-    if (coneErr) {
+    let coneRows: Array<{ is_partial: boolean; quantity_meters: number; lot_id: number | null; thread_type_id: number; color_id: number | null }>
+    try {
+      coneRows = await query<{ is_partial: boolean; quantity_meters: number; lot_id: number | null; thread_type_id: number; color_id: number | null }>(
+        `SELECT is_partial, quantity_meters, lot_id, thread_type_id, color_id
+         FROM thread_inventory
+         WHERE ${coneConditions.join(' AND ')}`,
+        coneParams
+      )
+    } catch (coneErr) {
       console.error('thread_inventory supplier re-derive error:', coneErr)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -584,15 +693,25 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
     const cones = coneRows || []
     const lotIds = Array.from(new Set(cones.map((r) => r.lot_id).filter((v): v is number => v != null)))
 
-    const [lotsResp, threadTypeResp] = await Promise.all([
-      lotIds.length > 0
-        ? supabase.from('lots').select('id, supplier_id').in('id', lotIds)
-        : Promise.resolve({ data: [], error: null }),
-      supabase.from('thread_types').select('id, supplier_id').eq('id', threadTypeId).maybeSingle(),
-    ])
-
-    if (lotsResp.error || threadTypeResp.error) {
-      console.error('lots/thread_type fetch error:', lotsResp.error || threadTypeResp.error)
+    let lotsData: Array<{ id: number; supplier_id: number | null }>
+    let threadTypeData: { id: number; supplier_id: number | null } | null
+    try {
+      const [lotsResp, threadTypeResp] = await Promise.all([
+        lotIds.length > 0
+          ? query<{ id: number; supplier_id: number | null }>(
+              `SELECT id, supplier_id FROM lots WHERE id = ANY($1)`,
+              [lotIds]
+            )
+          : Promise.resolve([] as Array<{ id: number; supplier_id: number | null }>),
+        queryOne<{ id: number; supplier_id: number | null }>(
+          `SELECT id, supplier_id FROM thread_types WHERE id = $1`,
+          [threadTypeId]
+        ),
+      ])
+      lotsData = lotsResp
+      threadTypeData = threadTypeResp
+    } catch (err) {
+      console.error('lots/thread_type fetch error:', err)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải chi tiết nhà cung cấp'
@@ -600,10 +719,10 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
     }
 
     const lotSupplierMap = new Map<number, number | null>()
-    for (const lot of lotsResp.data || []) {
+    for (const lot of lotsData || []) {
       lotSupplierMap.set(lot.id, lot.supplier_id ?? null)
     }
-    const threadTypeSupplierId = threadTypeResp.data?.supplier_id ?? null
+    const threadTypeSupplierId = threadTypeData?.supplier_id ?? null
 
     const supplierAggMap = new Map<number | null, { full_cones: number; partial_cones: number; partial_meters: number }>()
     for (const row of cones) {
@@ -624,12 +743,16 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
     }
 
     const supplierIdsForLookup = Array.from(supplierAggMap.keys()).filter((v): v is number => v != null)
-    const suppliersResp = supplierIdsForLookup.length > 0
-      ? await supabase.from('suppliers').select('id, code, name').in('id', supplierIdsForLookup)
-      : { data: [], error: null }
-
-    if (suppliersResp.error) {
-      console.error('suppliers fetch error:', suppliersResp.error)
+    let suppliersData: Array<{ id: number; code: string; name: string }>
+    try {
+      suppliersData = supplierIdsForLookup.length > 0
+        ? await query<{ id: number; code: string; name: string }>(
+            `SELECT id, code, name FROM suppliers WHERE id = ANY($1)`,
+            [supplierIdsForLookup]
+          )
+        : []
+    } catch (suppliersErr) {
+      console.error('suppliers fetch error:', suppliersErr)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải chi tiết nhà cung cấp'
@@ -637,7 +760,7 @@ inventory.get('/summary/by-cone/:threadTypeId/warehouses', requirePermission('th
     }
 
     const supplierInfoMap = new Map<number, { code: string; name: string }>()
-    for (const s of suppliersResp.data || []) {
+    for (const s of suppliersData || []) {
       supplierInfoMap.set(s.id, { code: s.code, name: s.name })
     }
 
@@ -692,19 +815,33 @@ inventory.get('/unassigned-by-thread-type', requirePermission('thread.inventory.
 
     const transferableStatuses: ConeStatus[] = ['AVAILABLE', 'RECEIVED', 'INSPECTED']
 
-    const { data: cones, error } = await supabase
-      .from('thread_inventory')
-      .select(`
-        id,
-        thread_type_id,
-        thread_types(id, code, name, color_data:colors!color_id(name, hex_code))
-      `)
-      .eq('warehouse_id', parsedWarehouseId)
-      .is('lot_id', null)
-      .in('status', transferableStatuses)
-
-    if (error) {
-      console.error('Supabase error:', error)
+    let cones: Array<{
+      id: number
+      thread_type_id: number
+      thread_types: { id: number; code: string; name: string; color_data: { name: string; hex_code: string | null } | null } | null
+    }>
+    try {
+      cones = await query<{
+        id: number
+        thread_type_id: number
+        thread_types: { id: number; code: string; name: string; color_data: { name: string; hex_code: string | null } | null } | null
+      }>(
+        `SELECT ti.id, ti.thread_type_id,
+           CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+             'id', tt.id,
+             'code', tt.code,
+             'name', tt.name,
+             'color_data', CASE WHEN col.id IS NULL THEN NULL
+                                ELSE json_build_object('name', col.name, 'hex_code', col.hex_code) END
+           ) END AS thread_types
+         FROM thread_inventory ti
+         LEFT JOIN thread_types tt ON tt.id = ti.thread_type_id
+         LEFT JOIN colors col ON col.id = tt.color_id
+         WHERE ti.warehouse_id = $1 AND ti.lot_id IS NULL AND ti.status = ANY($2)`,
+        [parsedWarehouseId, transferableStatuses]
+      )
+    } catch (err) {
+      console.error('Unassigned cones query error:', err)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi tải danh sách cuộn chưa phân lô'
@@ -787,13 +924,23 @@ inventory.get('/:id', requirePermission('thread.inventory.view'), async (c) => {
       }, 400)
     }
 
-    const { data, error } = await supabase
-      .from('thread_inventory')
-      .select('*, thread_types(code, name, color_data:colors!color_id(name, hex_code), density_grams_per_meter)')
-      .eq('id', parsedId)
-      .single()
+    const data = await queryOne<ConeRow & Record<string, unknown>>(
+      `SELECT ti.*,
+         CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object(
+           'code', tt.code,
+           'name', tt.name,
+           'color_data', CASE WHEN col.id IS NULL THEN NULL
+                              ELSE json_build_object('name', col.name, 'hex_code', col.hex_code) END,
+           'density_grams_per_meter', tt.density_grams_per_meter
+         ) END AS thread_types
+       FROM thread_inventory ti
+       LEFT JOIN thread_types tt ON tt.id = ti.thread_type_id
+       LEFT JOIN colors col ON col.id = tt.color_id
+       WHERE ti.id = $1`,
+      [parsedId]
+    )
 
-    if (error || !data) {
+    if (!data) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Không tìm thấy cuộn chỉ'
@@ -834,13 +981,12 @@ inventory.post('/receive', requirePermission('thread.inventory.edit'), async (c)
     }
 
     // Get thread type to calculate meters
-    const { data: threadType, error: threadError } = await supabase
-      .from('thread_types')
-      .select('meters_per_cone, density_grams_per_meter')
-      .eq('id', body.thread_type_id)
-      .single()
+    const threadType = await queryOne<{ meters_per_cone: number | null; density_grams_per_meter: number | null }>(
+      `SELECT meters_per_cone, density_grams_per_meter FROM thread_types WHERE id = $1`,
+      [body.thread_type_id]
+    )
 
-    if (threadError || !threadType) {
+    if (!threadType) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Không tìm thấy loại chỉ'
@@ -848,58 +994,72 @@ inventory.post('/receive', requirePermission('thread.inventory.edit'), async (c)
     }
 
     // Verify warehouse exists
-    const { data: warehouse, error: warehouseError } = await supabase
-      .from('warehouses')
-      .select('id')
-      .eq('id', body.warehouse_id)
-      .single()
+    const warehouse = await queryOne<{ id: number }>(
+      `SELECT id FROM warehouses WHERE id = $1`,
+      [body.warehouse_id]
+    )
 
-    if (warehouseError || !warehouse) {
+    if (!warehouse) {
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Không tìm thấy kho'
       }, 404)
     }
 
-    const cones: Partial<ConeRow>[] = []
+    const insertColumns = [
+      'cone_id', 'thread_type_id', 'warehouse_id', 'color_id', 'quantity_cones',
+      'quantity_meters', 'weight_grams', 'is_partial', 'status', 'lot_number',
+      'expiry_date', 'location'
+    ]
+    const insertParams: unknown[] = []
+    const valueRows: string[] = []
     const timestamp = Date.now()
 
     for (let i = 0; i < body.quantity_cones; i++) {
       // Generate unique cone_id with format: CONE-{timestamp}-{sequence}
       const coneId = `CONE-${timestamp}-${String(i + 1).padStart(4, '0')}`
-      
+
       // Calculate meters from weight or use standard
       let quantityMeters = threadType.meters_per_cone || 0
       if (body.weight_per_cone_grams && threadType.density_grams_per_meter) {
         quantityMeters = body.weight_per_cone_grams / threadType.density_grams_per_meter
       }
 
-      cones.push({
-        cone_id: coneId,
-        thread_type_id: body.thread_type_id,
-        warehouse_id: body.warehouse_id,
-        color_id: body.color_id || null,
-        quantity_cones: 1,
-        quantity_meters: quantityMeters,
-        weight_grams: body.weight_per_cone_grams,
-        is_partial: false,
-        status: 'RECEIVED' as ConeRow['status'],
-        lot_number: body.lot_number,
-        expiry_date: body.expiry_date,
-        location: body.location
+      const rowValues = [
+        coneId,
+        body.thread_type_id,
+        body.warehouse_id,
+        body.color_id || null,
+        1,
+        quantityMeters,
+        body.weight_per_cone_grams ?? null,
+        false,
+        'RECEIVED',
+        body.lot_number ?? null,
+        body.expiry_date ?? null,
+        body.location ?? null,
+      ]
+      const placeholders = rowValues.map((v) => {
+        insertParams.push(v)
+        return `$${insertParams.length}`
       })
+      valueRows.push(`(${placeholders.join(', ')})`)
     }
 
-    const { data, error } = await supabase
-      .from('thread_inventory')
-      .insert(cones)
-      .select()
-
-    if (error) {
-      console.error('Supabase error:', error)
+    let data: ConeRow[]
+    try {
+      data = await query<ConeRow>(
+        `INSERT INTO thread_inventory (${insertColumns.join(', ')})
+         VALUES ${valueRows.join(', ')}
+         RETURNING *`,
+        insertParams
+      )
+    } catch (err) {
+      console.error('Receive stock insert error:', err)
+      const msg = err instanceof Error ? err.message : String(err)
       return c.json<ThreadApiResponse<null>>({
         data: null,
-        error: 'Lỗi khi nhập kho: ' + error.message
+        error: 'Lỗi khi nhập kho: ' + msg
       }, 500)
     }
 
@@ -931,14 +1091,15 @@ inventory.post('/stocktake', requirePermission('thread.inventory.edit'), async (
     }
 
     // Get all cones in the warehouse from database
-    const { data: dbCones, error: dbError } = await supabase
-      .from('thread_inventory')
-      .select('cone_id')
-      .eq('warehouse_id', body.warehouse_id)
-      .not('status', 'in', '("CONSUMED","WRITTEN_OFF")')
-
-    if (dbError) {
-      console.error('Supabase error:', dbError)
+    let dbCones: Array<{ cone_id: string }>
+    try {
+      dbCones = await query<{ cone_id: string }>(
+        `SELECT cone_id FROM thread_inventory
+         WHERE warehouse_id = $1 AND status NOT IN ('CONSUMED', 'WRITTEN_OFF')`,
+        [body.warehouse_id]
+      )
+    } catch (dbError) {
+      console.error('Stocktake cone query error:', dbError)
       return c.json<ThreadApiResponse<null>>({
         data: null,
         error: 'Lỗi khi truy vấn database'
@@ -952,31 +1113,56 @@ inventory.post('/stocktake', requirePermission('thread.inventory.edit'), async (
     const matched = body.scanned_cone_ids.filter(id => dbConeIds.has(id))
     const missing = [...dbConeIds].filter(id => !scannedSet.has(id))
     const extra = body.scanned_cone_ids.filter(id => !dbConeIds.has(id))
-    const matchRate = dbConeIds.size > 0 
-      ? Math.round((matched.length / dbConeIds.size) * 100 * 10) / 10 
+    const matchRate = dbConeIds.size > 0
+      ? Math.round((matched.length / dbConeIds.size) * 100 * 10) / 10
       : 0
 
     // Save stocktake record
-    const { data: stocktake, error: insertError } = await supabase
-      .from('stocktakes')
-      .insert({
+    let stocktake: { id: number; created_at: string } | null = null
+    try {
+      stocktake = await queryOne<{ id: number; created_at: string }>(
+        `INSERT INTO stocktakes (
+           warehouse_id, total_in_db, total_scanned, matched_count,
+           missing_cone_ids, extra_cone_ids, match_rate, notes, performed_by
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+          body.warehouse_id,
+          dbConeIds.size,
+          body.scanned_cone_ids.length,
+          matched.length,
+          missing,
+          extra,
+          matchRate,
+          body.notes,
+          body.performed_by,
+        ]
+      )
+    } catch (insertError) {
+      // If stocktakes table doesn't exist, just return the result without saving
+      const insertMsg = insertError instanceof Error ? insertError.message : String(insertError)
+      console.warn('Could not save stocktake (table may not exist):', insertMsg)
+
+      const result: StocktakeResult = {
+        stocktake_id: 0,
         warehouse_id: body.warehouse_id,
         total_in_db: dbConeIds.size,
         total_scanned: body.scanned_cone_ids.length,
-        matched_count: matched.length,
-        missing_cone_ids: missing,
-        extra_cone_ids: extra,
+        matched: matched.length,
+        missing,
+        extra,
         match_rate: matchRate,
-        notes: body.notes,
-        performed_by: body.performed_by,
-      })
-      .select()
-      .single()
+        performed_at: new Date().toISOString(),
+      }
 
-    if (insertError) {
-      // If stocktakes table doesn't exist, just return the result without saving
-      console.warn('Could not save stocktake (table may not exist):', insertError.message)
-      
+      return c.json<ThreadApiResponse<StocktakeResult>>({
+        data: result,
+        error: null,
+        message: `Kiểm kê hoàn tất: ${matched.length}/${dbConeIds.size} khớp (${matchRate}%)`
+      })
+    }
+
+    if (!stocktake) {
       const result: StocktakeResult = {
         stocktake_id: 0,
         warehouse_id: body.warehouse_id,

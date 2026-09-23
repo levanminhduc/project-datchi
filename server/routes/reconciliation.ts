@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import type { ThreadApiResponse } from '../types/thread'
 
@@ -263,24 +263,24 @@ reconciliation.get('/', async (c) => {
     const filters = reconciliationFiltersSchema.parse(queryParams)
 
     // Build query from view
-    let query = supabase
-      .from('v_issue_reconciliation')
+    const builder = from('v_issue_reconciliation')
       .select('*')
 
     // Apply filters
     if (filters.po_id) {
-      query = query.eq('po_id', filters.po_id)
+      builder.eq('po_id', filters.po_id)
     }
     if (filters.style_id) {
-      query = query.eq('style_id', filters.style_id)
+      builder.eq('style_id', filters.style_id)
     }
     if (filters.color_id) {
-      query = query.eq('color_id', filters.color_id)
+      builder.eq('color_id', filters.color_id)
     }
 
-    const { data: rows, error } = await query
-
-    if (error) {
+    let rows: Record<string, unknown>[]
+    try {
+      rows = await builder.list<Record<string, unknown>>()
+    } catch (error) {
       console.error('Reconciliation query error:', error)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -333,24 +333,24 @@ reconciliation.get('/export', async (c) => {
     const filters = reconciliationFiltersSchema.parse(queryParams)
 
     // Build query from view
-    let query = supabase
-      .from('v_issue_reconciliation')
+    const builder = from('v_issue_reconciliation')
       .select('*')
 
     // Apply filters
     if (filters.po_id) {
-      query = query.eq('po_id', filters.po_id)
+      builder.eq('po_id', filters.po_id)
     }
     if (filters.style_id) {
-      query = query.eq('style_id', filters.style_id)
+      builder.eq('style_id', filters.style_id)
     }
     if (filters.color_id) {
-      query = query.eq('color_id', filters.color_id)
+      builder.eq('color_id', filters.color_id)
     }
 
-    const { data: rows, error } = await query
-
-    if (error) {
+    let rows: Record<string, unknown>[]
+    try {
+      rows = await builder.list<Record<string, unknown>>()
+    } catch (error) {
       console.error('Reconciliation export query error:', error)
       return c.json<ThreadApiResponse<null>>({
         data: null,
@@ -400,11 +400,12 @@ reconciliation.get('/export', async (c) => {
  */
 reconciliation.get('/over-limit', async (c) => {
   try {
-    const { data: items, error } = await supabase
-      .from('v_issue_reconciliation')
-      .select('*')
-
-    if (error) {
+    let items: Record<string, unknown>[]
+    try {
+      items = await from('v_issue_reconciliation')
+        .select('*')
+        .list<Record<string, unknown>>()
+    } catch (error) {
       console.error('Over limit query error:', error)
       return c.json<ThreadApiResponse<null>>({
         data: null,

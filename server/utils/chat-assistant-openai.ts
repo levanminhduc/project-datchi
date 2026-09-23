@@ -198,6 +198,7 @@ async function callOpenAIApi(
         tools: TOOLS,
         temperature: 0.2,
         max_tokens: config.maxOutputTokens,
+        stream: false,
       }),
       headersTimeout: config.timeoutMs,
       bodyTimeout: config.timeoutMs,

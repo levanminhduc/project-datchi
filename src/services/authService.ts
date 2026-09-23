@@ -1,5 +1,5 @@
-import { supabase } from '@/lib/supabase'
 import { fetchApi, fetchApiRaw, ApiError, clearAuthSessionLocal } from './api'
+import { setTokens, hasTokens } from '@/lib/auth-token-store'
 import type {
   LoginCredentials,
   LoginResponse,
@@ -19,6 +19,12 @@ interface AuthActionResponse {
   success?: boolean
 }
 
+interface LoginTokenData {
+  accessToken: string
+  refreshToken: string
+  expiresAt: number
+}
+
 export type AuthErrorType = 'auth' | 'network' | null
 
 export interface FetchResult<T> {
@@ -26,71 +32,42 @@ export interface FetchResult<T> {
   errorType: AuthErrorType
 }
 
-const HAS_SESSION_TIMEOUT_MS = 3000
-
-async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number
-): Promise<T | null> {
-  const timeout = new Promise<null>((resolve) => {
-    setTimeout(() => resolve(null), timeoutMs)
-  })
-  return Promise.race([promise, timeout])
-}
-
 class AuthService {
   async signIn(
     credentials: LoginCredentials
   ): Promise<{ data: LoginResponse | null; error: string | null }> {
     try {
-      const email = `${credentials.employeeId.toLowerCase()}@internal.datchi.local`
-
-      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password: credentials.password,
-      })
-
-      if (signInError) {
-        console.error('[authService] Supabase signIn error:', signInError.message)
-
-        if (signInError.message === 'Invalid login credentials') {
-          const ensured = await this.ensureAuthUser(credentials)
-          if (ensured) {
-            const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({
-              email,
-              password: credentials.password,
-            })
-            if (!retryError && retryData?.session?.access_token) {
-              const { data: employee, errorType } = await this.fetchCurrentEmployee()
-              if (!employee) {
-                await clearAuthSessionLocal()
-                const msg = errorType === 'network'
-                  ? 'Không thể kết nối đến máy chủ'
-                  : 'Không thể lấy thông tin nhân viên'
-                return { data: null, error: msg }
-              }
-              return { data: { employee }, error: null }
-            }
+      let loginResponse: AuthDataResponse<LoginTokenData>
+      try {
+        loginResponse = await fetchApi<AuthDataResponse<LoginTokenData>>('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            employeeId: credentials.employeeId,
+            password: credentials.password,
+          }),
+        })
+      } catch (err) {
+        if (err instanceof ApiError) {
+          if (err.status === 401 || err.status === 400) {
+            return { data: null, error: err.message || 'Mã nhân viên hoặc mật khẩu không đúng' }
           }
-          return { data: null, error: 'Mã nhân viên hoặc mật khẩu không đúng' }
+          if (err.status === 423) {
+            return { data: null, error: err.message || 'Tài khoản đã bị khóa tạm thời' }
+          }
+          return { data: null, error: err.message || 'Đăng nhập thất bại' }
         }
-
-        if (signInError.status === 400) {
-          return { data: null, error: 'Thông tin đăng nhập không hợp lệ' }
-        }
-
-        return { data: null, error: signInError.message || 'Đăng nhập thất bại' }
+        return { data: null, error: 'Không thể kết nối đến máy chủ' }
       }
 
-      // Verify we got a valid session
-      if (!authData?.session?.access_token) {
-        console.error('[authService] No session after signIn')
+      const tokens = loginResponse.data
+      if (!tokens?.accessToken || !tokens?.refreshToken) {
         return { data: null, error: 'Không thể tạo phiên đăng nhập' }
       }
 
+      setTokens({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken })
+
       const { data: employee, errorType } = await this.fetchCurrentEmployee()
       if (!employee) {
-        // Sign out if we can't fetch employee data
         await clearAuthSessionLocal()
         const msg = errorType === 'network'
           ? 'Không thể kết nối đến máy chủ'
@@ -106,7 +83,28 @@ class AuthService {
   }
 
   async signOut(): Promise<void> {
-    await supabase.auth.signOut()
+    await clearAuthSessionLocal()
+  }
+
+  async logoutAllDevices(): Promise<{ error: string | null }> {
+    try {
+      const response = await fetchApi<AuthActionResponse>('/api/auth/logout-all-devices', {
+        method: 'POST',
+      })
+
+      if (response.error === true || typeof response.error === 'string') {
+        return {
+          error:
+            response.message ||
+            (typeof response.error === 'string' ? response.error : 'Đăng xuất tất cả thiết bị thất bại'),
+        }
+      }
+
+      return { error: null }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Không thể kết nối đến máy chủ'
+      return { error: message }
+    }
   }
 
   async fetchCurrentEmployee(): Promise<FetchResult<EmployeeAuth>> {
@@ -175,43 +173,7 @@ class AuthService {
   }
 
   async hasSession(): Promise<boolean> {
-    try {
-      const result = await withTimeout(
-        supabase.auth.getSession(),
-        HAS_SESSION_TIMEOUT_MS
-      )
-
-      if (!result) {
-        return false
-      }
-
-      const {
-        data: { session },
-      } = result
-
-      return !!session?.access_token
-    } catch {
-      return false
-    }
-  }
-
-  private async ensureAuthUser(credentials: LoginCredentials): Promise<boolean> {
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || ''
-      const res = await fetch(`${apiUrl}/api/auth/ensure-auth-user`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employeeId: credentials.employeeId,
-          password: credentials.password,
-        }),
-      })
-      if (!res.ok) return false
-      const data = await res.json()
-      return data.created === true
-    } catch {
-      return false
-    }
+    return hasTokens()
   }
 }
 

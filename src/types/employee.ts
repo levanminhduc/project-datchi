@@ -9,7 +9,7 @@
  * Field names match actual database columns
  */
 export interface Employee {
-  id: number              // ID from Supabase
+  id: number              // employees.id primary key
   employee_id: string     // Mã Nhân Viên (database column)
   full_name: string       // Tên Nhân Viên
   department: string      // Phòng Ban
@@ -17,6 +17,7 @@ export interface Employee {
   is_active: boolean      // Trạng thái
   created_at: string      // ISO timestamp
   updated_at: string      // ISO timestamp
+  locked_until: string | null
 }
 
 export interface EmployeeDetail extends Employee {
@@ -24,7 +25,6 @@ export interface EmployeeDetail extends Employee {
   must_change_password: boolean | null
   password_changed_at: string | null
   failed_login_attempts: number | null
-  locked_until: string | null
 }
 
 /**

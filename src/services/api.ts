@@ -1,7 +1,11 @@
-import { supabase } from '@/lib/supabase'
-import { authorizeLogout, revokeLogout, clearAll, getBackup } from '@/lib/supabase-protected-storage'
-import type { Session } from '@supabase/supabase-js'
-import { isAuthErrorPermanent } from './auth-error-utils'
+import {
+  getAccessToken,
+  getRefreshToken,
+  setTokens,
+  clearTokens,
+  isTokenExpiringSoon,
+} from '@/lib/auth-token-store'
+import { scheduleRefresh } from '@/lib/auth-refresh-scheduler'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 const REQUEST_TIMEOUT_MS = 10000
@@ -34,6 +38,13 @@ export class NetworkError extends Error {
   }
 }
 
+export class RefreshInProgressError extends Error {
+  constructor() {
+    super('Đang làm mới phiên, vui lòng thử lại')
+    this.name = 'RefreshInProgressError'
+  }
+}
+
 const WAIT_FOR_NETWORK_TIMEOUT_MS = 300_000
 
 function waitForNetwork(timeoutMs = WAIT_FOR_NETWORK_TIMEOUT_MS): Promise<void> {
@@ -55,7 +66,7 @@ function waitForNetwork(timeoutMs = WAIT_FOR_NETWORK_TIMEOUT_MS): Promise<void> 
   })
 }
 
-let refreshPromise: Promise<Session> | null = null
+let refreshPromise: Promise<string> | null = null
 let isLoggingOut = false
 
 const CROSS_TAB_CHANNEL_NAME = 'datchi-auth-refresh'
@@ -82,30 +93,11 @@ function getRefreshChannel(): BroadcastChannel | null {
   return refreshChannel
 }
 
-async function waitForOtherTabRefresh(): Promise<Session | null> {
+async function waitForOtherTabRefresh(): Promise<string | null> {
   await new Promise(r => setTimeout(r, CROSS_TAB_WAIT_MS))
-  const { data: { session } } = await supabase.auth.getSession()
-  return session
-}
-
-function clearSupabaseTokens() {
-  if (typeof window === 'undefined') return
-
-  const keysToRemove: string[] = []
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i)
-    if (key && key.startsWith('sb-') && key.includes('auth-token')) {
-      keysToRemove.push(key)
-    }
-  }
-  keysToRemove.forEach((key) => localStorage.removeItem(key))
-}
-
-async function forceBackToLogin() {
-  if (typeof window === 'undefined') return
-  if (window.location.pathname !== '/login') {
-    window.location.replace('/login')
-  }
+  const token = getAccessToken()
+  if (token && !isTokenExpiringSoon(token)) return token
+  return null
 }
 
 function resolveRequestUrl(endpointOrUrl: string): string {
@@ -146,51 +138,117 @@ function getErrorMessageFromPayload(payload: unknown): string | null {
   return null
 }
 
-export async function getRefreshedSession(): Promise<Session> {
+interface RefreshResponseData {
+  accessToken: string
+  refreshToken: string
+  expiresAt: number
+}
+
+async function requestTokenRefresh(refreshToken: string): Promise<RefreshResponseData> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new NetworkError()
+    }
+    if (error instanceof TypeError) {
+      throw new NetworkError()
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
+
+  const payload = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    if (response.status === 409) {
+      throw new RefreshInProgressError()
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new SessionExpiredError()
+    }
+    throw new Error(getErrorMessageFromPayload(payload) || 'Lỗi khi làm mới phiên')
+  }
+
+  const data = (payload as { data?: RefreshResponseData } | null)?.data
+  if (!data?.accessToken || !data?.refreshToken) {
+    throw new SessionExpiredError()
+  }
+  return data
+}
+
+export async function getRefreshedAccessToken(): Promise<string> {
   if (refreshPromise) {
     return refreshPromise
   }
 
   if (otherTabRefreshing) {
-    const session = await waitForOtherTabRefresh()
-    if (session) return session
+    const token = await waitForOtherTabRefresh()
+    if (token) return token
   }
 
-  const doRefresh = async (): Promise<Session> => {
+  const doRefresh = async (): Promise<string> => {
     const channel = getRefreshChannel()
     try {
       channel?.postMessage({ type: 'REFRESH_START' } satisfies RefreshMessage)
 
-      const { data: { session: currentSession } } = await supabase.auth.getSession()
-      if (currentSession && !isTokenExpiringSoon(currentSession.access_token)) {
-        return currentSession
+      const currentToken = getAccessToken()
+      if (currentToken && !isTokenExpiringSoon(currentToken)) {
+        return currentToken
       }
 
-      const { data, error } = await supabase.auth.refreshSession()
+      const refreshToken = getRefreshToken()
+      if (!refreshToken) {
+        throw new SessionExpiredError()
+      }
 
-      if (error) {
-        if (isAuthErrorPermanent(error)) {
+      try {
+        const data = await requestTokenRefresh(refreshToken)
+        setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken })
+        scheduleRefresh(data.expiresAt)
+        return data.accessToken
+      } catch (error) {
+        if (error instanceof RefreshInProgressError) {
+          await new Promise(r => setTimeout(r, CROSS_TAB_WAIT_MS))
+          const cachedToken = getAccessToken()
+          if (cachedToken && !isTokenExpiringSoon(cachedToken)) return cachedToken
+          const refreshToken2 = getRefreshToken()
+          if (!refreshToken2) throw new SessionExpiredError()
+          try {
+            const data = await requestTokenRefresh(refreshToken2)
+            setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken })
+            scheduleRefresh(data.expiresAt)
+            return data.accessToken
+          } catch (retryError) {
+            if (retryError instanceof RefreshInProgressError) {
+              throw new SessionExpiredError()
+            }
+            throw retryError
+          }
+        }
+        if (error instanceof SessionExpiredError) {
           if (!navigator.onLine) {
             throw new NetworkError()
           }
-          throw new SessionExpiredError()
+          throw error
         }
-        await new Promise(r => setTimeout(r, 200))
-        const { data: { session: retrySession } } = await supabase.auth.getSession()
-        if (retrySession && !isTokenExpiringSoon(retrySession.access_token)) {
-          return retrySession
+        if (error instanceof NetworkError) {
+          throw error
         }
         if (!navigator.onLine) {
           throw new NetworkError()
         }
-        throw new Error('Lỗi kết nối khi làm mới phiên')
+        throw error
       }
-
-      if (!data.session) {
-        throw new SessionExpiredError()
-      }
-
-      return data.session
     } finally {
       channel?.postMessage({ type: 'REFRESH_DONE' } satisfies RefreshMessage)
       refreshPromise = null
@@ -211,30 +269,27 @@ export function isLogoutInProgress(): boolean {
 
 export async function clearAuthSessionLocal(): Promise<void> {
   isLoggingOut = true
-  authorizeLogout()
+  const refreshToken = getRefreshToken()
   try {
-    await supabase.auth.signOut({ scope: 'local' })
-  } catch {
+    if (refreshToken) {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      }).catch(() => {})
+    }
   } finally {
-    clearSupabaseTokens()
-    clearAll()
-    revokeLogout()
+    clearTokens()
   }
 }
 
-const TOKEN_REFRESH_BUFFER_MS = 60_000
-
-function isTokenExpiringSoon(token: string): boolean {
-  try {
-    const payloadB64 = token.split('.')[1]
-    if (!payloadB64) return false
-    const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')))
-    if (typeof payload.exp !== 'number') return false
-    return (payload.exp * 1000) - Date.now() < TOKEN_REFRESH_BUFFER_MS
-  } catch {
-    return false
+async function forceBackToLogin() {
+  if (typeof window === 'undefined') return
+  if (window.location.pathname !== '/login') {
+    window.location.replace('/login')
   }
 }
+
 
 export async function fetchApiRaw(
   endpointOrUrl: string,
@@ -328,29 +383,11 @@ export async function fetchApiRaw(
     }
   }
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  let token = session?.access_token
+  let token = getAccessToken() ?? undefined
 
-  if (!token && !isLoggingOut) {
-    const backup = getBackup()
-    if (backup) {
-      try {
-        const { data } = await supabase.auth.setSession({
-          access_token: backup.access_token,
-          refresh_token: backup.refresh_token,
-        })
-        token = data.session?.access_token
-      } catch {
-      }
-    }
-  }
-
-  if (token && isTokenExpiringSoon(token)) {
+  if (token && isTokenExpiringSoon(token) && !isLoggingOut) {
     try {
-      const refreshed = await getRefreshedSession()
-      token = refreshed.access_token
+      token = await getRefreshedAccessToken()
     } catch {
     }
   }
@@ -373,8 +410,8 @@ export async function fetchApiRaw(
     }
 
     try {
-      const newSession = await getRefreshedSession()
-      const retriedResponse = await makeRequest(newSession.access_token)
+      const newToken = await getRefreshedAccessToken()
+      const retriedResponse = await makeRequest(newToken)
 
       if (retriedResponse.status === 401) {
         throw new ApiError(

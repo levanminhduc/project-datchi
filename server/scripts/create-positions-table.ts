@@ -1,11 +1,11 @@
 import dotenv from 'dotenv'
 dotenv.config()
 
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query } from '../db/query'
 
 async function createPositionsTable() {
   console.log('Creating positions table...')
-  
+
   // Create table
   const createTableSQL = `
     CREATE TABLE IF NOT EXISTS positions (
@@ -17,17 +17,15 @@ async function createPositionsTable() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
   `
-  
-  const { error: createError } = await supabase.rpc('exec_sql', {
-    sql: createTableSQL
-  })
-  
-  if (createError) {
+
+  try {
+    await query(createTableSQL, [])
+  } catch (createError) {
     console.error('Error creating table:', createError)
     // Try alternative approach - insert data directly
     console.log('Trying to insert data directly...')
   }
-  
+
   // Insert initial data
   const initialPositions = [
     { name: 'quan_ly', display_name: 'Quản Lý' },
@@ -37,22 +35,19 @@ async function createPositionsTable() {
     { name: 'giam_doc', display_name: 'Giám Đốc' },
     { name: 'pho_giam_doc', display_name: 'Phó Giám Đốc' },
   ]
-  
+
   for (const pos of initialPositions) {
-    const { error } = await supabase
-      .from('positions')
-      .upsert(pos, {
-        onConflict: 'name',
-        ignoreDuplicates: true
-      })
-    
-    if (error) {
-      console.error(`Error inserting ${pos.name}:`, error.message)
-    } else {
+    try {
+      await query(
+        'INSERT INTO positions (name, display_name) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING',
+        [pos.name, pos.display_name]
+      )
       console.log(`✓ Inserted: ${pos.display_name}`)
+    } catch (error) {
+      console.error(`Error inserting ${pos.name}:`, (error as Error).message)
     }
   }
-  
+
   console.log('Done!')
 }
 

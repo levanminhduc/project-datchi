@@ -94,6 +94,7 @@ export interface AggregatedRow {
   sl_can_dat?: number
   additional_order?: number
   total_final?: number
+  total_full_cones?: number
   quota_cones?: number | null
   demand_note?: string | null
   is_fallback_type?: boolean
@@ -209,6 +210,7 @@ export interface ReceiveDeliveryDTO {
   quantity: number
   received_by: string
   expiry_date?: string
+  idempotency_key?: string
 }
 
 export interface UpdateDeliveryDTO {
@@ -467,6 +469,10 @@ export interface DeliveryReceiveLog {
   warehouse_name: string
   quantity_cones: number
   received_quantity: number
+  week_id: number | null
+  reverted_at: string | null
+  reverted_by: string | null
+  has_tagged_cones: boolean
 }
 
 export interface WeeklyOrderProgressThreadLine {

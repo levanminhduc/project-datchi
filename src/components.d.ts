@@ -13,6 +13,8 @@ declare module 'vue' {
   export interface GlobalComponents {
     ActiveConflictsWidget: typeof import('./components/thread/ActiveConflictsWidget.vue')['default']
     AddPOItemDialog: typeof import('./components/thread/AddPOItemDialog.vue')['default']
+    AddSummaryRowDialog: typeof import('./components/thread/weekly-order/AddSummaryRowDialog.vue')['default']
+    AdjustWeekStockDialog: typeof import('./components/thread/weekly-order/AdjustWeekStockDialog.vue')['default']
     AlertsWidget: typeof import('./components/thread/AlertsWidget.vue')['default']
     AllocationFormDialog: typeof import('./components/thread/AllocationFormDialog.vue')['default']
     AllocationStatusBadge: typeof import('./components/thread/AllocationStatusBadge.vue')['default']
@@ -108,6 +110,7 @@ declare module 'vue' {
     ManualEntryHistoryDialog: typeof import('./components/thread/ManualEntryHistoryDialog.vue')['default']
     ManualReturnDialog: typeof import('./components/thread/weekly-order/ManualReturnDialog.vue')['default']
     ManualWeightInput: typeof import('./components/hardware/ManualWeightInput.vue')['default']
+    ModuleLinkCard: typeof import('./components/ui/cards/ModuleLinkCard.vue')['default']
     NetworkStatusBanner: typeof import('./components/ui/feedback/NetworkStatusBanner.vue')['default']
     NotificationBell: typeof import('./components/ui/NotificationBell.vue')['default']
     OfflineSyncBanner: typeof import('./components/offline/OfflineSyncBanner.vue')['default']
@@ -148,6 +151,7 @@ declare module 'vue' {
     ReturnGroupDetail: typeof import('./components/thread/ReturnGroupDetail.vue')['default']
     ReturnHistoryDialog: typeof import('./components/thread/ReturnHistoryDialog.vue')['default']
     ReturnInitiateDialog: typeof import('./components/thread/ReturnInitiateDialog.vue')['default']
+    RevertReceiveDialog: typeof import('./components/thread/weekly-order/RevertReceiveDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     ScaleConnectionDialog: typeof import('./components/hardware/ScaleConnectionDialog.vue')['default']
@@ -182,8 +186,12 @@ declare module 'vue' {
     WeekHistoryDialog: typeof import('./components/thread/weekly-order/WeekHistoryDialog.vue')['default']
     WeekInfoCard: typeof import('./components/thread/weekly-order/WeekInfoCard.vue')['default']
     WeeklyOrderProcessTraceSection: typeof import('./components/thread/weekly-order/WeeklyOrderProcessTraceSection.vue')['default']
+    WeeklyOrderUnlockCard: typeof import('./components/settings/WeeklyOrderUnlockCard.vue')['default']
     WeighingDialog: typeof import('./components/thread/WeighingDialog.vue')['default']
     WeightMeterDisplay: typeof import('./components/thread/WeightMeterDisplay.vue')['default']
+    WorkflowMap: typeof import('./components/thread/weekly-order/workflow/WorkflowMap.vue')['default']
+    WorkflowNode: typeof import('./components/thread/weekly-order/workflow/WorkflowNode.vue')['default']
+    WorkflowRowDetail: typeof import('./components/thread/weekly-order/workflow/WorkflowRowDetail.vue')['default']
     WriteOffDialog: typeof import('./components/thread/WriteOffDialog.vue')['default']
   }
 }

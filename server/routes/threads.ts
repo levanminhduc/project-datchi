@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin as supabase } from '../db/supabase'
+import { query, queryOne, querySingle } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import { sanitizeFilterValue } from '../utils/sanitize'
 import type {
@@ -10,6 +10,31 @@ import type {
 } from '../types/thread'
 
 const threads = new Hono()
+
+const COLOR_DATA_JSON = `CASE WHEN col.id IS NULL THEN NULL ELSE json_build_object(
+  'id', col.id, 'name', col.name, 'hex_code', col.hex_code, 'pantone_code', col.pantone_code
+) END AS color_data`
+
+const SUPPLIER_DATA_JSON = `CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object(
+  'id', sup.id, 'code', sup.code, 'name', sup.name
+) END AS supplier_data`
+
+const SUPPLIERS_JUNCTION_JSON = `COALESCE((
+  SELECT json_agg(json_build_object(
+    'id', tts.id,
+    'thread_type_id', tts.thread_type_id,
+    'supplier_id', tts.supplier_id,
+    'supplier_item_code', tts.supplier_item_code,
+    'unit_price', tts.unit_price,
+    'is_active', tts.is_active,
+    'supplier', CASE WHEN js.id IS NULL THEN NULL ELSE json_build_object(
+      'id', js.id, 'code', js.code, 'name', js.name
+    ) END
+  ))
+  FROM thread_type_supplier tts
+  LEFT JOIN suppliers js ON js.id = tts.supplier_id
+  WHERE tts.thread_type_id = tt.id
+), '[]'::json) AS suppliers`
 
 /**
  * GET /api/threads - List all thread types with filters
@@ -24,57 +49,58 @@ threads.get('/', requirePermission('thread.types.view'), async (c) => {
     const supplierId = c.req.query('supplier_id')
     const isActive = c.req.query('is_active')
 
-    // LEFT JOIN colors and suppliers tables for related data
-    // Also fetch suppliers from junction table (many-to-many)
-    let query = supabase
-      .from('thread_types')
-      .select(`
-        *,
-        color_data:colors(id, name, hex_code, pantone_code),
-        supplier_data:suppliers(id, code, name),
-        suppliers:thread_type_supplier(id, thread_type_id, supplier_id, supplier_item_code, unit_price, is_active, supplier:suppliers(id, code, name))
-      `)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+    const conditions: string[] = ['tt.deleted_at IS NULL']
+    const params: unknown[] = []
 
     // Apply search filter - searches code and name
     if (search) {
       const s = sanitizeFilterValue(search)
-      query = query.or(`code.ilike.%${s}%,name.ilike.%${s}%`)
+      params.push(`%${s}%`)
+      const p = `$${params.length}`
+      conditions.push(`(tt.code ILIKE ${p} OR tt.name ILIKE ${p})`)
     }
 
     // Apply individual filters
     if (colorId) {
-      query = query.eq('color_id', parseInt(colorId))
+      params.push(parseInt(colorId))
+      conditions.push(`tt.color_id = $${params.length}`)
     }
     if (material) {
-      query = query.eq('material', material)
+      params.push(material)
+      conditions.push(`tt.material = $${params.length}`)
     }
     if (supplierId) {
       const sid = parseInt(supplierId)
-      const { data: junctionRows } = await supabase
-        .from('thread_type_supplier')
-        .select('thread_type_id')
-        .eq('supplier_id', sid)
-        .eq('is_active', true)
-
-      const junctionIds = (junctionRows || []).map((r: any) => r.thread_type_id)
-
-      if (junctionIds.length > 0) {
-        const idList = junctionIds.join(',')
-        query = query.or(`supplier_id.eq.${sid},id.in.(${idList})`)
-      } else {
-        query = query.eq('supplier_id', sid)
-      }
+      params.push(sid)
+      const p = `$${params.length}`
+      conditions.push(
+        `(tt.supplier_id = ${p} OR tt.id IN (
+           SELECT thread_type_id FROM thread_type_supplier
+           WHERE supplier_id = ${p} AND is_active = TRUE
+         ))`
+      )
     }
     if (isActive !== undefined) {
-      query = query.eq('is_active', isActive === 'true')
+      params.push(isActive === 'true')
+      conditions.push(`tt.is_active = $${params.length}`)
     }
 
-    const { data, error } = await query
-
-    if (error) {
-      console.error('Supabase error:', error)
+    let data: ThreadTypeWithRelations[]
+    try {
+      data = await query<ThreadTypeWithRelations>(
+        `SELECT tt.*,
+                ${COLOR_DATA_JSON},
+                ${SUPPLIER_DATA_JSON},
+                ${SUPPLIERS_JUNCTION_JSON}
+         FROM thread_types tt
+         LEFT JOIN colors col ON col.id = tt.color_id
+         LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY tt.created_at DESC`,
+        params
+      )
+    } catch (error) {
+      console.error('Thread types list error:', error)
       return c.json<ThreadApiResponse<null>>(
         {
           data: null,
@@ -112,9 +138,7 @@ threads.get('/tex-options', requirePermission('thread.types.view'), async (c) =>
 
     const sid = parseInt(supplierId)
 
-    const { data, error } = await supabase.rpc('fn_get_tex_options_by_supplier', { p_supplier_id: sid })
-
-    if (error) throw error
+    const data = await query('SELECT * FROM fn_get_tex_options_by_supplier($1)', [sid])
 
     return c.json({ data: data || [], error: null })
   } catch (err) {
@@ -138,28 +162,22 @@ threads.get('/:id', requirePermission('thread.types.view'), async (c) => {
       )
     }
 
-    const { data, error } = await supabase
-      .from('thread_types')
-      .select(`
-        *,
-        color_data:colors(id, name, hex_code, pantone_code),
-        supplier_data:suppliers(id, code, name),
-        suppliers:thread_type_supplier(id, thread_type_id, supplier_id, supplier_item_code, unit_price, is_active, supplier:suppliers(id, code, name))
-      `)
-      .eq('id', id)
-      .single()
+    const data = await queryOne<ThreadTypeWithRelations>(
+      `SELECT tt.*,
+              ${COLOR_DATA_JSON},
+              ${SUPPLIER_DATA_JSON},
+              ${SUPPLIERS_JUNCTION_JSON}
+       FROM thread_types tt
+       LEFT JOIN colors col ON col.id = tt.color_id
+       LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+       WHERE tt.id = $1`,
+      [id]
+    )
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json<ThreadApiResponse<null>>(
-          { data: null, error: 'Không tìm thấy loại chỉ' },
-          404
-        )
-      }
-      console.error('Supabase error:', error)
+    if (!data) {
       return c.json<ThreadApiResponse<null>>(
-        { data: null, error: 'Lỗi khi tải thông tin loại chỉ' },
-        500
+        { data: null, error: 'Không tìm thấy loại chỉ' },
+        404
       )
     }
 
@@ -193,11 +211,10 @@ threads.post('/', requirePermission('thread.types.create'), async (c) => {
     }
 
     // Check for duplicate code before insert
-    const { data: existing } = await supabase
-      .from('thread_types')
-      .select('id')
-      .eq('code', body.code)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      `SELECT id FROM thread_types WHERE code = $1`,
+      [body.code]
+    )
 
     if (existing) {
       return c.json<ThreadApiResponse<null>>(
@@ -206,7 +223,7 @@ threads.post('/', requirePermission('thread.types.create'), async (c) => {
       )
     }
 
-    const insertData = {
+    const insertData: Record<string, unknown> = {
       code: body.code.trim(),
       name: body.name.trim(),
       density_grams_per_meter: body.density_grams_per_meter,
@@ -220,20 +237,31 @@ threads.post('/', requirePermission('thread.types.create'), async (c) => {
       ...(body.lead_time_days !== undefined && { lead_time_days: body.lead_time_days }),
     }
 
-    const { data, error } = await supabase
-      .from('thread_types')
-      .insert(insertData)
-      .select(`
-        *,
-        color_data:colors(id, name, hex_code, pantone_code),
-        supplier_data:suppliers(id, code, name)
-      `)
-      .single()
+    const insertCols = Object.keys(insertData)
+    const insertVals = Object.values(insertData)
+    const insertPlaceholders = insertCols.map((_, i) => `$${i + 1}`)
 
-    if (error) {
-      console.error('Supabase error:', error)
+    let data: ThreadTypeWithRelations | null
+    try {
+      data = await querySingle<ThreadTypeWithRelations>(
+        `WITH ins AS (
+           INSERT INTO thread_types (${insertCols.join(', ')})
+           VALUES (${insertPlaceholders.join(', ')})
+           RETURNING *
+         )
+         SELECT ins.*,
+                ${COLOR_DATA_JSON},
+                ${SUPPLIER_DATA_JSON}
+         FROM ins AS tt
+         LEFT JOIN colors col ON col.id = tt.color_id
+         LEFT JOIN suppliers sup ON sup.id = tt.supplier_id`,
+        insertVals
+      )
+    } catch (error) {
+      console.error('Thread type insert error:', error)
+      const msg = error instanceof Error ? error.message : String(error)
       return c.json<ThreadApiResponse<null>>(
-        { data: null, error: 'Lỗi khi tạo loại chỉ: ' + error.message },
+        { data: null, error: 'Lỗi khi tạo loại chỉ: ' + msg },
         500
       )
     }
@@ -272,13 +300,12 @@ threads.put('/:id', requirePermission('thread.types.edit'), async (c) => {
     }
 
     // Check if record exists
-    const { data: existing, error: findError } = await supabase
-      .from('thread_types')
-      .select('id')
-      .eq('id', id)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      `SELECT id FROM thread_types WHERE id = $1`,
+      [id]
+    )
 
-    if (findError || !existing) {
+    if (!existing) {
       return c.json<ThreadApiResponse<null>>(
         { data: null, error: 'Không tìm thấy loại chỉ' },
         404
@@ -287,12 +314,10 @@ threads.put('/:id', requirePermission('thread.types.edit'), async (c) => {
 
     // If updating code, check for duplicates (excluding current record)
     if (body.code) {
-      const { data: duplicate } = await supabase
-        .from('thread_types')
-        .select('id')
-        .eq('code', body.code)
-        .neq('id', id)
-        .single()
+      const duplicate = await queryOne<{ id: number }>(
+        `SELECT id FROM thread_types WHERE code = $1 AND id <> $2`,
+        [body.code, id]
+      )
 
       if (duplicate) {
         return c.json<ThreadApiResponse<null>>(
@@ -317,19 +342,46 @@ threads.put('/:id', requirePermission('thread.types.edit'), async (c) => {
     if (body.color_id !== undefined) updateData.color_id = body.color_id
     if (body.supplier_id !== undefined) updateData.supplier_id = body.supplier_id
 
-    const { data, error } = await supabase
-      .from('thread_types')
-      .update(updateData)
-      .eq('id', id)
-      .select(`
-        *,
-        color_data:colors(id, name, hex_code, pantone_code),
-        supplier_data:suppliers(id, code, name)
-      `)
-      .single()
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updateData)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
+    }
+    params.push(id)
+    const idPlaceholder = `$${params.length}`
 
-    if (error) {
-      console.error('Supabase error:', error)
+    let data: ThreadTypeWithRelations | null
+    try {
+      if (sets.length === 0) {
+        data = await queryOne<ThreadTypeWithRelations>(
+          `SELECT tt.*,
+                  ${COLOR_DATA_JSON},
+                  ${SUPPLIER_DATA_JSON}
+           FROM thread_types tt
+           LEFT JOIN colors col ON col.id = tt.color_id
+           LEFT JOIN suppliers sup ON sup.id = tt.supplier_id
+           WHERE tt.id = ${idPlaceholder}`,
+          [id]
+        )
+      } else {
+        data = await querySingle<ThreadTypeWithRelations>(
+          `WITH upd AS (
+             UPDATE thread_types SET ${sets.join(', ')}
+             WHERE id = ${idPlaceholder}
+             RETURNING *
+           )
+           SELECT upd.*,
+                  ${COLOR_DATA_JSON},
+                  ${SUPPLIER_DATA_JSON}
+           FROM upd AS tt
+           LEFT JOIN colors col ON col.id = tt.color_id
+           LEFT JOIN suppliers sup ON sup.id = tt.supplier_id`,
+          params
+        )
+      }
+    } catch (error) {
+      console.error('Thread type update error:', error)
       return c.json<ThreadApiResponse<null>>(
         { data: null, error: 'Lỗi khi cập nhật loại chỉ' },
         500
@@ -366,26 +418,25 @@ threads.delete('/:id', requirePermission('thread.types.delete'), async (c) => {
     }
 
     // Check if record exists
-    const { data: existing, error: findError } = await supabase
-      .from('thread_types')
-      .select('id')
-      .eq('id', id)
-      .single()
+    const existing = await queryOne<{ id: number }>(
+      `SELECT id FROM thread_types WHERE id = $1`,
+      [id]
+    )
 
-    if (findError || !existing) {
+    if (!existing) {
       return c.json<ThreadApiResponse<null>>(
         { data: null, error: 'Không tìm thấy loại chỉ' },
         404
       )
     }
 
-    const { error } = await supabase
-      .from('thread_types')
-      .update({ is_active: false, deleted_at: new Date().toISOString() })
-      .eq('id', id)
-
-    if (error) {
-      console.error('Supabase error:', error)
+    try {
+      await query(
+        `UPDATE thread_types SET is_active = false, deleted_at = $1 WHERE id = $2`,
+        [new Date().toISOString(), id]
+      )
+    } catch (error) {
+      console.error('Thread type delete error:', error)
       return c.json<ThreadApiResponse<null>>(
         { data: null, error: 'Lỗi khi xóa loại chỉ' },
         500

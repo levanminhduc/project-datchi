@@ -228,6 +228,7 @@ export interface ReturnGroupedDTO {
   style_color_id: number | null
   color_id: number | null
   idempotency_key: string
+  warehouse_id?: number | null
   lines: {
     thread_type_id: number
     thread_color_id?: number | null
@@ -271,6 +272,9 @@ export interface GroupedReturnLog {
   returned_partial: number
   created_at: string
   created_by: string | null
+  reverted_at: string | null
+  reverted_by: string | null
+  can_revert: boolean
 }
 
 // ============================================================================

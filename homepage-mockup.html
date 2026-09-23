@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — Trang Chủ | Quản Lý Kho Chỉ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+<style>
+  :root {
+    --primary: #1976D2;
+    --secondary: #26A69A;
+    --positive: #21BA45;
+    --negative: #C10015;
+    --warning: #F2C037;
+    --info: #31CCEC;
+    --indigo: #3F51B5;
+    --deep-purple: #673AB7;
+    --teal: #009688;
+    --bg: #f4f6fa;
+    --card: #ffffff;
+    --text: #1e293b;
+    --muted: #64748b;
+    --border: #e8edf3;
+    --radius: 14px;
+    --shadow: 0 1px 3px rgba(15, 23, 42, .06), 0 4px 14px rgba(15, 23, 42, .05);
+    --shadow-hover: 0 4px 8px rgba(15, 23, 42, .08), 0 10px 28px rgba(15, 23, 42, .12);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Be Vietnam Pro', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .material-symbols-rounded {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    vertical-align: middle;
+    user-select: none;
+  }
+
+  /* ===== App bar ===== */
+  .appbar {
+    background: var(--primary);
+    color: #fff;
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  .appbar .logo {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 16px; letter-spacing: .2px;
+  }
+  .appbar .spacer { flex: 1; }
+  .appbar .icon-btn {
+    width: 38px; height: 38px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: rgba(255,255,255,.12);
+    cursor: pointer; position: relative;
+  }
+  .appbar .icon-btn:hover { background: rgba(255,255,255,.22); }
+  .appbar .dot {
+    position: absolute; top: 6px; right: 6px;
+    min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 8px; background: var(--negative);
+    font-size: 10px; font-weight: 700;
+    display: grid; place-items: center;
+    border: 2px solid var(--primary);
+  }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: #fff; color: var(--primary);
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 14px;
+  }
+
+  .container { max-width: 1240px; margin: 0 auto; padding: 24px; }
+
+  /* ===== Greeting ===== */
+  .greeting {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+    margin-bottom: 20px;
+  }
+  .greeting h1 { font-size: 26px; font-weight: 800; }
+  .greeting .date { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .greeting .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 999px;
+    font-size: 13px; font-weight: 600;
+    background: #fff; box-shadow: var(--shadow);
+    cursor: pointer; border: 1px solid transparent;
+  }
+  .chip:hover { border-color: currentColor; }
+  .chip .material-symbols-rounded { font-size: 18px; }
+  .chip.red { color: var(--negative); }
+  .chip.orange { color: #e65100; }
+  .chip.blue { color: var(--primary); }
+
+  /* ===== Stats ===== */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+  .stat {
+    background: var(--card); border-radius: var(--radius);
+    padding: 18px 20px; box-shadow: var(--shadow);
+    display: flex; gap: 14px; align-items: center;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+  .stat .icon-tile {
+    width: 52px; height: 52px; border-radius: 12px;
+    display: grid; place-items: center; flex-shrink: 0;
+  }
+  .stat .icon-tile .material-symbols-rounded { font-size: 28px; }
+  .stat .label { font-size: 12.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+  .stat .value { font-size: 24px; font-weight: 800; line-height: 1.15; margin-top: 2px; }
+  .stat .value small { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .stat .caption { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+  /* ===== Panels ===== */
+  .panel {
+    background: var(--card); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 16px 20px 12px;
+  }
+  .panel-head h2 { font-size: 16px; font-weight: 700; flex: 1; }
+  .panel-head .head-icon {
+    width: 34px; height: 34px; border-radius: 9px;
+    display: grid; place-items: center;
+  }
+  .panel-head .head-icon .material-symbols-rounded { font-size: 20px; }
+  .panel-head a { font-size: 13px; color: var(--primary); text-decoration: none; font-weight: 600; white-space: nowrap; }
+  .panel-head a:hover { text-decoration: underline; }
+
+  .two-col { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; margin-bottom: 24px; }
+
+  /* Alerts */
+  .alert-item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 20px; border-top: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .alert-item:hover { background: #f8fafc; }
+  .alert-item .bar-wrap { flex: 1; min-width: 0; }
+  .alert-item .name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .alert-item .sub { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+  .alert-item .bar {
+    height: 6px; border-radius: 3px; background: #eef2f6;
+    margin-top: 7px; overflow: hidden;
+  }
+  .alert-item .bar i { display: block; height: 100%; border-radius: 3px; }
+  .badge-sev {
+    font-size: 11px; font-weight: 700; padding: 4px 10px;
+    border-radius: 999px; text-transform: uppercase; letter-spacing: .3px;
+    flex-shrink: 0;
+  }
+  .badge-sev.critical { background: #fde8ea; color: var(--negative); }
+  .badge-sev.warn { background: #fdf3d7; color: #b8860b; }
+  .pct { font-weight: 800; font-size: 15px; width: 52px; text-align: right; flex-shrink: 0; }
+
+  /* Pending */
+  .todo-item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 13px 20px; border-top: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .todo-item:hover { background: #f8fafc; }
+  .todo-item .count {
+    width: 40px; height: 40px; border-radius: 10px;
+    display: grid; place-items: center;
+    font-weight: 800; font-size: 17px; flex-shrink: 0;
+  }
+  .todo-item .name { flex: 1; font-weight: 600; font-size: 14px; }
+  .todo-item .sub { font-size: 12.5px; color: var(--muted); font-weight: 400; }
+  .todo-item .arrow { color: #b0bccb; }
+  .todo-item:hover .arrow { color: var(--primary); }
+
+  /* ===== Nav hub ===== */
+  .hub { margin-bottom: 24px; }
+  .hub-title {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  }
+  .hub-title h2 { font-size: 18px; font-weight: 800; }
+  .hub-title .line { flex: 1; height: 1px; background: var(--border); }
+  .hub-group { margin-bottom: 20px; }
+  .hub-group-name {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .8px;
+    margin-bottom: 10px;
+  }
+  .hub-group-name .material-symbols-rounded { font-size: 19px; }
+  .nav-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .nav-card {
+    background: var(--card); border-radius: 12px;
+    padding: 15px 16px; box-shadow: var(--shadow);
+    display: flex; align-items: center; gap: 13px;
+    cursor: pointer; position: relative;
+    transition: transform .15s, box-shadow .15s;
+    border: 1px solid transparent;
+  }
+  .nav-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-hover);
+    border-color: color-mix(in srgb, var(--c) 35%, transparent);
+  }
+  .nav-card .icon-tile {
+    width: 44px; height: 44px; border-radius: 11px; flex-shrink: 0;
+    display: grid; place-items: center;
+    background: color-mix(in srgb, var(--c) 11%, #fff);
+    color: var(--c);
+  }
+  .nav-card .icon-tile .material-symbols-rounded { font-size: 24px; }
+  .nav-card .t { font-weight: 700; font-size: 14px; line-height: 1.25; }
+  .nav-card .c { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.3; }
+  .nav-card .notif {
+    position: absolute; top: 10px; right: 10px;
+    min-width: 20px; height: 20px; padding: 0 6px;
+    border-radius: 10px; background: var(--negative); color: #fff;
+    font-size: 11px; font-weight: 700;
+    display: grid; place-items: center;
+    box-shadow: 0 2px 6px rgba(193,0,21,.4);
+  }
+  .nav-card .notif.amber { background: #f59e0b; box-shadow: 0 2px 6px rgba(245,158,11,.4); }
+
+  /* ===== Activity ===== */
+  .activity { margin-bottom: 8px; }
+  .act-item {
+    display: flex; gap: 14px; padding: 12px 20px;
+    border-top: 1px solid var(--border); align-items: flex-start;
+  }
+  .act-item .act-icon {
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+    display: grid; place-items: center;
+  }
+  .act-item .act-icon .material-symbols-rounded { font-size: 19px; }
+  .act-item .act-text { font-size: 14px; line-height: 1.45; }
+  .act-item .act-text b { font-weight: 700; }
+  .act-item .act-time { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .act-tag {
+    font-size: 10.5px; font-weight: 800; letter-spacing: .5px;
+    padding: 2px 8px; border-radius: 4px; margin-right: 6px;
+    vertical-align: 1px;
+  }
+
+  .mockup-note {
+    text-align: center; color: var(--muted); font-size: 12.5px;
+    padding: 18px 0 30px;
+  }
+  .mockup-note code { background: #e8edf3; padding: 2px 7px; border-radius: 5px; }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 1023px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .nav-grid { grid-template-columns: repeat(3, 1fr); }
+    .two-col { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 640px) {
+    .stats { grid-template-columns: 1fr; }
+    .nav-grid { grid-template-columns: 1fr 1fr; }
+    .container { padding: 16px; }
+    .greeting h1 { font-size: 21px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- App bar -->
+<div class="appbar">
+  <div class="logo">
+    <span class="material-symbols-rounded">album</span>
+    Quản Lý Kho Chỉ
+  </div>
+  <div class="spacer"></div>
+  <div class="icon-btn">
+    <span class="material-symbols-rounded">notifications</span>
+    <span class="dot">6</span>
+  </div>
+  <div class="avatar">Đ</div>
+</div>
+
+<div class="container">
+
+  <!-- Greeting -->
+  <div class="greeting">
+    <div>
+      <h1>Chào buổi sáng, Minh Đức</h1>
+      <div class="date">Thứ Sáu, 17 tháng 7, 2026</div>
+    </div>
+    <div class="chips">
+      <span class="chip red"><span class="material-symbols-rounded">warning</span>3 cảnh báo tồn kho</span>
+      <span class="chip orange"><span class="material-symbols-rounded">pending_actions</span>11 việc cần xử lý</span>
+      <span class="chip blue"><span class="material-symbols-rounded">local_shipping</span>2 đơn sắp về</span>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="icon-tile" style="background:#e3f0fc;color:#1976D2"><span class="material-symbols-rounded">inventory_2</span></div>
+      <div>
+        <div class="label">Tổng Tồn Kho</div>
+        <div class="value">1,247 <small>côn</small></div>
+        <div class="caption">852,300 mét</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="icon-tile" style="background:#e3f7ef;color:#21BA45"><span class="material-symbols-rounded">check_circle</span></div>
+      <div>
+        <div class="label">Khả Dụng</div>
+        <div class="value">986 <small>côn</small></div>
+        <div class="caption">674,500 mét</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="icon-tile" style="background:#e3f6fb;color:#0891b2"><span class="material-symbols-rounded">payments</span></div>
+      <div>
+        <div class="label">Giá Trị Tồn Kho</div>
+        <div class="value">2.41 <small>tỷ VND</small></div>
+        <div class="caption">Cuộn nguyên × đơn giá</div>
+      </div>
+    </div>
+    <div class="stat" style="cursor:pointer">
+      <div class="icon-tile" style="background:#fde8ea;color:#C10015"><span class="material-symbols-rounded">warning</span></div>
+      <div>
+        <div class="label">Cảnh Báo</div>
+        <div class="value">3 <small>loại chỉ</small></div>
+        <div class="caption">2 nghiêm trọng · 1 thấp</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alerts + Pending -->
+  <div class="two-col">
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="head-icon" style="background:#fde8ea;color:#C10015"><span class="material-symbols-rounded">priority_high</span></div>
+        <h2>Cảnh Báo Tồn Kho</h2>
+        <a href="#">Xem tất cả →</a>
+      </div>
+      <div class="alert-item">
+        <span class="badge-sev critical">Nguy cấp</span>
+        <div class="bar-wrap">
+          <div class="name">A&amp;E Perma Core — Tex 60 — A1234</div>
+          <div class="sub">Còn 120 / 1,500 m (mức đặt lại)</div>
+          <div class="bar"><i style="width:8%;background:#C10015"></i></div>
+        </div>
+        <div class="pct" style="color:#C10015">8%</div>
+      </div>
+      <div class="alert-item">
+        <span class="badge-sev critical">Nguy cấp</span>
+        <div class="bar-wrap">
+          <div class="name">Coats Epic — Tex 40 — C9701</div>
+          <div class="sub">Còn 340 / 2,000 m (mức đặt lại)</div>
+          <div class="bar"><i style="width:17%;background:#C10015"></i></div>
+        </div>
+        <div class="pct" style="color:#C10015">17%</div>
+      </div>
+      <div class="alert-item">
+        <span class="badge-sev warn">Thấp</span>
+        <div class="bar-wrap">
+          <div class="name">Gunold Poly — Tex 50 — G5520</div>
+          <div class="sub">Còn 1,150 / 2,500 m (mức đặt lại)</div>
+          <div class="bar"><i style="width:46%;background:#f59e0b"></i></div>
+        </div>
+        <div class="pct" style="color:#b8860b">46%</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="head-icon" style="background:#fff3e0;color:#e65100"><span class="material-symbols-rounded">task_alt</span></div>
+        <h2>Việc Cần Xử Lý</h2>
+        <a href="#">Tất cả →</a>
+      </div>
+      <div class="todo-item">
+        <div class="count" style="background:#e3f0fc;color:#1976D2">5</div>
+        <div class="name">Phân bổ chờ duyệt<div class="sub">Weekly order tuần W30</div></div>
+        <span class="material-symbols-rounded arrow">chevron_right</span>
+      </div>
+      <div class="todo-item">
+        <div class="count" style="background:#e3f7ef;color:#21BA45">3</div>
+        <div class="name">Thu hồi chờ xác nhận<div class="sub">Chỉ trả từ chuyền, cần cân</div></div>
+        <span class="material-symbols-rounded arrow">chevron_right</span>
+      </div>
+      <div class="todo-item">
+        <div class="count" style="background:#f3e8fd;color:#7b1fa2">2</div>
+        <div class="name">Chờ trong waitlist<div class="sub">Thiếu tồn kho, chờ hàng về</div></div>
+        <span class="material-symbols-rounded arrow">chevron_right</span>
+      </div>
+      <div class="todo-item">
+        <div class="count" style="background:#fde8ea;color:#C10015">1</div>
+        <div class="name">Phân bổ quá hạn<div class="sub">Quá 3 ngày chưa xuất</div></div>
+        <span class="material-symbols-rounded arrow">chevron_right</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Navigation hub -->
+  <div class="hub">
+    <div class="hub-title">
+      <span class="material-symbols-rounded" style="color:var(--primary)">apps</span>
+      <h2>Điều Hướng Nhanh</h2>
+      <div class="line"></div>
+    </div>
+
+    <div class="hub-group">
+      <div class="hub-group-name" style="color:var(--indigo)"><span class="material-symbols-rounded">design_services</span>Kỹ Thuật</div>
+      <div class="nav-grid">
+        <div class="nav-card" style="--c:#3F51B5">
+          <div class="icon-tile"><span class="material-symbols-rounded">checkroom</span></div>
+          <div><div class="t">Mã Hàng</div><div class="c">Style &amp; thông số kỹ thuật</div></div>
+        </div>
+        <div class="nav-card" style="--c:#5C6BC0">
+          <div class="icon-tile"><span class="material-symbols-rounded">fact_check</span></div>
+          <div><div class="t">D/S có Định Mức</div><div class="c">Style đã thiết lập định mức chỉ</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hub-group">
+      <div class="hub-group-name" style="color:var(--deep-purple)"><span class="material-symbols-rounded">event_note</span>Kế Hoạch</div>
+      <div class="nav-grid">
+        <div class="nav-card" style="--c:#673AB7">
+          <div class="icon-tile"><span class="material-symbols-rounded">shopping_cart</span></div>
+          <div><div class="t">Tính Toán &amp; Đặt Hàng</div><div class="c">Tính nhu cầu, tạo đơn tuần</div></div>
+        </div>
+        <div class="nav-card" style="--c:#7E57C2">
+          <div class="icon-tile"><span class="material-symbols-rounded">history</span></div>
+          <div><div class="t">Lịch Sử Đặt Hàng</div><div class="c">Các chu kỳ đặt hàng trước</div></div>
+        </div>
+        <div class="nav-card" style="--c:#9575CD">
+          <div class="icon-tile"><span class="material-symbols-rounded">approval</span></div>
+          <div><div class="t">Lãnh Đạo Ký Duyệt</div><div class="c">Phê duyệt đơn đặt hàng tuần</div></div>
+          <span class="notif">3</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hub-group">
+      <div class="hub-group-name" style="color:var(--primary)"><span class="material-symbols-rounded">linear_scale</span>Quản Lý Chỉ</div>
+      <div class="nav-grid">
+        <div class="nav-card" style="--c:#1976D2">
+          <div class="icon-tile"><span class="material-symbols-rounded">dashboard</span></div>
+          <div><div class="t">Dashboard</div><div class="c">Biểu đồ &amp; phân tích tồn kho</div></div>
+        </div>
+        <div class="nav-card" style="--c:#1E88E5">
+          <div class="icon-tile"><span class="material-symbols-rounded">local_shipping</span></div>
+          <div><div class="t">Theo Dõi &amp; Nhập Kho</div><div class="c">Nhận hàng từ đơn đặt</div></div>
+          <span class="notif amber">2</span>
+        </div>
+        <div class="nav-card" style="--c:#00897B">
+          <div class="icon-tile"><span class="material-symbols-rounded">output</span></div>
+          <div><div class="t">Xuất Kho</div><div class="c">Cấp chỉ cho sản xuất</div></div>
+        </div>
+        <div class="nav-card" style="--c:#26A69A">
+          <div class="icon-tile"><span class="material-symbols-rounded">inventory</span></div>
+          <div><div class="t">Tồn Kho</div><div class="c">Tra cứu côn chỉ theo kho</div></div>
+          <span class="notif">3</span>
+        </div>
+        <div class="nav-card" style="--c:#43A047">
+          <div class="icon-tile"><span class="material-symbols-rounded">assignment_return</span></div>
+          <div><div class="t">Trả Kho</div><div class="c">Thu hồi &amp; xác nhận chỉ thừa</div></div>
+          <span class="notif amber">3</span>
+        </div>
+        <div class="nav-card" style="--c:#FB8C00">
+          <div class="icon-tile"><span class="material-symbols-rounded">swap_horiz</span></div>
+          <div><div class="t">Mượn Chỉ</div><div class="c">Cho mượn &amp; theo dõi hoàn trả</div></div>
+        </div>
+        <div class="nav-card" style="--c:#8E24AA">
+          <div class="icon-tile"><span class="material-symbols-rounded">compare_arrows</span></div>
+          <div><div class="t">Chuyển Kho</div><div class="c">Điều chuyển giữa các kho</div></div>
+        </div>
+        <div class="nav-card" style="--c:#546E7A">
+          <div class="icon-tile"><span class="material-symbols-rounded">date_range</span></div>
+          <div><div class="t">Chuyển Kho Theo Tuần</div><div class="c">Chuyển chỉ đã reserve theo tuần</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hub-group">
+      <div class="hub-group-name" style="color:var(--teal)"><span class="material-symbols-rounded">folder_open</span>Danh Mục</div>
+      <div class="nav-grid">
+        <div class="nav-card" style="--c:#009688">
+          <div class="icon-tile"><span class="material-symbols-rounded">receipt_long</span></div>
+          <div><div class="t">Đơn Hàng (PO)</div><div class="c">Quản lý đơn mua chỉ</div></div>
+        </div>
+        <div class="nav-card" style="--c:#26A69A">
+          <div class="icon-tile"><span class="material-symbols-rounded">category</span></div>
+          <div><div class="t">Loại Chỉ</div><div class="c">NCC × Tex × Màu</div></div>
+        </div>
+        <div class="nav-card" style="--c:#EC407A">
+          <div class="icon-tile"><span class="material-symbols-rounded">palette</span></div>
+          <div><div class="t">Màu Sắc</div><div class="c">Bảng màu chỉ theo NCC</div></div>
+        </div>
+        <div class="nav-card" style="--c:#5C6BC0">
+          <div class="icon-tile"><span class="material-symbols-rounded">store</span></div>
+          <div><div class="t">Nhà Cung Cấp</div><div class="c">Đối tác cung cấp chỉ</div></div>
+        </div>
+        <div class="nav-card" style="--c:#78909C">
+          <div class="icon-tile"><span class="material-symbols-rounded">upload_file</span></div>
+          <div><div class="t">Import Sub-Art</div><div class="c">Nhập định mức từ file</div></div>
+        </div>
+        <div class="nav-card" style="--c:#8D6E63">
+          <div class="icon-tile"><span class="material-symbols-rounded">manage_search</span></div>
+          <div><div class="t">Lịch Sử Xuất Chỉ</div><div class="c">Tra cứu các lần xuất kho</div></div>
+        </div>
+        <div class="nav-card" style="--c:#00ACC1">
+          <div class="icon-tile"><span class="material-symbols-rounded">smart_toy</span></div>
+          <div><div class="t">Trợ Lý Tra Cứu</div><div class="c">Hỏi đáp nhanh về kho chỉ</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity -->
+  <div class="panel activity">
+    <div class="panel-head">
+      <div class="head-icon" style="background:#eef2f6;color:#546E7A"><span class="material-symbols-rounded">timeline</span></div>
+      <h2>Hoạt Động Gần Đây</h2>
+      <a href="#">Xem thêm →</a>
+    </div>
+    <div class="act-item">
+      <div class="act-icon" style="background:#e3f7ef;color:#21BA45"><span class="material-symbols-rounded">input</span></div>
+      <div>
+        <div class="act-text"><span class="act-tag" style="background:#e3f7ef;color:#21BA45">NHẬP</span><b>48 côn</b> Coats Epic Tex 40 nhập vào <b>Kho A</b> — PO-2026-045</div>
+        <div class="act-time">10:32 · bởi Văn An</div>
+      </div>
+    </div>
+    <div class="act-item">
+      <div class="act-icon" style="background:#e3f0fc;color:#1976D2"><span class="material-symbols-rounded">output</span></div>
+      <div>
+        <div class="act-text"><span class="act-tag" style="background:#e3f0fc;color:#1976D2">XUẤT</span><b>32 côn</b> cấp cho lệnh sản xuất <b>WO-2026-187</b> (Chuyền 3)</div>
+        <div class="act-time">09:15 · bởi Thu Hằng</div>
+      </div>
+    </div>
+    <div class="act-item">
+      <div class="act-icon" style="background:#fff3e0;color:#e65100"><span class="material-symbols-rounded">assignment_return</span></div>
+      <div>
+        <div class="act-text"><span class="act-tag" style="background:#fff3e0;color:#e65100">TRẢ</span>Chuyền 5 trả <b>12 côn</b> A&amp;E Tex 60 — chờ xác nhận cân</div>
+        <div class="act-time">08:47 · bởi Quốc Bảo</div>
+      </div>
+    </div>
+    <div class="act-item">
+      <div class="act-icon" style="background:#f3e8fd;color:#7b1fa2"><span class="material-symbols-rounded">alt_route</span></div>
+      <div>
+        <div class="act-text"><span class="act-tag" style="background:#f3e8fd;color:#7b1fa2">PHÂN BỔ</span>FEFO phân bổ <b>1,200 m</b> cho đơn tuần <b>W30</b></div>
+        <div class="act-time">08:02 · hệ thống</div>
+      </div>
+    </div>
+    <div class="act-item">
+      <div class="act-icon" style="background:#fde8ea;color:#C10015"><span class="material-symbols-rounded">notification_important</span></div>
+      <div>
+        <div class="act-text"><span class="act-tag" style="background:#fde8ea;color:#C10015">CẢNH BÁO</span>Gunold Poly G5520 xuống dưới mức đặt hàng lại</div>
+        <div class="act-time">Hôm qua, 16:40 · hệ thống</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup-note">
+    Đây là <code>mockup tĩnh</code> — dữ liệu minh họa. Khi triển khai thật, toàn bộ số liệu lấy từ API dashboard có sẵn.
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../db/supabase'
+import { query, queryOne, querySingle } from '../db/query'
 import { requirePermission } from '../middleware/auth'
 import { sendMessage, isTelegramEnabled } from '../utils/telegram-service'
 import {
@@ -35,13 +35,17 @@ interface TelegramIdentityRow {
 }
 
 async function validateActiveEmployee(employeeId: number): Promise<string | null> {
-  const { data: employee, error } = await supabaseAdmin
-    .from('employees')
-    .select('id, is_active, deleted_at')
-    .eq('id', employeeId)
-    .maybeSingle()
+  let employee: { id: number; is_active: boolean; deleted_at: string | null } | null = null
+  try {
+    employee = await queryOne<{ id: number; is_active: boolean; deleted_at: string | null }>(
+      'SELECT id, is_active, deleted_at FROM employees WHERE id = $1',
+      [employeeId]
+    )
+  } catch {
+    return 'Nhân viên không tồn tại hoặc đã bị vô hiệu hóa'
+  }
 
-  if (error || !employee || employee.deleted_at || !employee.is_active) {
+  if (!employee || employee.deleted_at || !employee.is_active) {
     return 'Nhân viên không tồn tại hoặc đã bị vô hiệu hóa'
   }
 
@@ -49,13 +53,17 @@ async function validateActiveEmployee(employeeId: number): Promise<string | null
 }
 
 async function validateApprovalChannelEmployee(employeeId: number): Promise<string | null> {
-  const { data: employee, error } = await supabaseAdmin
-    .from('employees')
-    .select('id, is_active, deleted_at')
-    .eq('id', employeeId)
-    .maybeSingle()
+  let employee: { id: number; is_active: boolean; deleted_at: string | null } | null = null
+  try {
+    employee = await queryOne<{ id: number; is_active: boolean; deleted_at: string | null }>(
+      'SELECT id, is_active, deleted_at FROM employees WHERE id = $1',
+      [employeeId]
+    )
+  } catch {
+    return 'Nhân viên lãnh đạo không tồn tại hoặc đã bị vô hiệu hóa'
+  }
 
-  if (error || !employee || employee.deleted_at || !employee.is_active) {
+  if (!employee || employee.deleted_at || !employee.is_active) {
     return 'Nhân viên lãnh đạo không tồn tại hoặc đã bị vô hiệu hóa'
   }
 
@@ -68,14 +76,11 @@ async function validateApprovalChannelEmployee(employeeId: number): Promise<stri
 }
 
 async function findExistingTelegramChannel(employeeId: number, isApproval: boolean) {
-  const { data, error } = await supabaseAdmin
-    .from('notification_channels')
-    .select('id, event_types')
-    .eq('employee_id', employeeId)
-    .eq('channel_type', 'TELEGRAM')
-    .is('deleted_at', null)
-
-  if (error) throw error
+  const data = await query<{ id: number; event_types: string[] }>(
+    `SELECT id, event_types FROM notification_channels
+     WHERE employee_id = $1 AND channel_type = 'TELEGRAM' AND deleted_at IS NULL`,
+    [employeeId]
+  )
 
   return (data || []).find((channel: { id: number; event_types: string[] }) => {
     const hasApproval = channel.event_types.includes(ORDER_APPROVAL_REQUESTED_EVENT)
@@ -84,45 +89,43 @@ async function findExistingTelegramChannel(employeeId: number, isApproval: boole
 }
 
 async function listTelegramIdentities(status: string) {
-  let query = supabaseAdmin
-    .from('telegram_identities')
-    .select('*')
-    .order('last_seen_at', { ascending: false })
-    .limit(100)
-
+  const conditions: string[] = []
   if (status === 'assigned') {
-    query = query.not('assigned_channel_id', 'is', null)
+    conditions.push('assigned_channel_id IS NOT NULL')
   } else if (status !== 'all') {
-    query = query.is('assigned_channel_id', null)
+    conditions.push('assigned_channel_id IS NULL')
   }
 
-  const { data, error } = await query
-  if (error) throw error
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+  const data = await query<TelegramIdentityRow>(
+    `SELECT * FROM telegram_identities
+     ${whereClause}
+     ORDER BY last_seen_at DESC
+     LIMIT 100`
+  )
 
   const identities = (data || []) as TelegramIdentityRow[]
   const employeeIds = [...new Set(identities.map(row => row.assigned_employee_id).filter((id): id is number => id !== null))]
   const channelIds = [...new Set(identities.map(row => row.assigned_channel_id).filter((id): id is number => id !== null))]
 
-  const [employeesResult, channelsResult] = await Promise.all([
+  const [employeesData, channelsData] = await Promise.all([
     employeeIds.length > 0
-      ? supabaseAdmin
-        .from('employees')
-        .select('id, employee_id, full_name')
-        .in('id', employeeIds)
-      : Promise.resolve({ data: [], error: null }),
+      ? query<{ id: number; employee_id: string; full_name: string }>(
+          'SELECT id, employee_id, full_name FROM employees WHERE id = ANY($1)',
+          [employeeIds]
+        )
+      : Promise.resolve([] as { id: number; employee_id: string; full_name: string }[]),
     channelIds.length > 0
-      ? supabaseAdmin
-        .from('notification_channels')
-        .select('id, event_types, is_active')
-        .in('id', channelIds)
-      : Promise.resolve({ data: [], error: null }),
+      ? query<{ id: number; event_types: string[]; is_active: boolean }>(
+          'SELECT id, event_types, is_active FROM notification_channels WHERE id = ANY($1)',
+          [channelIds]
+        )
+      : Promise.resolve([] as { id: number; event_types: string[]; is_active: boolean }[]),
   ])
 
-  if (employeesResult.error) throw employeesResult.error
-  if (channelsResult.error) throw channelsResult.error
-
-  const employees = new Map((employeesResult.data || []).map(employee => [employee.id, employee]))
-  const channels = new Map((channelsResult.data || []).map(channel => [channel.id, channel]))
+  const employees = new Map((employeesData || []).map(employee => [employee.id, employee]))
+  const channels = new Map((channelsData || []).map(channel => [channel.id, channel]))
 
   return identities.map(row => ({
     ...row,
@@ -133,14 +136,16 @@ async function listTelegramIdentities(status: string) {
 
 notificationChannels.get('/', requirePermission('settings.manage'), async (c) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('notification_channels')
-      .select('*, employees!inner(id, full_name, employee_id)')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(200)
+    const data = await query<Record<string, unknown>>(
+      `SELECT nc.*,
+         json_build_object('id', e.id, 'full_name', e.full_name, 'employee_id', e.employee_id) AS employees
+       FROM notification_channels nc
+       INNER JOIN employees e ON e.id = nc.employee_id
+       WHERE nc.deleted_at IS NULL
+       ORDER BY nc.created_at DESC
+       LIMIT 200`
+    )
 
-    if (error) throw error
     return c.json({ data, error: null })
   } catch (err) {
     console.error('List notification channels error:', err)
@@ -150,14 +155,13 @@ notificationChannels.get('/', requirePermission('settings.manage'), async (c) =>
 
 notificationChannels.get('/groups', requirePermission('settings.manage'), async (c) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('notification_channel_groups')
-      .select('*')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(50)
+    const data = await query<Record<string, unknown>>(
+      `SELECT * FROM notification_channel_groups
+       WHERE deleted_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 50`
+    )
 
-    if (error) throw error
     return c.json({ data, error: null })
   } catch (err) {
     console.error('List notification channel groups error:', err)
@@ -201,13 +205,11 @@ notificationChannels.post('/telegram-identities/:id/assign', requirePermission('
       return c.json({ data: null, error: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') }, 400)
     }
 
-    const { data: identity, error: identityError } = await supabaseAdmin
-      .from('telegram_identities')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
+    const identity = await queryOne<TelegramIdentityRow>(
+      'SELECT * FROM telegram_identities WHERE id = $1',
+      [id]
+    )
 
-    if (identityError) throw identityError
     if (!identity) return c.json({ data: null, error: 'Không tìm thấy Telegram ID' }, 404)
 
     const isApproval = parsed.data.mode === 'APPROVAL'
@@ -238,47 +240,28 @@ notificationChannels.post('/telegram-identities/:id/assign', requirePermission('
     const existingChannel = await findExistingTelegramChannel(parsed.data.employee_id, isApproval)
     let channel
     if (existingChannel) {
-      const { data, error } = await supabaseAdmin
-        .from('notification_channels')
-        .update({
-          channel_config: channelConfig,
-          event_types: eventTypes,
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existingChannel.id)
-        .select()
-        .single()
-
-      if (error) throw error
-      channel = data
+      channel = await querySingle<{ id: number }>(
+        `UPDATE notification_channels
+         SET channel_config = $1, event_types = $2, is_active = true, updated_at = $3
+         WHERE id = $4
+         RETURNING *`,
+        [channelConfig, eventTypes, new Date().toISOString(), existingChannel.id]
+      )
     } else {
-      const { data, error } = await supabaseAdmin
-        .from('notification_channels')
-        .insert({
-          employee_id: parsed.data.employee_id,
-          channel_type: 'TELEGRAM',
-          channel_config: channelConfig,
-          event_types: eventTypes,
-        })
-        .select()
-        .single()
-
-      if (error) throw error
-      channel = data
+      channel = await querySingle<{ id: number }>(
+        `INSERT INTO notification_channels (employee_id, channel_type, channel_config, event_types)
+         VALUES ($1, 'TELEGRAM', $2, $3)
+         RETURNING *`,
+        [parsed.data.employee_id, channelConfig, eventTypes]
+      )
     }
 
-    const { error: updateIdentityError } = await supabaseAdmin
-      .from('telegram_identities')
-      .update({
-        assigned_employee_id: parsed.data.employee_id,
-        assigned_channel_id: channel.id,
-        assigned_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-
-    if (updateIdentityError) throw updateIdentityError
+    await query(
+      `UPDATE telegram_identities
+       SET assigned_employee_id = $1, assigned_channel_id = $2, assigned_at = $3, updated_at = $4
+       WHERE id = $5`,
+      [parsed.data.employee_id, channel.id, new Date().toISOString(), new Date().toISOString(), id]
+    )
 
     return c.json({ data: channel, error: null, message: 'Đã gán Telegram ID' })
   } catch (err) {
@@ -302,18 +285,18 @@ notificationChannels.post('/', requirePermission('settings.manage'), async (c) =
       }
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('notification_channels')
-      .insert({
-        employee_id: parsed.data.employee_id,
-        channel_type: parsed.data.channel_type,
-        channel_config: parsed.data.channel_config,
-        event_types: parsed.data.event_types,
-      })
-      .select()
-      .single()
+    const data = await querySingle<Record<string, unknown>>(
+      `INSERT INTO notification_channels (employee_id, channel_type, channel_config, event_types)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [
+        parsed.data.employee_id,
+        parsed.data.channel_type,
+        parsed.data.channel_config,
+        parsed.data.event_types,
+      ]
+    )
 
-    if (error) throw error
     return c.json({ data, error: null, message: 'Đã thêm kênh thông báo' })
   } catch (err) {
     console.error('Create notification channel error:', err)
@@ -329,17 +312,17 @@ notificationChannels.post('/groups', requirePermission('settings.manage'), async
       return c.json({ data: null, error: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') }, 400)
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('notification_channel_groups')
-      .insert({
-        channel_type: parsed.data.channel_type,
-        channel_config: parsed.data.channel_config,
-        event_types: parsed.data.event_types,
-      })
-      .select()
-      .single()
+    const data = await querySingle<Record<string, unknown>>(
+      `INSERT INTO notification_channel_groups (channel_type, channel_config, event_types)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [
+        parsed.data.channel_type,
+        parsed.data.channel_config,
+        parsed.data.event_types,
+      ]
+    )
 
-    if (error) throw error
     return c.json({ data, error: null, message: 'Đã thêm nhóm thông báo' })
   } catch (err) {
     console.error('Create notification channel group error:', err)
@@ -355,25 +338,27 @@ notificationChannels.patch('/:id/toggle', requirePermission('settings.manage'), 
     const isGroup = c.req.query('group') === 'true'
     const table = isGroup ? 'notification_channel_groups' : 'notification_channels'
 
-    const { data: current, error: fetchError } = await supabaseAdmin
-      .from(table)
-      .select('is_active')
-      .eq('id', id)
-      .is('deleted_at', null)
-      .single()
+    let current: { is_active: boolean } | null
+    try {
+      current = await queryOne<{ is_active: boolean }>(
+        `SELECT is_active FROM ${table} WHERE id = $1 AND deleted_at IS NULL`,
+        [id]
+      )
+    } catch {
+      current = null
+    }
 
-    if (fetchError || !current) {
+    if (!current) {
       return c.json({ data: null, error: 'Không tìm thấy' }, 404)
     }
 
-    const { data, error } = await supabaseAdmin
-      .from(table)
-      .update({ is_active: !current.is_active, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single()
+    const data = await querySingle<{ is_active: boolean }>(
+      `UPDATE ${table} SET is_active = $1, updated_at = $2
+       WHERE id = $3
+       RETURNING *`,
+      [!current.is_active, new Date().toISOString(), id]
+    )
 
-    if (error) throw error
     return c.json({ data, error: null, message: data.is_active ? 'Đã bật' : 'Đã tắt' })
   } catch (err) {
     console.error('Toggle notification channel error:', err)
@@ -392,14 +377,12 @@ notificationChannels.patch('/:id', requirePermission('settings.manage'), async (
       return c.json({ data: null, error: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') }, 400)
     }
 
-    const { data: current, error: currentError } = await supabaseAdmin
-      .from('notification_channels')
-      .select('employee_id, channel_config')
-      .eq('id', id)
-      .is('deleted_at', null)
-      .maybeSingle()
+    const current = await queryOne<{ employee_id: number; channel_config: Record<string, unknown> }>(
+      `SELECT employee_id, channel_config FROM notification_channels
+       WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    )
 
-    if (currentError) throw currentError
     if (!current) return c.json({ data: null, error: 'Không tìm thấy' }, 404)
 
     if (parsed.data.event_types?.includes(ORDER_APPROVAL_REQUESTED_EVENT)) {
@@ -423,18 +406,23 @@ notificationChannels.patch('/:id', requirePermission('settings.manage'), async (
     if (parsed.data.channel_config) updateData.channel_config = parsed.data.channel_config
     if (parsed.data.event_types) updateData.event_types = parsed.data.event_types
 
-    const { data, error } = await supabaseAdmin
-      .from('notification_channels')
-      .update(updateData)
-      .eq('id', id)
-      .is('deleted_at', null)
-      .select()
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') return c.json({ data: null, error: 'Không tìm thấy' }, 404)
-      throw error
+    const sets: string[] = []
+    const params: unknown[] = []
+    for (const [key, value] of Object.entries(updateData)) {
+      params.push(value)
+      sets.push(`${key} = $${params.length}`)
     }
+    params.push(id)
+
+    const data = await queryOne<Record<string, unknown>>(
+      `UPDATE notification_channels SET ${sets.join(', ')}
+       WHERE id = $${params.length} AND deleted_at IS NULL
+       RETURNING *`,
+      params
+    )
+
+    if (!data) return c.json({ data: null, error: 'Không tìm thấy' }, 404)
+
     return c.json({ data, error: null, message: 'Đã cập nhật' })
   } catch (err) {
     console.error('Update notification channel error:', err)
@@ -450,13 +438,12 @@ notificationChannels.delete('/:id', requirePermission('settings.manage'), async 
     const isGroup = c.req.query('group') === 'true'
     const table = isGroup ? 'notification_channel_groups' : 'notification_channels'
 
-    const { error } = await supabaseAdmin
-      .from(table)
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', id)
-      .is('deleted_at', null)
+    await query(
+      `UPDATE ${table} SET deleted_at = $1
+       WHERE id = $2 AND deleted_at IS NULL`,
+      [new Date().toISOString(), id]
+    )
 
-    if (error) throw error
     return c.json({ data: { id }, error: null, message: 'Đã xóa' })
   } catch (err) {
     console.error('Delete notification channel error:', err)
