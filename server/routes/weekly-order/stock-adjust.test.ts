@@ -91,14 +91,21 @@ async function withStubbedPool(
     return { rows: [] }
   }) as unknown as typeof pool.query
 
+  const originalConnect = pool.connect
+  pool.connect = (async () => ({
+    query: (text: string, params?: unknown[]) => pool.query(text, params),
+    release: () => {},
+  })) as unknown as typeof pool.connect
+
   try {
     await handler(calls)
   } finally {
     pool.query = originalQuery
+    pool.connect = originalConnect
   }
 }
 
-async function adjustStock(options: StubOptions, actualCones: number) {
+async function adjustStock(options: StubOptions, actualCones: number, expectedCurrentCones = options.eligibleCones ?? 10) {
   let response!: Response
   let rpcCalls = 0
   let auditCalls = 0
@@ -113,6 +120,7 @@ async function adjustStock(options: StubOptions, actualCones: number) {
         thread_color_id: 3,
         actual_cones: actualCones,
         reason: 'Kiểm kê thực tế',
+        expected_current_cones: expectedCurrentCones,
       }),
     })
     const rpc = calls.filter((call) => call.text.includes('fn_write_off_week_cones'))
@@ -193,6 +201,16 @@ async function testSameQuantityIsRejected() {
   assert.equal(rpcCalls, 0)
 }
 
+async function testStaleExpectedCountIsRejected() {
+  const { response, rpcCalls } = await adjustStock(
+    { isRoot: true, hasActiveUnlock: true, eligibleCones: 8 },
+    8,
+    10,
+  )
+  assert.equal(response.status, 409)
+  assert.equal(rpcCalls, 0, 'gửi lại sau khi đã loại bỏ thì không được loại bỏ thêm lần nữa')
+}
+
 async function testRevertRequiresUnlock() {
   const { response, rpcCalls } = await revertReceive({ isRoot: true, hasActiveUnlock: false })
   assert.equal(response.status, 403)
@@ -224,6 +242,7 @@ await testRootWithoutUnlockCannotAdjust()
 await testRootWithUnlockAdjustsAndIsAudited()
 await testActualMoreThanCurrentIsRejected()
 await testSameQuantityIsRejected()
+await testStaleExpectedCountIsRejected()
 await testRevertRequiresUnlock()
 await testRevertAlreadyRevertedIsRejected()
 await testRevertSucceedsAndIsAudited()

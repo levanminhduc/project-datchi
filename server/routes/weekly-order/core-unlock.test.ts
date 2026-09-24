@@ -73,10 +73,17 @@ async function withStubbedPool(
     return { rows: [] }
   }) as unknown as typeof pool.query
 
+  const originalConnect = pool.connect
+  pool.connect = (async () => ({
+    query: (text: string, params?: unknown[]) => pool.query(text, params),
+    release: () => {},
+  })) as unknown as typeof pool.connect
+
   try {
     await handler(calls)
   } finally {
     pool.query = originalQuery
+    pool.connect = originalConnect
   }
 }
 

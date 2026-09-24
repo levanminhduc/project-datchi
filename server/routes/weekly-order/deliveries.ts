@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
-import { query, queryOne } from '../../db/query'
+import type { PoolClient } from 'pg'
+import { query, queryOne, runOn, tx } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
 import {
@@ -236,6 +237,47 @@ deliveries.get('/deliveries/receive-stats', requirePermission('thread.allocation
   }
 })
 
+type LockedDelivery = {
+  id: number
+  week_id: number
+  week_status: string
+  delivery_date: string
+  actual_delivery_date: string | null
+  status: string
+  notes: string | null
+  quantity_cones: number | null
+  received_quantity: number | null
+}
+
+async function lockDeliveryWithWeek(client: PoolClient, deliveryId: number): Promise<LockedDelivery | null> {
+  const refs = await runOn<{ week_id: number }>(
+    client,
+    `SELECT week_id FROM thread_order_deliveries WHERE id = $1`,
+    [deliveryId],
+  )
+  if (refs.length === 0) return null
+
+  const weeks = await runOn<{ status: string }>(
+    client,
+    `SELECT status FROM thread_order_weeks WHERE id = $1 FOR UPDATE`,
+    [refs[0].week_id],
+  )
+  const rows = await runOn<Omit<LockedDelivery, 'week_status'>>(
+    client,
+    `SELECT id, week_id, delivery_date, actual_delivery_date, status, notes, quantity_cones, received_quantity
+       FROM thread_order_deliveries WHERE id = $1 FOR UPDATE`,
+    [deliveryId],
+  )
+  if (rows.length === 0) return null
+  return { ...rows[0], week_status: weeks[0]?.status ?? '' }
+}
+
+class DeliveryRuleError extends Error {
+  constructor(message: string, public readonly status: 400 | 403 | 404) {
+    super(message)
+  }
+}
+
 deliveries.patch('/deliveries/:deliveryId', requirePermission('thread.allocations.manage'), async (c) => {
   try {
     const deliveryId = parseInt(c.req.param('deliveryId'))
@@ -255,17 +297,15 @@ deliveries.patch('/deliveries/:deliveryId', requirePermission('thread.allocation
       throw err
     }
 
-    const previousDelivery = await queryOne<{
-      week_id: number
-      delivery_date: string
-      actual_delivery_date: string | null
-      status: string
-      notes: string | null
-    }>(
-      `SELECT week_id, delivery_date, actual_delivery_date, status, notes
-         FROM thread_order_deliveries WHERE id = $1`,
+    const weekRef = await queryOne<{ week_id: number }>(
+      `SELECT week_id FROM thread_order_deliveries WHERE id = $1`,
       [deliveryId],
     )
+    if (!weekRef) {
+      return c.json({ data: null, error: 'Không tìm thấy bản ghi giao hàng' }, 404)
+    }
+    const unlocked = await isRootUnlocked(c, weekRef.week_id)
+    const performer = getPerformer(c)
 
     const updateFields: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -284,74 +324,103 @@ deliveries.patch('/deliveries/:deliveryId', requirePermission('thread.allocation
     setParams.push(deliveryId)
     const idPh = `$${setParams.length}`
 
-    const data = await queryOne<any>(
-      `WITH upd AS (
-         UPDATE thread_order_deliveries SET ${setParts.join(', ')}
-         WHERE id = ${idPh}
-         RETURNING *
-       )
-       SELECT upd.*,
-         CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('id', sup.id, 'name', sup.name) END AS supplier,
-         CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object('id', tt.id, 'name', tt.name, 'tex_number', tt.tex_number) END AS thread_type
-       FROM upd
-       LEFT JOIN suppliers sup ON sup.id = upd.supplier_id
-       LEFT JOIN thread_types tt ON tt.id = upd.thread_type_id`,
-      setParams,
-    )
+    let data: any
+    try {
+      data = await tx(async (client) => {
+        const previousDelivery = await lockDeliveryWithWeek(client, deliveryId)
+        if (!previousDelivery) {
+          throw new DeliveryRuleError('Không tìm thấy bản ghi giao hàng', 404)
+        }
+        if (previousDelivery.status === 'CANCELLED') {
+          throw new DeliveryRuleError('Giao hàng đã huỷ, không thể cập nhật', 400)
+        }
+        if (previousDelivery.week_status !== 'CONFIRMED') {
+          throw new DeliveryRuleError('Tuần không ở trạng thái đã xác nhận, không thể cập nhật giao hàng', 400)
+        }
+        if (
+          validated.status === 'PENDING' &&
+          previousDelivery.status === 'DELIVERED' &&
+          (previousDelivery.received_quantity ?? 0) > 0
+        ) {
+          throw new DeliveryRuleError('Đã nhập kho một phần, không thể chuyển về trạng thái chưa giao', 400)
+        }
 
-    if (!data) {
-      return c.json({ data: null, error: 'Không tìm thấy bản ghi giao hàng' }, 404)
-    }
+        const updatedRows = await runOn<any>(
+          client,
+          `WITH upd AS (
+             UPDATE thread_order_deliveries SET ${setParts.join(', ')}
+             WHERE id = ${idPh}
+             RETURNING *
+           )
+           SELECT upd.*,
+             CASE WHEN sup.id IS NULL THEN NULL ELSE json_build_object('id', sup.id, 'name', sup.name) END AS supplier,
+             CASE WHEN tt.id IS NULL THEN NULL ELSE json_build_object('id', tt.id, 'name', tt.name, 'tex_number', tt.tex_number) END AS thread_type
+           FROM upd
+           LEFT JOIN suppliers sup ON sup.id = upd.supplier_id
+           LEFT JOIN thread_types tt ON tt.id = upd.thread_type_id`,
+          setParams,
+        )
+        const updated = updatedRows[0]
 
-    if (validated.delivery_date !== undefined) {
-      const updatedDelivery = data as { week_id: number; thread_type_id: number; thread_color: string | null }
+        if (validated.delivery_date !== undefined) {
+          const resultRows = await runOn<{ id: number; summary_data: unknown }>(
+            client,
+            `SELECT id, summary_data FROM thread_order_results WHERE week_id = $1 LIMIT 1 FOR UPDATE`,
+            [updated.week_id],
+          )
+          const resultRow = resultRows[0]
 
-      const resultRow = await queryOne<{ id: number; summary_data: unknown }>(
-        `SELECT id, summary_data FROM thread_order_results WHERE week_id = $1 LIMIT 1`,
-        [updatedDelivery.week_id],
-      )
+          if (resultRow?.summary_data && Array.isArray(resultRow.summary_data)) {
+            let changed = false
+            const nextSummary = (resultRow.summary_data as Array<Record<string, unknown>>).map((row) => {
+              const sameType = row.thread_type_id === updated.thread_type_id
+              const sameColor = String(row.thread_color ?? '') === String(updated.thread_color ?? '')
+              if (sameType && sameColor) {
+                changed = true
+                return { ...row, delivery_date: validated.delivery_date }
+              }
+              return row
+            })
 
-      if (resultRow?.summary_data && Array.isArray(resultRow.summary_data)) {
-        let changed = false
-        const nextSummary = (resultRow.summary_data as Array<Record<string, unknown>>).map((row) => {
-          const sameType = row.thread_type_id === updatedDelivery.thread_type_id
-          const sameColor = String(row.thread_color ?? '') === String(updatedDelivery.thread_color ?? '')
-          if (sameType && sameColor) {
-            changed = true
-            return { ...row, delivery_date: validated.delivery_date }
-          }
-          return row
-        })
-
-        if (changed) {
-          try {
-            await query(
-              `UPDATE thread_order_results SET summary_data = $1::jsonb WHERE id = $2`,
-              [JSON.stringify(nextSummary), resultRow.id],
-            )
-          } catch (resultUpdateError) {
-            console.warn('Error syncing delivery_date into summary_data:', resultUpdateError)
+            if (changed) {
+              await runOn(
+                client,
+                `UPDATE thread_order_results SET summary_data = $1::jsonb WHERE id = $2`,
+                [JSON.stringify(nextSummary), resultRow.id],
+              )
+            }
           }
         }
-      }
-    }
 
-    if (previousDelivery && (await isRootUnlocked(c, previousDelivery.week_id))) {
-      const { week_id: _weekId, ...previousValues } = previousDelivery
-      await logWeekAudit({
-        weekId: previousDelivery.week_id,
-        tableName: 'thread_order_deliveries',
-        recordId: deliveryId,
-        action: 'UPDATE',
-        oldValues: previousValues,
-        newValues: {
-          delivery_date: (data as any).delivery_date,
-          actual_delivery_date: (data as any).actual_delivery_date,
-          status: (data as any).status,
-          notes: (data as any).notes,
-        },
-        performedBy: getPerformer(c),
+        if (unlocked) {
+          await logWeekAudit({
+            weekId: previousDelivery.week_id,
+            tableName: 'thread_order_deliveries',
+            recordId: deliveryId,
+            action: 'UPDATE',
+            oldValues: {
+              delivery_date: previousDelivery.delivery_date,
+              actual_delivery_date: previousDelivery.actual_delivery_date,
+              status: previousDelivery.status,
+              notes: previousDelivery.notes,
+            },
+            newValues: {
+              delivery_date: updated.delivery_date,
+              actual_delivery_date: updated.actual_delivery_date,
+              status: updated.status,
+              notes: updated.notes,
+            },
+            performedBy: performer,
+          }, client)
+        }
+
+        return updated
       })
+    } catch (ruleErr) {
+      if (ruleErr instanceof DeliveryRuleError) {
+        return c.json({ data: null, error: ruleErr.message }, ruleErr.status)
+      }
+      throw ruleErr
     }
 
     return c.json({
@@ -391,51 +460,59 @@ deliveries.post('/deliveries/:deliveryId/receive', requirePermission('thread.all
 
     const { warehouse_id, quantity, received_by, expiry_date, idempotency_key } = validated
 
-    const delivery = await queryOne<{
-      id: number
-      status: string
-      week_id: number
-      thread_type_id: number
-      quantity_cones: number | null
-      received_quantity: number | null
-    }>(
-      `SELECT id, status, week_id, thread_type_id, quantity_cones, received_quantity
-       FROM thread_order_deliveries WHERE id = $1 LIMIT 1`,
-      [deliveryId],
-    )
-
-    if (!delivery) {
-      return c.json({ data: null, error: 'Không tìm thấy delivery' }, 404)
-    }
-
-    if (delivery.status !== 'DELIVERED') {
-      return c.json({ data: null, error: 'Chỉ có thể nhập kho cho đơn đã giao' }, 400)
-    }
-
-    const pendingQuantity = (delivery.quantity_cones ?? 0) - (delivery.received_quantity ?? 0)
-
-    if (quantity > pendingQuantity && !c.get('auth').isRoot) {
-      return c.json(
-        {
-          data: null,
-          error: pendingQuantity > 0
-            ? `Chỉ ROOT mới được nhập vượt số đặt. Đơn này còn thiếu ${pendingQuantity} cuộn.`
-            : 'Chỉ ROOT mới được nhập vượt số đặt. Đơn này đã nhập đủ số đặt.',
-        },
-        403,
-      )
-    }
+    const isRoot = c.get('auth').isRoot === true
 
     let result: any
     try {
-      const rows = await query<{ result: any }>(
-        `SELECT fn_receive_delivery($1, $2, $3, $4, $5, $6) AS result`,
-        [deliveryId, quantity, warehouse_id, received_by, expiry_date || null, idempotency_key || null],
-      )
-      result = rows.length > 0 ? rows[0].result : null
-    } catch (rpcError) {
-      console.error('fn_receive_delivery error:', rpcError)
-      return c.json({ data: null, error: getErrorMessage(rpcError) }, 500)
+      result = await tx(async (client) => {
+        const delivery = await lockDeliveryWithWeek(client, deliveryId)
+        if (!delivery) {
+          throw new DeliveryRuleError('Không tìm thấy delivery', 404)
+        }
+
+        if (idempotency_key) {
+          const seen = await runOn<{ id: number }>(
+            client,
+            `SELECT id FROM delivery_receive_logs WHERE idempotency_key = $1 LIMIT 1`,
+            [idempotency_key],
+          )
+          if (seen.length > 0) {
+            return { duplicate: true, cones_created: 0, cones_reserved: 0, remaining_shortage: 0, lot_number: `WO-${delivery.week_id}` }
+          }
+        }
+
+        if (delivery.status !== 'DELIVERED') {
+          throw new DeliveryRuleError('Chỉ có thể nhập kho cho đơn đã giao', 400)
+        }
+
+        if (delivery.week_status !== 'CONFIRMED') {
+          throw new DeliveryRuleError('Tuần không ở trạng thái đã xác nhận, không thể nhập kho', 400)
+        }
+
+        const pendingQuantity = (delivery.quantity_cones ?? 0) - (delivery.received_quantity ?? 0)
+
+        if (quantity > pendingQuantity && !isRoot) {
+          throw new DeliveryRuleError(
+            pendingQuantity > 0
+              ? `Chỉ ROOT mới được nhập vượt số đặt. Đơn này còn thiếu ${pendingQuantity} cuộn.`
+              : 'Chỉ ROOT mới được nhập vượt số đặt. Đơn này đã nhập đủ số đặt.',
+            403,
+          )
+        }
+
+        const rows = await runOn<{ result: any }>(
+          client,
+          `SELECT fn_receive_delivery($1, $2, $3, $4, $5, $6) AS result`,
+          [deliveryId, quantity, warehouse_id, received_by, expiry_date || null, idempotency_key || null],
+        )
+        return rows.length > 0 ? rows[0].result : null
+      })
+    } catch (receiveErr) {
+      if (receiveErr instanceof DeliveryRuleError) {
+        return c.json({ data: null, error: receiveErr.message }, receiveErr.status)
+      }
+      console.error('fn_receive_delivery error:', receiveErr)
+      return c.json({ data: null, error: getErrorMessage(receiveErr) }, 500)
     }
 
     return c.json({

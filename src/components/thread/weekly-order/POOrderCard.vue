@@ -19,6 +19,7 @@
           </div>
         </div>
         <AppButton
+          v-if="canRemove"
           flat
           round
           dense
@@ -115,6 +116,7 @@
         :already-ordered="getAlreadyOrdered(entry.style_id)"
         :has-sub-arts="getHasSubArts(entry.style_id)"
         :initial-sub-art-code="entry.sub_art_code"
+        :sub-art-choices="getSubArtChoices(entry)"
         @remove="(styleId, poId, subArtId) => $emit('remove-style', styleId, poId, subArtId)"
         @add-color="(styleId, color, poId, subArtId) => $emit('add-color', styleId, color, poId, subArtId)"
         @remove-color="(styleId, colorId, poId, subArtId) => $emit('remove-color', styleId, colorId, poId, subArtId)"
@@ -146,9 +148,11 @@ const props = withDefaults(defineProps<{
   entries: StyleOrderEntry[]
   orderedQuantities?: Map<string, OrderedQuantityInfo>
   subArtRequired?: Map<number, boolean>
+  canRemove?: boolean
 }>(), {
   orderedQuantities: () => new Map(),
   subArtRequired: () => new Map(),
+  canRemove: true,
 })
 
 const emit = defineEmits<{
@@ -256,6 +260,17 @@ const getHasSubArts = (styleId: number): boolean => {
   if (!props.po.items) return false
   const poItem = props.po.items.find(item => item.style_id === styleId)
   return poItem?.has_sub_arts === true
+}
+
+const getSubArtChoices = (entry: StyleOrderEntry): Array<{ id: number; code: string }> => {
+  const poItem = props.po.items?.find(item => item.style_id === entry.style_id)
+  if (!poItem?.sub_arts?.length) return []
+  const usedIds = new Set(
+    poEntries.value
+      .filter(e => e.style_id === entry.style_id && e !== entry && e.sub_art_id != null)
+      .map(e => e.sub_art_id),
+  )
+  return poItem.sub_arts.filter(sa => !usedIds.has(sa.id))
 }
 
 watch(() => props.po.items, (items) => {

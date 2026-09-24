@@ -594,6 +594,39 @@
               Tuần đang được ROOT mở khóa chỉnh sửa — còn {{ unlockRemainingLabel }}. Mọi thay đổi đều được ghi nhật ký.
             </q-banner>
 
+            <q-banner
+              v-if="hasDraft && calculationView === 'summary'"
+              dense
+              class="bg-info text-white q-mb-md"
+            >
+              <template #avatar>
+                <q-icon name="edit_note" />
+              </template>
+              Có bản lưu tạm chưa áp dụng (lúc {{ formatDateTime(calculationResults.draft_saved_at ?? '') }}, bởi {{ calculationResults.draft_saved_by || '-' }}).
+              {{ canEditSummary ? 'Bảng đang hiển thị bản tạm. Số giao NCC chỉ thay đổi sau khi bấm "Áp dụng chính thức".' : 'Bảng đang hiển thị số chính thức.' }}
+              <template
+                v-if="canEditSummary"
+                #action
+              >
+                <AppButton
+                  flat
+                  color="white"
+                  label="Huỷ bản tạm"
+                  :loading="isDiscardingDraft"
+                  :disable="isApplyingDraft"
+                  @click="handleDiscardDraft"
+                />
+                <AppButton
+                  color="white"
+                  text-color="primary"
+                  label="Áp dụng chính thức"
+                  :loading="isApplyingDraft"
+                  :disable="isDiscardingDraft || hasSummaryChanges"
+                  @click="handleApplyDraft"
+                />
+              </template>
+            </q-banner>
+
             <ResultsDetailView
               v-if="calculationView === 'detail'"
               :results="filteredDetailData"
@@ -620,7 +653,7 @@
                 v-if="canEditSummary"
                 color="primary"
                 icon="save"
-                label="Lưu nhu cầu chỉ"
+                :label="isConfirmed ? 'Lưu tạm' : 'Lưu nhu cầu chỉ'"
                 :loading="isSavingSummary"
                 :disable="!hasSummaryChanges"
                 @click="handleSaveSummary"
@@ -832,7 +865,7 @@
       v-model="showAdjustStockDialog"
       :week-id="weekId"
       :row="adjustStockRow"
-      @adjusted="loadCalculationResults"
+      @adjusted="handleStockAdjusted"
     />
   </q-page>
 </template>
@@ -928,6 +961,8 @@ const showAdjustStockDialog = ref(false)
 const adjustStockRow = ref<AggregatedRow | null>(null)
 const isSavingSummary = ref(false)
 const hasSummaryChanges = ref(false)
+const isApplyingDraft = ref(false)
+const isDiscardingDraft = ref(false)
 
 const detailSearch = ref('')
 const summarySearchColor = ref('')
@@ -998,11 +1033,20 @@ const filteredDetailData = computed(() => {
   })
 })
 
-const filteredSummaryData = computed(() => {
+const hasDraft = computed(() => Array.isArray(calculationResults.value?.draft_summary_data))
+
+const activeSummary = computed<AggregatedRow[]>(() => {
   if (!calculationResults.value) return []
+  if (canEditSummary.value && calculationResults.value.draft_summary_data) {
+    return calculationResults.value.draft_summary_data
+  }
+  return calculationResults.value.summary_data
+})
+
+const filteredSummaryData = computed(() => {
   const color = summarySearchColor.value?.trim().toLowerCase()
-  if (!color) return calculationResults.value.summary_data
-  return calculationResults.value.summary_data.filter(row =>
+  if (!color) return activeSummary.value
+  return activeSummary.value.filter(row =>
     row.thread_color?.toLowerCase().includes(color),
   )
 })
@@ -1020,13 +1064,13 @@ const unlockRemainingLabel = computed(() => {
 })
 
 const summaryRowKeys = computed(() =>
-  (calculationResults.value?.summary_data ?? []).map(
+  activeSummary.value.map(
     (row) => `${row.thread_type_id}_${row.thread_color_id ?? ''}`,
   ),
 )
 
 const findSummaryRow = (threadTypeId: number, threadColorId: number | null) =>
-  calculationResults.value?.summary_data.find(
+  activeSummary.value.find(
     (row) => row.thread_type_id === threadTypeId && (row.thread_color_id ?? null) === threadColorId,
   )
 
@@ -1040,6 +1084,9 @@ const handleSummaryQuota = (
   if (!row) return
   row.quota_cones = value
   row.demand_note = demandNote
+  const effectiveCones = row.quota_cones != null ? row.quota_cones : row.total_cones
+  row.sl_can_dat = Math.max(0, Math.ceil(effectiveCones - (row.equivalent_cones || 0)))
+  row.total_final = row.sl_can_dat + (row.additional_order || 0)
   hasSummaryChanges.value = true
 }
 
@@ -1047,7 +1094,7 @@ const handleSummaryAdditional = (threadTypeId: number, value: number, threadColo
   const row = findSummaryRow(threadTypeId, threadColorId)
   if (!row) return
   row.additional_order = value
-  row.total_final = (row.quota_cones ?? row.total_cones) + value
+  row.total_final = (row.sl_can_dat || 0) + value
   hasSummaryChanges.value = true
 }
 
@@ -1060,7 +1107,7 @@ const handleSummaryDeliveryDate = (threadTypeId: number, date: string, threadCol
 
 const handleSummaryAddRow = (row: AggregatedRow) => {
   if (!calculationResults.value) return
-  calculationResults.value.summary_data.push(row)
+  activeSummary.value.push(row)
   hasSummaryChanges.value = true
 }
 
@@ -1082,9 +1129,12 @@ const handleSummaryRemoveRow = async (threadTypeId: number, threadColorId: numbe
   })
   if (!confirmed) return
 
-  calculationResults.value.summary_data = calculationResults.value.summary_data.filter(
-    (item) => item !== row,
-  )
+  const remaining = activeSummary.value.filter((item) => item !== row)
+  if (canEditSummary.value && calculationResults.value.draft_summary_data) {
+    calculationResults.value.draft_summary_data = remaining
+  } else {
+    calculationResults.value.summary_data = remaining
+  }
   hasSummaryChanges.value = true
 }
 
@@ -1094,14 +1144,62 @@ const handleSaveSummary = async () => {
   try {
     calculationResults.value = await weeklyOrderService.saveResults(weekId.value, {
       calculation_data: calculationResults.value.calculation_data,
-      summary_data: calculationResults.value.summary_data,
+      summary_data: activeSummary.value,
     })
     hasSummaryChanges.value = false
-    snackbar.success('Đã lưu nhu cầu chỉ của tuần')
+    snackbar.success(
+      isConfirmed.value
+        ? 'Đã lưu bản tạm. Bấm "Áp dụng chính thức" để cập nhật số giao NCC'
+        : 'Đã lưu nhu cầu chỉ của tuần',
+    )
   } catch (err: any) {
     snackbar.error(err.message || 'Không thể lưu nhu cầu chỉ')
   } finally {
     isSavingSummary.value = false
+  }
+}
+
+const handleApplyDraft = async () => {
+  if (!weekId.value || !hasDraft.value) return
+  const confirmed = await confirm({
+    title: 'Áp dụng chính thức',
+    message: 'Bản lưu tạm sẽ thay số chính thức của tuần và cập nhật số giao NCC. Tiếp tục?',
+    type: 'warning',
+  })
+  if (!confirmed) return
+
+  isApplyingDraft.value = true
+  try {
+    calculationResults.value = await weeklyOrderService.applyResults(weekId.value)
+    deliverySummary.value = null
+    processTrace.value = null
+    snackbar.success('Đã áp dụng chính thức và cập nhật số giao NCC')
+  } catch (err: unknown) {
+    snackbar.error(err instanceof Error ? err.message : 'Không thể áp dụng bản lưu tạm')
+  } finally {
+    isApplyingDraft.value = false
+  }
+}
+
+const handleDiscardDraft = async () => {
+  if (!weekId.value || !hasDraft.value) return
+  const confirmed = await confirm({
+    title: 'Huỷ bản tạm',
+    message: 'Bỏ toàn bộ thay đổi trong bản lưu tạm? Số chính thức giữ nguyên.',
+    type: 'warning',
+  })
+  if (!confirmed) return
+
+  isDiscardingDraft.value = true
+  try {
+    await weeklyOrderService.discardDraftResults(weekId.value)
+    hasSummaryChanges.value = false
+    await loadCalculationResults(true)
+    snackbar.success('Đã huỷ bản lưu tạm')
+  } catch (err: unknown) {
+    snackbar.error(err instanceof Error ? err.message : 'Không thể huỷ bản lưu tạm')
+  } finally {
+    isDiscardingDraft.value = false
   }
 }
 
@@ -1271,8 +1369,8 @@ const confirmReleaseSurplus = async () => {
   }
 }
 
-const loadCalculationResults = async () => {
-  if (!weekId.value || calculationResults.value) return
+const loadCalculationResults = async (force = false) => {
+  if (!weekId.value || (calculationResults.value && !force)) return
   calculationLoading.value = true
   try {
     calculationResults.value = await weeklyOrderService.getResults(weekId.value)
@@ -1321,6 +1419,12 @@ const loadDeliverySummary = async () => {
   } finally {
     deliverySummaryLoading.value = false
   }
+}
+
+const handleStockAdjusted = async () => {
+  processTrace.value = null
+  if (reservedCones.value.length > 0) loadReservations()
+  if (!hasSummaryChanges.value) await loadCalculationResults(true)
 }
 
 const showSupplierDialog = ref(false)
@@ -1445,12 +1549,9 @@ function goRecalculate() {
   router.push({ path: '/thread/weekly-order', query: { load: String(weekId.value) } })
 }
 
-onMounted(async () => {
+const loadAll = async () => {
   await loadWeek()
   loadUnlockState()
-  unlockTimer = setInterval(() => {
-    unlockNow.value = Date.now()
-  }, 1000)
   if (week.value && (week.value.status === 'CONFIRMED' || week.value.status === 'COMPLETED')) {
     loadCompletions()
   }
@@ -1474,6 +1575,30 @@ onMounted(async () => {
   } else if (activeTab.value === 'deliveries') {
     loadDeliverySummary()
   }
+}
+
+onMounted(async () => {
+  unlockTimer = setInterval(() => {
+    unlockNow.value = Date.now()
+  }, 1000)
+  await loadAll()
+})
+
+watch(weekId, async (newId, oldId) => {
+  if (!newId || newId === oldId) return
+  week.value = null
+  notFound.value = false
+  calculationResults.value = null
+  hasSummaryChanges.value = false
+  activeUnlock.value = null
+  loans.value = []
+  completions.value = new Map()
+  progressPos.value = []
+  processTrace.value = null
+  deliverySummary.value = null
+  inventoryDiffWarning.value = null
+  if (reservedCones.value.length > 0) loadReservations()
+  await loadAll()
 })
 
 onUnmounted(() => {

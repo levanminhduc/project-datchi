@@ -98,6 +98,7 @@
           :entries="orderEntries"
           :ordered-quantities="orderedQuantities"
           :sub-art-required="subArtRequired"
+          :can-remove="!selectedWeek"
           @remove-po="handleRemovePO"
           @add-style="handleAddStyleFromPO"
           @remove-style="(styleId, poId, subArtId) => removeStyle(styleId, poId, subArtId)"
@@ -324,13 +325,21 @@
       <!-- Result Actions -->
       <div class="row q-gutter-sm q-mt-md">
         <AppButton
+          v-if="!isReadonlyWeek"
           color="primary"
           icon="save"
           label="Lưu Đơn Hàng"
           :loading="weekLoading"
-          :disable="!hasResults"
+          :disable="!hasResults || isResultsStale || hasOverLimitEntries"
           @click="handleSave()"
-        />
+        >
+          <AppTooltip v-if="isResultsStale">
+            Dữ liệu đã thay đổi, vui lòng tính toán lại trước khi lưu.
+          </AppTooltip>
+          <AppTooltip v-else-if="hasOverLimitEntries">
+            Số lượng màu vượt quá SL cho phép trong PO.
+          </AppTooltip>
+        </AppButton>
         <AppButton
           color="secondary"
           icon="list_alt"
@@ -342,17 +351,40 @@
           color="positive"
           icon="check_circle"
           label="Xác Nhận Đặt Hàng"
-          :disable="!hasResults || selectedWeek?.status === OrderWeekStatus.CONFIRMED || isWarehouseChangedSinceCalc"
+          :disable="!hasResults || isReadonlyWeek || isWarehouseChangedSinceCalc || isResultsStale || hasOverLimitEntries"
           :loading="showConfirmDialog"
           @click="handleConfirmWeek"
         >
-          <AppTooltip v-if="isWarehouseChangedSinceCalc">
-            Vui lòng tính toán lại sau khi thay đổi kho.
-          </AppTooltip>
-          <AppTooltip v-else-if="selectedWeek?.status === OrderWeekStatus.CONFIRMED">
+          <AppTooltip v-if="selectedWeek?.status === OrderWeekStatus.CONFIRMED">
             Đơn hàng đã được xác nhận
           </AppTooltip>
+          <AppTooltip v-else-if="isReadonlyWeek">
+            Tuần đã hoàn tất hoặc đã huỷ
+          </AppTooltip>
+          <AppTooltip v-else-if="isWarehouseChangedSinceCalc">
+            Vui lòng tính toán lại sau khi thay đổi kho.
+          </AppTooltip>
+          <AppTooltip v-else-if="isResultsStale">
+            Dữ liệu đã thay đổi, vui lòng tính toán lại trước khi xác nhận.
+          </AppTooltip>
+          <AppTooltip v-else-if="hasOverLimitEntries">
+            Số lượng màu vượt quá SL cho phép trong PO.
+          </AppTooltip>
         </AppButton>
+        <div
+          v-if="isReadonlyWeek && selectedWeek"
+          class="row items-center text-caption text-grey-8"
+        >
+          Tuần đã xác nhận chỉ xem tại đây. Sửa nhu cầu chỉ tại
+          <AppButton
+            flat
+            dense
+            no-caps
+            color="primary"
+            label="trang chi tiết tuần"
+            @click="router.push(`/thread/weekly-order/${selectedWeek.id}`)"
+          />
+        </div>
       </div>
     </template>
 
@@ -539,6 +571,10 @@ const poOptions = computed(() =>
 const _canSave = computed(() => {
   return orderEntries.value.length > 0
 })
+
+const isReadonlyWeek = computed(
+  () => !!selectedWeek.value && selectedWeek.value.status !== OrderWeekStatus.DRAFT,
+)
 
 const isWarehouseChangedSinceCalc = computed(() => {
   if (lastCalculatedWarehouseIds.value === null) return false
@@ -751,7 +787,15 @@ const handleUpdateSummaryDeliveryDate = (threadTypeId: number, date: string, thr
 }
 
 const handleReorder = async (newOrder: CalculationResult[]) => {
-  await reorderResults(newOrder)
+  isReordering.value = true
+  try {
+    reorderResults(newOrder)
+    await handleCalculate()
+  } catch (err) {
+    snackbar.error(err instanceof Error ? err.message : 'Không thể tính lại sau khi sắp xếp')
+  } finally {
+    isReordering.value = false
+  }
 }
 
 const orderItemExportRows = computed(() => orderEntriesToExportRows(orderEntries.value))
@@ -767,10 +811,15 @@ const handleExportOrderItems = async () => {
   })
 }
 
-const handleSave = async (options?: { skipReset?: boolean }) => {
+const handleSave = async (options?: { skipReset?: boolean }): Promise<boolean> => {
   if (!weekName.value) {
     snackbar.error('Vui lòng nhập thông tin Đơn đặt chỉ')
-    return
+    return false
+  }
+
+  if (isReadonlyWeek.value) {
+    snackbar.error('Tuần đã xác nhận không sửa tại đây. Vui lòng sửa tại trang chi tiết tuần')
+    return false
   }
 
   mergeDeliveryDateOverrides()
@@ -796,14 +845,14 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
       items,
     })
 
-    if (!updated) return
+    if (!updated) return false
 
     try {
       await weeklyOrderService.saveWarehouseFilter(selectedWeek.value.id, selectedWarehouseIds.value)
     } catch (err) {
       snackbar.error('Lưu bộ lọc kho thất bại')
       console.warn('Failed to save warehouse filter:', err)
-      return
+      return false
     }
 
     if (hasResults.value) {
@@ -818,7 +867,7 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
       items,
     })
 
-    if (!created) return
+    if (!created) return false
 
     selectedWeek.value = created
 
@@ -827,7 +876,7 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
     } catch (err) {
       snackbar.error('Lưu bộ lọc kho thất bại')
       console.warn('Failed to save warehouse filter:', err)
-      return
+      return false
     }
 
     if (hasResults.value) {
@@ -855,6 +904,7 @@ const handleSave = async (options?: { skipReset?: boolean }) => {
       weekInfoCardRef.value?.focusWeekName()
     })
   }
+  return true
 }
 
 const handleLoadWeek = async (weekId: number) => {
@@ -908,6 +958,18 @@ const handleLoadWeek = async (weekId: number) => {
     await handleCalculate()
 
     const savedResults = await loadResults(weekId).catch(() => null)
+    if (savedResults?.summary_data?.length && week.status !== OrderWeekStatus.DRAFT) {
+      const savedInventory = new Map(
+        savedResults.summary_data.map((s) => [`${s.thread_type_id}_${s.thread_color_id ?? ''}`, s]),
+      )
+      for (const row of aggregatedResults.value) {
+        const saved = savedInventory.get(`${row.thread_type_id}_${row.thread_color_id ?? ''}`)
+        row.full_cones = saved?.full_cones ?? 0
+        row.partial_cones = saved?.partial_cones ?? 0
+        row.inventory_cones = row.full_cones + row.partial_cones
+        row.equivalent_cones = saved?.equivalent_cones ?? 0
+      }
+    }
     if (savedResults?.summary_data?.length) {
       const savedMap = new Map<string, { additional_order: number; delivery_date: string | null; total_final: number; quota_cones: number | null; demand_note: string | null }>(
         savedResults.summary_data.map((s) => [
@@ -1034,8 +1096,10 @@ function showInventoryDiffDialog(diff: InventoryDiffRow[]): Promise<void> {
       .onOk(async () => {
         try {
           await handleCalculate()
-          await handleSave({ skipReset: true })
-          snackbar.info('Đã tính toán lại với tồn kho mới. Vui lòng kiểm tra và xác nhận đơn hàng lại.')
+          const saved = await handleSave({ skipReset: true })
+          if (saved) {
+            snackbar.info('Đã tính toán lại với tồn kho mới. Vui lòng kiểm tra và xác nhận đơn hàng lại.')
+          }
         } catch (err) {
           snackbar.error(err instanceof Error ? err.message : 'Lỗi khi tính toán lại')
         } finally {
@@ -1067,9 +1131,9 @@ const handleConfirmWeek = async () => {
 
   try {
     setStepStatus(0, 'loading')
-    await handleSave({ skipReset: true })
+    const saved = await handleSave({ skipReset: true })
 
-    if (!selectedWeek.value) {
+    if (!saved || !selectedWeek.value) {
       setStepStatus(0, 'error', 'Không thể lưu đơn hàng')
       return
     }
@@ -1169,6 +1233,7 @@ const handleConfirmWeek = async () => {
   manualDeliveryDateEdits.value = new Set()
   selectedWeek.value = null
   selectedWarehouseIds.value = []
+  lastCalculatedWarehouseIds.value = null
 
   await fetchAllPurchaseOrders()
 

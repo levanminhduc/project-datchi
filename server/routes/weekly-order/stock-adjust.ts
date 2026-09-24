@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
-import { query, queryOne } from '../../db/query'
+import type { PoolClient } from 'pg'
+import { query, queryOne, runOn, tx } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
 import {
@@ -42,8 +43,10 @@ async function countCones(
   weekId: number,
   threadTypeId: number,
   colorId: number | null,
+  client?: PoolClient,
 ): Promise<ConeCounts> {
-  const row = await queryOne<ConeCounts>(
+  const rows = await runOn<ConeCounts>(
+    client,
     `SELECT
        COUNT(*) FILTER (WHERE status = ANY($4))::int AS eligible_cones,
        COUNT(*) FILTER (WHERE NOT (status = ANY($4)))::int AS locked_cones
@@ -53,7 +56,13 @@ async function countCones(
        AND (($3::int IS NULL AND color_id IS NULL) OR color_id = $3)`,
     [weekId, threadTypeId, colorId, ELIGIBLE_STATUSES],
   )
-  return row ?? { eligible_cones: 0, locked_cones: 0 }
+  return rows[0] ?? { eligible_cones: 0, locked_cones: 0 }
+}
+
+class StockAdjustRuleError extends Error {
+  constructor(message: string, public readonly status: 400 | 409) {
+    super(message)
+  }
 }
 
 function parseId(raw: string | undefined): number | null {
@@ -107,20 +116,24 @@ stockAdjust.post(
       }
 
       const performer = getPerformer(c)
-      const rows = await query<{ result: Record<string, unknown> }>(
-        `SELECT fn_revert_delivery_receive($1, $2, $3) AS result`,
-        [logId, performer, validated.reason],
-      )
-      const result = rows.length > 0 ? rows[0].result : null
+      const result = await tx(async (client) => {
+        const rows = await runOn<{ result: Record<string, unknown> }>(
+          client,
+          `SELECT fn_revert_delivery_receive($1, $2, $3) AS result`,
+          [logId, performer, validated.reason],
+        )
 
-      await logWeekAudit({
-        weekId: log.week_id,
-        tableName: 'delivery_receive_logs',
-        recordId: logId,
-        action: 'UPDATE',
-        oldValues: { reverted_at: null, delivery_id: log.delivery_id, quantity: log.quantity },
-        newValues: { reverted_at: new Date().toISOString(), reason: validated.reason },
-        performedBy: performer,
+        await logWeekAudit({
+          weekId: log.week_id,
+          tableName: 'delivery_receive_logs',
+          recordId: logId,
+          action: 'UPDATE',
+          oldValues: { reverted_at: null, delivery_id: log.delivery_id, quantity: log.quantity },
+          newValues: { reverted_at: new Date().toISOString(), reason: validated.reason },
+          performedBy: performer,
+        }, client)
+
+        return rows.length > 0 ? rows[0].result : null
       })
 
       return c.json({
@@ -221,47 +234,70 @@ stockAdjust.post('/:id/stock-adjust', requirePermission('thread.allocations.mana
     }
 
     const colorId = validated.thread_color_id ?? null
-    const counts = await countCones(weekId, validated.thread_type_id, colorId)
-    const writeOffCones = counts.eligible_cones - validated.actual_cones
-
-    if (writeOffCones < 0) {
-      return c.json(
-        {
-          data: null,
-          error: `Số đếm thực tế (${validated.actual_cones}) lớn hơn tồn kho hiện có (${counts.eligible_cones}). Muốn thêm cuộn phải nhập kho theo đơn giao hàng`,
-        },
-        400,
-      )
-    }
-
-    if (writeOffCones === 0) {
-      return c.json(
-        { data: null, error: 'Số đếm thực tế trùng với tồn kho hiện có, không cần điều chỉnh' },
-        400,
-      )
-    }
-
     const performer = getPerformer(c)
-    const rows = await query<{ result: Record<string, unknown> }>(
-      `SELECT fn_write_off_week_cones($1, $2, $3, $4, $5, $6, $7) AS result`,
-      [weekId, validated.thread_type_id, colorId, writeOffCones, null, validated.reason, performer],
-    )
-    const result = rows.length > 0 ? rows[0].result : null
 
-    await logWeekAudit({
-      weekId,
-      tableName: 'thread_inventory',
-      recordId: validated.thread_type_id,
-      action: 'UPDATE',
-      oldValues: { inventory_cones: counts.eligible_cones, thread_color_id: colorId },
-      newValues: {
-        inventory_cones: validated.actual_cones,
-        thread_color_id: colorId,
-        written_off: writeOffCones,
-        reason: validated.reason,
-      },
-      performedBy: performer,
-    })
+    let writeOffCones: number
+    let result: Record<string, unknown> | null
+    try {
+      ;({ writeOffCones, result } = await tx(async (client) => {
+        await client.query(`SELECT id FROM thread_order_weeks WHERE id = $1 FOR UPDATE`, [weekId])
+
+        const counts = await countCones(weekId, validated.thread_type_id, colorId, client)
+
+        if (counts.eligible_cones !== validated.expected_current_cones) {
+          throw new StockAdjustRuleError(
+            `Tồn kho đã thay đổi (hiện có ${counts.eligible_cones} cuộn, lúc xem trước là ${validated.expected_current_cones} cuộn). Vui lòng tải lại`,
+            409,
+          )
+        }
+
+        const toWriteOff = counts.eligible_cones - validated.actual_cones
+
+        if (toWriteOff < 0) {
+          throw new StockAdjustRuleError(
+            `Số đếm thực tế (${validated.actual_cones}) lớn hơn tồn kho hiện có (${counts.eligible_cones}). Muốn thêm cuộn phải nhập kho theo đơn giao hàng`,
+            400,
+          )
+        }
+
+        if (toWriteOff === 0) {
+          throw new StockAdjustRuleError('Số đếm thực tế trùng với tồn kho hiện có, không cần điều chỉnh', 400)
+        }
+
+        const rows = await runOn<{ result: Record<string, unknown> }>(
+          client,
+          `SELECT fn_write_off_week_cones($1, $2, $3, $4, $5, $6, $7) AS result`,
+          [weekId, validated.thread_type_id, colorId, toWriteOff, null, validated.reason, performer],
+        )
+        const rpcResult = rows.length > 0 ? rows[0].result : null
+
+        if (Number(rpcResult?.written_off ?? 0) !== toWriteOff) {
+          throw new Error(`Chỉ loại bỏ được ${Number(rpcResult?.written_off ?? 0)}/${toWriteOff} cuộn, đã huỷ thao tác. Vui lòng thử lại`)
+        }
+
+        await logWeekAudit({
+          weekId,
+          tableName: 'thread_inventory',
+          recordId: validated.thread_type_id,
+          action: 'UPDATE',
+          oldValues: { inventory_cones: counts.eligible_cones, thread_color_id: colorId },
+          newValues: {
+            inventory_cones: validated.actual_cones,
+            thread_color_id: colorId,
+            written_off: toWriteOff,
+            reason: validated.reason,
+          },
+          performedBy: performer,
+        }, client)
+
+        return { writeOffCones: toWriteOff, result: rpcResult }
+      }))
+    } catch (ruleErr) {
+      if (ruleErr instanceof StockAdjustRuleError) {
+        return c.json({ data: null, error: ruleErr.message }, ruleErr.status)
+      }
+      throw ruleErr
+    }
 
     return c.json({
       data: result,

@@ -8,6 +8,7 @@ export const StockAdjustPreviewSchema = z.object({
 
 export const StockAdjustSchema = StockAdjustPreviewSchema.extend({
   reason: z.string().trim().min(1, 'Vui lòng nhập lý do điều chỉnh'),
+  expected_current_cones: z.number().int().min(0, 'Số tồn hiện có không hợp lệ'),
 })
 
 export const RevertReceiveSchema = z.object({

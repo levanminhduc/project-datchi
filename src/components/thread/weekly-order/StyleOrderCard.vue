@@ -57,6 +57,41 @@
         </q-banner>
       </div>
 
+      <div
+        v-if="hasSubArts && entry.sub_art_id == null"
+        class="row items-center q-col-gutter-sm q-mb-sm"
+      >
+        <div class="col-12 col-sm-auto">
+          <q-badge
+            color="warning"
+            text-color="dark"
+            label="Chưa chọn Sub-art"
+          />
+        </div>
+        <div class="col-12 col-sm-4 col-md-3">
+          <AppSelect
+            :model-value="null"
+            :options="subArtChoiceOptions"
+            label="Chọn Sub-art cho mã hàng"
+            dense
+            hide-bottom-space
+            option-value="value"
+            option-label="label"
+            emit-value
+            map-options
+            @update:model-value="handleSelectSubArt"
+          >
+            <template #no-option>
+              <q-item>
+                <q-item-section class="text-grey">
+                  Không còn Sub-art để chọn
+                </q-item-section>
+              </q-item>
+            </template>
+          </AppSelect>
+        </div>
+      </div>
+
       <!-- Sub-art info for legacy entries -->
       <div
         v-if="entry.sub_art_code && !hasSubArts"
@@ -227,11 +262,13 @@ const props = withDefaults(defineProps<{
   alreadyOrdered?: number
   hasSubArts?: boolean
   initialSubArtCode?: string
+  subArtChoices?: Array<{ id: number; code: string }>
 }>(), {
   poQuantity: null,
   alreadyOrdered: 0,
   hasSubArts: false,
   initialSubArtCode: undefined,
+  subArtChoices: () => [],
 })
 
 const emit = defineEmits<{
@@ -266,6 +303,17 @@ const subArtCodes = computed(() => {
 const subArtCodeOptions = computed(() =>
   subArtCodes.value.map(code => ({ label: code, value: code }))
 )
+
+const subArtChoiceOptions = computed(() =>
+  props.subArtChoices.map(sa => ({ label: sa.code, value: sa.id }))
+)
+
+const handleSelectSubArt = (subArtId: number | null) => {
+  if (subArtId == null) return
+  const choice = props.subArtChoices.find(sa => sa.id === subArtId)
+  if (!choice) return
+  emit('update-sub-art', props.entry.style_id, props.entry.po_id, choice.id, choice.code, props.entry.sub_art_id ?? null)
+}
 
 watch(selectedSubArtCode, () => {
   selectedColorId.value = null

@@ -22,7 +22,7 @@ type EnrichedRow = SummaryRow & {
 export async function enrichWithInventory(
   summaryRows: SummaryRow[],
   currentWeekId?: number,
-  options?: { preserveAdditionalOrder?: boolean; warehouseIds?: number[] },
+  options?: { preserveAdditionalOrder?: boolean; warehouseIds?: number[]; frozenInventoryRows?: SummaryRow[] },
 ): Promise<EnrichedRow[]> {
   if (!summaryRows || summaryRows.length === 0) return []
 
@@ -32,11 +32,12 @@ export async function enrichWithInventory(
       : null
 
   const partialConeRatio = await getPartialConeRatio()
+  const frozenRows = options?.frozenInventoryRows ?? null
 
   // Resolve thread_color (string name) → color_id for rows where thread_color_id is null
   const unresolvedColorNames = [
     ...new Set(
-      summaryRows
+      [...summaryRows, ...(frozenRows ?? [])]
         .filter(
           (r) =>
             (r.thread_color_id as number | null | undefined) == null &&
@@ -81,7 +82,16 @@ export async function enrichWithInventory(
 
   const inventoryMap = new Map<string, { full: number; partial: number }>()
 
-  if (uniqueColoredTypeIds.length > 0 && uniqueColoredColorIds.length > 0) {
+  const frozenMap = new Map<string, SummaryRow>()
+  for (const row of frozenRows ?? []) {
+    let colorId = row.thread_color_id as number | null | undefined
+    if (colorId == null && typeof row.thread_color === 'string') {
+      colorId = colorNameToId.get(row.thread_color as string) ?? null
+    }
+    frozenMap.set(`${row.thread_type_id}_${colorId != null ? colorId : ''}`, row)
+  }
+
+  if (!frozenRows && uniqueColoredTypeIds.length > 0 && uniqueColoredColorIds.length > 0) {
     const coloredCounts = await query<{
       thread_type_id: number
       color_id: number
@@ -104,7 +114,7 @@ export async function enrichWithInventory(
     }
   }
 
-  if (uniqueNonColoredTypeIds.length > 0) {
+  if (!frozenRows && uniqueNonColoredTypeIds.length > 0) {
     const inventoryCounts = await query<{
       thread_type_id: number
       is_partial: boolean
@@ -164,11 +174,13 @@ export async function enrichWithInventory(
     }
     const key = `${row.thread_type_id}_${colorId != null ? colorId : ''}`
     const inv = inventoryMap.get(key) || { full: 0, partial: 0 }
-    const full_cones = inv.full
-    const partial_cones = inv.partial
+    const frozen = frozenRows ? frozenMap.get(key) : undefined
+    const full_cones = frozenRows ? Number(frozen?.full_cones ?? 0) : inv.full
+    const partial_cones = frozenRows ? Number(frozen?.partial_cones ?? 0) : inv.partial
     const inventory_cones = full_cones + partial_cones
-    const equivalent_cones =
-      Math.round((full_cones + partial_cones * partialConeRatio) * 10) / 10
+    const equivalent_cones = frozenRows
+      ? Number(frozen?.equivalent_cones ?? 0)
+      : Math.round((full_cones + partial_cones * partialConeRatio) * 10) / 10
     const effectiveCones = (row.quota_cones as number | null | undefined) != null
       ? (row.quota_cones as number)
       : row.total_cones

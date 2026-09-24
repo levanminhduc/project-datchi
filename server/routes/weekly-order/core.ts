@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
-import { query, queryOne, querySingle, queryCount } from '../../db/query'
+import type { PoolClient } from 'pg'
+import { query, queryOne, queryCount, runOn, tx } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
 import { broadcastNotification, getWarehouseEmployeeIds, getLeaderEmployeeIds } from '../../utils/notificationService'
@@ -44,9 +45,10 @@ type OrderItemInsert = {
   sub_art_id: number | null
 }
 
-async function insertOrderItemsWithEmbed(rows: OrderItemInsert[]): Promise<Record<string, unknown>[]> {
+async function insertOrderItemsWithEmbed(rows: OrderItemInsert[], client?: PoolClient): Promise<Record<string, unknown>[]> {
   if (rows.length === 0) return []
-  return query<Record<string, unknown>>(
+  return runOn<Record<string, unknown>>(
+    client,
     `WITH input AS (
        SELECT * FROM json_to_recordset($1::json) AS x(
          week_id int, po_id int, style_id int, style_color_id int, quantity int, sub_art_id int
@@ -739,30 +741,32 @@ core.put('/:id/warehouses', requirePermission('thread.allocations.manage'), asyn
         ).map((r) => r.warehouse_id)
       : null
 
-    await query(
-      `DELETE FROM thread_order_week_warehouses WHERE week_id = $1`,
-      [id],
-    )
-
-    if (warehouse_ids.length > 0) {
-      await query(
-        `INSERT INTO thread_order_week_warehouses (week_id, warehouse_id)
-         SELECT $1, unnest($2::int[])`,
-        [id, warehouse_ids],
+    await tx(async (client) => {
+      await client.query(
+        `DELETE FROM thread_order_week_warehouses WHERE week_id = $1`,
+        [id],
       )
-    }
 
-    if (unlockedWarehouses) {
-      await logWeekAudit({
-        weekId: id,
-        tableName: 'thread_order_week_warehouses',
-        recordId: id,
-        action: 'UPDATE',
-        oldValues: { warehouse_ids: previousWarehouseIds },
-        newValues: { warehouse_ids },
-        performedBy: getPerformer(c),
-      })
-    }
+      if (warehouse_ids.length > 0) {
+        await client.query(
+          `INSERT INTO thread_order_week_warehouses (week_id, warehouse_id)
+           SELECT $1, unnest($2::int[])`,
+          [id, warehouse_ids],
+        )
+      }
+
+      if (unlockedWarehouses) {
+        await logWeekAudit({
+          weekId: id,
+          tableName: 'thread_order_week_warehouses',
+          recordId: id,
+          action: 'UPDATE',
+          oldValues: { warehouse_ids: previousWarehouseIds },
+          newValues: { warehouse_ids },
+          performedBy: getPerformer(c),
+        }, client)
+      }
+    })
 
     return c.json({
       data: warehouse_ids,
@@ -897,36 +901,41 @@ core.post('/', requirePermission('thread.allocations.manage'), async (c) => {
     }
 
     let week: Record<string, any>
+    let items: Record<string, unknown>[]
     try {
-      week = await querySingle<Record<string, any>>(
-        `INSERT INTO thread_order_weeks (week_name, start_date, end_date, status, notes, created_by)
-         VALUES ($1, $2, $3, 'DRAFT', $4, $5)
-         RETURNING *`,
-        [
-          validated.week_name.trim(),
-          validated.start_date || null,
-          validated.end_date || null,
-          validated.notes || null,
-          createdBy,
-        ],
-      )
+      ;({ week, items } = await tx(async (client) => {
+        const weekRows = await runOn<Record<string, any>>(
+          client,
+          `INSERT INTO thread_order_weeks (week_name, start_date, end_date, status, notes, created_by)
+           VALUES ($1, $2, $3, 'DRAFT', $4, $5)
+           RETURNING *`,
+          [
+            validated.week_name.trim(),
+            validated.start_date || null,
+            validated.end_date || null,
+            validated.notes || null,
+            createdBy,
+          ],
+        )
+        const createdWeek = weekRows[0]
+
+        const itemRows = validated.items.map((item) => ({
+          week_id: createdWeek.id,
+          po_id: item.po_id || null,
+          style_id: item.style_id,
+          style_color_id: item.style_color_id,
+          quantity: item.quantity,
+          sub_art_id: item.sub_art_id || null,
+        }))
+
+        return { week: createdWeek, items: await insertOrderItemsWithEmbed(itemRows, client) }
+      }))
     } catch (weekErr) {
       if ((weekErr as { code?: string }).code === '23505') {
         return c.json({ data: null, error: 'Tên tuần đã tồn tại' }, 409)
       }
       throw weekErr
     }
-
-    const itemRows = validated.items.map((item) => ({
-      week_id: week.id,
-      po_id: item.po_id || null,
-      style_id: item.style_id,
-      style_color_id: item.style_color_id,
-      quantity: item.quantity,
-      sub_art_id: item.sub_art_id || null,
-    }))
-
-    const items = await insertOrderItemsWithEmbed(itemRows)
 
     return c.json(
       { data: { ...week, items }, error: null, message: 'Tạo tuần đặt hàng thành công' },
@@ -972,106 +981,112 @@ core.post('/:id/remove-po', requirePermission('thread.allocations.manage'), asyn
       return c.json({ data: null, error: 'Không thể xóa PO từ đơn đã hoàn thành hoặc đã hủy' }, 400)
     }
 
-    const removedItems = await query<{ id: number; style_id: number }>(
-      `DELETE FROM thread_order_items WHERE week_id = $1 AND po_id = $2 RETURNING id, style_id`,
-      [id, validated.po_id],
-    )
+    const performer = getPerformer(c)
+    const { removedCount, deliveriesSynced, reservationsReleased, reservationsReserved } = await tx(async (client) => {
+      await client.query(`SELECT id FROM thread_order_weeks WHERE id = $1 FOR UPDATE`, [id])
 
-    const removedCount = removedItems?.length ?? 0
-    console.info(`[remove-po] Removed ${removedCount} items from week=${id} po=${validated.po_id}`)
-
-    if (unlockedRemovePO && removedCount > 0) {
-      await logWeekAudit({
-        weekId: id,
-        tableName: 'thread_order_items',
-        recordId: validated.po_id,
-        action: 'DELETE',
-        oldValues: { po_id: validated.po_id, removed_item_ids: removedItems.map((i) => i.id) },
-        performedBy: getPerformer(c),
-      })
-    }
-
-    let deliveriesSynced = false
-    let reservationsReleased = 0
-    let reservationsReserved = 0
-
-    if (week.status === 'CONFIRMED' && removedCount > 0) {
-      const remainingItems = await query<{ style_id: number; style_color_id: number | null; color_id: number | null; quantity: number }>(
-        `SELECT style_id, style_color_id, color_id, quantity FROM thread_order_items
-         WHERE week_id = $1 LIMIT 10000`,
-        [id],
+      const removedItems = await runOn<{ id: number; style_id: number }>(
+        client,
+        `DELETE FROM thread_order_items WHERE week_id = $1 AND po_id = $2 RETURNING id, style_id`,
+        [id, validated.po_id],
       )
 
-      const resultsRow = await queryOne<{ id: number; calculation_data: any; summary_data: any }>(
-        `SELECT id, calculation_data, summary_data FROM thread_order_results WHERE week_id = $1`,
-        [id],
-      )
+      const removed = removedItems.length
+      console.info(`[remove-po] Removed ${removed} items from week=${id} po=${validated.po_id}`)
 
-      if (resultsRow?.calculation_data && Array.isArray(resultsRow.calculation_data)) {
-        const itemsForAdjust = (remainingItems || []).map((i: { style_id: number; style_color_id: number | null; color_id: number | null; quantity: number }) => ({
-          style_id: i.style_id,
-          color_key: i.style_color_id ?? i.color_id ?? 0,
-          quantity: i.quantity,
-        }))
+      if (unlockedRemovePO && removed > 0) {
+        await logWeekAudit({
+          weekId: id,
+          tableName: 'thread_order_items',
+          recordId: validated.po_id,
+          action: 'DELETE',
+          oldValues: { po_id: validated.po_id, removed_item_ids: removedItems.map((i) => i.id) },
+          performedBy: performer,
+        }, client)
+      }
 
-        const filteredCalcData = adjustCalcDataForRemainingItems(
-          resultsRow.calculation_data as Parameters<typeof adjustCalcDataForRemainingItems>[0],
-          itemsForAdjust,
+      let synced = false
+      let released = 0
+      let reserved = 0
+
+      if (week.status === 'CONFIRMED' && removed > 0) {
+        const remainingItems = await runOn<{ style_id: number; style_color_id: number | null; color_id: number | null; quantity: number }>(
+          client,
+          `SELECT style_id, style_color_id, color_id, quantity FROM thread_order_items
+           WHERE week_id = $1 LIMIT 10000`,
+          [id],
         )
 
-        const reaggregated = reaggregateSummary(
-          filteredCalcData,
-          Array.isArray(resultsRow.summary_data) ? resultsRow.summary_data as Array<{ thread_type_id: number; thread_color?: string | null; [key: string]: unknown }> : [],
+        const resultsRows = await runOn<{ id: number; calculation_data: any; summary_data: any }>(
+          client,
+          `SELECT id, calculation_data, summary_data FROM thread_order_results WHERE week_id = $1 FOR UPDATE`,
+          [id],
         )
+        const resultsRow = resultsRows[0]
 
-        let enrichedSummary = reaggregated
-        try {
-          enrichedSummary = await enrichWithInventory(
+        if (resultsRow?.calculation_data && Array.isArray(resultsRow.calculation_data)) {
+          const itemsForAdjust = remainingItems.map((i) => ({
+            style_id: i.style_id,
+            color_key: i.style_color_id ?? i.color_id ?? 0,
+            quantity: i.quantity,
+          }))
+
+          const filteredCalcData = adjustCalcDataForRemainingItems(
+            resultsRow.calculation_data as Parameters<typeof adjustCalcDataForRemainingItems>[0],
+            itemsForAdjust,
+          )
+
+          const officialSummary = Array.isArray(resultsRow.summary_data)
+            ? resultsRow.summary_data as Array<{ thread_type_id: number; total_cones: number; thread_color?: string | null; [key: string]: unknown }>
+            : []
+
+          const reaggregated = reaggregateSummary(filteredCalcData, officialSummary)
+
+          const enrichedSummary = await enrichWithInventory(
             reaggregated as Array<{ thread_type_id: number; total_cones: number; [key: string]: unknown }>,
             id,
-            { preserveAdditionalOrder: false },
+            { preserveAdditionalOrder: false, frozenInventoryRows: officialSummary },
           )
-        } catch (enrichErr) {
-          console.warn('[remove-po] enrichWithInventory failed, using unenriched:', enrichErr)
-        }
 
-        await query(
-          `UPDATE thread_order_results
-           SET calculation_data = $1::jsonb, summary_data = $2::jsonb, calculated_at = $3
-           WHERE id = $4`,
-          [
-            JSON.stringify(filteredCalcData),
-            JSON.stringify(enrichedSummary),
-            new Date().toISOString(),
-            resultsRow.id,
-          ],
-        )
+          await runOn(
+            client,
+            `UPDATE thread_order_results
+             SET calculation_data = $1::jsonb, summary_data = $2::jsonb, calculated_at = $3
+             WHERE id = $4`,
+            [
+              JSON.stringify(filteredCalcData),
+              JSON.stringify(enrichedSummary),
+              new Date().toISOString(),
+              resultsRow.id,
+            ],
+          )
 
-        console.info(`[remove-po] Updated results: calc ${(resultsRow.calculation_data as unknown[]).length} -> ${filteredCalcData.length}, summary reaggregated ${enrichedSummary.length} rows`)
+          console.info(`[remove-po] Updated results: calc ${(resultsRow.calculation_data as unknown[]).length} -> ${filteredCalcData.length}, summary reaggregated ${enrichedSummary.length} rows`)
 
-        try {
-          const rpcRows = await query<{ result: any }>(
+          const rpcRows = await runOn<{ result: any }>(
+            client,
             `SELECT fn_re_reserve_after_remove_po($1) AS result`,
             [id],
           )
           const rpcResult = rpcRows.length > 0 ? rpcRows[0].result : null
           if (rpcResult) {
-            reservationsReleased = rpcResult.released ?? 0
-            reservationsReserved = rpcResult.total_reserved ?? 0
-            console.info(`[remove-po] Re-reserve: released=${reservationsReleased}, reserved=${reservationsReserved}, shortage=${rpcResult.total_shortage ?? 0}`)
+            released = rpcResult.released ?? 0
+            reserved = rpcResult.total_reserved ?? 0
+            console.info(`[remove-po] Re-reserve: released=${released}, kept=${rpcResult.kept ?? 0}`)
           }
-        } catch (rpcError) {
-          console.error('[remove-po] fn_re_reserve_after_remove_po error:', rpcError)
-        }
 
-        try {
-          await syncDeliveries(id, enrichedSummary as any)
-          deliveriesSynced = true
-        } catch (syncErr) {
-          console.warn('[remove-po] syncDeliveries failed:', syncErr)
+          await syncDeliveries(id, enrichedSummary, client)
+          synced = true
         }
       }
-    }
+
+      return {
+        removedCount: removed,
+        deliveriesSynced: synced,
+        reservationsReleased: released,
+        reservationsReserved: reserved,
+      }
+    })
 
     return c.json({
       data: {
@@ -1127,6 +1142,13 @@ core.put('/:id', requirePermission('thread.allocations.manage'), async (c) => {
       throw err
     }
 
+    if (existing.status !== 'DRAFT' && validated.items !== undefined) {
+      return c.json(
+        { data: null, error: 'Tuần đã xác nhận không được sửa danh sách mã hàng. Sửa nhu cầu chỉ tại trang chi tiết tuần' },
+        400,
+      )
+    }
+
     if (validated.items && validated.items.length > 0) {
       const poValidation = await validatePOQuantityLimits(validated.items, id)
       if (!poValidation.valid) {
@@ -1173,12 +1195,57 @@ core.put('/:id', requirePermission('thread.allocations.manage'), async (c) => {
         )
       : null
 
+    const performer = getPerformer(c)
     let week: Record<string, any>
+    let items: Record<string, unknown>[] | null = null
     try {
-      week = await querySingle<Record<string, any>>(
-        `UPDATE thread_order_weeks SET ${setClause} WHERE id = $${updateParams.length} RETURNING *`,
-        updateParams,
-      )
+      ;({ week, items } = await tx(async (client) => {
+        const weekRows = await runOn<Record<string, any>>(
+          client,
+          `UPDATE thread_order_weeks SET ${setClause} WHERE id = $${updateParams.length} RETURNING *`,
+          updateParams,
+        )
+        const updatedWeek = weekRows[0]
+
+        let updatedItems: Record<string, unknown>[] | null = null
+        if (validated.items !== undefined) {
+          await client.query(
+            `DELETE FROM thread_order_items WHERE week_id = $1`,
+            [id],
+          )
+
+          const itemRows = validated.items.map((item) => ({
+            week_id: id,
+            po_id: item.po_id || null,
+            style_id: item.style_id,
+            style_color_id: item.style_color_id,
+            quantity: item.quantity,
+            sub_art_id: item.sub_art_id || null,
+          }))
+
+          updatedItems = await insertOrderItemsWithEmbed(itemRows, client)
+        }
+
+        if (unlockedUpdate) {
+          await logWeekAudit({
+            weekId: id,
+            tableName: 'thread_order_weeks',
+            recordId: id,
+            action: 'UPDATE',
+            oldValues: previousWeek ?? {},
+            newValues: {
+              week_name: updatedWeek.week_name,
+              start_date: updatedWeek.start_date,
+              end_date: updatedWeek.end_date,
+              notes: updatedWeek.notes,
+              items_count: updatedItems !== null ? updatedItems.length : previousWeek?.items_count,
+            },
+            performedBy: performer,
+          }, client)
+        }
+
+        return { week: updatedWeek, items: updatedItems }
+      }))
     } catch (updateErr) {
       if ((updateErr as { code?: string }).code === '23505') {
         return c.json({ data: null, error: 'Tên tuần đã tồn tại' }, 409)
@@ -1186,48 +1253,7 @@ core.put('/:id', requirePermission('thread.allocations.manage'), async (c) => {
       throw updateErr
     }
 
-    let items: Record<string, unknown>[] | null = null
-    if (validated.items !== undefined) {
-      await query(
-        `DELETE FROM thread_order_items WHERE week_id = $1`,
-        [id],
-      )
-
-      if (validated.items.length > 0) {
-        const itemRows = validated.items.map((item) => ({
-          week_id: id,
-          po_id: item.po_id || null,
-          style_id: item.style_id,
-          style_color_id: item.style_color_id,
-          quantity: item.quantity,
-          sub_art_id: item.sub_art_id || null,
-        }))
-
-        items = await insertOrderItemsWithEmbed(itemRows)
-      } else {
-        items = []
-      }
-    }
-
     const result = items !== null ? { ...week, items } : week
-
-    if (unlockedUpdate) {
-      await logWeekAudit({
-        weekId: id,
-        tableName: 'thread_order_weeks',
-        recordId: id,
-        action: 'UPDATE',
-        oldValues: previousWeek ?? {},
-        newValues: {
-          week_name: week.week_name,
-          start_date: week.start_date,
-          end_date: week.end_date,
-          notes: week.notes,
-          items_count: items !== null ? items.length : previousWeek?.items_count,
-        },
-        performedBy: getPerformer(c),
-      })
-    }
 
     return c.json({ data: result, error: null, message: 'Cập nhật tuần đặt hàng thành công' })
   } catch (err) {
@@ -1284,26 +1310,29 @@ core.delete('/:id', requirePermission('thread.allocations.manage'), async (c) =>
         )
       : null
 
-    await query(
-      `DELETE FROM thread_order_items WHERE week_id = $1`,
-      [id],
-    )
+    const performer = getPerformer(c)
+    await tx(async (client) => {
+      await client.query(
+        `DELETE FROM thread_order_items WHERE week_id = $1`,
+        [id],
+      )
 
-    await query(
-      `DELETE FROM thread_order_weeks WHERE id = $1`,
-      [id],
-    )
+      await client.query(
+        `DELETE FROM thread_order_weeks WHERE id = $1`,
+        [id],
+      )
 
-    if (unlockedDelete) {
-      await logWeekAudit({
-        weekId: id,
-        tableName: 'thread_order_weeks',
-        recordId: id,
-        action: 'DELETE',
-        oldValues: deletedWeek ?? { id },
-        performedBy: getPerformer(c),
-      })
-    }
+      if (unlockedDelete) {
+        await logWeekAudit({
+          weekId: id,
+          tableName: 'thread_order_weeks',
+          recordId: id,
+          action: 'DELETE',
+          oldValues: deletedWeek ?? { id },
+          performedBy: performer,
+        }, client)
+      }
+    })
 
     return c.json({ data: null, error: null, message: 'Xóa tuần đặt hàng thành công' })
   } catch (err) {
@@ -1611,45 +1640,15 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
       }
 
       let result: any = null
-      let lastError: { message: string } | null = null
-      const maxRetries = 3
-      const retryDelay = 100
-
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        let rpcResult: any
-        try {
-          const rpcRows = await query<{ result: any }>(
-            `SELECT fn_confirm_week_with_reserve($1) AS result`,
-            [id],
-          )
-          rpcResult = rpcRows.length > 0 ? rpcRows[0].result : null
-        } catch (rpcError) {
-          const code = (rpcError as { code?: string }).code
-          const message = rpcError instanceof Error ? rpcError.message : String(rpcError)
-          if (code === '42883' || message.includes('does not exist')) {
-            console.error('[PATCH status] RPC function error (42883):', rpcError)
-            return c.json({ data: null, error: `Lỗi RPC: ${message}` }, 500)
-          }
-          lastError = { message }
-          break
-        }
-
-        result = rpcResult
-        const summaries = result?.reservation_summary || []
-        const hasSkipped = summaries.some((s: any) => s.skipped_locked > 0)
-
-        if (!hasSkipped) {
-          break
-        }
-
-        if (attempt < maxRetries - 1) {
-          await new Promise((resolve) => setTimeout(resolve, retryDelay))
-        }
-      }
-
-      if (lastError) {
-        console.error('[PATCH status] fn_confirm_week_with_reserve error:', lastError)
-        return c.json({ data: null, error: lastError.message }, 500)
+      try {
+        const rpcRows = await query<{ result: any }>(
+          `SELECT fn_confirm_week_with_reserve($1) AS result`,
+          [id],
+        )
+        result = rpcRows.length > 0 ? rpcRows[0].result : null
+      } catch (rpcError) {
+        console.error('[PATCH status] fn_confirm_week_with_reserve error:', rpcError)
+        return c.json({ data: null, error: getErrorMessage(rpcError) }, 500)
       }
 
       if (result) {
@@ -1689,29 +1688,34 @@ core.patch('/:id/status', requirePermission('thread.allocations.manage'), async 
         )
       }
 
-      try {
-        await query(`SELECT fn_release_week_reservations($1) AS result`, [id])
-      } catch (releaseError) {
-        const message =
-          releaseError instanceof Error ? releaseError.message : String(releaseError)
-        return c.json({ data: null, error: message }, 500)
+    }
+
+    const data = await tx(async (client) => {
+      const locked = await runOn<{ status: string }>(
+        client,
+        `SELECT status FROM thread_order_weeks WHERE id = $1 FOR UPDATE`,
+        [id],
+      )
+      if (locked[0]?.status !== currentStatus) {
+        throw new Error('Trạng thái tuần vừa thay đổi, vui lòng tải lại trang')
       }
 
-      try {
-        await query(
+      if (newStatus === 'CANCELLED') {
+        await client.query(`SELECT fn_release_week_reservations($1) AS result`, [id])
+        await client.query(
           `UPDATE thread_order_deliveries SET status = 'CANCELLED'
            WHERE week_id = $1 AND inventory_status = 'PENDING'`,
           [id],
         )
-      } catch (cancelDeliveriesError) {
-        console.warn('[PATCH status] Cancel pending deliveries warning:', cancelDeliveriesError)
       }
-    }
 
-    const data = await querySingle<Record<string, unknown>>(
-      `UPDATE thread_order_weeks SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *`,
-      [newStatus, new Date().toISOString(), id],
-    )
+      const updated = await runOn<Record<string, unknown>>(
+        client,
+        `UPDATE thread_order_weeks SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *`,
+        [newStatus, new Date().toISOString(), id],
+      )
+      return updated[0]
+    })
 
     const statusLabels: Record<string, string> = {
       CANCELLED: 'hủy',

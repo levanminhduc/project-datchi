@@ -152,9 +152,13 @@ export function useWeeklyOrderCalculation() {
     oldSubArtId?: number | null,
   ) => {
     const entry = orderEntries.value.find(
-      (e) => e.style_id === styleId && e.po_id === poId && e.sub_art_id === (oldSubArtId ?? e.sub_art_id)
+      (e) => e.style_id === styleId && e.po_id === poId && (e.sub_art_id ?? null) === (oldSubArtId ?? null)
     )
     if (!entry) return
+    const duplicate = orderEntries.value.some(
+      (e) => e !== entry && e.style_id === styleId && e.po_id === poId && (e.sub_art_id ?? null) === subArtId
+    )
+    if (duplicate) return
     entry.sub_art_id = subArtId
     entry.sub_art_code = subArtCode
     lastModifiedAt.value = Date.now()
@@ -640,17 +644,15 @@ export function useWeeklyOrderCalculation() {
     }
   }
 
-  /**
-   * Update perStyleResults with reordered results from drag-and-drop
-   * Then recalculate to get updated inventory preview
-   */
-  const reorderResults = async (newOrder: CalculationResult[]) => {
-    isReordering.value = true
+  const reorderResults = (newOrder: CalculationResult[]) => {
+    const rank = new Map<number, number>()
+    newOrder.forEach((r, i) => {
+      if (!rank.has(r.style_id)) rank.set(r.style_id, i)
+    })
+    orderEntries.value = [...orderEntries.value].sort(
+      (a, b) => (rank.get(a.style_id) ?? newOrder.length) - (rank.get(b.style_id) ?? newOrder.length)
+    )
     perStyleResults.value = newOrder
-    aggregateResults(newOrder)
-    // Recalculate with new order to update inventory allocation preview
-    await calculateAll()
-    isReordering.value = false
   }
 
   return {

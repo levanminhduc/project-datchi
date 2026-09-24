@@ -1,4 +1,5 @@
-import { query } from '../../db/query'
+import type { PoolClient } from 'pg'
+import { runOn } from '../../db/query'
 
 type SummaryRow = {
   thread_type_id: number
@@ -12,29 +13,12 @@ type SummaryRow = {
   [key: string]: unknown
 }
 
-type CalculationResult = {
-  style_id: number
-  style_code: string
-  style_name: string
-  calculations: Array<{
-    spec_id: number
-    process_name: string
-    shortage_cones?: number
-    is_fully_stocked?: boolean
-    meters_per_cone?: number | null
-    color_breakdown?: Array<{
-      thread_type_id: number
-      color_name: string
-      total_meters: number
-    }>
-  }>
-}
-
 export async function syncDeliveries(
   weekId: number,
   summaryRows: SummaryRow[],
+  client?: PoolClient,
 ): Promise<void> {
-  const existingDeliveries = await query<{
+  const existingDeliveries = await runOn<{
     id: number
     thread_type_id: number
     supplier_id: number | null
@@ -44,6 +28,7 @@ export async function syncDeliveries(
     quantity_cones: number | null
     thread_color: string | null
   }>(
+    client,
     `SELECT id, thread_type_id, supplier_id, delivery_date, status, received_quantity, quantity_cones, thread_color
      FROM thread_order_deliveries WHERE week_id = $1 LIMIT 500000`,
     [weekId],
@@ -114,12 +99,15 @@ export async function syncDeliveries(
         })
         return `(${placeholders.join(', ')})`
       })
-      await query(
+      await runOn(
+        client,
         `INSERT INTO thread_order_deliveries (${cols.join(', ')}) VALUES ${valueClauses.join(', ')}`,
         params,
       )
     } catch (deliveryError) {
       console.warn('Error creating delivery records:', deliveryError)
+
+      if (client) throw deliveryError
     }
   }
 
@@ -156,7 +144,8 @@ export async function syncDeliveries(
       console.info(`[saveResults] Syncing delivery for week=${weekId} thread_type=${row.thread_type_id} color=${row.thread_color}: quantity_cones ${existing.quantity_cones ?? 0} -> ${row.quantity_cones}`)
 
       try {
-        await query(
+        await runOn(
+          client,
           `UPDATE thread_order_deliveries
            SET supplier_id = $1, quantity_cones = $2, thread_color = $3, thread_color_code = $4, updated_at = $5
            WHERE id = $6`,
@@ -164,6 +153,8 @@ export async function syncDeliveries(
         )
       } catch (syncError) {
         console.warn('Error syncing existing pending delivery row:', syncError)
+
+        if (client) throw syncError
       }
     }
   }
@@ -181,82 +172,17 @@ export async function syncDeliveries(
 
   if (orphanIds.length > 0) {
     try {
-      await query(
+      await runOn(
+        client,
         `DELETE FROM thread_order_deliveries WHERE id = ANY($1)`,
         [orphanIds],
       )
       console.info(`[saveResults] Deleted ${orphanIds.length} orphan PENDING deliveries for week=${weekId}`)
     } catch (orphanError) {
       console.warn('Error deleting orphan deliveries:', orphanError)
+
+      if (client) throw orphanError
     }
   }
 }
 
-export async function createAllocations(
-  weekId: number,
-  calculationData: CalculationResult[],
-): Promise<void> {
-  const allocationRows: Array<{
-    order_id: string; order_reference: string; thread_type_id: number
-    requested_meters: number; priority: string; status: string
-  }> = []
-
-  for (const result of calculationData) {
-    for (const calc of result.calculations) {
-      if (calc.is_fully_stocked === true) continue
-
-      const shortageCones = calc.shortage_cones || 0
-      if (shortageCones <= 0) continue
-
-      const metersPerCone = calc.meters_per_cone || 0
-      if (metersPerCone <= 0) continue
-
-      if (calc.color_breakdown && calc.color_breakdown.length > 0) {
-        const threadTypeMap = new Map<number, number>()
-        for (const cb of calc.color_breakdown) {
-          const cbNeededCones = Math.ceil(cb.total_meters / metersPerCone)
-          const current = threadTypeMap.get(cb.thread_type_id) || 0
-          threadTypeMap.set(cb.thread_type_id, current + cbNeededCones)
-        }
-
-        for (const [threadTypeId, neededCones] of threadTypeMap) {
-          const totalCones = [...threadTypeMap.values()].reduce((a, b) => a + b, 0)
-          const shortageForThisType = Math.ceil((shortageCones / totalCones) * neededCones)
-
-          if (shortageForThisType > 0) {
-            allocationRows.push({
-              order_id: `WO-${weekId}-${result.style_code}-${calc.spec_id}`,
-              order_reference: `Tuần ${weekId} - ${result.style_name} - ${calc.process_name}`,
-              thread_type_id: threadTypeId,
-              requested_meters: shortageForThisType * metersPerCone,
-              priority: 'NORMAL',
-              status: 'PENDING',
-              week_id: weekId,
-            } as any)
-          }
-        }
-      }
-    }
-  }
-
-  if (allocationRows.length > 0) {
-    try {
-      const cols = ['order_id', 'order_reference', 'thread_type_id', 'requested_meters', 'priority', 'status', 'week_id']
-      const params: unknown[] = []
-      const valueClauses = (allocationRows as Array<Record<string, unknown>>).map((row) => {
-        const rowVals = [row.order_id, row.order_reference, row.thread_type_id, row.requested_meters, row.priority, row.status, row.week_id]
-        const placeholders = rowVals.map((v) => {
-          params.push(v)
-          return `$${params.length}`
-        })
-        return `(${placeholders.join(', ')})`
-      })
-      await query(
-        `INSERT INTO thread_allocations (${cols.join(', ')}) VALUES ${valueClauses.join(', ')}`,
-        params,
-      )
-    } catch (allocError) {
-      console.warn('Error creating allocation records:', allocError)
-    }
-  }
-}

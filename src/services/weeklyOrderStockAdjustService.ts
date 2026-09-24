@@ -71,6 +71,7 @@ export const weeklyOrderStockAdjustService = {
     threadColorId: number | null,
     actualCones: number,
     reason: string,
+    expectedCurrentCones: number,
   ): Promise<StockAdjustResult> {
     const response = await fetchApi<ApiResponse<StockAdjustResult>>(`${BASE}/${weekId}/stock-adjust`, {
       method: 'POST',
@@ -79,6 +80,7 @@ export const weeklyOrderStockAdjustService = {
         thread_color_id: threadColorId,
         actual_cones: actualCones,
         reason,
+        expected_current_cones: expectedCurrentCones,
       }),
     })
 

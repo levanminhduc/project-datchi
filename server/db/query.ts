@@ -42,6 +42,16 @@ export async function queryCount(
   return typeof raw === 'number' ? raw : parseInt(raw, 10)
 }
 
+export async function runOn<T extends QueryResultRow = QueryResultRow>(
+  client: PoolClient | undefined,
+  text: string,
+  params: QueryParams = []
+): Promise<T[]> {
+  if (!client) return query<T>(text, params)
+  const result = await client.query<T>(text, params as unknown[])
+  return result.rows
+}
+
 export async function tx<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect()
   try {

@@ -148,6 +148,7 @@ import AppInput from '@/components/ui/inputs/AppInput.vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { weeklyOrderStockAdjustService } from '@/services/weeklyOrderStockAdjustService'
+import { ApiError } from '@/services/api'
 import type { StockAdjustConeRow } from '@/services/weeklyOrderStockAdjustService'
 import type { AggregatedRow } from '@/types/thread'
 
@@ -207,12 +208,16 @@ async function handleSubmit() {
       props.row.thread_color_id ?? null,
       actualCones.value,
       reason.value.trim(),
+      currentCones.value,
     )
     snackbar.success(`Đã loại bỏ ${result.written_off} cuộn, tồn kho còn ${actualCones.value} cuộn`)
     emit('adjusted')
     emit('update:modelValue', false)
   } catch (error) {
     snackbar.error(error instanceof Error ? error.message : 'Không thể điều chỉnh tồn kho')
+    if (error instanceof ApiError && error.status === 409) {
+      await loadPreview(actualCones.value)
+    }
   } finally {
     isSubmitting.value = false
   }

@@ -71,6 +71,9 @@ export interface WeeklyOrderResults {
   summary_data: AggregatedRow[]
   calculated_at: string
   warehouse_ids?: number[] | null
+  draft_summary_data?: AggregatedRow[] | null
+  draft_saved_at?: string | null
+  draft_saved_by?: string | null
 }
 
 export interface AggregatedRow {

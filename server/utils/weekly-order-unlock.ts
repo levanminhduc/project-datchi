@@ -1,5 +1,6 @@
 import type { Context } from 'hono'
-import { query, queryOne } from '../db/query'
+import type { PoolClient } from 'pg'
+import { query, queryOne, runOn } from '../db/query'
 import type { AuthContext } from '../types/auth'
 
 export interface WeeklyOrderEditUnlock {
@@ -64,7 +65,7 @@ export async function isRootUnlocked(c: Context, weekId: number): Promise<boolea
   return (await getActiveUnlock(weekId)) !== null
 }
 
-export async function logWeekAudit(entry: WeekAuditEntry): Promise<void> {
+export async function logWeekAudit(entry: WeekAuditEntry, client?: PoolClient): Promise<void> {
   const oldValues = entry.oldValues ?? null
   const newValues = entry.newValues ?? null
 
@@ -77,7 +78,8 @@ export async function logWeekAudit(entry: WeekAuditEntry): Promise<void> {
   }
 
   try {
-    await query(
+    await runOn(
+      client,
       `INSERT INTO thread_audit_log
          (table_name, record_id, action, old_values, new_values, changed_fields, performed_by, week_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -94,6 +96,7 @@ export async function logWeekAudit(entry: WeekAuditEntry): Promise<void> {
     )
   } catch (error) {
     console.error('[weekly-order-unlock] audit log insert failed:', error)
+    if (client) throw error
   }
 }
 

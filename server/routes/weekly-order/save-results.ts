@@ -1,15 +1,57 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
-import { queryOne, querySingle, query } from '../../db/query'
+import { queryOne, querySingle, query, runOn, tx } from '../../db/query'
 import { requirePermission } from '../../middleware/auth'
 import { getErrorMessage } from '../../utils/errorHelper'
 import { SaveResultsSchema } from '../../validation/weeklyOrder'
 import type { AppEnv } from '../../types/hono-env'
 import { formatZodError } from './helpers'
 import { enrichWithInventory } from './enrich-helper'
-import { syncDeliveries, createAllocations } from './save-results-helpers'
+import { syncDeliveries } from './save-results-helpers'
+import { isRootUnlocked, logWeekAudit, getPerformer } from '../../utils/weekly-order-unlock'
 
 const saveResults = new Hono<AppEnv>()
+
+type SummaryAuditRow = {
+  thread_type_id: number
+  thread_color_id?: number | null
+  thread_color?: string | null
+  total_final?: number | null
+  quota_cones?: number | null
+  additional_order?: number | null
+  delivery_date?: string | null
+}
+
+type ResultRow = {
+  id: number
+  summary_data: SummaryAuditRow[] | null
+  [key: string]: unknown
+}
+
+function pickChangedSummaryRows(before: SummaryAuditRow[], after: SummaryAuditRow[]) {
+  const toKey = (r: SummaryAuditRow) => `${r.thread_type_id}_${r.thread_color_id ?? r.thread_color ?? ''}`
+  const toAudit = (r: SummaryAuditRow | undefined) =>
+    r
+      ? {
+          total_final: r.total_final ?? null,
+          quota_cones: r.quota_cones ?? null,
+          additional_order: r.additional_order ?? null,
+          delivery_date: r.delivery_date ?? null,
+        }
+      : null
+  const beforeMap = new Map(before.map((r) => [toKey(r), r]))
+  const afterMap = new Map(after.map((r) => [toKey(r), r]))
+  const oldValues: Record<string, unknown> = {}
+  const newValues: Record<string, unknown> = {}
+  for (const key of new Set([...beforeMap.keys(), ...afterMap.keys()])) {
+    const oldRow = toAudit(beforeMap.get(key))
+    const newRow = toAudit(afterMap.get(key))
+    if (JSON.stringify(oldRow) === JSON.stringify(newRow)) continue
+    oldValues[key] = oldRow
+    newValues[key] = newRow
+  }
+  return { oldValues, newValues }
+}
 
 saveResults.post('/:id/results', requirePermission('thread.allocations.manage'), async (c) => {
   try {
@@ -29,6 +71,25 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
     }
 
     const isConfirmed = week.status === 'CONFIRMED'
+
+    if (week.status !== 'DRAFT' && !isConfirmed) {
+      return c.json({ data: null, error: 'Tuần đã hoàn tất hoặc đã huỷ, không thể lưu kết quả' }, 400)
+    }
+
+    if (isConfirmed && !(await isRootUnlocked(c, id))) {
+      return c.json(
+        { data: null, error: 'Tuần đã xác nhận: chỉ tài khoản root đang mở khóa chỉnh sửa mới lưu được' },
+        403,
+      )
+    }
+
+    const officialResults = isConfirmed
+      ? await queryOne<ResultRow>(`SELECT id, summary_data FROM thread_order_results WHERE week_id = $1`, [id])
+      : null
+
+    if (isConfirmed && !officialResults) {
+      return c.json({ data: null, error: 'Chưa có kết quả chính thức của tuần này' }, 404)
+    }
 
     const body = await c.req.json()
 
@@ -122,8 +183,26 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
         {
           preserveAdditionalOrder: true,
           warehouseIds: warehouseIds.length > 0 ? warehouseIds : undefined,
+          frozenInventoryRows: isConfirmed
+            ? ((officialResults?.summary_data ?? []) as Array<{ thread_type_id: number; total_cones: number; [key: string]: unknown }>)
+            : undefined,
         },
       )
+    }
+
+    if (isConfirmed) {
+      const draft = await querySingle<Record<string, unknown>>(
+        `UPDATE thread_order_results
+         SET draft_summary_data = $2::jsonb, draft_saved_at = NOW(), draft_saved_by = $3, updated_at = NOW()
+         WHERE week_id = $1
+         RETURNING *`,
+        [id, JSON.stringify(enrichedSummaryData ?? []), getPerformer(c)],
+      )
+      return c.json({
+        data: draft,
+        error: null,
+        message: 'Đã lưu bản tạm. Bấm "Áp dụng chính thức" để cập nhật số giao NCC',
+      })
     }
 
     const data = await querySingle<Record<string, unknown>>(
@@ -144,17 +223,119 @@ saveResults.post('/:id/results', requirePermission('thread.allocations.manage'),
       ],
     )
 
-    if (isConfirmed && enrichedSummaryData && Array.isArray(enrichedSummaryData)) {
-      await syncDeliveries(id, enrichedSummaryData as any)
-    }
-
-    if (isConfirmed && validated.calculation_data && Array.isArray(validated.calculation_data)) {
-      await createAllocations(id, validated.calculation_data as any)
-    }
-
     return c.json({ data, error: null, message: 'Lưu kết quả tính toán thành công' })
   } catch (err) {
     console.error('Error saving weekly order results:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+saveResults.post('/:id/results/apply', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    if (!(await isRootUnlocked(c, id))) {
+      return c.json(
+        { data: null, error: 'Chỉ tài khoản root đang mở khóa chỉnh sửa mới áp dụng được' },
+        403,
+      )
+    }
+
+    const performer = getPerformer(c)
+    const outcome = await tx(async (client) => {
+      const weeks = await runOn<{ status: string }>(
+        client,
+        `SELECT status FROM thread_order_weeks WHERE id = $1 FOR UPDATE`,
+        [id],
+      )
+      if (weeks.length === 0) return { status: 404 as const, error: 'Không tìm thấy tuần đặt hàng' }
+      if (weeks[0].status !== 'CONFIRMED') {
+        return { status: 400 as const, error: 'Chỉ áp dụng được cho tuần đã xác nhận' }
+      }
+
+      const current = await runOn<ResultRow & { draft_summary_data: SummaryAuditRow[] | null }>(
+        client,
+        `SELECT id, summary_data, draft_summary_data FROM thread_order_results WHERE week_id = $1 FOR UPDATE`,
+        [id],
+      )
+      if (current.length === 0 || !current[0].draft_summary_data) {
+        return { status: 400 as const, error: 'Không có bản lưu tạm để áp dụng' }
+      }
+
+      const updated = await runOn<ResultRow>(
+        client,
+        `UPDATE thread_order_results
+         SET summary_data = draft_summary_data,
+             draft_summary_data = NULL, draft_saved_at = NULL, draft_saved_by = NULL,
+             updated_at = NOW()
+         WHERE week_id = $1
+         RETURNING *`,
+        [id],
+      )
+      const applied = updated[0]
+
+      await syncDeliveries(id, applied.summary_data ?? [], client)
+
+      const { oldValues, newValues } = pickChangedSummaryRows(
+        current[0].summary_data ?? [],
+        applied.summary_data ?? [],
+      )
+      await logWeekAudit(
+        {
+          weekId: id,
+          tableName: 'thread_order_results',
+          recordId: applied.id,
+          action: 'UPDATE',
+          oldValues,
+          newValues,
+          performedBy: performer,
+        },
+        client,
+      )
+
+      return { status: 200 as const, data: applied }
+    })
+
+    if (outcome.status !== 200) {
+      return c.json({ data: null, error: outcome.error }, outcome.status)
+    }
+    return c.json({ data: outcome.data, error: null, message: 'Đã áp dụng chính thức và cập nhật số giao NCC' })
+  } catch (err) {
+    console.error('[save-results] apply draft failed:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+saveResults.post('/:id/results/discard-draft', requirePermission('thread.allocations.manage'), async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'))
+    if (isNaN(id)) {
+      return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
+    }
+
+    if (!(await isRootUnlocked(c, id))) {
+      return c.json(
+        { data: null, error: 'Chỉ tài khoản root đang mở khóa chỉnh sửa mới huỷ được bản tạm' },
+        403,
+      )
+    }
+
+    const data = await queryOne<Record<string, unknown>>(
+      `UPDATE thread_order_results
+       SET draft_summary_data = NULL, draft_saved_at = NULL, draft_saved_by = NULL, updated_at = NOW()
+       WHERE week_id = $1
+       RETURNING *`,
+      [id],
+    )
+    if (!data) {
+      return c.json({ data: null, error: 'Chưa có kết quả tính toán cho tuần này' }, 404)
+    }
+    return c.json({ data, error: null, message: 'Đã huỷ bản lưu tạm' })
+  } catch (err) {
+    console.error('[save-results] discard draft failed:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

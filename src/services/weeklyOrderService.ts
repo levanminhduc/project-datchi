@@ -277,6 +277,32 @@ export const weeklyOrderService = {
     return response.data
   },
 
+  async applyResults(id: number): Promise<WeeklyOrderResults> {
+    const response = await fetchApi<ApiResponse<WeeklyOrderResults>>(`${BASE}/${id}/results/apply`, {
+      method: 'POST',
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+
+    if (!response.data) {
+      throw new Error('Không thể áp dụng bản lưu tạm')
+    }
+
+    return response.data
+  },
+
+  async discardDraftResults(id: number): Promise<void> {
+    const response = await fetchApi<ApiResponse<unknown>>(`${BASE}/${id}/results/discard-draft`, {
+      method: 'POST',
+    })
+
+    if (response.error) {
+      throw new Error(response.error)
+    }
+  },
+
   /**
    * Lấy kết quả tính toán định mức đã lưu
    * @param id - Weekly order ID
