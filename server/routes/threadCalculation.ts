@@ -401,6 +401,10 @@ function buildCalculation(
         warnings.push(
           `Mã hàng ${styleCode}: màu ${colorName} chưa có định mức chỉ chi tiết, dùng loại chỉ mặc định`
         )
+      } else if (!colorSpec.thread_color_id) {
+        warnings.push(
+          `Mã hàng ${styleCode}: màu ${colorSpec.colors?.name || `color_id=${cb.color_id}`} chưa chọn màu chỉ cho ${colorSpec.thread_types?.name || spec.thread_types?.name || 'loại chỉ'}, hệ thống sẽ không giữ tồn cho dòng này`
+        )
       }
 
       const resolvedSupplierName = spec.suppliers?.name || ''
@@ -822,6 +826,10 @@ threadCalculation.post('/calculate-by-po', async (c) => {
             const colorName = sku.colors?.name || `color_id=${sku.color_id}`
             styleWarnings.push(
               `Mã hàng ${style.style_code}: màu ${colorName} chưa có định mức chỉ chi tiết, dùng loại chỉ mặc định`
+            )
+          } else if (!colorSpec.thread_color_id) {
+            styleWarnings.push(
+              `Mã hàng ${style.style_code}: màu ${sku.colors?.name || `color_id=${sku.color_id}`} chưa chọn màu chỉ cho ${colorSpec.thread_types?.name || spec.thread_types?.name || 'loại chỉ'}, hệ thống sẽ không giữ tồn cho dòng này`
             )
           }
 
