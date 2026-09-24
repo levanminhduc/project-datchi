@@ -1,5 +1,5 @@
 import { fetchApi } from './api'
-import type { DeliveryRecord, UpdateDeliveryDTO, DeliveryFilter, ReceiveDeliveryDTO, DeliveryReceiveLog } from '@/types/thread'
+import type { DeliveryRecord, UpdateDeliveryDTO, DeliveryFilter, ReceiveDeliveryDTO, DeliveryReceiveLog, ReceiveStats } from '@/types/thread'
 
 interface ApiResponse<T> {
   data: T | null
@@ -86,5 +86,14 @@ export const deliveryService = {
     const response = await fetchApi<ApiResponse<DeliveryReceiveLog[]> & { total?: number }>(url)
     if (response.error) throw new Error(response.error)
     return { data: response.data || [], total: response.total ?? (response.data?.length || 0) }
+  },
+
+  async getReceiveStats(params: { date_from: string; date_to: string; include_details?: boolean }): Promise<ReceiveStats> {
+    const searchParams = new URLSearchParams({ date_from: params.date_from, date_to: params.date_to })
+    if (params.include_details) searchParams.append('include_details', 'true')
+    const response = await fetchApi<ApiResponse<ReceiveStats>>(`${BASE}/deliveries/receive-stats?${searchParams.toString()}`)
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không tải được thống kê nhập kho')
+    return response.data
   },
 }

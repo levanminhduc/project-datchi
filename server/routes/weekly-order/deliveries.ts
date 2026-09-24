@@ -7,10 +7,12 @@ import {
   UpdateDeliverySchema,
   ReceiveDeliverySchema,
   ReceiveLogsQuerySchema,
+  ReceiveStatsQuerySchema,
 } from '../../validation/weeklyOrder'
 import type { AppEnv } from '../../types/hono-env'
 import { formatZodError } from './helpers'
 import { getWeeklyOrderDeliverySummary } from './delivery-summary-helper'
+import { getReceiveStats } from './receive-stats-helper'
 import { isRootUnlocked, logWeekAudit, getPerformer } from '../../utils/weekly-order-unlock'
 
 const deliveries = new Hono<AppEnv>()
@@ -210,6 +212,26 @@ deliveries.get('/deliveries/receive-logs', requirePermission('thread.allocations
     return c.json({ data, total, error: null })
   } catch (err) {
     console.error('Error fetching receive logs:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
+deliveries.get('/deliveries/receive-stats', requirePermission('thread.allocations.view'), async (c) => {
+  try {
+    const parsed = ReceiveStatsQuerySchema.safeParse({
+      date_from: c.req.query('date_from'),
+      date_to: c.req.query('date_to'),
+      include_details: c.req.query('include_details'),
+    })
+    if (!parsed.success) {
+      return c.json({ data: null, error: formatZodError(parsed.error) }, 400)
+    }
+
+    const { date_from, date_to, include_details } = parsed.data
+    const data = await getReceiveStats(date_from, date_to, include_details === 'true')
+    return c.json({ data, error: null })
+  } catch (err) {
+    console.error('Error fetching receive stats:', err)
     return c.json({ data: null, error: getErrorMessage(err) }, 500)
   }
 })

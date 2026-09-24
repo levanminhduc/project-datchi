@@ -102,6 +102,14 @@ export const ReceiveLogsQuerySchema = z.object({
   search: z.string().optional(),
 })
 
+export const ReceiveStatsQuerySchema = z
+  .object({
+    date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Từ ngày phải có định dạng YYYY-MM-DD'),
+    date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Đến ngày phải có định dạng YYYY-MM-DD'),
+    include_details: z.enum(['true', 'false']).optional(),
+  })
+  .refine((v) => v.date_from <= v.date_to, { message: 'Từ ngày phải nhỏ hơn hoặc bằng đến ngày' })
+
 // ============ LOAN SCHEMAS ============
 
 export const CreateLoanSchema = z.object({

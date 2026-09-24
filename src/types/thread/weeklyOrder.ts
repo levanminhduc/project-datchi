@@ -475,6 +475,61 @@ export interface DeliveryReceiveLog {
   has_tagged_cones: boolean
 }
 
+export interface ReceiveStatsGroup {
+  key: string
+  label: string
+  receive_count: number
+  received_cones: number
+  unpriced_cones: number
+  amount: number
+}
+
+export interface ReceiveStatsThreadGroup extends ReceiveStatsGroup {
+  supplier_name: string
+  tex_number: string
+  tex_label: string | null
+  color_name: string
+  color_hex: string
+  unit_price: number | null
+  ordered_cones: number
+  total_received: number
+  remaining_cones: number
+}
+
+export interface ReceiveStatsDetail {
+  id: number
+  created_at: string
+  receive_date: string
+  actual_delivery_date: string | null
+  week_name: string
+  supplier_name: string
+  tex_number: string
+  tex_label: string | null
+  color_name: string
+  warehouse_name: string
+  quantity: number
+  unit_price: number | null
+  amount: number | null
+  received_by: string
+}
+
+export interface ReceiveStats {
+  summary: {
+    receive_count: number
+    delivery_count: number
+    total_cones: number
+    priced_cones: number
+    unpriced_cones: number
+    total_amount: number
+  }
+  by_thread: ReceiveStatsThreadGroup[]
+  by_supplier: ReceiveStatsGroup[]
+  by_warehouse: ReceiveStatsGroup[]
+  by_date: ReceiveStatsGroup[]
+  by_week: ReceiveStatsGroup[]
+  details?: ReceiveStatsDetail[]
+}
+
 export interface WeeklyOrderProgressThreadLine {
   thread_type_id: number
   thread_color_id: number

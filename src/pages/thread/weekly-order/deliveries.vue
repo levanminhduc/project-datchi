@@ -33,6 +33,10 @@
         name="history"
         label="Lịch sử nhập kho"
       />
+      <q-tab
+        name="stats"
+        label="Thống kê"
+      />
     </q-tabs>
 
     <q-separator />
@@ -473,6 +477,10 @@
           </template>
         </DataTable>
       </q-tab-panel>
+
+      <q-tab-panel name="stats">
+        <ReceiveStatsPanel />
+      </q-tab-panel>
     </q-tab-panels>
 
     <!-- Mark as Delivered Dialog -->
@@ -658,6 +666,7 @@ import DataTable from '@/components/ui/tables/DataTable.vue'
 import ReceiveResultDialog from '@/components/thread/weekly-order/ReceiveResultDialog.vue'
 import type { ReceiveResult } from '@/components/thread/weekly-order/ReceiveResultDialog.vue'
 import RevertReceiveDialog from '@/components/thread/weekly-order/RevertReceiveDialog.vue'
+import ReceiveStatsPanel from '@/components/thread/weekly-order/ReceiveStatsPanel.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { usePermission } from '@/composables/usePermission'
 
