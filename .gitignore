@@ -113,3 +113,4 @@ supabase/backup/
 backup/
 docker-images/
 storage/
+.codex/config.toml

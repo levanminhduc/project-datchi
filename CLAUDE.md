@@ -2,11 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Codebase Search — Priority #1 (ALWAYS)
+## Codebase Search — Context Engine First
 
-**The context-engine MCP tool (`codebase-retrieval`) is ALWAYS the #1 priority for finding code, understanding the codebase, or exploring project structure.** Use it FIRST — before Grep, Glob, Read, or any subagent (including Explore). Only fall back to Grep when you need a complete list of ALL occurrences (rename/refactor), Glob when you only need file paths by pattern, or Read when you already know the exact file and location.
+Whenever you need to look at the codebase or find information in it (where something lives, how a flow works, project structure, context before an edit), call the context-engine MCP tool `mcp__codebase-retrieval__codebase-retrieval` first, asking in natural language. Use it before Grep, Glob, Read, or any search subagent (including Explore), and tell subagents to do the same.
 
-When you need to read a specific file but don't know the exact line range, use the file-retrieval MCP tool instead of reading the entire file. Describe what information you need and it returns only the relevant snippets with line numbers. Use the Read tool with the returned line ranges (expanded as needed) to get current content before making edits.
+When you know the file but not the line range, use `mcp__codebase-retrieval__file-retrieval` to get the relevant snippets with line numbers, then Read those ranges before editing.
+
+Fall back to Grep only for a complete list of occurrences (rename/refactor), Glob only for file paths by pattern, and Read only when you already know the exact location. If the context engine errors or is not indexed, say so in one line, then fall back.
 
 ## 1. Project Overview
 

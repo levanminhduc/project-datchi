@@ -29,7 +29,7 @@ Before writing any code:
 1. **Read the file you'll modify** — understand current patterns, route order, imports
 2. **Check DB schema** — `\d table_name` or read migration files; never guess column names
 3. **Check route order** for Hono — specific routes before generic (`/:id/action` before `/:id`)
-4. **Confirm requirements** — rephrase + ask user to confirm before starting
+4. **Confirm when unclear** — ask first if the request is ambiguous or touches data/schema/auth/stock flows; otherwise state understanding in one line and proceed
 
 ## Surgical Changes Rule
 

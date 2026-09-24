@@ -33,7 +33,7 @@ Before writing any code:
 1. **Read the file you'll modify** — understand current patterns, imports, route order.
 2. **Check DB schema** — `\d table_name` via psql or read migration files; never guess column names (e.g. `thread_types` has `name`/`code`, NOT `thread_name`/`thread_code`).
 3. **Hono route order** — specific routes before generic (`/:id/action` before `/:id`); Hono matches by registration order.
-4. **Confirm requirements** — rephrase the request and ask the user to confirm before starting.
+4. **Confirm when unclear** — if the request has several reasonable interpretations that lead to different work, or touches data, schema, auth, or stock flows, restate your understanding and ask before starting. Otherwise state your understanding in one line and proceed.
 
 ## Surgical Changes
 

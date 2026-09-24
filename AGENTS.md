@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Vue 3 + Quasar + TypeScript app with a Hono backend and Supabase database.
+This is a Vue 3 + Quasar + TypeScript app with a Hono backend and a standalone PostgreSQL 17 database (accessed via the `pg` driver; migrations still live under `supabase/`).
 
 - `src/` contains the frontend: `components/`, `pages/` for file-based routes, `composables/`, `services/`, `stores/`, `types/`, and shared styles/assets.
 - `server/` contains the Hono API: `routes/`, `middleware/`, `validation/`, `db/`, `types/`, and `utils/`.
@@ -30,7 +30,7 @@ Important invariants:
 - Never merge stock across that identity boundary. Example only: `Coats Epic - Tex 40 - C9700` and `Coats Epic - Tex 40 - C9701` differ by color, so they are separate thread types and must be counted, ordered, reserved, issued, and reported separately.
 - Inventory uses dual UoM: meters for production demand and grams/kg for weighing partial cones. Do not update one without understanding the other.
 - Cone statuses are database enums and must match `src/types/thread/enums.ts`; use migrations for changes.
-- Allocation/reserve/issue/recovery should go through existing backend routes and RPCs such as FEFO allocation, `fn_issue_cone`, `fn_recover_cone`, `fn_reserve_from_stock`, and return-with-movements flows.
+- Allocation/reserve/issue/recovery should go through existing backend routes and RPCs such as FEFO allocation, `fn_issue_cone`, `fn_issue_cones_with_movements`, `fn_reserve_from_stock`, and return-with-movements flows.
 - Every stock-changing action should leave an audit trail in movement/history tables or the relevant return/recovery log.
 
 Weekly order business matters because it can borrow, reserve, transfer, and auto-return cones. Closing a weekly cycle can settle loans automatically, and reserve-from-stock reduces available inventory immediately. Always check `docs/project-overview-pdr.md` and `docs/system-architecture.md` before changing weekly order, allocation, issue, or recovery behavior.
@@ -60,7 +60,7 @@ Playwright is the active test framework. Put e2e specs under `tests/e2e/` and na
 
 ## Commit & Pull Request Guidelines
 
-Recent history uses short conventional-style subjects, especially `fix:` and scoped forms such as `fix(ReturnGroupDetail): ...`. Keep commits focused and imperative. Before pushing, the Husky pre-push hook runs lint, type-check, build, and e2e tests.
+Recent history uses short conventional-style subjects, especially `fix:` and scoped forms such as `fix(ReturnGroupDetail): ...`. Keep commits focused and imperative. No git hook runs checks automatically, so run `npm run lint` and `npm run type-check` before committing.
 
 Pull requests should include a clear summary, test evidence, linked issue or task when available, and screenshots for UI changes. Note migrations, environment changes, or data-impacting behavior explicitly.
 
