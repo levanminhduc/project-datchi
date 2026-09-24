@@ -35,7 +35,10 @@ type ReservedConeRow = {
   color_id: number | null
   warehouse_id: number
   is_partial: boolean
-  warehouse: { id: number; code: string; name: string } | { id: number; code: string; name: string }[] | null
+  lot_number: string | null
+  original_week_id: number | null
+  reserved_from_available: boolean | null
+  warehouse:{ id: number; code: string; name: string } | { id: number; code: string; name: string }[] | null
 }
 type ThreadTypeDisplayRow = {
   id: number
@@ -57,6 +60,26 @@ type TraceWarehouse = {
   physical_cones: number
   full_cones: number
   partial_cones: number
+} & ReservedBySource
+
+type ReservedBySource = {
+  from_receive_cones: number
+  from_stock_cones: number
+  from_other_week_cones: number
+}
+
+type ReserveSource = keyof ReservedBySource
+
+type SharedWeekRow = {
+  po_id: number
+  style_id: number
+  style_color_id: number
+  week_names: string[]
+}
+
+type LoanSummaryRow = {
+  stock_withdraw_logged_cones: number | string | null
+  lent_out_cones: number | string | null
 }
 
 type TracePoLine = {
@@ -72,9 +95,11 @@ type TracePoLine = {
   required_cones: number
   issued_gross_cones: number
   issued_from_reserved_cones: number
+  issued_from_other_week_reserved_cones: number
   issued_from_available_cones: number
   issued_from_other_cones: number
   returned_cones: number
+  shared_week_names: string[]
 }
 
 type TraceRow = {
@@ -87,18 +112,25 @@ type TraceRow = {
   required_cones: number
   additional_order_cones: number
   assignment_target_cones: number
+  ordered_ncc_cones: number
+  cancelled_ncc_cones: number
   pending_delivery_cones: number
   pending_receive_cones: number
   received_cones: number
   reserved_cones: number
   reserved_physical_cones: number
+  reserved_by_source: ReservedBySource
   issued_gross_cones: number
   issued_from_reserved_cones: number
+  issued_from_other_week_reserved_cones: number
   issued_from_available_cones: number
   issued_from_other_cones: number
   returned_cones: number
+  released_cones: number
+  transferred_out_cones: number
   assigned_week_cones: number
   assignment_gap_cones: number
+  unplanned: boolean
   warehouses: TraceWarehouse[]
   po_lines: TracePoLine[]
   delivery_lines: DeliveryTraceLine[]
@@ -121,6 +153,7 @@ type IssueSourceRow = {
   thread_type_id: number
   thread_color_id: number | null
   issued_from_reserved_cones: number
+  issued_from_other_week_reserved_cones: number
   issued_from_available_cones: number
   issued_from_other_cones: number
 }
@@ -138,12 +171,45 @@ type IssueMovementRow = {
   reference_id: string | null
   quantity_meters: number | string | null
   from_status: string | null
+  reserved_week_id: number | string | null
+}
+
+type ReleasedAuditRow = {
+  thread_type_id: number | null
+  color_id: number | null
+  is_partial: boolean | null
+  released_count: number | string
+  transferred_out_count: number | string
+}
+
+type ReleasedCones = {
+  released_cones: number
+  transferred_out_cones: number
 }
 
 const AVAILABLE_ISSUE_SOURCE_STATUSES = new Set(['AVAILABLE', 'RECEIVED', 'INSPECTED'])
 
 function makeTraceKey(threadTypeId: number, colorId: number | null | undefined): TraceKey {
   return `${threadTypeId}_${colorId ?? ''}`
+}
+
+function emptyReservedBySource(): ReservedBySource {
+  return { from_receive_cones: 0, from_stock_cones: 0, from_other_week_cones: 0 }
+}
+
+function classifyReserveSource(cone: ReservedConeRow, weekId: number): ReserveSource {
+  if (cone.original_week_id != null && cone.original_week_id !== weekId) return 'from_other_week_cones'
+  if (cone.lot_number === `WO-${weekId}`) return 'from_receive_cones'
+  if (cone.lot_number?.startsWith('WO-') && !cone.reserved_from_available) return 'from_other_week_cones'
+  return 'from_stock_cones'
+}
+
+function roundReservedBySource(source: ReservedBySource): ReservedBySource {
+  return {
+    from_receive_cones: roundToTwoDecimals(source.from_receive_cones),
+    from_stock_cones: roundToTwoDecimals(source.from_stock_cones),
+    from_other_week_cones: roundToTwoDecimals(source.from_other_week_cones),
+  }
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {
@@ -172,18 +238,25 @@ function ensureRow(
       required_cones: 0,
       additional_order_cones: 0,
       assignment_target_cones: 0,
+      ordered_ncc_cones: 0,
+      cancelled_ncc_cones: 0,
       pending_delivery_cones: 0,
       pending_receive_cones: 0,
       received_cones: 0,
       reserved_cones: 0,
       reserved_physical_cones: 0,
+      reserved_by_source: emptyReservedBySource(),
       issued_gross_cones: 0,
       issued_from_reserved_cones: 0,
+      issued_from_other_week_reserved_cones: 0,
       issued_from_available_cones: 0,
       issued_from_other_cones: 0,
       returned_cones: 0,
+      released_cones: 0,
+      transferred_out_cones: 0,
       assigned_week_cones: 0,
       assignment_gap_cones: 0,
+      unplanned: false,
       warehouses: [],
       po_lines: [],
       delivery_lines: [],
@@ -212,13 +285,16 @@ function getSummaryRequiredCones(row: SummaryDataRow): number {
   const quotaCones = toFiniteNumber(row.quota_cones)
   if (quotaCones != null) return quotaCones
 
+  const totalCones = toFiniteNumber(row.total_cones)
+  if (totalCones != null) return totalCones
+
   const totalMeters = toFiniteNumber(row.total_meters)
   const metersPerCone = toFiniteNumber(row.meters_per_cone)
   if (totalMeters != null && metersPerCone != null && metersPerCone > 0) {
     return Math.ceil(totalMeters / metersPerCone)
   }
 
-  return toFiniteNumber(row.total_cones) ?? 0
+  return 0
 }
 
 function getSummaryAdditionalOrderCones(row: SummaryDataRow): number {
@@ -280,6 +356,29 @@ function findExistingTraceRow(
 ): TraceRow | null {
   return rows.get(makeTraceKey(threadTypeId, colorId))
     ?? findUniqueRowByColorName(rows, threadTypeId, colorName)
+}
+
+function findOrCreateActualRow(
+  rows: Map<TraceKey, TraceRow>,
+  lineMaps: Map<TraceKey, Map<string, TracePoLine>>,
+  threadTypeId: number,
+  colorId: number | null,
+  defaults: Partial<Pick<TraceRow, 'supplier_name' | 'tex_number' | 'color_name'>> = {},
+): TraceRow {
+  const existing = findExistingTraceRow(rows, threadTypeId, colorId)
+  if (existing) return existing
+  const row = ensureRow(rows, lineMaps, threadTypeId, colorId, defaults)
+  row.unplanned = true
+  return row
+}
+
+async function fetchColorIdsByName(names: string[]): Promise<Map<string, number>> {
+  if (names.length === 0) return new Map()
+  const data = await query<ColorDisplayRow>(
+    `SELECT id, name FROM colors WHERE name = ANY($1) LIMIT $2`,
+    [names, names.length],
+  )
+  return new Map(((data ?? []) as ColorDisplayRow[]).map(color => [color.name, color.id]))
 }
 
 function applySummaryRequiredCones(
@@ -365,8 +464,17 @@ async function fetchIssueSourceByPoStyleColorMultiWeek(
   const issueMovements: IssueMovementRow[] = []
   for (const chunk of chunkArray(Array.from(lineById.keys()).map(String), 500)) {
     const data = await query<IssueMovementRow>(
-      `SELECT reference_id, quantity_meters, from_status FROM thread_movements
-       WHERE reference_id = ANY($1) AND movement_type = 'ISSUE' AND reference_type = 'ISSUE_LINE'
+      `SELECT m.reference_id, m.quantity_meters, m.from_status,
+         CASE WHEN m.from_status = 'RESERVED_FOR_ORDER' THEN (
+           SELECT (a.old_values->>'reserved_week_id')::int FROM thread_audit_log a
+           WHERE a.table_name = 'thread_inventory' AND a.record_id = m.cone_id AND a.action = 'UPDATE'
+             AND a.old_values->>'status' = 'RESERVED_FOR_ORDER'
+             AND a.new_values->>'status' IS DISTINCT FROM 'RESERVED_FOR_ORDER'
+             AND a.created_at BETWEEN m.created_at - interval '5 minutes' AND m.created_at + interval '5 minutes'
+           ORDER BY abs(extract(epoch FROM a.created_at - m.created_at)) LIMIT 1
+         ) END AS reserved_week_id
+       FROM thread_movements m
+       WHERE m.reference_id = ANY($1) AND m.movement_type = 'ISSUE' AND m.reference_type = 'ISSUE_LINE'
        LIMIT 100000`,
       [chunk],
     )
@@ -389,13 +497,17 @@ async function fetchIssueSourceByPoStyleColorMultiWeek(
       thread_type_id: line.thread_type_id,
       thread_color_id: line.thread_color_id,
       issued_from_reserved_cones: 0,
+      issued_from_other_week_reserved_cones: 0,
       issued_from_available_cones: 0,
       issued_from_other_cones: 0,
     }
     const equivalentCones = getIssuedMovementEquivalentCones(movement, line, metersPerConeByThreadType, ratio)
     const fromStatus = movement.from_status ?? null
 
-    if (fromStatus === 'RESERVED_FOR_ORDER') {
+    const reservedWeekId = toFiniteNumber(movement.reserved_week_id)
+    if (fromStatus === 'RESERVED_FOR_ORDER' && reservedWeekId != null && !weekIds.includes(reservedWeekId)) {
+      row.issued_from_other_week_reserved_cones += equivalentCones
+    } else if (fromStatus === 'RESERVED_FOR_ORDER') {
       row.issued_from_reserved_cones += equivalentCones
     } else if (fromStatus != null && AVAILABLE_ISSUE_SOURCE_STATUSES.has(fromStatus)) {
       row.issued_from_available_cones += equivalentCones
@@ -408,6 +520,7 @@ async function fetchIssueSourceByPoStyleColorMultiWeek(
   return Array.from(grouped.values()).map(row => ({
     ...row,
     issued_from_reserved_cones: roundToTwoDecimals(row.issued_from_reserved_cones),
+    issued_from_other_week_reserved_cones: roundToTwoDecimals(row.issued_from_other_week_reserved_cones),
     issued_from_available_cones: roundToTwoDecimals(row.issued_from_available_cones),
     issued_from_other_cones: roundToTwoDecimals(row.issued_from_other_cones),
   }))
@@ -516,7 +629,14 @@ async function fetchDisplayMaps(poIds: number[], styleIds: number[], styleColorI
 
 async function fetchReservedByWarehouse(weekId: number, ratio: number) {
   const data = await query<ReservedConeRow>(
-    `SELECT ti.thread_type_id, ti.color_id, ti.warehouse_id, ti.is_partial,
+    `SELECT ti.thread_type_id, ti.color_id, ti.warehouse_id, ti.is_partial, ti.lot_number, ti.original_week_id,
+       CASE WHEN ti.lot_number LIKE 'WO-%' AND ti.lot_number <> 'WO-' || $1::int::text THEN (
+         SELECT a.action = 'UPDATE' AND a.old_values->>'status' = 'AVAILABLE'
+         FROM thread_audit_log a
+         WHERE a.table_name = 'thread_inventory' AND a.record_id = ti.id
+           AND a.new_values->>'reserved_week_id' = $1::int::text
+           AND a.old_values->>'reserved_week_id' IS DISTINCT FROM $1::int::text
+         ORDER BY a.created_at DESC LIMIT 1) END AS reserved_from_available,
        CASE WHEN w.id IS NULL THEN NULL
             ELSE json_build_object('id', w.id, 'code', w.code, 'name', w.name) END AS warehouse
      FROM thread_inventory ti
@@ -540,13 +660,85 @@ async function fetchReservedByWarehouse(weekId: number, ratio: number) {
       physical_cones: 0,
       full_cones: 0,
       partial_cones: 0,
+      ...emptyReservedBySource(),
     }
+    const equivalentCones = cone.is_partial ? ratio : 1
     current.physical_cones += 1
-    current.equivalent_cones += cone.is_partial ? ratio : 1
+    current.equivalent_cones += equivalentCones
+    current[classifyReserveSource(cone, weekId)] += equivalentCones
     if (cone.is_partial) current.partial_cones += 1
     else current.full_cones += 1
     warehouseMap.set(warehouseId, current)
     map.set(key, warehouseMap)
+  }
+  return map
+}
+
+async function fetchReleasedByKey(weekId: number, ratio: number) {
+  const data = await query<ReleasedAuditRow>(
+    `SELECT (a.old_values->>'thread_type_id')::int AS thread_type_id,
+       (a.old_values->>'color_id')::int AS color_id,
+       COALESCE((a.old_values->>'is_partial')::boolean, false) AS is_partial,
+       COUNT(*) FILTER (WHERE a.new_values->>'status' = 'AVAILABLE') AS released_count,
+       COUNT(*) FILTER (WHERE a.new_values->>'status' = 'RESERVED_FOR_ORDER'
+         AND a.new_values->>'reserved_week_id' IS DISTINCT FROM $1::text) AS transferred_out_count
+     FROM thread_audit_log a
+     WHERE a.table_name = 'thread_inventory' AND a.action = 'UPDATE'
+       AND a.old_values->>'status' = 'RESERVED_FOR_ORDER'
+       AND a.old_values->>'reserved_week_id' = $1::text
+     GROUP BY 1, 2, 3
+     LIMIT 100000`,
+    [weekId],
+  )
+
+  const map = new Map<TraceKey, ReleasedCones>()
+  for (const row of (data ?? []) as ReleasedAuditRow[]) {
+    if (row.thread_type_id == null) continue
+    const unit = row.is_partial ? ratio : 1
+    const released = (toFiniteNumber(row.released_count) ?? 0) * unit
+    const transferredOut = (toFiniteNumber(row.transferred_out_count) ?? 0) * unit
+    if (released === 0 && transferredOut === 0) continue
+    const key = makeTraceKey(row.thread_type_id, row.color_id)
+    const current = map.get(key) ?? { released_cones: 0, transferred_out_cones: 0 }
+    current.released_cones += released
+    current.transferred_out_cones += transferredOut
+    map.set(key, current)
+  }
+  return map
+}
+
+async function fetchLoanSummary(weekId: number) {
+  const row = await queryOne<LoanSummaryRow>(
+    `SELECT
+       COALESCE(SUM(quantity_cones) FILTER (WHERE from_week_id IS NULL AND to_week_id = $1), 0) AS stock_withdraw_logged_cones,
+       COALESCE(SUM(GREATEST(quantity_cones - COALESCE(returned_cones, 0), 0))
+         FILTER (WHERE from_week_id = $1 AND status = 'ACTIVE'), 0) AS lent_out_cones
+     FROM thread_order_loans
+     WHERE deleted_at IS NULL AND (from_week_id = $1 OR to_week_id = $1)`,
+    [weekId],
+  )
+  return {
+    stock_withdraw_logged_cones: roundToTwoDecimals(toFiniteNumber(row?.stock_withdraw_logged_cones) ?? 0),
+    lent_out_cones: roundToTwoDecimals(toFiniteNumber(row?.lent_out_cones) ?? 0),
+  }
+}
+
+async function fetchSharedWeekNames(weekId: number) {
+  const data = await query<SharedWeekRow>(
+    `SELECT cur.po_id, cur.style_id, cur.style_color_id,
+       array_agg(DISTINCT w.week_name ORDER BY w.week_name) AS week_names
+     FROM (SELECT DISTINCT po_id, style_id, style_color_id FROM thread_order_items
+           WHERE week_id = $1 AND po_id IS NOT NULL) cur
+     INNER JOIN thread_order_items oth
+       ON oth.po_id = cur.po_id AND oth.style_id = cur.style_id
+       AND oth.style_color_id = cur.style_color_id AND oth.week_id <> $1
+     INNER JOIN thread_order_weeks w ON w.id = oth.week_id AND w.status <> 'CANCELLED'
+     GROUP BY cur.po_id, cur.style_id, cur.style_color_id`,
+    [weekId],
+  )
+  const map = new Map<string, string[]>()
+  for (const row of (data ?? []) as SharedWeekRow[]) {
+    map.set(`${row.po_id}_${row.style_id}_${row.style_color_id}`, row.week_names)
   }
   return map
 }
@@ -593,6 +785,17 @@ async function fillThreadDisplay(rows: Map<TraceKey, TraceRow>) {
   }
 }
 
+async function applyCurrentColorNames(rows: Map<TraceKey, TraceRow>) {
+  const colorIds = Array.from(new Set(Array.from(rows.values()).map(row => row.thread_color_id).filter((id): id is number => id != null)))
+  if (colorIds.length === 0) return
+  const data = await query<ColorDisplayRow>(`SELECT id, name FROM colors WHERE id = ANY($1) LIMIT $2`, [colorIds, colorIds.length])
+  const colorMap = new Map<number, string>(((data ?? []) as ColorDisplayRow[]).map(color => [color.id, color.name]))
+  for (const row of rows.values()) {
+    const currentName = row.thread_color_id != null ? colorMap.get(row.thread_color_id) : undefined
+    if (currentName) row.color_name = currentName
+  }
+}
+
 const router = new Hono<AppEnv>()
 
 router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view'), async (c) => {
@@ -622,11 +825,14 @@ router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view
     const colorById = new Map<number, string>()
     for (const [name, id] of colorByName) colorById.set(id, name)
 
-    const [{ poStyleColorThreadMap }, issuedRows, issuedSourceRows, reservedMap] = await Promise.all([
+    const [{ poStyleColorThreadMap }, issuedRows, issuedSourceRows, reservedMap, loanSummary, sharedWeekNames, releasedMap] = await Promise.all([
       Promise.resolve(buildProcessTracePoLineMap(orderItems, specs, calculation_data, colorByName, colorById)),
       fetchIssuedByPoStyleColorMultiWeek([weekId], ratio),
       fetchIssueSourceByPoStyleColorMultiWeek([weekId], ratio),
       fetchReservedByWarehouse(weekId, ratio),
+      fetchLoanSummary(weekId),
+      fetchSharedWeekNames(weekId),
+      fetchReleasedByKey(weekId, ratio),
     ])
 
     const poIds = Array.from(new Set(orderItems.map(item => item.po_id).filter((id): id is number => id != null)))
@@ -660,9 +866,11 @@ router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view
               required_cones: 0,
               issued_gross_cones: 0,
               issued_from_reserved_cones: 0,
+              issued_from_other_week_reserved_cones: 0,
               issued_from_available_cones: 0,
               issued_from_other_cones: 0,
               returned_cones: 0,
+              shared_week_names: [],
             }
             line.required_cones += thread.required_cones
             lineMap.set(lineKey, line)
@@ -673,19 +881,23 @@ router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view
 
     for (const [key, warehouses] of reservedMap) {
       const [threadTypeIdRaw, colorIdRaw] = key.split('_')
-      const row = findExistingTraceRow(rows, Number(threadTypeIdRaw), colorIdRaw ? Number(colorIdRaw) : null)
-      if (!row) continue
+      const row = findOrCreateActualRow(rows, lineMaps, Number(threadTypeIdRaw), colorIdRaw ? Number(colorIdRaw) : null)
       row.warehouses = Array.from(warehouses.values()).map((warehouse) => ({
         ...warehouse,
+        ...roundReservedBySource(warehouse),
         equivalent_cones: roundToTwoDecimals(warehouse.equivalent_cones),
       }))
       row.reserved_cones = roundToTwoDecimals(row.warehouses.reduce((sum, warehouse) => sum + warehouse.equivalent_cones, 0))
       row.reserved_physical_cones = row.warehouses.reduce((sum, warehouse) => sum + warehouse.physical_cones, 0)
+      row.reserved_by_source = roundReservedBySource(row.warehouses.reduce((acc, warehouse) => ({
+        from_receive_cones: acc.from_receive_cones + warehouse.from_receive_cones,
+        from_stock_cones: acc.from_stock_cones + warehouse.from_stock_cones,
+        from_other_week_cones: acc.from_other_week_cones + warehouse.from_other_week_cones,
+      }), emptyReservedBySource()))
     }
 
     for (const issue of issuedRows) {
-      const row = findExistingTraceRow(rows, issue.thread_type_id, issue.thread_color_id)
-      if (!row) continue
+      const row = findOrCreateActualRow(rows, lineMaps, issue.thread_type_id, issue.thread_color_id)
       row.issued_gross_cones += issue.issued_cones
       row.returned_cones += issue.returned_cones
       const lineKey = `${issue.po_id ?? 'null'}_${issue.style_id ?? 'null'}_${issue.style_color_id}_${row.row_key}`
@@ -705,9 +917,11 @@ router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view
         required_cones: 0,
         issued_gross_cones: 0,
         issued_from_reserved_cones: 0,
+        issued_from_other_week_reserved_cones: 0,
         issued_from_available_cones: 0,
         issued_from_other_cones: 0,
         returned_cones: 0,
+        shared_week_names: [],
       }
       line.issued_gross_cones += issue.issued_cones
       line.returned_cones += issue.returned_cones
@@ -715,9 +929,9 @@ router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view
     }
 
     for (const issue of issuedSourceRows) {
-      const row = findExistingTraceRow(rows, issue.thread_type_id, issue.thread_color_id)
-      if (!row) continue
+      const row = findOrCreateActualRow(rows, lineMaps, issue.thread_type_id, issue.thread_color_id)
       row.issued_from_reserved_cones += issue.issued_from_reserved_cones
+      row.issued_from_other_week_reserved_cones += issue.issued_from_other_week_reserved_cones
       row.issued_from_available_cones += issue.issued_from_available_cones
       row.issued_from_other_cones += issue.issued_from_other_cones
       const lineKey = `${issue.po_id ?? 'null'}_${issue.style_id ?? 'null'}_${issue.style_color_id}_${row.row_key}`
@@ -737,31 +951,54 @@ router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view
         required_cones: 0,
         issued_gross_cones: 0,
         issued_from_reserved_cones: 0,
+        issued_from_other_week_reserved_cones: 0,
         issued_from_available_cones: 0,
         issued_from_other_cones: 0,
         returned_cones: 0,
+        shared_week_names: [],
       }
       line.issued_from_reserved_cones += issue.issued_from_reserved_cones
+      line.issued_from_other_week_reserved_cones += issue.issued_from_other_week_reserved_cones
       line.issued_from_available_cones += issue.issued_from_available_cones
       line.issued_from_other_cones += issue.issued_from_other_cones
       lineMap.set(lineKey, line)
     }
 
+    for (const [key, released] of releasedMap) {
+      const [threadTypeIdRaw, colorIdRaw] = key.split('_')
+      const row = findExistingTraceRow(rows, Number(threadTypeIdRaw), colorIdRaw ? Number(colorIdRaw) : null)
+      if (!row) continue
+      row.released_cones += released.released_cones
+      row.transferred_out_cones += released.transferred_out_cones
+    }
+
     await fillThreadDisplay(rows)
     const deliveryKeyToTraceKey = new Map<string, TraceKey>()
     for (const row of rows.values()) {
-      if (row.color_name) deliveryKeyToTraceKey.set(getDeliveryTraceKey(row.thread_type_id, row.color_name), row.row_key)
+      if (row.unplanned || !row.color_name) continue
+      const deliveryKey = getDeliveryTraceKey(row.thread_type_id, row.color_name)
+      if (!deliveryKeyToTraceKey.has(deliveryKey)) deliveryKeyToTraceKey.set(deliveryKey, row.row_key)
     }
+    const unmatchedDeliveries = deliverySummary.by_supplier.filter(delivery =>
+      !deliveryKeyToTraceKey.has(getDeliveryTraceKey(delivery.thread_type_id, delivery.color_name)))
+    const unmatchedColorIds = await fetchColorIdsByName(
+      Array.from(new Set(unmatchedDeliveries.map(delivery => delivery.color_name).filter(Boolean))),
+    )
     for (const delivery of deliverySummary.by_supplier) {
       const key = deliveryKeyToTraceKey.get(getDeliveryTraceKey(delivery.thread_type_id, delivery.color_name))
-      if (!key) continue
-      const row = rows.get(key)
-      if (!row) continue
+      const row = (key ? rows.get(key) : null)
+        ?? findOrCreateActualRow(rows, lineMaps, delivery.thread_type_id, unmatchedColorIds.get(delivery.color_name) ?? null, {
+          color_name: delivery.color_name,
+        })
+      row.ordered_ncc_cones += delivery.ordered
+      row.cancelled_ncc_cones += delivery.cancelled
       row.pending_delivery_cones += delivery.pending_delivery
       row.pending_receive_cones += delivery.pending_receive
       row.received_cones += delivery.received
       row.delivery_lines.push(...delivery.deliveries)
     }
+    if (unmatchedDeliveries.length > 0) await fillThreadDisplay(rows)
+    await applyCurrentColorNames(rows)
 
     const traceRows = Array.from(rows.values()).map((row) => {
       const requiredCones = roundToTwoDecimals(row.required_cones)
@@ -780,15 +1017,20 @@ router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view
         required_cones: requiredCones,
         additional_order_cones: additionalOrderCones,
         assignment_target_cones: assignmentTargetCones,
+        ordered_ncc_cones: roundToTwoDecimals(row.ordered_ncc_cones),
+        cancelled_ncc_cones: roundToTwoDecimals(row.cancelled_ncc_cones),
         pending_delivery_cones: pendingDeliveryCones,
         pending_receive_cones: pendingReceiveCones,
         received_cones: roundToTwoDecimals(row.received_cones),
         reserved_cones: reservedCones,
         issued_gross_cones: roundToTwoDecimals(row.issued_gross_cones),
         issued_from_reserved_cones: issuedFromReservedCones,
+        issued_from_other_week_reserved_cones: roundToTwoDecimals(row.issued_from_other_week_reserved_cones),
         issued_from_available_cones: roundToTwoDecimals(row.issued_from_available_cones),
         issued_from_other_cones: roundToTwoDecimals(row.issued_from_other_cones),
         returned_cones: roundToTwoDecimals(row.returned_cones),
+        released_cones: roundToTwoDecimals(row.released_cones),
+        transferred_out_cones: roundToTwoDecimals(row.transferred_out_cones),
         assigned_week_cones: assignedWeekCones,
         assignment_gap_cones: roundToTwoDecimals(assignmentTargetCones - assignedWeekCones),
         warehouses: row.warehouses.sort((a, b) => a.warehouse_name.localeCompare(b.warehouse_name)),
@@ -798,9 +1040,11 @@ router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view
             required_cones: roundToTwoDecimals(line.required_cones),
             issued_gross_cones: roundToTwoDecimals(line.issued_gross_cones),
             issued_from_reserved_cones: roundToTwoDecimals(line.issued_from_reserved_cones),
+            issued_from_other_week_reserved_cones: roundToTwoDecimals(line.issued_from_other_week_reserved_cones),
             issued_from_available_cones: roundToTwoDecimals(line.issued_from_available_cones),
             issued_from_other_cones: roundToTwoDecimals(line.issued_from_other_cones),
             returned_cones: roundToTwoDecimals(line.returned_cones),
+            shared_week_names: sharedWeekNames.get(`${line.po_id}_${line.style_id}_${line.style_color_id}`) ?? [],
           }))
           .sort((a, b) => a.po_number.localeCompare(b.po_number) || a.style_code.localeCompare(b.style_code) || a.style_color_name.localeCompare(b.style_color_name)),
       }
@@ -813,18 +1057,33 @@ router.get('/:weekId/process-trace', requirePermission('thread.weekly-order.view
           required_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.required_cones, 0)),
           additional_order_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.additional_order_cones, 0)),
           assignment_target_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.assignment_target_cones, 0)),
+          ordered_ncc_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.ordered_ncc_cones, 0)),
+          cancelled_ncc_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.cancelled_ncc_cones, 0)),
           pending_delivery_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.pending_delivery_cones, 0)),
           pending_receive_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.pending_receive_cones, 0)),
           received_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.received_cones, 0)),
           reserved_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.reserved_cones, 0)),
           reserved_physical_cones: traceRows.reduce((sum, row) => sum + row.reserved_physical_cones, 0),
+          reserved_by_source: roundReservedBySource(traceRows.reduce((acc, row) => ({
+            from_receive_cones: acc.from_receive_cones + row.reserved_by_source.from_receive_cones,
+            from_stock_cones: acc.from_stock_cones + row.reserved_by_source.from_stock_cones,
+            from_other_week_cones: acc.from_other_week_cones + row.reserved_by_source.from_other_week_cones,
+          }), emptyReservedBySource())),
+          stock_withdraw_logged_cones: loanSummary.stock_withdraw_logged_cones,
+          lent_out_cones: loanSummary.lent_out_cones,
           issued_gross_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.issued_gross_cones, 0)),
           issued_from_reserved_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.issued_from_reserved_cones, 0)),
+          issued_from_other_week_reserved_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.issued_from_other_week_reserved_cones, 0)),
           issued_from_available_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.issued_from_available_cones, 0)),
           issued_from_other_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.issued_from_other_cones, 0)),
           returned_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.returned_cones, 0)),
+          released_cones: roundToTwoDecimals(Array.from(releasedMap.values()).reduce((sum, released) => sum + released.released_cones, 0)),
+          transferred_out_cones: roundToTwoDecimals(Array.from(releasedMap.values()).reduce((sum, released) => sum + released.transferred_out_cones, 0)),
           assigned_week_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.assigned_week_cones, 0)),
           assignment_gap_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + row.assignment_gap_cones, 0)),
+          shortage_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + Math.max(row.assignment_gap_cones, 0), 0)),
+          surplus_cones: roundToTwoDecimals(traceRows.reduce((sum, row) => sum + Math.max(-row.assignment_gap_cones, 0), 0)),
+          unplanned_row_count: traceRows.filter(row => row.unplanned).length,
         },
         rows: traceRows,
       },

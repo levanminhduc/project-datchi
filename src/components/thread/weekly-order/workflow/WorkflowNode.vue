@@ -19,6 +19,20 @@
       />
       <span class="wf-node-title">{{ title }}</span>
       <q-space />
+      <q-icon
+        v-if="hint"
+        name="o_info"
+        size="15px"
+        class="wf-node-hint"
+        @click.stop
+      >
+        <AppTooltip>
+          <div class="text-weight-medium">
+            {{ kindLabel }}
+          </div>
+          {{ hint }}
+        </AppTooltip>
+      </q-icon>
       <q-btn
         v-if="linkTo"
         flat
@@ -44,6 +58,12 @@
         {{ statusChip.label }}
       </q-chip>
       <div
+        v-if="kindLabel"
+        class="wf-node-kind"
+      >
+        {{ kindLabel }}
+      </div>
+      <div
         v-if="value !== undefined"
         class="wf-node-value"
       >
@@ -61,16 +81,20 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import AppTooltip from '@/components/ui/dialogs/AppTooltip.vue'
+import { WORKFLOW_NODE_KIND_LABEL, type WorkflowNodeKind } from './workflow-format'
 
 export interface WorkflowNodeSubLine {
   label: string
   value: string
 }
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   title: string
   icon: string
+  kind?: WorkflowNodeKind
+  hint?: string
   state?: 'idle' | 'active' | 'done'
   value?: string
   unit?: string
@@ -82,6 +106,8 @@ withDefaults(defineProps<{
   dimmed?: boolean
   linkTo?: string
 }>(), {
+  kind: undefined,
+  hint: undefined,
   state: 'idle',
   value: undefined,
   unit: 'cuộn',
@@ -97,6 +123,8 @@ withDefaults(defineProps<{
 defineEmits<{
   (e: 'select'): void
 }>()
+
+const kindLabel = computed(() => (props.kind ? WORKFLOW_NODE_KIND_LABEL[props.kind] : ''))
 </script>
 
 <style scoped lang="scss">
@@ -138,6 +166,18 @@ defineEmits<{
 .wf-node-unit {
   font-size: 12px;
   font-weight: 500;
+}
+
+.wf-node-hint {
+  color: #9e9e9e;
+  cursor: help;
+}
+
+.wf-node-kind {
+  font-size: 10px;
+  color: #9e9e9e;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .wf-node-subline {

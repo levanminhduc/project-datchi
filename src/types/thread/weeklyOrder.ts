@@ -588,6 +588,7 @@ export interface DeliverySupplierBreakdown {
   color_name: string
   color_hex: string
   ordered: number
+  cancelled?: number
   delivered: number
   received: number
   pending_delivery: number
@@ -616,7 +617,13 @@ export interface WeeklyOrderProcessTraceDeliveryLine {
   color_name: string
 }
 
-export interface WeeklyOrderProcessTraceWarehouse {
+export interface WeeklyOrderProcessTraceReservedBySource {
+  from_receive_cones: number
+  from_stock_cones: number
+  from_other_week_cones: number
+}
+
+export interface WeeklyOrderProcessTraceWarehouse extends WeeklyOrderProcessTraceReservedBySource {
   warehouse_id: number
   warehouse_code: string
   warehouse_name: string
@@ -639,9 +646,11 @@ export interface WeeklyOrderProcessTracePoLine {
   required_cones: number
   issued_gross_cones: number
   issued_from_reserved_cones: number
+  issued_from_other_week_reserved_cones: number
   issued_from_available_cones: number
   issued_from_other_cones: number
   returned_cones: number
+  shared_week_names: string[]
 }
 
 export interface WeeklyOrderProcessTraceRow {
@@ -654,18 +663,25 @@ export interface WeeklyOrderProcessTraceRow {
   required_cones: number
   additional_order_cones: number
   assignment_target_cones: number
+  ordered_ncc_cones: number
+  cancelled_ncc_cones: number
   pending_delivery_cones: number
   pending_receive_cones: number
   received_cones: number
   reserved_cones: number
   reserved_physical_cones: number
+  reserved_by_source: WeeklyOrderProcessTraceReservedBySource
   issued_gross_cones: number
   issued_from_reserved_cones: number
+  issued_from_other_week_reserved_cones: number
   issued_from_available_cones: number
   issued_from_other_cones: number
   returned_cones: number
+  released_cones: number
+  transferred_out_cones: number
   assigned_week_cones: number
   assignment_gap_cones: number
+  unplanned: boolean
   warehouses: WeeklyOrderProcessTraceWarehouse[]
   po_lines: WeeklyOrderProcessTracePoLine[]
   delivery_lines: WeeklyOrderProcessTraceDeliveryLine[]
@@ -677,18 +693,29 @@ export interface WeeklyOrderProcessTraceResponse {
     required_cones: number
     additional_order_cones: number
     assignment_target_cones: number
+    ordered_ncc_cones: number
+    cancelled_ncc_cones: number
     pending_delivery_cones: number
     pending_receive_cones: number
     received_cones: number
     reserved_cones: number
     reserved_physical_cones: number
+    reserved_by_source: WeeklyOrderProcessTraceReservedBySource
+    stock_withdraw_logged_cones: number
+    lent_out_cones: number
     issued_gross_cones: number
     issued_from_reserved_cones: number
+    issued_from_other_week_reserved_cones: number
     issued_from_available_cones: number
     issued_from_other_cones: number
     returned_cones: number
+    released_cones: number
+    transferred_out_cones: number
     assigned_week_cones: number
     assignment_gap_cones: number
+    shortage_cones: number
+    surplus_cones: number
+    unplanned_row_count: number
   }
   rows: WeeklyOrderProcessTraceRow[]
 }

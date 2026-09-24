@@ -1,10 +1,65 @@
 <template>
   <div class="wf-map-wrap">
+    <div class="wf-gap-badge">
+      Nguồn đáp ứng:
+      <span class="text-warning wf-gap-part">
+        Thiếu {{ formatQty(summary.shortage_cones) }}
+        <AppTooltip max-width="420px">
+          <div>{{ SHORTAGE_HINT }}</div>
+          <div>Số dòng thiếu: {{ shortageRows.length }}</div>
+          <div
+            v-for="row in topShortageRows"
+            :key="row.row_key"
+          >
+            • {{ formatTraceRowLabel(row) }}: {{ formatQty(row.assignment_gap_cones) }}
+          </div>
+        </AppTooltip>
+      </span>
+      ·
+      <span class="text-negative wf-gap-part">
+        Dư {{ formatQty(summary.surplus_cones) }}
+        <AppTooltip max-width="420px">
+          <div>{{ SURPLUS_HINT }}</div>
+          <div>Số dòng dư: {{ surplusRows.length }}</div>
+          <div
+            v-for="row in topSurplusRows"
+            :key="row.row_key"
+          >
+            • {{ formatTraceRowLabel(row) }}: {{ formatQty(-row.assignment_gap_cones) }}{{ row.unplanned ? ' ⚠' : '' }}
+          </div>
+          <div v-if="summary.unplanned_row_count > 0">
+            Có {{ summary.unplanned_row_count }} dòng lệch màu (⚠): Dư của các dòng này bù cho Thiếu của dòng kế hoạch cùng loại chỉ.
+          </div>
+        </AppTooltip>
+      </span>
+      <span
+        class="wf-gap-part"
+        :class="getGapClass(summary.assignment_gap_cones)"
+      >
+        (ròng: {{ formatGapQty(summary.assignment_gap_cones) }})
+        <AppTooltip max-width="420px">{{ NET_GAP_HINT }}</AppTooltip>
+      </span>
+      <q-icon
+        name="o_info"
+        size="14px"
+      >
+        <AppTooltip max-width="420px">
+          <div
+            v-for="line in GAP_HINT_LINES"
+            :key="line"
+          >
+            {{ line }}
+          </div>
+        </AppTooltip>
+      </q-icon>
+    </div>
     <div
-      class="wf-gap-badge"
-      :class="getGapClass(summary.assignment_gap_cones)"
+      v-if="summary.unplanned_row_count > 0"
+      class="wf-gap-badge q-ml-sm text-warning"
     >
-      Nguồn đáp ứng: {{ formatGapQty(summary.assignment_gap_cones) }}
+      <q-icon name="o_warning" />
+      {{ summary.unplanned_row_count }} dòng lệch màu so với kế hoạch
+      <AppTooltip>{{ UNPLANNED_ROW_HINT }}</AppTooltip>
     </div>
     <div
       ref="containerRef"
@@ -58,6 +113,8 @@
         :style="{ gridArea: node.key }"
         :title="node.title"
         :icon="node.icon"
+        :kind="node.kind"
+        :hint="node.hint"
         :state="node.state"
         :value="node.value"
         :sub-lines="node.subLines"
@@ -77,7 +134,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import type { WeeklyOrderProcessTraceResponse } from '@/types/thread'
 import WorkflowNode, { type WorkflowNodeSubLine } from './WorkflowNode.vue'
-import { formatQty, formatGapQty, getGapClass, getWeekStatusChip } from './workflow-format'
+import AppTooltip from '@/components/ui/dialogs/AppTooltip.vue'
+import { formatQty, formatGapQty, getGapClass, getWeekStatusChip, formatTraceRowLabel, WORKFLOW_NODE_META, UNPLANNED_ROW_HINT, GAP_HINT_LINES, SHORTAGE_HINT, SURPLUS_HINT, NET_GAP_HINT, type WorkflowNodeKind } from './workflow-format'
 
 const props = defineProps<{
   trace: WeeklyOrderProcessTraceResponse
@@ -95,6 +153,8 @@ interface MapNode {
   state: 'idle' | 'active' | 'done'
   value?: string
   subLines?: WorkflowNodeSubLine[]
+  kind?: WorkflowNodeKind
+  hint?: string
   statusChip?: { label: string; color: string } | null
   decision?: boolean
   clickable: boolean
@@ -128,48 +188,55 @@ const ARROW_COLORS: Record<'idle' | 'active' | 'done', string> = {
 
 const summary = computed(() => props.trace.summary)
 
-const orderedFromNcc = computed(() =>
-  props.trace.rows.reduce((sum, row) =>
-    sum + row.delivery_lines.reduce((lineSum, line) =>
-      line.status === 'CANCELLED' ? lineSum : lineSum + line.quantity_cones, 0), 0))
+const TOP_GAP_ROW_LIMIT = 5
 
-const stockWithdraw = computed(() =>
-  Math.max(0, summary.value.assignment_target_cones - orderedFromNcc.value))
+const shortageRows = computed(() => props.trace.rows
+  .filter(row => row.assignment_gap_cones > 0)
+  .sort((a, b) => b.assignment_gap_cones - a.assignment_gap_cones))
+const surplusRows = computed(() => props.trace.rows
+  .filter(row => row.assignment_gap_cones < 0)
+  .sort((a, b) => a.assignment_gap_cones - b.assignment_gap_cones))
+const topShortageRows = computed(() => shortageRows.value.slice(0, TOP_GAP_ROW_LIMIT))
+const topSurplusRows = computed(() => surplusRows.value.slice(0, TOP_GAP_ROW_LIMIT))
 
-const warehouseBreakdown = computed(() => {
-  const byId = new Map<number, { name: string; cones: number }>()
+const warehouseCount = computed(() => {
+  const ids = new Set<number>()
   for (const row of props.trace.rows) {
     for (const warehouse of row.warehouses) {
-      const entry = byId.get(warehouse.warehouse_id)
-      if (entry) {
-        entry.cones += warehouse.equivalent_cones
-      } else {
-        byId.set(warehouse.warehouse_id, {
-          name: warehouse.warehouse_name || warehouse.warehouse_code || `Kho ${warehouse.warehouse_id}`,
-          cones: warehouse.equivalent_cones,
-        })
-      }
+      if (warehouse.equivalent_cones > 0) ids.add(warehouse.warehouse_id)
     }
   }
-  return Array.from(byId.values())
-    .filter(entry => entry.cones > 0)
-    .sort((a, b) => b.cones - a.cones)
-})
-
-const warehouseSubLines = computed<WorkflowNodeSubLine[]>(() => {
-  const list = warehouseBreakdown.value
-  const lines = list.slice(0, 3).map(entry => ({ label: entry.name, value: formatQty(entry.cones) }))
-  if (list.length > 3) {
-    const rest = list.slice(3).reduce((sum, entry) => sum + entry.cones, 0)
-    lines.push({ label: `+${list.length - 3} kho khác`, value: formatQty(rest) })
-  }
-  return lines
+  return ids.size
 })
 
 const nodes = computed<MapNode[]>(() => {
   const s = summary.value
   const weekStatus = props.trace.week.status
-  return [
+  const fromStock = s.reserved_by_source.from_stock_cones
+  const supplierSubLines: WorkflowNodeSubLine[] = s.cancelled_ncc_cones > 0
+    ? [{ label: 'Đã hủy', value: formatQty(s.cancelled_ncc_cones) }]
+    : []
+  const reserveSubLines: WorkflowNodeSubLine[] = s.stock_withdraw_logged_cones > 0
+    ? [{ label: 'Rút tồn đã ghi nhận', value: formatQty(s.stock_withdraw_logged_cones) }]
+    : []
+  const warehouseSubLines: WorkflowNodeSubLine[] = [
+    { label: 'Từ NCC nhập', value: formatQty(s.reserved_by_source.from_receive_cones) },
+    { label: 'Từ tồn kho', value: formatQty(fromStock) },
+    { label: 'Từ tuần khác', value: formatQty(s.reserved_by_source.from_other_week_cones) },
+    { label: 'Cuộn vật lý', value: formatQty(s.reserved_physical_cones) },
+    { label: 'Số kho', value: formatQty(warehouseCount.value) },
+  ]
+  if (s.lent_out_cones > 0) warehouseSubLines.push({ label: 'Cho tuần khác mượn', value: formatQty(s.lent_out_cones) })
+  if (s.released_cones > 0) warehouseSubLines.push({ label: 'Đã nhả về tồn', value: formatQty(s.released_cones) })
+  if (s.transferred_out_cones > 0) warehouseSubLines.push({ label: 'Chuyển sang tuần khác', value: formatQty(s.transferred_out_cones) })
+  const issueSubLines: WorkflowNodeSubLine[] = [
+    { label: 'Từ kho tuần', value: formatQty(s.issued_from_reserved_cones) },
+    { label: 'Xuất chỉ khả dụng', value: formatQty(s.issued_from_available_cones) },
+  ]
+  if (s.issued_from_other_week_reserved_cones > 0) {
+    issueSubLines.push({ label: 'Từ giữ tuần khác', value: formatQty(s.issued_from_other_week_reserved_cones) })
+  }
+  return withMeta([
     {
       key: 'order',
       title: 'Đơn Đặt Hàng',
@@ -190,8 +257,8 @@ const nodes = computed<MapNode[]>(() => {
       icon: 'o_alt_route',
       state: s.assignment_target_cones > 0 ? 'done' : 'idle',
       subLines: [
-        { label: 'Đặt NCC', value: formatQty(orderedFromNcc.value) },
-        { label: 'Rút tồn', value: formatQty(stockWithdraw.value) },
+        { label: 'Đặt NCC', value: formatQty(s.ordered_ncc_cones) },
+        { label: 'Giữ từ tồn', value: formatQty(fromStock) },
       ],
       decision: true,
       clickable: false,
@@ -200,15 +267,16 @@ const nodes = computed<MapNode[]>(() => {
       key: 'supplier',
       title: 'Đặt NCC',
       icon: 'o_store',
-      state: orderedFromNcc.value > 0 ? 'done' : 'idle',
-      value: formatQty(orderedFromNcc.value),
+      state: s.ordered_ncc_cones > 0 ? 'done' : 'idle',
+      value: formatQty(s.ordered_ncc_cones),
+      subLines: supplierSubLines,
       clickable: true,
     },
     {
       key: 'delivery',
       title: 'Chờ NCC Giao',
       icon: 'o_local_shipping',
-      state: s.pending_delivery_cones > 0 ? 'active' : orderedFromNcc.value > 0 ? 'done' : 'idle',
+      state: s.pending_delivery_cones > 0 ? 'active' : s.ordered_ncc_cones > 0 ? 'done' : 'idle',
       value: formatQty(s.pending_delivery_cones),
       clickable: true,
       linkTo: '/thread/weekly-order/deliveries',
@@ -232,10 +300,11 @@ const nodes = computed<MapNode[]>(() => {
     },
     {
       key: 'reserve',
-      title: 'Rút Tồn Kho',
+      title: 'Giữ Từ Tồn Kho',
       icon: 'o_unarchive',
-      state: stockWithdraw.value > 0 ? 'done' : 'idle',
-      value: formatQty(stockWithdraw.value),
+      state: fromStock > 0 ? 'done' : 'idle',
+      value: formatQty(fromStock),
+      subLines: reserveSubLines,
       clickable: true,
     },
     {
@@ -244,10 +313,7 @@ const nodes = computed<MapNode[]>(() => {
       icon: 'o_warehouse',
       state: s.reserved_cones > 0 ? 'done' : 'idle',
       value: formatQty(s.reserved_cones),
-      subLines: [
-        ...warehouseSubLines.value,
-        { label: 'Cuộn vật lý', value: formatQty(s.reserved_physical_cones) },
-      ],
+      subLines: warehouseSubLines,
       clickable: true,
       linkTo: '/thread/transfer-reserved',
     },
@@ -257,10 +323,7 @@ const nodes = computed<MapNode[]>(() => {
       icon: 'o_output',
       state: s.issued_gross_cones > 0 ? (s.reserved_cones > 0 ? 'active' : 'done') : 'idle',
       value: formatQty(s.issued_gross_cones),
-      subLines: [
-        { label: 'Từ kho tuần', value: formatQty(s.issued_from_reserved_cones) },
-        { label: 'Xuất chỉ khả dụng', value: formatQty(s.issued_from_available_cones) },
-      ],
+      subLines: issueSubLines,
       clickable: true,
       linkTo: '/thread/issues/v2',
     },
@@ -273,8 +336,12 @@ const nodes = computed<MapNode[]>(() => {
       clickable: true,
       linkTo: '/thread/return',
     },
-  ]
+  ])
 })
+
+function withMeta(list: MapNode[]): MapNode[] {
+  return list.map(node => ({ ...node, ...WORKFLOW_NODE_META[node.key] }))
+}
 
 function onSelect(key: string) {
   emit('select-node', props.selectedNode === key ? null : key)
@@ -416,6 +483,11 @@ watch(() => props.trace, () => {
   padding: 4px 10px;
   background: #fff;
   margin-bottom: 8px;
+}
+
+.wf-gap-part {
+  cursor: help;
+  border-bottom: 1px dotted currentColor;
 }
 
 .wf-map {

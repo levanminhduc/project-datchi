@@ -164,7 +164,17 @@
                 </td>
                 <td>{{ row.supplier_name || '-' }}</td>
                 <td>{{ row.tex_number || '-' }}</td>
-                <td>{{ row.color_name || '-' }}</td>
+                <td>
+                  {{ row.color_name || '-' }}
+                  <q-icon
+                    v-if="row.unplanned"
+                    name="o_warning"
+                    color="warning"
+                    size="16px"
+                  >
+                    <AppTooltip>{{ UNPLANNED_ROW_HINT }}</AppTooltip>
+                  </q-icon>
+                </td>
                 <td class="text-right">
                   {{ formatQty(row.required_cones) }}
                 </td>
@@ -431,6 +441,7 @@ import { ref } from 'vue'
 import type { WeeklyOrderProcessTraceResponse, WeeklyOrderProcessTraceWarehouse } from '@/types/thread'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import AppTooltip from '@/components/ui/dialogs/AppTooltip.vue'
+import { UNPLANNED_ROW_HINT } from '@/components/thread/weekly-order/workflow/workflow-format'
 
 defineProps<{
   trace: WeeklyOrderProcessTraceResponse | null

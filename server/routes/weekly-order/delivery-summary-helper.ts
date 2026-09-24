@@ -21,6 +21,7 @@ export interface DeliverySummaryBreakdown {
   color_name: string
   color_hex: string
   ordered: number
+  cancelled: number
   delivered: number
   received: number
   pending_delivery: number
@@ -88,7 +89,10 @@ export async function getWeeklyOrderDeliverySummary(weekId: number): Promise<Wee
   const breakdownMap = new Map<string, DeliverySummaryBreakdown>()
 
   for (const row of (rows || []) as unknown as DeliverySummaryDbRow[]) {
-    const ordered = Number(row.quantity_cones || 0)
+    const quantityCones = Number(row.quantity_cones || 0)
+    const isCancelled = row.status === 'CANCELLED'
+    const ordered = isCancelled ? 0 : quantityCones
+    const cancelled = isCancelled ? quantityCones : 0
     const received = Number(row.received_quantity || 0)
     const delivered = row.status === 'DELIVERED' ? ordered : 0
     const supplierId = row.supplier_id ?? 0
@@ -111,7 +115,7 @@ export async function getWeeklyOrderDeliverySummary(weekId: number): Promise<Wee
       thread_type_id: row.thread_type_id,
       supplier_id: supplierId,
       status: row.status,
-      quantity_cones: ordered,
+      quantity_cones: quantityCones,
       delivered_cones: delivered,
       received_quantity: received,
       pending_delivery: Math.max(0, ordered - delivered),
@@ -122,6 +126,7 @@ export async function getWeeklyOrderDeliverySummary(weekId: number): Promise<Wee
     const existing = breakdownMap.get(key)
     if (existing) {
       existing.ordered += ordered
+      existing.cancelled += cancelled
       existing.delivered += delivered
       existing.received += received
       existing.deliveries.push(line)
@@ -134,6 +139,7 @@ export async function getWeeklyOrderDeliverySummary(weekId: number): Promise<Wee
         color_name: colorName,
         color_hex: colorHex,
         ordered,
+        cancelled,
         delivered,
         received,
         pending_delivery: 0,

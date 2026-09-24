@@ -92,6 +92,10 @@
               Đã xuất
             </th>
             <th class="text-right">
+              Giữ tuần khác
+              <AppTooltip>Số cuộn xuất cho PO này nhưng lấy từ cuộn đang giữ cho tuần khác (không tính vào nguồn đã gán của tuần này)</AppTooltip>
+            </th>
+            <th class="text-right">
               Đã trả
             </th>
           </tr>
@@ -102,7 +106,19 @@
             :key="`${line.po_number}-${index}`"
           >
             <td>
-              <div>{{ line.po_number }}</div>
+              <div>
+                {{ line.po_number }}
+                <q-icon
+                  v-if="line.shared_week_names.length > 0"
+                  name="o_warning"
+                  color="warning"
+                  size="14px"
+                >
+                  <AppTooltip>
+                    PO/mã hàng/màu này cũng có ở: {{ line.shared_week_names.join(', ') }}. Xuất kho lấy chung cuộn của các tuần này; phần lấy từ cuộn giữ cho tuần khác nằm ở cột "Giữ tuần khác".
+                  </AppTooltip>
+                </q-icon>
+              </div>
               <div class="text-caption text-grey-7">
                 {{ line.style_code }} – {{ line.style_color_name }}
               </div>
@@ -112,6 +128,9 @@
             </td>
             <td class="text-right">
               {{ formatQty(line.issued_gross_cones) }}
+            </td>
+            <td class="text-right">
+              {{ formatQty(line.issued_from_other_week_reserved_cones) }}
             </td>
             <td class="text-right">
               {{ formatQty(line.returned_cones) }}
@@ -155,6 +174,9 @@
             <th class="text-right">
               Nguyên / lẻ
             </th>
+            <th class="text-left">
+              Nguồn
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -172,6 +194,9 @@
             <td class="text-right">
               {{ formatQty(warehouse.full_cones) }} / {{ formatQty(warehouse.partial_cones) }}
             </td>
+            <td class="text-caption">
+              {{ formatReserveSources(warehouse) }}
+            </td>
           </tr>
         </tbody>
       </q-markup-table>
@@ -186,12 +211,24 @@
 </template>
 
 <script setup lang="ts">
-import type { WeeklyOrderProcessTraceRow } from '@/types/thread'
+import AppTooltip from '@/components/ui/dialogs/AppTooltip.vue'
+import type { WeeklyOrderProcessTraceRow, WeeklyOrderProcessTraceReservedBySource } from '@/types/thread'
 import { formatQty, getDeliveryLineStatusChip } from './workflow-format'
 
 defineProps<{
   row: WeeklyOrderProcessTraceRow
 }>()
+
+function formatReserveSources(source: WeeklyOrderProcessTraceReservedBySource) {
+  return [
+    { label: 'NCC', value: source.from_receive_cones },
+    { label: 'Tồn', value: source.from_stock_cones },
+    { label: 'Tuần khác', value: source.from_other_week_cones },
+  ]
+    .filter(item => item.value > 0)
+    .map(item => `${item.label} ${formatQty(item.value)}`)
+    .join(' · ')
+}
 </script>
 
 <style scoped lang="scss">

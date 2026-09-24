@@ -138,6 +138,24 @@
           :rows-per-page-options="[0]"
           no-data-label="Không có dòng chỉ nào khớp bộ lọc"
         >
+          <template #header-cell-assignment_gap_cones="headerProps">
+            <q-th :props="headerProps">
+              {{ headerProps.col.label }}
+              <q-icon
+                name="o_info"
+                size="14px"
+              >
+                <AppTooltip max-width="420px">
+                  <div
+                    v-for="line in GAP_HINT_LINES"
+                    :key="line"
+                  >
+                    {{ line }}
+                  </div>
+                </AppTooltip>
+              </q-icon>
+            </q-th>
+          </template>
           <template #body="bodyProps">
             <q-tr :props="bodyProps">
               <q-td auto-width>
@@ -159,10 +177,29 @@
               >
                 <span
                   v-if="col.name === 'assignment_gap_cones'"
+                  class="wf-gap-cell"
                   :class="getGapClass(bodyProps.row.assignment_gap_cones)"
                 >
                   {{ formatGapQty(bodyProps.row.assignment_gap_cones) }}
+                  <AppTooltip max-width="460px">
+                    <div
+                      v-for="line in buildGapBreakdownLines(bodyProps.row)"
+                      :key="line"
+                    >
+                      {{ line }}
+                    </div>
+                  </AppTooltip>
                 </span>
+                <template v-else-if="col.name === 'color_name' && bodyProps.row.unplanned">
+                  {{ col.value }}
+                  <q-icon
+                    name="o_warning"
+                    color="warning"
+                    size="16px"
+                  >
+                    <AppTooltip>{{ UNPLANNED_ROW_HINT }}</AppTooltip>
+                  </q-icon>
+                </template>
                 <template v-else>
                   {{ col.value }}
                 </template>
@@ -203,7 +240,7 @@ import PoSearchPopup from '@/components/thread/transfer-reserved/PoSearchPopup.v
 import AppTooltip from '@/components/ui/dialogs/AppTooltip.vue'
 import WorkflowMap from '@/components/thread/weekly-order/workflow/WorkflowMap.vue'
 import WorkflowRowDetail from '@/components/thread/weekly-order/workflow/WorkflowRowDetail.vue'
-import { formatQty, formatGapQty, getGapClass, getWeekStatusChip } from '@/components/thread/weekly-order/workflow/workflow-format'
+import { formatQty, formatGapQty, getGapClass, getWeekStatusChip, buildGapBreakdownLines, UNPLANNED_ROW_HINT, GAP_HINT_LINES } from '@/components/thread/weekly-order/workflow/workflow-format'
 import { weeklyOrderService } from '@/services/weeklyOrderService'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type { WeeklyOrderProcessTraceResponse, WeeklyOrderProcessTraceRow } from '@/types/thread'
@@ -227,15 +264,6 @@ const search = ref('')
 
 const weekStatusChip = computed(() => getWeekStatusChip(trace.value?.week.status ?? ''))
 
-function orderedFromNccOf(row: WeeklyOrderProcessTraceRow) {
-  return row.delivery_lines.reduce((sum, line) =>
-    line.status === 'CANCELLED' ? sum : sum + line.quantity_cones, 0)
-}
-
-function stockWithdrawOf(row: WeeklyOrderProcessTraceRow) {
-  return Math.max(0, row.assignment_target_cones - orderedFromNccOf(row))
-}
-
 interface NodeFilter {
   label: string
   predicate: (row: WeeklyOrderProcessTraceRow) => boolean
@@ -246,45 +274,45 @@ interface NodeFilter {
 const NODE_FILTERS: Record<string, NodeFilter> = {
   supplier: {
     label: 'Đặt NCC',
-    predicate: row => orderedFromNccOf(row) > 0,
-    main: 'ordered_from_ncc',
-    metrics: ['required_cones', 'assignment_target_cones', 'ordered_from_ncc', 'pending_delivery_cones', 'received_cones'],
+    predicate: row => row.ordered_ncc_cones > 0 || row.cancelled_ncc_cones > 0,
+    main: 'ordered_ncc_cones',
+    metrics: ['required_cones', 'assignment_target_cones', 'ordered_ncc_cones', 'cancelled_ncc_cones', 'pending_delivery_cones', 'received_cones'],
   },
   delivery: {
     label: 'Chờ NCC Giao',
     predicate: row => row.pending_delivery_cones > 0,
     main: 'pending_delivery_cones',
-    metrics: ['ordered_from_ncc', 'pending_delivery_cones', 'pending_receive_cones', 'received_cones'],
+    metrics: ['ordered_ncc_cones', 'pending_delivery_cones', 'pending_receive_cones', 'received_cones'],
   },
   receiving: {
     label: 'Đã Giao – Chờ Nhập',
     predicate: row => row.pending_receive_cones > 0,
     main: 'pending_receive_cones',
-    metrics: ['ordered_from_ncc', 'pending_delivery_cones', 'pending_receive_cones', 'received_cones'],
+    metrics: ['ordered_ncc_cones', 'pending_delivery_cones', 'pending_receive_cones', 'received_cones'],
   },
   received: {
     label: 'Đã Nhập Kho',
     predicate: row => row.received_cones > 0,
     main: 'received_cones',
-    metrics: ['ordered_from_ncc', 'pending_receive_cones', 'received_cones', 'reserved_cones'],
+    metrics: ['ordered_ncc_cones', 'pending_receive_cones', 'received_cones', 'reserved_from_receive_cones'],
   },
   reserve: {
-    label: 'Rút Tồn Kho',
-    predicate: row => stockWithdrawOf(row) > 0,
-    main: 'stock_withdraw',
-    metrics: ['required_cones', 'assignment_target_cones', 'ordered_from_ncc', 'stock_withdraw'],
+    label: 'Giữ Từ Tồn Kho',
+    predicate: row => row.reserved_by_source.from_stock_cones > 0,
+    main: 'reserved_from_stock_cones',
+    metrics: ['required_cones', 'assignment_target_cones', 'ordered_ncc_cones', 'reserved_from_stock_cones'],
   },
   warehouse: {
     label: 'Kho Tuần',
     predicate: row => row.reserved_cones > 0,
     main: 'reserved_cones',
-    metrics: ['required_cones', 'reserved_cones', 'reserved_physical_cones', 'issued_from_reserved_cones'],
+    metrics: ['required_cones', 'reserved_cones', 'reserved_from_receive_cones', 'reserved_from_stock_cones', 'reserved_from_other_week_cones', 'reserved_physical_cones', 'issued_from_reserved_cones', 'released_cones', 'transferred_out_cones'],
   },
   issue: {
     label: 'Xuất Kho',
     predicate: row => row.issued_gross_cones > 0,
     main: 'issued_gross_cones',
-    metrics: ['reserved_cones', 'issued_gross_cones', 'issued_from_reserved_cones', 'issued_from_available_cones', 'returned_cones'],
+    metrics: ['reserved_cones', 'issued_gross_cones', 'issued_from_reserved_cones', 'issued_from_other_week_reserved_cones', 'issued_from_available_cones', 'returned_cones'],
   },
   return: {
     label: 'Trả Kho',
@@ -318,8 +346,11 @@ const ALL_COLUMNS: Record<string, QTableColumn> = {
   color_name: { name: 'color_name', label: 'Màu chỉ', field: 'color_name', align: 'left', sortable: true },
   required_cones: { name: 'required_cones', label: 'Nhu cầu', field: 'required_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
   assignment_target_cones: { name: 'assignment_target_cones', label: 'Tổng cần', field: 'assignment_target_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
-  ordered_from_ncc: { name: 'ordered_from_ncc', label: 'Đặt NCC', field: (row: WeeklyOrderProcessTraceRow) => orderedFromNccOf(row), align: 'right', sortable: true, format: (value: number) => formatQty(value) },
-  stock_withdraw: { name: 'stock_withdraw', label: 'Rút tồn', field: (row: WeeklyOrderProcessTraceRow) => stockWithdrawOf(row), align: 'right', sortable: true, format: (value: number) => formatQty(value) },
+  ordered_ncc_cones: { name: 'ordered_ncc_cones', label: 'Đặt NCC', field: 'ordered_ncc_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
+  cancelled_ncc_cones: { name: 'cancelled_ncc_cones', label: 'NCC đã hủy', field: 'cancelled_ncc_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
+  reserved_from_receive_cones: { name: 'reserved_from_receive_cones', label: 'Kho tuần từ NCC', field: (row: WeeklyOrderProcessTraceRow) => row.reserved_by_source.from_receive_cones, align: 'right', sortable: true, format: (value: number) => formatQty(value) },
+  reserved_from_stock_cones: { name: 'reserved_from_stock_cones', label: 'Giữ từ tồn', field: (row: WeeklyOrderProcessTraceRow) => row.reserved_by_source.from_stock_cones, align: 'right', sortable: true, format: (value: number) => formatQty(value) },
+  reserved_from_other_week_cones: { name: 'reserved_from_other_week_cones', label: 'Từ tuần khác', field: (row: WeeklyOrderProcessTraceRow) => row.reserved_by_source.from_other_week_cones, align: 'right', sortable: true, format: (value: number) => formatQty(value) },
   pending_delivery_cones: { name: 'pending_delivery_cones', label: 'Chờ giao', field: 'pending_delivery_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
   pending_receive_cones: { name: 'pending_receive_cones', label: 'Chờ nhập', field: 'pending_receive_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
   received_cones: { name: 'received_cones', label: 'Đã nhập', field: 'received_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
@@ -327,13 +358,16 @@ const ALL_COLUMNS: Record<string, QTableColumn> = {
   reserved_physical_cones: { name: 'reserved_physical_cones', label: 'Cuộn vật lý', field: 'reserved_physical_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
   issued_gross_cones: { name: 'issued_gross_cones', label: 'Đã xuất', field: 'issued_gross_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
   issued_from_reserved_cones: { name: 'issued_from_reserved_cones', label: 'Từ kho tuần', field: 'issued_from_reserved_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
+  issued_from_other_week_reserved_cones: { name: 'issued_from_other_week_reserved_cones', label: 'Từ giữ tuần khác', field: 'issued_from_other_week_reserved_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
   issued_from_available_cones: { name: 'issued_from_available_cones', label: 'Từ khả dụng', field: 'issued_from_available_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
+  released_cones: { name: 'released_cones', label: 'Đã nhả', field: 'released_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
+  transferred_out_cones: { name: 'transferred_out_cones', label: 'Chuyển tuần khác', field: 'transferred_out_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
   returned_cones: { name: 'returned_cones', label: 'Đã trả', field: 'returned_cones', align: 'right', sortable: true, format: (value: number) => formatQty(value) },
   assignment_gap_cones: { name: 'assignment_gap_cones', label: 'Thiếu / dư', field: 'assignment_gap_cones', align: 'right', sortable: true },
 }
 
 const DEFAULT_COLUMN_NAMES = [
-  'supplier_name', 'tex_number', 'color_name', 'required_cones', 'ordered_from_ncc',
+  'supplier_name', 'tex_number', 'color_name', 'required_cones', 'ordered_ncc_cones',
   'pending_delivery_cones', 'pending_receive_cones', 'received_cones', 'reserved_cones',
   'issued_gross_cones', 'returned_cones', 'assignment_gap_cones',
 ]
@@ -421,6 +455,11 @@ onMounted(async () => {
 .wf-search {
   width: 260px;
   max-width: 100%;
+}
+
+.wf-gap-cell {
+  cursor: help;
+  border-bottom: 1px dotted currentColor;
 }
 
 :deep(.wf-col-main) {
