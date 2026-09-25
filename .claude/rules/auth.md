@@ -29,15 +29,15 @@ New permission checklist:
 
 `src/router/guards.ts` — all routes require auth by default; check order: `meta.public` → authenticated → ROOT bypass → `requiresRoot` → `requiresAdmin` → `meta.permissions` (OR) → `meta.allPermissions` (AND) → redirect `/forbidden`. Backend must enforce the same permission independently — never rely on the frontend guard alone.
 
-## Changing `server/middleware/auth.ts` — CRITICAL
+## Changing `server/middleware/auth.ts`
 
-After ANY change to auth middleware:
+After any change to auth middleware:
 
 1. Verify `src/services/api.ts` `fetchApi()` still sends the `Authorization` header.
 2. Test: login → navigate protected pages → check browser Network tab for 401s.
 3. Test with a limited-permission (non-root) user.
 
-Past incident: global `authMiddleware` via `except()` broke every page because `fetchApi()` didn't send the token. Symptom showed as "Bạn không có quyền" (looks like 403) but was actually 401 — always check the Network tab, not the toast.
+An auth failure caused by a missing token surfaces as the "Bạn không có quyền" toast, which reads like a 403 but is a 401 — diagnose from the Network tab, not the toast.
 
 ## Public Routes
 
