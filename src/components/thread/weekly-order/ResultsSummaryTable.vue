@@ -12,6 +12,7 @@
         :rows="rows"
         :columns="columns"
         :row-key="(row: AggregatedRow) => `${row.thread_type_id}_${row.thread_color_id ?? ''}`"
+        class="summary-table"
         flat
         bordered
         dense
@@ -456,3 +457,30 @@ const columns = computed<QTableColumn[]>(() =>
     : [...baseColumns, { name: 'actions', label: '', field: '', align: 'center' }],
 )
 </script>
+
+<style scoped>
+@media (max-width: 599.98px) {
+  .summary-table :deep(th:first-child),
+  .summary-table :deep(td:first-child) {
+    display: none;
+  }
+
+  .summary-table :deep(th:nth-child(2)),
+  .summary-table :deep(td:nth-child(2)) {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: #fff;
+    box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.15);
+  }
+
+  .summary-table :deep(td.bg-amber-1:nth-child(2)) {
+    background: var(--q-amber-1, #fff8e1);
+  }
+
+  .body--dark .summary-table :deep(th:nth-child(2)),
+  .body--dark .summary-table :deep(td:nth-child(2)) {
+    background: var(--q-dark);
+  }
+}
+</style>

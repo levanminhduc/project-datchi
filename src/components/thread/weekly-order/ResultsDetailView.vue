@@ -91,6 +91,7 @@
                   :rows="group.rows"
                   :columns="colorColumns"
                   row-key="process_name"
+                  class="detail-table"
                   flat
                   bordered
                   dense
@@ -120,6 +121,7 @@
               :rows="result.calculations"
               :columns="columns"
               row-key="spec_id"
+              class="detail-table"
               flat
               bordered
               dense
@@ -513,5 +515,21 @@ const columns: QTableColumn[] = [
 .dragging-ghost {
   opacity: 0.5;
   background: #c8ebfb;
+}
+
+@media (max-width: 599.98px) {
+  .detail-table :deep(th:first-child),
+  .detail-table :deep(td:first-child) {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: #fff;
+    box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.15);
+  }
+
+  .body--dark .detail-table :deep(th:first-child),
+  .body--dark .detail-table :deep(td:first-child) {
+    background: var(--q-dark);
+  }
 }
 </style>

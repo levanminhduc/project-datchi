@@ -612,6 +612,69 @@ function getDeliveryStatusLabel(status: string) {
 @media (max-width: 900px) {
   .trace-detail-grid {
     grid-template-columns: 1fr;
+    position: sticky;
+    left: 12px;
+    width: calc(100vw - 72px);
   }
+
+  .trace-table {
+    overflow: visible;
+  }
+
+  .trace-table > :deep(table > * > tr > :nth-child(-n + 2):not(.trace-detail-cell)) {
+    position: sticky;
+    z-index: 1;
+    background: #fff;
+  }
+
+  .trace-table > :deep(table > thead > tr > :nth-child(-n + 2)) {
+    background: #f5f5f5;
+  }
+
+  .trace-table > :deep(table > * > tr > :nth-child(1):not(.trace-detail-cell)) {
+    left: 0;
+  }
+
+  .trace-table > :deep(table > * > tr > :nth-child(2):not(.trace-detail-cell)) {
+    left: 44px;
+    box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.15);
+  }
+
+  .body--dark .trace-table > :deep(table > * > tr > :nth-child(-n + 2):not(.trace-detail-cell)) {
+    background: var(--q-dark);
+  }
+
+  .body--dark .trace-table > :deep(table > thead > tr > :nth-child(-n + 2)) {
+    background: #2a2a2a;
+  }
+
+  .trace-detail-panel {
+    overflow-x: auto;
+  }
+}
+
+.body--dark .trace-stat {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--q-dark);
+
+  span {
+    color: #bdbdbd;
+  }
+}
+
+.body--dark .trace-table th,
+.body--dark .detail-table th,
+.body--dark .detail-title {
+  background: #2a2a2a;
+  color: #e0e0e0;
+}
+
+.body--dark .trace-detail-cell {
+  background: #181818;
+}
+
+.body--dark .trace-detail-panel {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--q-dark);
 }
 </style>

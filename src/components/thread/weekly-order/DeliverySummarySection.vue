@@ -35,8 +35,8 @@
 
     <template v-else>
       <!-- KPI Cards -->
-      <div class="row q-col-gutter-md q-mb-md">
-        <div class="col-12 col-sm-4">
+      <div class="row q-col-gutter-sm q-mb-md kpi-row">
+        <div class="col-4">
           <q-card
             flat
             bordered
@@ -54,7 +54,7 @@
             </q-card-section>
           </q-card>
         </div>
-        <div class="col-12 col-sm-4">
+        <div class="col-4">
           <q-card
             flat
             bordered
@@ -72,7 +72,7 @@
             </q-card-section>
           </q-card>
         </div>
-        <div class="col-12 col-sm-4">
+        <div class="col-4">
           <q-card
             flat
             bordered
@@ -220,5 +220,42 @@ const router = useRouter()
   td {
     font-size: 13px;
   }
+}
+
+@media (max-width: 599.98px) {
+  .kpi-row :deep(.q-card__section) {
+    padding: 8px 4px;
+  }
+
+  .kpi-row :deep(.text-h5) {
+    font-size: 1.25rem;
+    line-height: 1.6rem;
+  }
+
+  .delivery-table :deep(th:first-child),
+  .delivery-table :deep(td:first-child) {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: #fff;
+    box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.15);
+  }
+
+  .delivery-table :deep(th:first-child) {
+    background: #f5f5f5;
+  }
+
+  .body--dark .delivery-table :deep(td:first-child) {
+    background: var(--q-dark);
+  }
+
+  .body--dark .delivery-table :deep(th:first-child) {
+    background: #2a2a2a;
+  }
+}
+
+.body--dark .delivery-table th {
+  background: #2a2a2a;
+  color: #e0e0e0;
 }
 </style>

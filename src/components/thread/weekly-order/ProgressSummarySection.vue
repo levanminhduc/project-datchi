@@ -338,4 +338,9 @@ watch(() => props.pos.length, (newLen, oldLen) => {
   0% { background-position: -50% 0; }
   100% { background-position: 150% 0; }
 }
+
+.body--dark .progress-table th {
+  background: #2a2a2a;
+  color: #e0e0e0;
+}
 </style>

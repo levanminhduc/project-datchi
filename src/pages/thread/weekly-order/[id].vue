@@ -1,5 +1,5 @@
 <template>
-  <q-page padding>
+  <q-page :class="$q.screen.lt.sm ? 'q-pa-sm' : 'q-pa-md'">
     <PageHeader
       title="Chi Tiết Tuần Đặt Hàng"
       :subtitle="week ? week.week_name : ''"
@@ -10,18 +10,21 @@
         v-if="isConfirmed"
         #actions
       >
-        <div class="column items-end">
-          <div class="text-caption text-grey-6 q-mb-xs">
+        <div class="row items-center no-wrap q-gutter-sm full-width justify-end">
+          <div class="text-caption text-grey-6">
             {{ completionProgressText }}
           </div>
-          <AppButton
-            color="primary"
-            icon="assignment_return"
-            label="Trả dư"
-            :disable="!allItemsCompleted"
-            :loading="surplusLoading"
-            @click="openSurplusDialog"
-          />
+          <div style="width: 120px; flex: 0 0 120px">
+            <AppButton
+              color="primary"
+              icon="assignment_return"
+              label="Trả dư"
+              block
+              :disable="!allItemsCompleted"
+              :loading="surplusLoading"
+              @click="openSurplusDialog"
+            />
+          </div>
         </div>
       </template>
     </PageHeader>
@@ -67,8 +70,8 @@
         class="q-mb-md"
       >
         <q-card-section>
-          <div class="row q-col-gutter-md items-center">
-            <div class="col-12 col-sm-3">
+          <div class="row q-col-gutter-md items-start">
+            <div class="col-6 col-sm-3">
               <div class="text-caption text-grey-6">
                 Thông Tin Đơn Hàng
               </div>
@@ -76,7 +79,7 @@
                 {{ week.week_name }}
               </div>
             </div>
-            <div class="col-12 col-sm-3">
+            <div class="col-6 col-sm-3">
               <div class="text-caption text-grey-6">
                 Ngày tạo đơn hàng
               </div>
@@ -84,7 +87,7 @@
                 {{ formatDate(week.created_at) }}
               </div>
             </div>
-            <div class="col-12 col-sm-3">
+            <div class="col-6 col-sm-3">
               <div class="text-caption text-grey-6">
                 Ngày giao hàng
               </div>
@@ -92,7 +95,7 @@
                 {{ formatDate(week.start_date) }}
               </div>
             </div>
-            <div class="col-12 col-sm-3">
+            <div class="col-6 col-sm-3">
               <div class="text-caption text-grey-6">
                 Trạng thái
               </div>
@@ -105,7 +108,7 @@
             </div>
             <div
               v-if="week.created_by"
-              class="col-12 col-sm-3"
+              class="col-6 col-sm-3"
             >
               <div class="text-caption text-grey-6">
                 Người tạo
@@ -114,7 +117,7 @@
                 {{ week.created_by }}
               </div>
             </div>
-            <div class="col-12 col-sm-3">
+            <div class="col-6 col-sm-3">
               <div class="text-caption text-grey-6">
                 Lãnh đạo ký duyệt
               </div>
@@ -145,15 +148,18 @@
                 —
               </div>
             </div>
-            <div class="col-12 col-sm-3">
+            <div class="col-6 col-sm-3">
               <span
                 class="export-tooltip-target"
+                :class="{ 'full-width': $q.screen.lt.sm }"
                 style="display: inline-block;"
               >
                 <AppButton
                   color="primary"
                   icon="file_download"
                   label="Xuất Excel"
+                  no-wrap
+                  :block="$q.screen.lt.sm"
                   :loading="calculationLoading"
                   :disable="!isLeaderSigned"
                   @click="handleExportSummaryFromCard"
@@ -168,11 +174,13 @@
                 </q-tooltip>
               </span>
             </div>
-            <div class="col-12 col-sm-3">
+            <div class="col-6 col-sm-3">
               <AppButton
                 color="secondary"
                 icon="list_alt"
-                label="Xuất DS Đặt Hàng"
+                :label="$q.screen.lt.md ? 'Xuất DS' : 'Xuất DS Đặt Hàng'"
+                no-wrap
+                :block="$q.screen.lt.sm"
                 :disable="!hasOrderItems"
                 @click="handleExportOrderItems"
               />
@@ -221,6 +229,9 @@
         indicator-color="primary"
         align="left"
         narrow-indicator
+        mobile-arrows
+        outside-arrows
+        :inline-label="$q.screen.gt.xs"
       >
         <q-tab
           name="calculation"
@@ -528,7 +539,8 @@
                 { label: 'Chi tiết', value: 'detail' },
                 { label: 'Tổng hợp', value: 'summary' }
               ]"
-              color="grey-4"
+              :color="$q.dark.isActive ? 'grey-9' : 'grey-3'"
+              :text-color="$q.dark.isActive ? 'grey-4' : 'grey-8'"
               toggle-color="primary"
               dense
             />
@@ -737,8 +749,11 @@
     />
 
     <!-- Surplus Preview Dialog -->
-    <q-dialog v-model="showSurplusDialog">
-      <q-card :style="surplusPreview?.breakdown?.length ? 'min-width: 600px; max-width: 90vw' : 'min-width: 400px'">
+    <q-dialog
+      v-model="showSurplusDialog"
+      :maximized="$q.screen.lt.sm"
+    >
+      <q-card :style="$q.screen.lt.sm ? '' : surplusPreview?.breakdown?.length ? 'min-width: 600px; max-width: 90vw' : 'min-width: 400px'">
         <q-card-section>
           <div class="text-h6">
             Trả dư - Hoàn tất tuần
