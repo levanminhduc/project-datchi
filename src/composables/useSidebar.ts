@@ -31,8 +31,8 @@ const navItems: NavItem[] = [
     to: '/ke-hoach#top',
     children: [
       { label: 'Tính Toán & Đặt Hàng', icon: 'o_shopping_cart', to: '/thread/weekly-order' },
-      { label: 'Lịch Sử Đặt Hàng', icon: 'o_history', to: '/thread/weekly-order/history' },
-      { label: 'Quy Trình Đặt Chỉ', icon: 'o_account_tree', to: '/thread/weekly-order/workflow' }
+      { label: 'Lịch Sử Đặt Hàng', icon: 'o_history', to: '/thread/weekly-order/history' }
+      // { label: 'Quy Trình Đặt Chỉ', icon: 'o_account_tree', to: '/thread/weekly-order/workflow' }
     ]
   },
   {
