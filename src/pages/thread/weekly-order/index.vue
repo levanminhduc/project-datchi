@@ -301,26 +301,33 @@
         />
       </div>
 
-      <!-- Detail View -->
-      <ResultsDetailView
-        v-if="resultView === 'detail'"
-        :results="perStyleResults"
-        :order-entries="orderEntries"
-        :is-saved="resultsSaved"
-        :is-reordering="isReordering"
-        @update:delivery-date="handleUpdateDeliveryDate"
-        @reorder="handleReorder"
-      />
+      <div class="relative-position">
+        <div
+          v-if="isCalculating"
+          class="absolute-full"
+          style="z-index: 1"
+        />
+        <!-- Detail View -->
+        <ResultsDetailView
+          v-if="resultView === 'detail'"
+          :results="perStyleResults"
+          :order-entries="orderEntries"
+          :is-saved="resultsSaved"
+          :is-reordering="isReordering"
+          @update:delivery-date="handleUpdateDeliveryDate"
+          @reorder="handleReorder"
+        />
 
-      <!-- Summary View -->
-      <ResultsSummaryTable
-        v-if="resultView === 'summary'"
-        :rows="aggregatedResults"
-        :readonly="resultsSaved"
-        @update:additional-order="handleUpdateAdditionalOrder"
-        @update:quota-cones="handleUpdateQuotaCones"
-        @update:delivery-date="handleUpdateSummaryDeliveryDate"
-      />
+        <!-- Summary View -->
+        <ResultsSummaryTable
+          v-if="resultView === 'summary'"
+          :rows="aggregatedResults"
+          :readonly="resultsSaved"
+          @update:additional-order="handleUpdateAdditionalOrder"
+          @update:quota-cones="handleUpdateQuotaCones"
+          @update:delivery-date="handleUpdateSummaryDeliveryDate"
+        />
+      </div>
 
       <!-- Result Actions -->
       <div class="row q-gutter-sm q-mt-md">
@@ -330,7 +337,7 @@
           icon="save"
           label="Lưu Đơn Hàng"
           :loading="weekLoading"
-          :disable="!hasResults || isResultsStale || hasOverLimitEntries"
+          :disable="!hasResults || isCalculating || isResultsStale || hasOverLimitEntries"
           @click="handleSave()"
         >
           <AppTooltip v-if="isResultsStale">
@@ -351,7 +358,7 @@
           color="positive"
           icon="check_circle"
           label="Xác Nhận Đặt Hàng"
-          :disable="!hasResults || isReadonlyWeek || isWarehouseChangedSinceCalc || isResultsStale || hasOverLimitEntries"
+          :disable="!hasResults || isCalculating || isReadonlyWeek || isWarehouseChangedSinceCalc || isResultsStale || hasOverLimitEntries"
           :loading="showConfirmDialog"
           @click="handleConfirmWeek"
         >
@@ -408,7 +415,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick, toRaw } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import {
@@ -422,7 +429,7 @@ import {
 import { purchaseOrderService } from '@/services/purchaseOrderService'
 import { weeklyOrderService, type InventoryDiffRow } from '@/services/weeklyOrderService'
 import { ApiError } from '@/services/api'
-import type { PurchaseOrderWithItems, CalculationResult } from '@/types/thread'
+import type { PurchaseOrderWithItems, CalculationResult, AggregatedRow } from '@/types/thread'
 import { OrderWeekStatus } from '@/types/thread/enums'
 import POOrderCard from '@/components/thread/weekly-order/POOrderCard.vue'
 import AssignmentControlDialog from '@/components/thread/weekly-order/AssignmentControlDialog.vue'
@@ -725,42 +732,39 @@ const handleCalculate = async () => {
   await calculateAll(
     selectedWeek.value?.id,
     selectedWarehouseIds.value.length > 0 ? selectedWarehouseIds.value : undefined,
+    (rows) => {
+      applyDeliveryDateToResults(rows)
+
+      for (const row of rows) {
+        const key = `${row.thread_type_id}_${row.thread_color_id ?? ''}`
+        const saved = snapshot.get(key)
+        if (!saved) continue
+
+        row.additional_order = saved.additional_order
+        if (saved.quota_cones != null) {
+          row.quota_cones = saved.quota_cones
+          row.demand_note = saved.demand_note
+          const effectiveCones = row.quota_cones != null ? row.quota_cones : row.total_cones
+          row.sl_can_dat = Math.max(0, Math.ceil(effectiveCones - (row.equivalent_cones || 0)))
+        }
+        row.total_final = (row.sl_can_dat || 0) + saved.additional_order
+        if (saved.delivery_date) {
+          row.delivery_date = saved.delivery_date
+          manualDeliveryDateEdits.value.add(key)
+        }
+      }
+    },
   )
-  applyDeliveryDateToResults()
-
-  for (const row of aggregatedResults.value) {
-    const key = `${row.thread_type_id}_${row.thread_color_id ?? ''}`
-    const saved = snapshot.get(key)
-    if (!saved) continue
-
-    row.additional_order = saved.additional_order
-    if (saved.quota_cones != null) {
-      row.quota_cones = saved.quota_cones
-      row.demand_note = saved.demand_note
-      const effectiveCones = row.quota_cones != null ? row.quota_cones : row.total_cones
-      row.sl_can_dat = Math.max(0, Math.ceil(effectiveCones - (row.equivalent_cones || 0)))
-    }
-    row.total_final = (row.sl_can_dat || 0) + saved.additional_order
-    if (saved.delivery_date) {
-      row.delivery_date = saved.delivery_date
-      manualDeliveryDateEdits.value.add(key)
-    }
-  }
 
   lastCalculatedWarehouseIds.value = [...selectedWarehouseIds.value]
 }
 
-function applyDeliveryDateToResults() {
-  if (!deliveryDate.value || !aggregatedResults.value.length) return
-  let changed = false
-  for (const row of aggregatedResults.value) {
+function applyDeliveryDateToResults(rows: AggregatedRow[]) {
+  if (!deliveryDate.value) return
+  for (const row of rows) {
     if (row.sl_can_dat && row.sl_can_dat > 0) {
       row.delivery_date = deliveryDate.value
-      changed = true
     }
-  }
-  if (changed) {
-    aggregatedResults.value = [...aggregatedResults.value]
   }
 }
 
@@ -856,7 +860,7 @@ const handleSave = async (options?: { skipReset?: boolean }): Promise<boolean> =
     }
 
     if (hasResults.value) {
-      await saveResults(selectedWeek.value.id, perStyleResults.value, aggregatedResults.value)
+      await saveResults(selectedWeek.value.id, toRaw(perStyleResults.value), toRaw(aggregatedResults.value))
     }
     resultsSaved.value = true
   } else {
@@ -880,7 +884,7 @@ const handleSave = async (options?: { skipReset?: boolean }): Promise<boolean> =
     }
 
     if (hasResults.value) {
-      await saveResults(created.id, perStyleResults.value, aggregatedResults.value)
+      await saveResults(created.id, toRaw(perStyleResults.value), toRaw(aggregatedResults.value))
     }
     resultsSaved.value = true
   }
@@ -1221,7 +1225,6 @@ const handleConfirmWeek = async () => {
   }
 
   snackbar.success('Đã xác nhận đặt hàng thành công')
-  await fetchWeeks()
 
   clearAll()
   weekName.value = ''
@@ -1235,7 +1238,7 @@ const handleConfirmWeek = async () => {
   selectedWarehouseIds.value = []
   lastCalculatedWarehouseIds.value = null
 
-  await fetchAllPurchaseOrders()
+  await Promise.all([fetchAllPurchaseOrders(), fetchWeeks()])
 
   nextTick(() => {
     weekInfoCardRef.value?.focusWeekName()

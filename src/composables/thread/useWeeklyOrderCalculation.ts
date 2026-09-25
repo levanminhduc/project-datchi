@@ -252,7 +252,7 @@ export function useWeeklyOrderCalculation() {
   const aggregationKey = (threadTypeId: number, threadColorId: number | null | undefined): string =>
     `${threadTypeId}_${threadColorId ?? ''}`
 
-  const aggregateResults = (results: CalculationResult[]) => {
+  const buildAggregatedRows = (results: CalculationResult[]): AggregatedRow[] => {
     const map = new Map<string, AggregatedRow>()
     const specsWithColorBreakdown = new Set<number>()
     const issueGroupMeters = new Map<string, Map<string, number>>()
@@ -345,9 +345,13 @@ export function useWeeklyOrderCalculation() {
       }
     }
 
-    aggregatedResults.value = Array.from(map.values()).filter(
+    return Array.from(map.values()).filter(
       (row) => row.total_meters > 0 && row.thread_type_id > 0
     )
+  }
+
+  const aggregateResults = (results: CalculationResult[]) => {
+    aggregatedResults.value = buildAggregatedRows(results)
   }
 
   /**
@@ -438,11 +442,13 @@ export function useWeeklyOrderCalculation() {
    * Falls back to N parallel requests if batch fails
    * @param currentWeekId - Optional week ID to exclude from committed cones calculation
    */
-  const calculateAll = async (currentWeekId?: number, warehouseIds?: number[]) => {
+  const calculateAll = async (
+    currentWeekId?: number,
+    warehouseIds?: number[],
+    beforeCommit?: (rows: AggregatedRow[]) => void,
+  ) => {
     isCalculating.value = true
     calculationErrors.value = []
-    calculationWarnings.value = []
-    perStyleResults.value = []
     deliveryDateOverrides.clear()
 
     // Filter entries that have at least one color with qty > 0
@@ -483,18 +489,20 @@ export function useWeeklyOrderCalculation() {
       successResults = await calculateAllFallback(batchItems)
     }
 
-    perStyleResults.value = successResults
-    calculationWarnings.value = successResults.flatMap((r) => r.warnings || [])
-    aggregateResults(successResults)
+    let rows = buildAggregatedRows(successResults)
 
     // Enrich with inventory data
     try {
-      const enriched = await weeklyOrderService.enrichInventory(aggregatedResults.value, currentWeekId, warehouseIds)
-      aggregatedResults.value = enriched
+      rows = await weeklyOrderService.enrichInventory(rows, currentWeekId, warehouseIds)
     } catch (err) {
       console.warn('[weekly-order] enrich inventory failed, using unenriched data:', err)
     }
 
+    beforeCommit?.(rows)
+
+    perStyleResults.value = successResults
+    calculationWarnings.value = successResults.flatMap((r) => r.warnings || [])
+    aggregatedResults.value = rows
     lastCalculatedAt.value = Date.now()
     isCalculating.value = false
   }

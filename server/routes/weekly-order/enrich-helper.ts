@@ -61,7 +61,6 @@ export async function enrichWithInventory(
 
   const coloredTypeIds: number[] = []
   const coloredColorIds: number[] = []
-  const nonColoredTypeIds: number[] = []
 
   for (const row of summaryRows) {
     let colorId = row.thread_color_id as number | null | undefined
@@ -71,14 +70,11 @@ export async function enrichWithInventory(
     if (colorId != null) {
       coloredTypeIds.push(row.thread_type_id)
       coloredColorIds.push(colorId)
-    } else {
-      nonColoredTypeIds.push(row.thread_type_id)
     }
   }
 
   const uniqueColoredTypeIds = [...new Set(coloredTypeIds)]
   const uniqueColoredColorIds = [...new Set(coloredColorIds)]
-  const uniqueNonColoredTypeIds = [...new Set(nonColoredTypeIds)]
 
   const inventoryMap = new Map<string, { full: number; partial: number }>()
 
@@ -114,33 +110,9 @@ export async function enrichWithInventory(
     }
   }
 
-  if (!frozenRows && uniqueNonColoredTypeIds.length > 0) {
-    const inventoryCounts = await query<{
-      thread_type_id: number
-      is_partial: boolean
-      cone_count: number | string
-    }>(
-      `SELECT * FROM fn_count_available_cones_v2($1, $2)`,
-      [uniqueNonColoredTypeIds, warehouseIdsParam],
-    )
-
-    for (const row of inventoryCounts || []) {
-      const key = `${row.thread_type_id}_`
-      const entry = inventoryMap.get(key) || { full: 0, partial: 0 }
-      if (row.is_partial) {
-        entry.partial = Number(row.cone_count)
-      } else {
-        entry.full = Number(row.cone_count)
-      }
-      inventoryMap.set(key, entry)
-    }
-  }
-
-  const allTypeIds = [...new Set(summaryRows.map((r) => r.thread_type_id))]
   const ttColorMap = new Map<string, number>()
-  const ttTypeMap = new Map<number, number>()
 
-  if (allTypeIds.length > 0) {
+  if (uniqueColoredTypeIds.length > 0) {
     const ttCounts = await query<{
       thread_type_id: number
       color_id: number | null
@@ -153,15 +125,13 @@ export async function enrichWithInventory(
          AND status IN ('RECEIVED', 'INSPECTED', 'AVAILABLE', 'SOFT_ALLOCATED', 'HARD_ALLOCATED', 'RESERVED_FOR_ORDER')
          AND ($2::int[] IS NULL OR warehouse_id = ANY($2))
        GROUP BY thread_type_id, color_id`,
-      [allTypeIds, warehouseIdsParam],
+      [uniqueColoredTypeIds, warehouseIdsParam],
     )
 
     for (const row of ttCounts || []) {
-      const count = Number(row.cone_count)
       if (row.color_id != null) {
-        ttColorMap.set(`${row.thread_type_id}_${row.color_id}`, count)
+        ttColorMap.set(`${row.thread_type_id}_${row.color_id}`, Number(row.cone_count))
       }
-      ttTypeMap.set(row.thread_type_id, (ttTypeMap.get(row.thread_type_id) || 0) + count)
     }
   }
 
@@ -194,7 +164,7 @@ export async function enrichWithInventory(
     const total_final = sl_can_dat + additional_order
     const total_full_cones = colorId != null
       ? (ttColorMap.get(`${row.thread_type_id}_${colorId}`) || 0)
-      : (ttTypeMap.get(row.thread_type_id) || 0)
+      : 0
 
     return {
       ...row,
