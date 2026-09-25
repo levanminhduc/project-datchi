@@ -12,13 +12,13 @@ echo ""
 echo "--- Step 1: DB backup ---"
 DB_OUTPUT=$(bash scripts/db-backup.sh 2>&1)
 echo "$DB_OUTPUT"
-DB_FILE=$(echo "$DB_OUTPUT" | grep -oP '\./backups/supabase_\S+\.dump' | tail -1 || true)
+DB_FILE=$(echo "$DB_OUTPUT" | grep -oP '\./backups/db_\S+\.dump' | tail -1 || true)
 if [ -z "$DB_FILE" ]; then
-  DB_FILE=$(ls -t "$BACKUP_DIR"/supabase_*.dump 2>/dev/null | head -1 || true)
+  DB_FILE=$(ls -t "$BACKUP_DIR"/db_*.dump 2>/dev/null | head -1 || true)
 fi
 
 echo ""
-echo "--- Step 2: Storage volume backup ---"
+echo "--- Step 2: Storage folder backup ---"
 STORAGE_OUTPUT=$(bash scripts/storage-volume-backup.sh 2>&1)
 echo "$STORAGE_OUTPUT"
 STORAGE_FILE=$(echo "$STORAGE_OUTPUT" | grep -oP '\./backups/storage_\S+\.tar\.gz' | tail -1 || true)

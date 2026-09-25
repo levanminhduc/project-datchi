@@ -1,30 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VOLUME_NAME="supabase_storage_project-datchi"
+STORAGE_HOST_DIR="${STORAGE_HOST_DIR:-./storage}"
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 
 mkdir -p "$BACKUP_DIR"
 
-if ! docker volume ls --format '{{.Name}}' | grep -q "^${VOLUME_NAME}$"; then
-  echo "ERROR: Docker volume '${VOLUME_NAME}' not found."
-  echo "Available volumes:"
-  docker volume ls --format '{{.Name}}'
+if [ ! -d "$STORAGE_HOST_DIR" ]; then
+  echo "ERROR: Storage folder '${STORAGE_HOST_DIR}' not found."
   exit 1
 fi
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 ARCHIVE="$BACKUP_DIR/storage_${TIMESTAMP}.tar.gz"
 
-echo "=== Storage Volume Backup ==="
-echo "Volume: $VOLUME_NAME"
+echo "=== Storage Folder Backup ==="
+echo "Folder:  $STORAGE_HOST_DIR"
 echo "Archive: $ARCHIVE"
 echo ""
 
-docker run --rm \
-  -v "${VOLUME_NAME}:/data" \
-  -v "$(pwd)/${BACKUP_DIR#./}:/backup" \
-  alpine tar czf "/backup/storage_${TIMESTAMP}.tar.gz" -C /data .
+tar czf - -C "$STORAGE_HOST_DIR" . > "$ARCHIVE"
 
 echo "Backup OK: $ARCHIVE"
 echo "$ARCHIVE"

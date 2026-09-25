@@ -46,8 +46,5 @@ services:
       CHATBOT_INTERNAL_TOKEN: ${CHATBOT_INTERNAL_TOKEN:-}
       CHATBOT_REQUEST_TIMEOUT_MS: ${CHATBOT_REQUEST_TIMEOUT_MS:-15000}
     volumes:
-      - guide_storage:${STORAGE_DIR:-/data/storage}
+      - ${STORAGE_HOST_DIR:-./storage}:${STORAGE_DIR:-/data/storage}
     restart: unless-stopped
-
-volumes:
-  guide_storage:

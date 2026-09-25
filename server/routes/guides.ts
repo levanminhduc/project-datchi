@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { query, queryOne } from '../db/query'
 import { from } from '../db/sql-builder'
-import { putObject, getObject, removeObjects } from '../storage/local-storage'
+import { putObject, getObject } from '../storage/local-storage'
 import { requirePermission } from '../middleware/auth'
 import {
   CreateGuideSchema,
@@ -535,26 +535,6 @@ guides.put('/:id', requirePermission('guides.edit'), async (c) => {
 guides.delete('/:id', requirePermission('guides.edit'), async (c) => {
   try {
     const id = c.req.param('id')
-
-    let imageRows: { storage_path: string }[] = []
-    try {
-      imageRows = await from('guide_images')
-        .select('storage_path')
-        .eq('guide_id', id)
-        .limit(500)
-        .list<{ storage_path: string }>()
-    } catch (selectErr) {
-      console.error('Delete guide: select guide_images error:', selectErr)
-    }
-
-    if (imageRows && imageRows.length > 0) {
-      const paths = imageRows.map((r: { storage_path: string }) => r.storage_path)
-      try {
-        await removeObjects(paths)
-      } catch (storageError) {
-        console.error('Delete guide: storage remove error:', storageError)
-      }
-    }
 
     let data: { id: string } | null
     try {

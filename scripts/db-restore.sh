@@ -2,15 +2,15 @@
 set -euo pipefail
 
 DB_HOST="${DB_HOST:-127.0.0.1}"
-DB_PORT="${DB_PORT:-54322}"
+DB_PORT="${DB_PORT:-5432}"
 DB_USER="${DB_USER:-postgres}"
-DB_NAME="${DB_NAME:-postgres}"
+DB_NAME="${DB_NAME:-datchi}"
 
 if [ $# -eq 0 ]; then
   echo "Usage: bash scripts/db-restore.sh <backup_file>"
   echo ""
   echo "Available backups:"
-  ls -lh backups/supabase_*.dump 2>/dev/null || echo "  (none found)"
+  ls -lh backups/db_*.dump 2>/dev/null || echo "  (none found)"
   exit 1
 fi
 
@@ -21,7 +21,7 @@ if [ ! -f "$BACKUP_FILE" ]; then
   exit 1
 fi
 
-echo "=== Supabase DB Restore ==="
+echo "=== DB Restore ==="
 echo "File: $BACKUP_FILE"
 echo "Target: $DB_HOST:$DB_PORT/$DB_NAME"
 echo ""

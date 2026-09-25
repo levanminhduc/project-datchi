@@ -7,29 +7,25 @@ if [ $# -lt 1 ]; then
 fi
 
 ARCHIVE="$1"
-VOLUME_NAME="supabase_storage_project-datchi"
+STORAGE_HOST_DIR="${STORAGE_HOST_DIR:-./storage}"
 
 if [ ! -f "$ARCHIVE" ]; then
   echo "ERROR: Archive file '$ARCHIVE' not found."
   exit 1
 fi
 
-echo "=== Storage Volume Restore ==="
+echo "=== Storage Folder Restore ==="
 echo "Archive: $ARCHIVE"
-echo "Volume:  $VOLUME_NAME"
+echo "Folder:  $STORAGE_HOST_DIR"
 echo ""
-echo "WARNING: This will OVERWRITE all files in the '${VOLUME_NAME}' volume."
+echo "Files in the archive will be added to '${STORAGE_HOST_DIR}'. Existing files are kept."
 read -rp "Continue? [y/N] " CONFIRM
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
   echo "Aborted."
   exit 0
 fi
 
-ARCHIVE_ABS="$(cd "$(dirname "$ARCHIVE")" && pwd)/$(basename "$ARCHIVE")"
-
-docker run --rm \
-  -v "${VOLUME_NAME}:/data" \
-  -v "$(dirname "$ARCHIVE_ABS"):/backup" \
-  alpine tar xzf "/backup/$(basename "$ARCHIVE_ABS")" -C /data
+mkdir -p "$STORAGE_HOST_DIR"
+tar xzf - -C "$STORAGE_HOST_DIR" < "$ARCHIVE"
 
 echo "Restore complete."

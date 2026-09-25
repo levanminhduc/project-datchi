@@ -1,6 +1,4 @@
 import { query } from '../db/query'
-import { from } from '../db/sql-builder'
-import { removeObjects } from '../storage/local-storage'
 
 export interface GuideImage {
   id: string
@@ -44,42 +42,5 @@ export async function linkImagesToGuide(
     } catch (linkError) {
       console.error('linkImagesToGuide: update error:', linkError)
     }
-  }
-
-  let previousRows: { id: string; storage_path: string }[]
-  try {
-    previousRows = await from('guide_images')
-      .select('id, storage_path')
-      .eq('guide_id', guideId)
-      .limit(200)
-      .list<{ id: string; storage_path: string }>()
-  } catch (selectError) {
-    console.error('linkImagesToGuide: select removed images error:', selectError)
-    return
-  }
-
-  if (!previousRows || previousRows.length === 0) return
-
-  const currentPathsSet = new Set(currentPaths)
-  const removed = previousRows.filter((r: { storage_path: string }) => !currentPathsSet.has(r.storage_path))
-
-  if (removed.length === 0) return
-
-  const removedPaths = removed.map((r: { storage_path: string }) => r.storage_path)
-  const removedIds = removed.map((r: { id: string }) => r.id)
-
-  try {
-    await removeObjects(removedPaths)
-  } catch (storageError) {
-    console.error('linkImagesToGuide: storage remove error:', storageError)
-  }
-
-  try {
-    await query(
-      `DELETE FROM guide_images WHERE id = ANY($1)`,
-      [removedIds]
-    )
-  } catch (deleteError) {
-    console.error('linkImagesToGuide: delete rows error:', deleteError)
   }
 }

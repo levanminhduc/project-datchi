@@ -1,5 +1,4 @@
 import { query } from '../db/query'
-import { from } from '../db/sql-builder'
 import { removeObjects } from '../storage/local-storage'
 
 export async function cleanupOrphans(): Promise<{ deleted: number }> {
@@ -7,12 +6,18 @@ export async function cleanupOrphans(): Promise<{ deleted: number }> {
 
   let rows: { id: string; storage_path: string }[]
   try {
-    rows = await from('guide_images')
-      .select('id, storage_path')
-      .eq('status', 'PENDING')
-      .lt('uploaded_at', cutoff)
-      .limit(500)
-      .list<{ id: string; storage_path: string }>()
+    rows = await query<{ id: string; storage_path: string }>(
+      `SELECT gi.id, gi.storage_path
+       FROM guide_images gi
+       WHERE gi.status = 'PENDING'
+         AND gi.uploaded_at < $1
+         AND NOT EXISTS (
+           SELECT 1 FROM guides g
+           WHERE strpos(g.content_html, gi.storage_path) > 0
+         )
+       LIMIT 500`,
+      [cutoff]
+    )
   } catch (selectError) {
     console.error('cleanupOrphans: select error:', selectError)
     return { deleted: 0 }

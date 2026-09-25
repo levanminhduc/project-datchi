@@ -21,9 +21,9 @@ echo "Archive: $FULL_ARCHIVE"
 echo ""
 
 echo "--- Extracting bundle ---"
-tar xzf "$FULL_ARCHIVE" -C "$TMPDIR"
+tar xzf - -C "$TMPDIR" < "$FULL_ARCHIVE"
 
-DB_DUMP=$(ls "$TMPDIR"/supabase_*.dump 2>/dev/null | head -1 || true)
+DB_DUMP=$(ls "$TMPDIR"/db_*.dump 2>/dev/null | head -1 || true)
 STORAGE_ARCHIVE=$(ls "$TMPDIR"/storage_*.tar.gz 2>/dev/null | head -1 || true)
 
 if [ -n "$DB_DUMP" ] && [ -f "$DB_DUMP" ]; then
@@ -36,7 +36,7 @@ fi
 
 if [ -n "$STORAGE_ARCHIVE" ] && [ -f "$STORAGE_ARCHIVE" ]; then
   echo ""
-  echo "--- Restoring Storage volume ---"
+  echo "--- Restoring Storage folder ---"
   bash scripts/storage-volume-restore.sh "$STORAGE_ARCHIVE"
 else
   echo "WARNING: No storage archive found in bundle."
