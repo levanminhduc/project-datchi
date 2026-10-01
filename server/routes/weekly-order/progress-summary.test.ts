@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import {
   applySummaryQuotaSnapshot,
+  buildPoStyleColorQuotaMap,
+  buildPoStyleQuotaMap,
   buildSummaryOnlyProgressPo,
+  type CalculationDataRow,
+  type SpecRow,
   type StyleQuotaThread,
+  type ThreadOrderItem,
 } from './progress-helpers'
 
 function makeThread(
@@ -118,20 +123,127 @@ function testUnmatchedSummaryRowsProduceSyntheticFlatPo() {
   )
 
   assert.equal(summaryOnly.length, 1)
-  assert.equal(summaryOnly[0].quota_cones, 3)
+  assert.equal(summaryOnly[0].quota_cones, 2)
 
   const syntheticPo = buildSummaryOnlyProgressPo(summaryOnly, 7)
   assert.equal(syntheticPo.po_id, null)
   assert.equal(syntheticPo.po_number, '(Tổng hợp)')
   assert.equal(syntheticPo.display_order, 7)
   assert.equal(syntheticPo.styles.length, 0)
-  assert.equal(syntheticPo.summary.total_quota_cones, 3)
-  assert.equal(syntheticPo.summary.total_pending_cones, 3)
+  assert.equal(syntheticPo.summary.total_quota_cones, 2)
+  assert.equal(syntheticPo.summary.total_pending_cones, 2)
   assert.equal(syntheticPo.thread_lines.length, 1)
-  assert.equal(syntheticPo.thread_lines[0].quota_cones, 3)
+  assert.equal(syntheticPo.thread_lines[0].quota_cones, 2)
+}
+
+function testSummaryFallsBackToMetersWhenTotalConesMissing() {
+  const summaryOnly = applySummaryQuotaSnapshot(
+    makeQuotaMap([]),
+    [{
+      thread_type_id: 99,
+      thread_color_id: 88,
+      thread_color: 'Blue',
+      quota_cones: null,
+      total_meters: 2500,
+      meters_per_cone: 1000,
+      total_cones: null,
+      tex_number: '60',
+      supplier_name: 'NCC B',
+    }],
+    new Map([['Blue', 88]]),
+  )
+
+  assert.equal(summaryOnly[0].quota_cones, 3)
+}
+
+const twoProcessCalcData: CalculationDataRow[] = [{
+  style_id: 1,
+  calculations: [11, 12].map(specId => ({
+    spec_id: specId,
+    thread_type_id: 10,
+    tex_number: '40',
+    supplier_id: 1,
+    supplier_name: 'NCC A',
+    color_breakdown: [{
+      color_id: 100,
+      thread_color: 'Red',
+      thread_color_id: 20,
+      thread_type_id: 10,
+      supplier_name: 'NCC A',
+      tex_number: '40',
+      meters_per_unit: specId === 11 ? 1.2 : 0.4,
+      meters_per_cone: 1000,
+    }],
+  })),
+}]
+
+const twoProcessSpecs: SpecRow[] = [
+  { style_color_id: 100, style_thread_spec_id: 11, thread_type_id: 10, thread_color_id: 20 },
+  { style_color_id: 100, style_thread_spec_id: 12, thread_type_id: 10, thread_color_id: 20 },
+]
+
+const twoProcessItems: ThreadOrderItem[] = [
+  { id: 1, po_id: 501, style_color_id: 100, style_id: 1, quantity: 1000 },
+]
+
+function testStyleQuotaRoundsAfterSummingProcesses() {
+  const { poStyleQuotaMap } = buildPoStyleQuotaMap(
+    twoProcessItems,
+    twoProcessSpecs,
+    twoProcessCalcData,
+    new Map([['Red', 20]]),
+    new Map([[20, 'Red']]),
+  )
+
+  assert.equal(poStyleQuotaMap.get(501)?.get(1)?.get('10_20')?.quota_cones, 2)
+}
+
+function testStyleColorQuotaRoundsAfterSummingProcesses() {
+  const { poStyleColorThreadMap } = buildPoStyleColorQuotaMap(
+    twoProcessItems,
+    twoProcessSpecs,
+    twoProcessCalcData,
+    new Map([['Red', 20]]),
+    new Map([[20, 'Red']]),
+  )
+
+  assert.equal(poStyleColorThreadMap.get(501)?.get(1)?.get(100)?.get('10_20')?.quota_cones, 2)
+}
+
+function testStyleQuotaRoundsEachStyleColorSeparately() {
+  const calcData: CalculationDataRow[] = [{
+    style_id: 1,
+    calculations: [{
+      ...twoProcessCalcData[0].calculations[0],
+      color_breakdown: [100, 101].map(colorId => ({
+        ...twoProcessCalcData[0].calculations[0].color_breakdown[0],
+        color_id: colorId,
+        meters_per_unit: 0.4,
+      })),
+    }],
+  }]
+  const { poStyleQuotaMap } = buildPoStyleQuotaMap(
+    [
+      { id: 1, po_id: 501, style_color_id: 100, style_id: 1, quantity: 1000 },
+      { id: 2, po_id: 501, style_color_id: 101, style_id: 1, quantity: 1000 },
+    ],
+    [
+      { style_color_id: 100, style_thread_spec_id: 11, thread_type_id: 10, thread_color_id: 20 },
+      { style_color_id: 101, style_thread_spec_id: 11, thread_type_id: 10, thread_color_id: 20 },
+    ],
+    calcData,
+    new Map([['Red', 20]]),
+    new Map([[20, 'Red']]),
+  )
+
+  assert.equal(poStyleQuotaMap.get(501)?.get(1)?.get('10_20')?.quota_cones, 2)
 }
 
 testDistributesSummaryQuotaAcrossPoStyleLines()
 testManualQuotaOverrideCanSetNeedToZero()
 testUnmatchedSummaryRowsProduceSyntheticFlatPo()
+testSummaryFallsBackToMetersWhenTotalConesMissing()
+testStyleQuotaRoundsAfterSummingProcesses()
+testStyleColorQuotaRoundsAfterSummingProcesses()
+testStyleQuotaRoundsEachStyleColorSeparately()
 console.log('progress-summary quota snapshot tests passed')

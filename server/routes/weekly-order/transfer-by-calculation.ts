@@ -7,6 +7,7 @@ import {
   threadTransferHistoryQuerySchema,
   poTransferHistoryQuerySchema,
 } from '../../validation/transferByCalculationSchema'
+import { type QuotaMeterGroup, addQuotaMeters, applyQuotaMeterGroups } from './progress-helpers'
 
 type CalculationDataRow = {
   style_id: number
@@ -167,6 +168,7 @@ export function buildPoQuotaMap(
   const poStyleColorMap = new Map<number | null, Set<number>>()
   const poQuotaMap = new Map<number | null, Map<ThreadKey, AggregatedThread>>()
   const poDisplayOrder = new Map<number | null, number>()
+  const quotaMeterGroups = new Map<string, QuotaMeterGroup>()
 
   for (const item of orderItems) {
     const poId = item.po_id ?? null
@@ -185,9 +187,6 @@ export function buildPoQuotaMap(
     if (!calcRow) continue
 
     for (const spec of itemSpecs) {
-      let conesNeeded = 0
-      let supplierName = ''
-      let texNumber = ''
       const calcEntry = calcRow.calculations.find(c => c.spec_id === spec.style_thread_spec_id)
       const matchColor = calcEntry?.color_breakdown.find(cb =>
         cb.color_id === item.style_color_id &&
@@ -205,28 +204,34 @@ export function buildPoQuotaMap(
 
       const meters = (matchColor.meters_per_unit ?? 0) * (item.quantity ?? 0)
       if (meters <= 0 || matchColor.meters_per_cone <= 0) continue
-      conesNeeded += Math.ceil(meters / matchColor.meters_per_cone)
-      supplierName = matchColor.supplier_name || calcEntry?.supplier_name || ''
-      texNumber = matchColor.tex_number || calcEntry?.tex_number || ''
-      if (conesNeeded === 0) continue
+      const supplierName = matchColor.supplier_name || calcEntry?.supplier_name || ''
+      const texNumber = matchColor.tex_number || calcEntry?.tex_number || ''
 
       const key: ThreadKey = `${spec.thread_type_id}_${spec.thread_color_id}`
       const quotaMap = poQuotaMap.get(poId)!
-      const existing = quotaMap.get(key)
-      if (existing) {
-        existing.quota_cones += conesNeeded
-      } else {
-        quotaMap.set(key, {
+      let thread = quotaMap.get(key)
+      if (!thread) {
+        thread = {
           thread_type_id: spec.thread_type_id,
           thread_color_id: spec.thread_color_id,
           supplier_name: supplierName,
           tex_number: texNumber,
           color_name: colorById.get(spec.thread_color_id) ?? '',
-          quota_cones: conesNeeded,
-        })
+          quota_cones: 0,
+        }
+        quotaMap.set(key, thread)
       }
+      addQuotaMeters(
+        quotaMeterGroups,
+        `${poId ?? 'null'}_${item.style_color_id}_${key}`,
+        thread,
+        meters,
+        matchColor.meters_per_cone,
+      )
     }
   }
+
+  applyQuotaMeterGroups(quotaMeterGroups)
 
   const poOrder = Array.from(poDisplayOrder.entries())
     .sort((a, b) => a[1] - b[1])

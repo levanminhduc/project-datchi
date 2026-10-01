@@ -70,6 +70,33 @@ export function roundToTwoDecimals(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
+export type QuotaMeterGroup = {
+  target: { quota_cones: number }
+  meters: number
+  metersPerCone: number
+}
+
+export function addQuotaMeters(
+  groups: Map<string, QuotaMeterGroup>,
+  groupKey: string,
+  target: { quota_cones: number },
+  meters: number,
+  metersPerCone: number,
+) {
+  const existing = groups.get(groupKey)
+  if (existing) {
+    existing.meters += meters
+    return
+  }
+  groups.set(groupKey, { target, meters, metersPerCone })
+}
+
+export function applyQuotaMeterGroups(groups: Map<string, QuotaMeterGroup>) {
+  for (const group of groups.values()) {
+    group.target.quota_cones += Math.ceil(group.meters / group.metersPerCone)
+  }
+}
+
 function toFiniteNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null
   const num = typeof value === 'number' ? value : Number(value)
@@ -88,13 +115,16 @@ function getSummaryRequiredCones(row: SummaryQuotaRow): number {
   const quotaCones = toFiniteNumber(row.quota_cones)
   if (quotaCones != null) return Math.max(0, quotaCones)
 
+  const totalCones = toFiniteNumber(row.total_cones)
+  if (totalCones != null) return Math.max(0, totalCones)
+
   const totalMeters = toFiniteNumber(row.total_meters)
   const metersPerCone = toFiniteNumber(row.meters_per_cone)
   if (totalMeters != null && metersPerCone != null && metersPerCone > 0) {
     return Math.max(0, Math.ceil(totalMeters / metersPerCone))
   }
 
-  return Math.max(0, toFiniteNumber(row.total_cones) ?? 0)
+  return 0
 }
 
 function resolveSummaryColorId(row: SummaryQuotaRow, colorByName: Map<string, number>): number | null {
@@ -307,6 +337,7 @@ export function buildPoStyleQuotaMap(
   const poDisplayOrder = new Map<number | null, number>()
   const poStyleQuotaMap = new Map<number | null, Map<number, Map<string, StyleQuotaThread>>>()
   const poStyleColorMap = new Map<number | null, Map<number, Set<number>>>()
+  const quotaMeterGroups = new Map<string, QuotaMeterGroup>()
 
   for (const item of orderItems) {
     const poId = item.po_id ?? null
@@ -349,28 +380,34 @@ export function buildPoStyleQuotaMap(
 
       const meters = (matchColor.meters_per_unit ?? 0) * (item.quantity ?? 0)
       if (meters <= 0 || matchColor.meters_per_cone <= 0) continue
-      const conesNeeded = Math.ceil(meters / matchColor.meters_per_cone)
-      if (conesNeeded === 0) continue
 
       const supplierName = matchColor.supplier_name || calcEntry?.supplier_name || ''
       const texNumber = matchColor.tex_number || calcEntry?.tex_number || ''
       const key = `${spec.thread_type_id}_${spec.thread_color_id}`
       const threadMap = styleMap.get(styleId)!
-      const existing = threadMap.get(key)
-      if (existing) {
-        existing.quota_cones += conesNeeded
-      } else {
-        threadMap.set(key, {
+      let thread = threadMap.get(key)
+      if (!thread) {
+        thread = {
           thread_type_id: spec.thread_type_id,
           thread_color_id: spec.thread_color_id,
           supplier_name: supplierName,
           tex_number: texNumber,
           color_name: colorById.get(spec.thread_color_id) ?? '',
-          quota_cones: conesNeeded,
-        })
+          quota_cones: 0,
+        }
+        threadMap.set(key, thread)
       }
+      addQuotaMeters(
+        quotaMeterGroups,
+        `${poId ?? 'null'}_${item.style_color_id}_${key}`,
+        thread,
+        meters,
+        matchColor.meters_per_cone,
+      )
     }
   }
+
+  applyQuotaMeterGroups(quotaMeterGroups)
 
   const poOrder = Array.from(poDisplayOrder.entries())
     .sort((a, b) => a[1] - b[1])
@@ -543,6 +580,7 @@ export function buildPoStyleColorQuotaMap(
     number | null,
     Map<number, Map<number, Map<string, StyleColorQuotaThread>>>
   >()
+  const quotaMeterGroups = new Map<string, QuotaMeterGroup>()
 
   for (const item of orderItems) {
     const poId = item.po_id ?? null
@@ -580,28 +618,34 @@ export function buildPoStyleColorQuotaMap(
 
       const meters = (matchColor.meters_per_unit ?? 0) * (item.quantity ?? 0)
       if (meters <= 0 || matchColor.meters_per_cone <= 0) continue
-      const conesNeeded = Math.ceil(meters / matchColor.meters_per_cone)
-      if (conesNeeded === 0) continue
 
       const supplierName = matchColor.supplier_name || calcEntry?.supplier_name || ''
       const texNumber = matchColor.tex_number || calcEntry?.tex_number || ''
       const key = `${spec.thread_type_id}_${spec.thread_color_id}`
-      const existing = threadMap.get(key)
-      if (existing) {
-        existing.quota_cones += conesNeeded
-      } else {
-        threadMap.set(key, {
+      let thread = threadMap.get(key)
+      if (!thread) {
+        thread = {
           thread_type_id: spec.thread_type_id,
           thread_color_id: spec.thread_color_id,
           supplier_name: supplierName,
           tex_number: texNumber,
           color_name: colorById.get(spec.thread_color_id) ?? '',
-          quota_cones: conesNeeded,
+          quota_cones: 0,
           product_quantity: item.quantity ?? 0,
-        })
+        }
+        threadMap.set(key, thread)
       }
+      addQuotaMeters(
+        quotaMeterGroups,
+        `${poId ?? 'null'}_${item.style_color_id}_${key}`,
+        thread,
+        meters,
+        matchColor.meters_per_cone,
+      )
     }
   }
+
+  applyQuotaMeterGroups(quotaMeterGroups)
 
   return { poStyleColorThreadMap }
 }
