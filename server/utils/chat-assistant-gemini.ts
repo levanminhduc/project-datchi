@@ -1,4 +1,4 @@
-import { getChatStock, getChatStyles, getChatPurchaseOrders, getChatUsage, resolveChatThreadRefs } from './chat-assistant-data'
+import { getChatStockByWarehouse, getChatStyles, getChatPurchaseOrders, getChatThreadOrders, getChatUsage, resolveChatThreadRefs } from './chat-assistant-data'
 
 const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash-lite'
@@ -51,19 +51,22 @@ const SYSTEM_INSTRUCTION = [
   '- Không tự ý tạo phiếu, giữ hàng, xuất hàng, chuyển kho, hoặc ghi nhận thay đổi tồn kho.',
   '- Nếu dữ liệu không đủ hoặc không tìm thấy, nói rõ.',
   '- Dùng tool tra cứu khi cần thông tin cụ thể. Nếu câu hỏi chào hỏi đơn giản thì trả lời trực tiếp.',
-  '- Khi trả tồn kho, liệt kê rõ theo từng NCC/Tex/Màu.',
+  '- Khi trả tồn kho, liệt kê theo từng Kho, rồi NCC/Tex/Màu. Cuộn đã giữ cho tuần hàng (reserved_cones) ghi riêng, không cộng vào tồn khả dụng.',
+  '- Khi hỏi mã chỉ đang sản xuất hoặc dùng cho đơn hàng nào, dùng search_thread_orders và tóm tắt 3 nhóm: đã xuất kho, tuần đặt hàng đã xác nhận, PO có mã hàng dùng chỉ này.',
+  '- Trả lời bằng văn bản ngắn, tối đa khoảng 8 dòng, không dùng bảng. Mỗi nhóm liệt kê tối đa 5 mục, phần còn lại ghi "và N mục khác" dựa vào trường total.',
 ].join('\n')
 
 const TOOL_DECLARATIONS = [{
   functionDeclarations: [
     {
       name: 'search_stock',
-      description: 'Tra cứu tồn kho chỉ may khả dụng theo mã màu, số tex, hoặc nhà cung cấp. Trả về số cuộn nguyên, cuộn lẻ, mét lẻ, gram lẻ.',
+      description: 'Tra cứu tồn kho chỉ may hiện tại theo từng kho, lọc theo mã màu, số tex, tên kho. Trả về số cuộn nguyên, cuộn lẻ, mét lẻ khả dụng và số cuộn đã giữ cho tuần hàng.',
       parameters: {
         type: 'object',
         properties: {
           color_or_code: { type: 'string', description: 'Mã màu hoặc tên màu chỉ (VD: C9700, đen, trắng, 1241)' },
           tex: { type: 'string', description: 'Số tex nếu có (VD: 40, 60, 27)' },
+          warehouse: { type: 'string', description: 'Tên hoặc mã kho nếu có (VD: Điện Bàn, Phú Tường, Dệt Kim, DB-XT)' },
         },
         required: ['color_or_code'],
       },
@@ -75,6 +78,18 @@ const TOOL_DECLARATIONS = [{
         type: 'object',
         properties: {
           color_or_code: { type: 'string', description: 'Mã màu hoặc tên chỉ (VD: C9700, đen)' },
+          tex: { type: 'string', description: 'Số tex nếu có' },
+        },
+        required: ['color_or_code'],
+      },
+    },
+    {
+      name: 'search_thread_orders',
+      description: 'Tra cứu mã chỉ đang sản xuất cho những đơn hàng nào: phiếu xuất kho đã xác nhận theo PO/mã hàng, tuần đặt hàng đã xác nhận, và PO chưa hoàn tất có mã hàng dùng chỉ này trong định mức. Mỗi nhóm trả về total và tối đa 20 dòng.',
+      parameters: {
+        type: 'object',
+        properties: {
+          color_or_code: { type: 'string', description: 'Mã màu hoặc mã chỉ (VD: C9700, 08ANT)' },
           tex: { type: 'string', description: 'Số tex nếu có' },
         },
         required: ['color_or_code'],
@@ -99,7 +114,7 @@ const TOOL_DECLARATIONS = [{
         properties: {
           po_number: { type: 'string', description: 'Số PO cần tìm (VD: PO-2024-001)' },
           customer_name: { type: 'string', description: 'Tên khách hàng (VD: Nike, Adidas)' },
-          status: { type: 'string', description: 'Trạng thái PO: PENDING, IN_PROGRESS, COMPLETED, CANCELLED' },
+          status: { type: 'string', description: 'Trạng thái PO: PENDING, CONFIRMED, IN_PRODUCTION, COMPLETED, CANCELLED' },
         },
       },
     },
@@ -111,7 +126,13 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
     case 'search_stock': {
       const term = String(args.color_or_code ?? '')
       const tex = args.tex ? String(args.tex) : null
-      return await getChatStock(term, tex)
+      const warehouse = args.warehouse ? String(args.warehouse) : null
+      return await getChatStockByWarehouse(term, tex, warehouse)
+    }
+    case 'search_thread_orders': {
+      const term = String(args.color_or_code ?? '')
+      const tex = args.tex ? String(args.tex) : null
+      return await getChatThreadOrders(term, tex)
     }
     case 'search_usage': {
       const term = String(args.color_or_code ?? '')
