@@ -1,6 +1,6 @@
 <template>
   <q-page padding>
-    <div class="row items-center q-mb-lg">
+    <div class="row no-wrap items-center q-mb-lg">
       <q-btn
         flat
         round
@@ -8,7 +8,7 @@
         color="primary"
         @click="$router.push('/thread/weekly-order')"
       />
-      <div class="q-ml-md">
+      <div class="col q-mx-md">
         <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Ký Duyệt Đơn Hàng
         </h1>
@@ -16,7 +16,6 @@
           Danh sách đơn hàng tuần chờ lãnh đạo ký duyệt
         </div>
       </div>
-      <q-space />
       <AppButton
         flat
         icon="refresh"
@@ -622,18 +621,12 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.leader-review-muted {
-  color: #757575;
-}
-
-.body--dark .leader-review-muted {
-  color: rgba(255, 255, 255, 0.6);
-}
-
+.leader-review-muted,
 .leader-review-tabs {
   color: #757575;
 }
 
+.body--dark .leader-review-muted,
 .body--dark .leader-review-tabs {
   color: rgba(255, 255, 255, 0.6);
 }
