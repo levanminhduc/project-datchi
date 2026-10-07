@@ -12,6 +12,7 @@ interface Recorded {
 interface StubOptions {
   secondLineFails: boolean
   existingOperation?: { request_hash: string; status: string }
+  issueLines?: Array<Record<string, unknown>>
 }
 
 const COMPLETION_NOISE = 600
@@ -107,7 +108,13 @@ async function withStubbedPool(
       return { rows: limit ? rows.slice(0, Number(limit[1])) : rows }
     }
     if (text.includes('FROM thread_issue_lines til')) {
-      return { rows: [{ ...LINE_A }, { ...LINE_B }] }
+      return { rows: options.issueLines ?? [{ ...LINE_A }, { ...LINE_B }] }
+    }
+    if (options.issueLines && text.includes('FROM "purchase_orders"')) {
+      return { rows: options.issueLines.map((l) => ({ id: l.po_id, po_number: `PO-${String(Number(l.po_id) - 100).padStart(3, '0')}` })) }
+    }
+    if (options.issueLines && text.includes('FROM "styles"')) {
+      return { rows: [{ id: LINE_A.style_id, style_code: 'STY-X', style_name: 'Style X' }] }
     }
     if (text.includes('FROM "thread_inventory"')) {
       if (text.includes('quantity_meters')) {
@@ -318,6 +325,103 @@ async function testRevertNeedsReasonAndCallsRpc() {
   })
 }
 
+const OUTSTANDING_GROUPS = 30
+const FULLY_RETURNED_PO = 'PO-030'
+
+function pagedIssueLines() {
+  const lines = Array.from({ length: OUTSTANDING_GROUPS + 1 }, (_, i) => ({
+    ...LINE_A,
+    id: 600 + i,
+    issue_id: 700 + i,
+    po_id: 100 + i,
+    style_color_id: null,
+    color_id: 5,
+    returned_full: i === OUTSTANDING_GROUPS ? LINE_A.issued_full : 0,
+  }))
+  return lines.reverse()
+}
+
+interface PagedPayload {
+  data: { items: Array<{ group_key: string; po_number: string }>; total: number; page: number; limit: number }
+  error: string | null
+}
+
+async function getPaged(search: string): Promise<{ status: number; payload: PagedPayload }> {
+  const res = await buildApp().request(`/return-groups${search}`)
+  return { status: res.status, payload: (await res.json()) as PagedPayload }
+}
+
+async function testReturnGroupsWithoutParamsStaysAnArray() {
+  await withStubbedPool({ secondLineFails: false, issueLines: pagedIssueLines() }, async () => {
+    const res = await buildApp().request('/return-groups')
+    const payload = (await res.json()) as { data: unknown[] }
+    assert.ok(Array.isArray(payload.data), 'không truyền tham số phân trang thì giữ nguyên dạng mảng')
+    assert.equal(payload.data.length, OUTSTANDING_GROUPS)
+  })
+}
+
+async function testReturnGroupsPaginatesInStableOrder() {
+  await withStubbedPool({ secondLineFails: false, issueLines: pagedIssueLines() }, async () => {
+    const second = await getPaged('?page=2&limit=10')
+    assert.equal(second.status, 200)
+    assert.equal(second.payload.data.total, OUTSTANDING_GROUPS)
+    assert.equal(second.payload.data.page, 2)
+    assert.equal(second.payload.data.limit, 10)
+    assert.deepEqual(
+      second.payload.data.items.map((g) => g.po_number),
+      Array.from({ length: 10 }, (_, i) => `PO-${String(10 + i).padStart(3, '0')}`),
+    )
+
+    const last = await getPaged('?page=3&limit=12')
+    assert.equal(last.payload.data.items.length, OUTSTANDING_GROUPS - 24)
+
+    const beyond = await getPaged('?page=9&limit=10')
+    assert.equal(beyond.payload.data.items.length, 0)
+    assert.equal(beyond.payload.data.total, OUTSTANDING_GROUPS)
+
+    const defaults = await getPaged('?page=1')
+    assert.equal(defaults.payload.data.limit, 25)
+    assert.equal(defaults.payload.data.items.length, 25)
+  })
+}
+
+async function testReturnGroupsRejectsInvalidPaging() {
+  await withStubbedPool({ secondLineFails: false, issueLines: pagedIssueLines() }, async () => {
+    for (const search of ['?limit=101', '?page=0', '?page=abc', '?outstanding_only=maybe']) {
+      const res = await getPaged(search)
+      assert.equal(res.status, 400, search)
+      assert.equal(typeof res.payload.error, 'string')
+    }
+  })
+}
+
+async function testReturnGroupsSearchIsCaseInsensitive() {
+  await withStubbedPool({ secondLineFails: false, issueLines: pagedIssueLines() }, async () => {
+    const byPo = await getPaged('?page=1&search=po-005')
+    assert.equal(byPo.payload.data.total, 1)
+    assert.equal(byPo.payload.data.items[0].po_number, 'PO-005')
+
+    const byStyle = await getPaged('?page=1&search=sty-x')
+    assert.equal(byStyle.payload.data.total, OUTSTANDING_GROUPS)
+
+    const none = await getPaged('?page=1&search=khong-co')
+    assert.equal(none.payload.data.total, 0)
+    assert.deepEqual(none.payload.data.items, [])
+  })
+}
+
+async function testReturnGroupsOutstandingOnlyToggle() {
+  await withStubbedPool({ secondLineFails: false, issueLines: pagedIssueLines() }, async () => {
+    const defaultFilter = await getPaged('?page=1&limit=100')
+    assert.equal(defaultFilter.payload.data.total, OUTSTANDING_GROUPS)
+    assert.ok(!defaultFilter.payload.data.items.some((g) => g.po_number === FULLY_RETURNED_PO))
+
+    const all = await getPaged('?page=1&limit=100&outstanding_only=false')
+    assert.equal(all.payload.data.total, OUTSTANDING_GROUPS + 1)
+    assert.ok(all.payload.data.items.some((g) => g.po_number === FULLY_RETURNED_PO))
+  })
+}
+
 async function main() {
   await testCommitsWhenEveryLineSucceeds()
   await testChosenWarehouseAndLogIdReachTheRpc()
@@ -325,6 +429,11 @@ async function main() {
   await testRollsBackWhenOneLineFails()
   await testFailureIsStillRecordedOutsideTransaction()
   await testCompletedGroupIsHiddenEvenBeyondFiveHundredCompletions()
+  await testReturnGroupsWithoutParamsStaysAnArray()
+  await testReturnGroupsPaginatesInStableOrder()
+  await testReturnGroupsRejectsInvalidPaging()
+  await testReturnGroupsSearchIsCaseInsensitive()
+  await testReturnGroupsOutstandingOnlyToggle()
   await testMessagesAreProperVietnamese()
   console.log('return-grouped transaction tests passed')
 }

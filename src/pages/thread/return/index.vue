@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type { ReturnGroup } from '@/types/thread/issueV2'
 import PageHeader from '@/components/ui/layout/PageHeader.vue'
@@ -20,10 +20,15 @@ const snackbar = useSnackbar()
 
 const {
   returnGroups,
+  page,
+  totalPages,
+  search,
   selectedGroup,
   returnLogs,
   isLoading: isGroupLoading,
   loadReturnGroups,
+  changePage,
+  applySearch,
   selectGroup,
   submitGroupedReturn,
   validateReturnQuantities,
@@ -33,15 +38,8 @@ const { confirmWarning } = useConfirm()
 
 const groupSearch = ref('')
 
-const filteredReturnGroups = computed(() => {
-  const q = groupSearch.value.trim().toLowerCase()
-  if (!q) return returnGroups.value
-  return returnGroups.value.filter(
-    (g) =>
-      g.po_number.toLowerCase().includes(q) ||
-      g.style_code.toLowerCase().includes(q) ||
-      g.color_name.toLowerCase().includes(q),
-  )
+watch(groupSearch, (value) => {
+  applySearch(value ?? '')
 })
 
 async function handleSelectGroup(group: ReturnGroup) {
@@ -100,6 +98,23 @@ onMounted(() => {
       bordered
     >
       <q-card-section>
+        <div class="row q-mb-md">
+          <div class="col-12 col-sm-6 col-md-4">
+            <AppInput
+              v-model="groupSearch"
+              label="Tìm kiếm theo PO/Mã hàng/Màu hàng"
+              dense
+              clearable
+              hide-bottom-space
+              :debounce="300"
+            >
+              <template #prepend>
+                <q-icon name="filter_list" />
+              </template>
+            </AppInput>
+          </div>
+        </div>
+
         <div
           v-if="isGroupLoading"
           class="row justify-center q-py-xl"
@@ -108,6 +123,13 @@ onMounted(() => {
             size="50px"
             color="primary"
           />
+        </div>
+
+        <div
+          v-else-if="returnGroups.length === 0 && search"
+          class="text-center q-py-lg text-grey-6"
+        >
+          Không tìm thấy nhóm phù hợp
         </div>
 
         <div
@@ -128,35 +150,27 @@ onMounted(() => {
         </div>
 
         <template v-else>
-          <div class="row q-mb-md">
-            <div class="col-12 col-sm-6 col-md-4">
-              <AppInput
-                v-model="groupSearch"
-                label="Tìm kiếm theo PO/Mã hàng/Màu hàng"
-                dense
-                clearable
-                hide-bottom-space
-              >
-                <template #prepend>
-                  <q-icon name="filter_list" />
-                </template>
-              </AppInput>
-            </div>
-          </div>
-
-          <div
-            v-if="filteredReturnGroups.length === 0"
-            class="text-center q-py-lg text-grey-6"
-          >
-            Không tìm thấy nhóm phù hợp
-          </div>
-
           <ReturnGroupCard
-            v-for="group in filteredReturnGroups"
+            v-for="group in returnGroups"
             :key="group.group_key"
             :group="group"
             @select="handleSelectGroup"
           />
+
+          <div
+            v-if="totalPages > 1"
+            class="flex justify-center q-mt-md"
+          >
+            <q-pagination
+              :model-value="page"
+              :max="totalPages"
+              :max-pages="$q.screen.xs ? 5 : 7"
+              :size="$q.screen.xs ? 'lg' : undefined"
+              direction-links
+              :boundary-links="$q.screen.gt.xs"
+              @update:model-value="changePage"
+            />
+          </div>
         </template>
       </q-card-section>
     </q-card>

@@ -7,6 +7,7 @@ import { getErrorMessage } from '../utils/errorHelper'
 import {
   ReturnGroupedSchema,
   ReturnGroupLogsQuerySchema,
+  ReturnGroupsQuerySchema,
 } from '../validation/issuesV2'
 import {
   processReturnForLine,
@@ -74,6 +75,20 @@ returnGroupedRoutes.use('*', requirePermission('thread.issues.return'))
 
 returnGroupedRoutes.get('/return-groups', async (c) => {
   try {
+    const rawQuery = c.req.query()
+    let queryParams
+    try {
+      queryParams = ReturnGroupsQuerySchema.parse(rawQuery)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return c.json<ThreadApiResponse<null>>({ data: null, error: formatZodError(err) }, 400)
+      }
+      throw err
+    }
+    const paginated = ['page', 'limit', 'search', 'outstanding_only'].some((key) => key in rawQuery)
+    const outstandingOnly = !paginated || queryParams.outstanding_only
+    const searchTerm = paginated ? (queryParams.search || '').toLowerCase() : ''
+
     let lines: Array<Record<string, any>>
     try {
       lines = await query<Record<string, any>>(
@@ -236,9 +251,13 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
       }
     }
 
-    const groupEntries = Array.from(groupMap.entries()).filter(([, g]) =>
-      g.thread_types.some((t) => t.outstanding_full > 0 || t.outstanding_partial > 0)
-    )
+    const groupEntries = Array.from(groupMap.entries()).filter(([, g]) => {
+      if (outstandingOnly && !g.thread_types.some((t) => t.outstanding_full > 0 || t.outstanding_partial > 0)) {
+        return false
+      }
+      if (!searchTerm) return true
+      return [g.po_number, g.style_code, g.color_name].some((v) => (v || '').toLowerCase().includes(searchTerm))
+    })
 
     const completedGroupKeys = new Set<string>()
     if (groupEntries.length > 0) {
@@ -286,7 +305,21 @@ returnGroupedRoutes.get('/return-groups', async (c) => {
         threads: g.thread_types,
       }))
 
-    return c.json({ data: groups, error: null })
+    if (!paginated) {
+      return c.json({ data: groups, error: null })
+    }
+
+    const sorted = [...groups].sort(
+      (a, b) =>
+        a.po_number.localeCompare(b.po_number) ||
+        a.style_code.localeCompare(b.style_code) ||
+        a.color_name.localeCompare(b.color_name) ||
+        a.group_key.localeCompare(b.group_key)
+    )
+    const { page, limit } = queryParams
+    const items = sorted.slice((page - 1) * limit, page * limit)
+
+    return c.json({ data: { items, total: sorted.length, page, limit }, error: null })
   } catch (err) {
     return c.json<ThreadApiResponse<null>>({ data: null, error: getErrorMessage(err) }, 500)
   }

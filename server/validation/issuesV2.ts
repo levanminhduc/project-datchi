@@ -201,6 +201,13 @@ export const ReturnGroupLogsQuerySchema = z.object({
   color_id: z.coerce.number().int().positive().optional(),
 })
 
+export const ReturnGroupsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(25),
+  search: z.string().trim().optional(),
+  outstanding_only: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+})
+
 // ============================================================================
 // Confirm Issue
 // ============================================================================

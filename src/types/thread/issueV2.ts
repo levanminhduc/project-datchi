@@ -222,6 +222,17 @@ export interface ReturnGroup {
   threads: ReturnGroupThread[]
 }
 
+export interface ReturnGroupsParams {
+  page: number
+  limit: number
+  search?: string
+}
+
+export interface ReturnGroupsPage {
+  items: ReturnGroup[]
+  total: number
+}
+
 export interface ReturnGroupedDTO {
   po_id: number
   style_id: number

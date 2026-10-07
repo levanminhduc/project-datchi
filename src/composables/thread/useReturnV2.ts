@@ -7,6 +7,7 @@ import { getErrorMessage } from '@/utils/errorMessages'
 import { getCacheEntry, setCacheEntry, invalidateCache } from '@/lib/api-cache'
 import type {
   ReturnGroup,
+  ReturnGroupsPage,
   ReturnGroupThread,
   ReturnGroupedResponse,
   GroupedReturnLog,
@@ -14,9 +15,15 @@ import type {
 } from '@/types/thread/issueV2'
 
 const CACHE_TTL = 10_000
+const CACHE_KEY = '/api/issues-v2/returns'
+const PAGE_SIZE = 25
 
 export function useReturnV2() {
   const returnGroups = ref<ReturnGroup[]>([])
+  const page = ref(1)
+  const total = ref(0)
+  const search = ref('')
+  let requestSeq = 0
   const selectedGroup = ref<ReturnGroup | null>(null)
   const returnLogs = ref<GroupedReturnLog[]>([])
   const error = ref<string | null>(null)
@@ -27,6 +34,7 @@ export function useReturnV2() {
 
   const isLoading = computed(() => loading.isLoading.value)
   const hasGroups = computed(() => returnGroups.value.length > 0)
+  const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
 
   const clearError = () => {
     error.value = null
@@ -38,22 +46,48 @@ export function useReturnV2() {
 
   const loadReturnGroups = async (): Promise<void> => {
     clearError()
-    const cacheKey = '/api/issues-v2/returns'
-    const cached = getCacheEntry<ReturnGroup[]>(cacheKey)
+    const seq = ++requestSeq
+    const params = { page: page.value, limit: PAGE_SIZE, search: search.value }
+    const cacheKey = `${CACHE_KEY}?page=${params.page}&limit=${params.limit}&search=${encodeURIComponent(params.search)}`
+    const cached = getCacheEntry<ReturnGroupsPage>(cacheKey)
     if (cached && !cached.isStale) {
-      returnGroups.value = cached.data
+      returnGroups.value = cached.data.items
+      total.value = cached.data.total
       return
     }
     try {
-      const result = await loading.withLoading(() => issueV2Service.getReturnGroups())
-      returnGroups.value = result
+      const result = await loading.withLoading(() => issueV2Service.getReturnGroups(params))
+      if (seq !== requestSeq) return
+      if (result.items.length === 0 && params.page > 1 && result.total > 0) {
+        page.value = Math.ceil(result.total / PAGE_SIZE)
+        await loadReturnGroups()
+        return
+      }
+      returnGroups.value = result.items
+      total.value = result.total
       setCacheEntry(cacheKey, result, CACHE_TTL)
     } catch (err) {
-      if (cached) { returnGroups.value = cached.data; return }
+      if (seq !== requestSeq) return
+      if (cached) {
+        returnGroups.value = cached.data.items
+        total.value = cached.data.total
+        return
+      }
       const msg = getErrorMessage(err, 'Không thể tải danh sách nhóm trả')
       error.value = msg
       snackbar.error(msg)
     }
+  }
+
+  const changePage = async (value: number): Promise<void> => {
+    page.value = value
+    await loadReturnGroups()
+  }
+
+  const applySearch = async (value: string): Promise<void> => {
+    search.value = value.trim()
+    page.value = 1
+    await loadReturnGroups()
   }
 
   const selectGroup = (group: ReturnGroup | null) => {
@@ -93,7 +127,7 @@ export function useReturnV2() {
 
       snackbar.success('Đã nhập lại thành công')
 
-      invalidateCache('/api/issues-v2/returns')
+      invalidateCache(CACHE_KEY)
       await loadReturnGroups()
       const updatedGroup = returnGroups.value.find((g) => g.group_key === group.group_key)
       selectedGroup.value = updatedGroup || null
@@ -197,6 +231,10 @@ export function useReturnV2() {
 
   return {
     returnGroups,
+    page,
+    total,
+    totalPages,
+    search,
     selectedGroup,
     returnLogs,
     error,
@@ -204,6 +242,8 @@ export function useReturnV2() {
     hasGroups,
     completionInfo,
     loadReturnGroups,
+    changePage,
+    applySearch,
     selectGroup,
     submitGroupedReturn,
     loadGroupedReturnLogs,

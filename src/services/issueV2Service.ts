@@ -24,7 +24,8 @@ import type {
   IssueLineV2WithComputed,
   ReturnIssueV2DTO,
   OrderOptionsResponse,
-  ReturnGroup,
+  ReturnGroupsParams,
+  ReturnGroupsPage,
   ReturnGroupedDTO,
   ReturnGroupedResponse,
   GroupedReturnLog,
@@ -335,12 +336,17 @@ export const issueV2Service = {
     return response.data
   },
 
-  async getReturnGroups(): Promise<ReturnGroup[]> {
-    const response = await fetchApi<ApiResponse<ReturnGroup[]>>(`${BASE}/return-groups`)
+  async getReturnGroups(params: ReturnGroupsParams): Promise<ReturnGroupsPage> {
+    const query = new URLSearchParams()
+    query.append('page', String(params.page))
+    query.append('limit', String(params.limit))
+    if (params.search) query.append('search', params.search)
+
+    const response = await fetchApi<ApiResponse<ReturnGroupsPage>>(`${BASE}/return-groups?${query.toString()}`)
     if (response.error) {
       throw new Error(response.error)
     }
-    return response.data || []
+    return response.data || { items: [], total: 0 }
   },
 
   async returnGrouped(data: ReturnGroupedDTO): Promise<ReturnGroupedResponse> {
