@@ -15,7 +15,7 @@
     <q-tabs
       v-model="activeTab"
       dense
-      class="text-grey"
+      class="deliveries-tabs"
       active-color="primary"
       indicator-color="primary"
       align="left"
@@ -139,8 +139,30 @@
                     · {{ group.summary.delivery_status_text }}
                   </span>
                 </q-item-label>
+                <div
+                  v-if="$q.screen.xs"
+                  class="row q-gutter-xs q-mt-xs"
+                >
+                  <q-chip
+                    dense
+                    size="sm"
+                  >
+                    Đặt: {{ group.summary.total_ordered }}
+                  </q-chip>
+                  <q-chip
+                    dense
+                    size="sm"
+                    :color="group.summary.percent_received >= 100 ? 'green-9' : group.summary.percent_received >= 50 ? 'deep-orange-10' : 'red-8'"
+                    text-color="white"
+                  >
+                    {{ group.summary.total_received }}/{{ group.summary.total_ordered }} đã nhận ({{ group.summary.percent_received }}%)
+                  </q-chip>
+                </div>
               </q-item-section>
-              <q-item-section side>
+              <q-item-section
+                v-if="$q.screen.gt.xs"
+                side
+              >
                 <div class="row items-center q-gutter-sm">
                   <q-chip
                     dense
@@ -151,7 +173,7 @@
                   <q-chip
                     dense
                     size="sm"
-                    :color="group.summary.percent_received >= 100 ? 'green' : group.summary.percent_received >= 50 ? 'orange' : 'red'"
+                    :color="group.summary.percent_received >= 100 ? 'green-9' : group.summary.percent_received >= 50 ? 'deep-orange-10' : 'red-8'"
                     text-color="white"
                   >
                     {{ group.summary.total_received }}/{{ group.summary.total_ordered }} đã nhận ({{ group.summary.percent_received }}%)
@@ -192,7 +214,7 @@
                   >{{ props.row.borrowed_in }} cuộn</span>
                   <span
                     v-else
-                    class="text-grey-5"
+                    class="text-grey-7"
                   >—</span>
                 </q-td>
               </template>
@@ -201,11 +223,11 @@
                 <q-td :props="props">
                   <span
                     v-if="props.row.lent_out > 0"
-                    class="text-warning text-weight-medium"
+                    class="text-deep-orange-10 text-weight-medium"
                   >{{ props.row.lent_out }} cuộn</span>
                   <span
                     v-else
-                    class="text-grey-5"
+                    class="text-grey-7"
                   >—</span>
                 </q-td>
               </template>
@@ -236,7 +258,7 @@
               <template #body-cell-status="props">
                 <q-td :props="props">
                   <q-badge
-                    :color="props.row.status === DeliveryStatus.DELIVERED ? 'green' : props.row.status === DeliveryStatus.CANCELLED ? 'red' : 'orange'"
+                    :color="props.row.status === DeliveryStatus.DELIVERED ? 'green-9' : props.row.status === DeliveryStatus.CANCELLED ? 'red-8' : 'deep-orange-10'"
                     :label="props.row.status === DeliveryStatus.DELIVERED ? 'Đã giao' : props.row.status === DeliveryStatus.CANCELLED ? 'Đã hủy' : 'Chờ giao'"
                   />
                 </q-td>
@@ -247,12 +269,12 @@
                   <template v-if="props.row.status === DeliveryStatus.DELIVERED">
                     <q-badge
                       v-if="props.row.inventory_status === InventoryReceiptStatus.RECEIVED"
-                      color="green"
+                      color="green-9"
                       label="Đã nhập đủ"
                     />
                     <q-badge
                       v-else-if="props.row.inventory_status === InventoryReceiptStatus.PARTIAL"
-                      color="orange"
+                      color="deep-orange-10"
                       :label="`Chờ nhập (${getPendingQuantity(props.row)}/${props.row.quantity_cones || 0})`"
                     />
                     <q-badge
@@ -263,7 +285,7 @@
                   </template>
                   <span
                     v-else
-                    class="text-grey-5"
+                    class="text-grey-7"
                   >—</span>
                 </q-td>
               </template>
@@ -273,7 +295,7 @@
                   <q-btn
                     v-if="props.row.status === DeliveryStatus.PENDING"
                     size="sm"
-                    color="green"
+                    color="green-9"
                     label="Đã giao"
                     dense
                     flat
@@ -822,13 +844,13 @@ const weekGroups = computed(() => {
         const minDays = Math.min(...daysList)
         if (minDays < 0) {
           deliveryStatusText = `Quá hạn giao ${Math.abs(minDays)} ngày`
-          deliveryStatusColor = 'text-red'
+          deliveryStatusColor = 'text-red-8'
         } else if (minDays === 0) {
           deliveryStatusText = 'Đến hạn giao'
-          deliveryStatusColor = 'text-orange'
+          deliveryStatusColor = 'text-deep-orange-10'
         } else {
           deliveryStatusText = `Còn ${minDays} ngày sẽ giao`
-          deliveryStatusColor = 'text-green-8'
+          deliveryStatusColor = 'text-green-9'
         }
       }
     }
@@ -916,11 +938,11 @@ function formatDateTime(dateStr: string): string {
 }
 
 function getDaysColor(days: number | undefined, status: string): string {
-  if (status === DeliveryStatus.DELIVERED) return 'green'
+  if (status === DeliveryStatus.DELIVERED) return 'green-9'
   if (days === undefined) return 'grey'
-  if (days <= 0) return 'red'
-  if (days <= 3) return 'orange'
-  return 'green'
+  if (days <= 0) return 'red-8'
+  if (days <= 3) return 'deep-orange-10'
+  return 'green-9'
 }
 
 function toDatePickerFormat(dateStr: string): string {
@@ -957,8 +979,8 @@ const overReceiveDeniedMessage = computed(() =>
 
 function getInventoryStatusColor(status: string): string {
   switch (status) {
-    case InventoryReceiptStatus.RECEIVED: return 'green'
-    case InventoryReceiptStatus.PARTIAL: return 'orange'
+    case InventoryReceiptStatus.RECEIVED: return 'green-9'
+    case InventoryReceiptStatus.PARTIAL: return 'deep-orange-10'
     default: return 'grey'
   }
 }
@@ -1206,3 +1228,13 @@ onMounted(async () => {
   await loadTrackingData()
 })
 </script>
+
+<style scoped>
+.deliveries-tabs {
+  color: #555555;
+}
+
+.body--dark .deliveries-tabs {
+  color: rgba(255, 255, 255, 0.6);
+}
+</style>

@@ -44,7 +44,7 @@ function getTotalOutstanding(group: ReturnGroup): number {
           <span class="text-grey-7"> / {{ group.color_name }}</span>
         </div>
         <q-badge
-          :color="getTotalOutstanding(group) > 0 ? 'orange' : 'positive'"
+          :color="getTotalOutstanding(group) > 0 ? 'deep-orange-10' : 'positive'"
           outline
         >
           {{ group.issue_count }} phiếu
@@ -70,7 +70,7 @@ function getTotalOutstanding(group: ReturnGroup): number {
           v-if="getTotalOutstanding(group) > 0"
           label="Trả kho"
           icon="keyboard_return"
-          color="orange"
+          color="deep-orange-10"
           size="sm"
           dense
           @click.stop="$emit('select', group)"

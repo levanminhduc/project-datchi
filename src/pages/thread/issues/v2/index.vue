@@ -1200,9 +1200,9 @@ onUnmounted(() => {
               round
               @click="handleBack"
             />
-            <h5 class="q-ma-none q-ml-sm">
+            <div class="text-h6 q-ml-sm">
               Phiếu Xuất Chỉ
-            </h5>
+            </div>
             <q-space />
             <AppButton
               v-if="isConfirmed"

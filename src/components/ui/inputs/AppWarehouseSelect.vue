@@ -58,7 +58,7 @@
         <q-item-section>
           <q-item-label>
             <span class="q-ml-md">{{ opt.name }}</span>
-            <span class="text-grey-6 q-ml-xs">({{ opt.code }})</span>
+            <span class="warehouse-option-code q-ml-xs">({{ opt.code }})</span>
           </q-item-label>
         </q-item-section>
       </q-item>
@@ -294,5 +294,13 @@ watch(() => props.storageOnly, async (newVal) => {
 
 .warehouse-storage-option:hover {
   background-color: var(--q-primary-opacity);
+}
+
+.warehouse-option-code {
+  color: #757575;
+}
+
+.body--dark .warehouse-option-code {
+  color: rgba(255, 255, 255, 0.6);
 }
 </style>

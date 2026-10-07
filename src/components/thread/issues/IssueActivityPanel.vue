@@ -6,10 +6,10 @@
   >
     <q-card-section>
       <div class="row items-center q-mb-sm">
-        <div class="text-subtitle2 text-weight-medium col">
+        <div class="text-subtitle2 text-weight-medium col-12 col-sm">
           Tiến Độ Xuất Chỉ
         </div>
-        <div class="row q-gutter-sm items-center">
+        <div class="col-12 col-sm-auto row q-gutter-sm items-center issue-activity-filters">
           <q-input
             v-model="searchQuery"
             dense
@@ -99,14 +99,14 @@
                 >
                   <span>Cần: <strong>{{ po.summary.total_quota_cones }}</strong> cuộn</span>
                   <span class="text-grey-5">&middot;</span>
-                  <span>Đã xuất: <strong class="text-positive">{{ po.summary.total_net_issued }}</strong></span>
+                  <span>Đã xuất: <strong class="text-green-9">{{ po.summary.total_net_issued }}</strong></span>
                   <span class="text-grey-5">&middot;</span>
-                  <span :class="po.summary.total_pending_cones > 0 ? 'text-warning' : 'text-positive'">
+                  <span :class="po.summary.total_pending_cones > 0 ? 'text-deep-orange-10' : 'text-green-9'">
                     Còn lại: <strong>{{ po.summary.total_pending_cones }}</strong>
                   </span>
                   <span
                     v-if="po.last_issued_at"
-                    class="text-grey-6"
+                    class="issue-activity-time"
                   >
                     &middot; {{ relativeTime(po.last_issued_at) }}
                   </span>
@@ -192,9 +192,9 @@
                     <div class="text-caption text-grey-7 q-mt-xs">
                       Cần: <strong>{{ style.summary.total_quota_cones }}</strong>
                       <span class="text-grey-5 q-mx-xs">&middot;</span>
-                      Xuất: <strong class="text-positive">{{ style.summary.total_net_issued }}</strong>
+                      Xuất: <strong class="text-green-9">{{ style.summary.total_net_issued }}</strong>
                       <span class="text-grey-5 q-mx-xs">&middot;</span>
-                      <span :class="style.summary.total_pending_cones > 0 ? 'text-warning' : 'text-positive'">
+                      <span :class="style.summary.total_pending_cones > 0 ? 'text-deep-orange-10' : 'text-green-9'">
                         Còn: <strong>{{ style.summary.total_pending_cones }}</strong>
                       </span>
                     </div>
@@ -243,7 +243,7 @@
                         <td class="text-right">
                           {{ line.quota_cones }}
                         </td>
-                        <td class="text-right text-positive">
+                        <td class="text-right text-green-9">
                           {{ line.net_issued }}
                           <span
                             v-if="line.returned_cones > 0"
@@ -252,7 +252,7 @@
                         </td>
                         <td
                           class="text-right"
-                          :class="line.pending_cones > 0 ? 'text-warning text-weight-medium' : 'text-positive'"
+                          :class="line.pending_cones > 0 ? 'text-deep-orange-10 text-weight-medium' : 'text-green-9'"
                         >
                           <template v-if="line.net_issued > line.quota_cones">
                             <span class="text-negative text-weight-medium">+{{ roundTwo(line.net_issued - line.quota_cones) }}</span>
@@ -277,7 +277,8 @@
           <q-pagination
             v-model="page"
             :max="totalPages"
-            :max-pages="7"
+            :max-pages="$q.screen.xs ? 5 : 7"
+            :size="$q.screen.xs ? 'lg' : undefined"
             direction-links
             boundary-links
             @update:model-value="loadData"
@@ -428,6 +429,32 @@ watch(() => pos.value.length, (newLen, oldLen) => {
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   &:hover {
     background: #f0f0f0;
+  }
+}
+.issue-activity-time {
+  color: #757575;
+}
+.body--dark {
+  .issue-activity-time {
+    color: rgba(255, 255, 255, 0.6);
+  }
+  .progress-table th {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .style-group:not(:last-child) {
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+  }
+  .style-header {
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+  }
+}
+@media (max-width: 599.98px) {
+  .issue-activity-filters {
+    margin-top: 4px;
   }
 }
 .over-quota-row {

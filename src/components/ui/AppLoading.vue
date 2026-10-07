@@ -21,7 +21,7 @@
   z-index: 9999;
 }
 
-:global(.body--dark) .app-loading-container {
+.body--dark .app-loading-container {
   background-color: #121212;
 }
 </style>

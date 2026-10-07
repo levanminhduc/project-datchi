@@ -1,8 +1,8 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="text-h5 q-mb-md">
+    <h1 class="text-h5 q-my-none q-mb-md text-weight-bold text-primary">
       Chuyển kho cho chỉ đã gán theo Tuần
-    </div>
+    </h1>
 
     <q-card
       flat

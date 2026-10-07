@@ -621,9 +621,12 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.leader-review-muted,
-.leader-review-tabs {
+.leader-review-muted {
   color: #757575;
+}
+
+.leader-review-tabs {
+  color: #555555;
 }
 
 .body--dark .leader-review-muted,
@@ -657,7 +660,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-:global(.body--dark) .leader-review-search__placeholder {
+.body--dark .leader-review-search__placeholder {
   color: rgba(255, 255, 255, 0.54);
 }
 

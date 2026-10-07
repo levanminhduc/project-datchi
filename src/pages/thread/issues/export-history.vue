@@ -2,8 +2,8 @@
   <q-page padding>
     <div class="row q-mb-md">
       <div class="col">
-        <h1 class="text-h5 q-my-none">
-          Lịch Sử Xuất Chỉ
+        <h1 class="text-h5 q-my-none text-weight-bold text-primary">
+          Báo Cáo Xuất Kho
         </h1>
       </div>
     </div>

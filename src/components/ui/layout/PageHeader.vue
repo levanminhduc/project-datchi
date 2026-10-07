@@ -67,7 +67,7 @@ const headerClass = computed(() => ({
         </div>
         <div
           v-if="subtitle"
-          class="page-header__subtitle text-caption text-grey"
+          class="page-header__subtitle text-caption"
         >
           {{ subtitle }}
         </div>
@@ -110,8 +110,13 @@ const headerClass = computed(() => ({
 }
 
 .page-header__subtitle {
+  color: #757575;
   line-height: 1.4;
   max-width: 72ch;
+}
+
+.body--dark .page-header__subtitle {
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .page-header__actions {

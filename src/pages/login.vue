@@ -183,11 +183,11 @@ async function handleLogin() {
   box-shadow: 0 8px 20px rgba(31, 81, 255, 0.25);
 }
 
-:global(.body--dark) .login-page {
+.body--dark .login-page {
   background: linear-gradient(135deg, #1a1f2e 0%, #121826 50%, #0f1422 100%);
 }
 
-:global(.body--dark) .login-card {
+.body--dark .login-card {
   background: #1c2333;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
 }

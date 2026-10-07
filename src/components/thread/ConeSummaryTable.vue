@@ -232,7 +232,7 @@
 
     <!-- Summary row at bottom -->
     <template #bottom-row>
-      <q-tr class="bg-grey-2 text-weight-bold">
+      <q-tr class="cone-summary-total-row text-weight-bold">
         <q-td
           colspan="3"
           class="text-right"
@@ -296,7 +296,7 @@
       </q-tr>
       <q-tr
         v-if="totalInventoryValue > 0"
-        class="bg-blue-1 text-weight-bold"
+        class="cone-summary-value-row text-weight-bold"
       >
         <q-td
           colspan="11"
@@ -508,6 +508,22 @@ const handleRowClick = (_evt: Event, row: ConeSummaryRow) => {
 
 .cone-summary-table :deep(tbody tr:hover) {
   background-color: rgba(0, 0, 0, 0.03);
+}
+
+.cone-summary-total-row {
+  background-color: #eeeeee;
+}
+
+.cone-summary-value-row {
+  background-color: #e3f2fd;
+}
+
+.body--dark .cone-summary-total-row {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.body--dark .cone-summary-value-row {
+  background-color: rgba(33, 150, 243, 0.12);
 }
 
 .color-swatch {

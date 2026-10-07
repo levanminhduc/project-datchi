@@ -173,7 +173,7 @@ function onDeliveryDateChange(val: string | null) {
   white-space: nowrap;
 }
 
-:global(.body--dark) .week-info-name-input__placeholder {
+.body--dark .week-info-name-input__placeholder {
   color: rgba(255, 255, 255, 0.54);
 }
 

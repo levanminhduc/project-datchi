@@ -2,13 +2,13 @@
   <q-page padding>
     <!-- Page Header -->
     <div class="row q-col-gutter-md q-mb-lg items-center">
-      <div class="col-12 col-md-3">
+      <div class="col-12 col-lg-3">
         <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Quản Lý Tồn Kho Chỉ
         </h1>
       </div>
       
-      <div class="col-12 col-md-9">
+      <div class="col-12 col-lg-9">
         <div class="row q-col-gutter-sm justify-end">
           <!-- Search Input (only for detail view) -->
           <div
@@ -266,7 +266,7 @@
               >{{ props.value }} g</span>
               <span
                 v-else
-                class="text-grey-5"
+                class="text-grey-7"
               >---</span>
             </q-td>
           </template>
