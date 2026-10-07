@@ -983,7 +983,12 @@ core.post('/:id/remove-po', requirePermission('thread.allocations.manage'), asyn
 
     const performer = getPerformer(c)
     const { removedCount, deliveriesSynced, reservationsReleased, reservationsReserved } = await tx(async (client) => {
-      await client.query(`SELECT id FROM thread_order_weeks WHERE id = $1 FOR UPDATE`, [id])
+      const lockedWeeks = await runOn<{ leader_signed_by: number | null }>(
+        client,
+        `SELECT leader_signed_by FROM thread_order_weeks WHERE id = $1 FOR UPDATE`,
+        [id],
+      )
+      const isLeaderSigned = Boolean(lockedWeeks[0]?.leader_signed_by)
 
       const removedItems = await runOn<{ id: number; style_id: number }>(
         client,
@@ -1075,8 +1080,10 @@ core.post('/:id/remove-po', requirePermission('thread.allocations.manage'), asyn
             console.info(`[remove-po] Re-reserve: released=${released}, kept=${rpcResult.kept ?? 0}`)
           }
 
-          await syncDeliveries(id, enrichedSummary, client)
-          synced = true
+          if (isLeaderSigned) {
+            await syncDeliveries(id, enrichedSummary, client)
+            synced = true
+          }
         }
       }
 
@@ -1348,8 +1355,8 @@ core.post('/:id/sync-deliveries', requirePermission('thread.allocations.manage')
       return c.json({ data: null, error: 'ID không hợp lệ' }, 400)
     }
 
-    const week = await queryOne<{ id: number; status: string }>(
-      `SELECT id, status FROM thread_order_weeks WHERE id = $1`,
+    const week = await queryOne<{ id: number; status: string; leader_signed_by: number | null }>(
+      `SELECT id, status, leader_signed_by FROM thread_order_weeks WHERE id = $1`,
       [id],
     )
 
@@ -1359,6 +1366,10 @@ core.post('/:id/sync-deliveries', requirePermission('thread.allocations.manage')
 
     if (week.status !== 'CONFIRMED') {
       return c.json({ data: null, error: 'Tuần đặt hàng phải được xác nhận trước khi đồng bộ giao hàng' }, 400)
+    }
+
+    if (!week.leader_signed_by) {
+      return c.json({ data: { synced: false, awaiting_leader_sign: true }, error: null })
     }
 
     const resultsData = await queryOne<{ summary_data: any }>(

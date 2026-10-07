@@ -1,4 +1,5 @@
-import { query, queryOne, querySingle } from '../db/query'
+import { query, queryOne, querySingle, runOn, tx } from '../db/query'
+import { syncDeliveries } from '../routes/weekly-order/save-results-helpers'
 import { createNotification, getLeaderEmployeeIds } from './notificationService'
 import { dispatchExternalNotification } from './external-notification-dispatcher'
 import {
@@ -486,13 +487,29 @@ export async function signWeeklyOrder(params: {
   }
 
   const signedAt = new Date().toISOString()
-  const updated = await queryOne<SignedWeeklyOrderRow>(
-    `UPDATE thread_order_weeks
-     SET leader_signed_by = $2, leader_signed_at = $3
-     WHERE id = $1 AND status = 'CONFIRMED' AND leader_signed_by IS NULL
-     RETURNING *`,
-    [params.weekId, params.employeeId, signedAt]
-  )
+  const updated = await tx(async (client) => {
+    const signedRows = await runOn<SignedWeeklyOrderRow>(
+      client,
+      `UPDATE thread_order_weeks
+       SET leader_signed_by = $2, leader_signed_at = $3
+       WHERE id = $1 AND status = 'CONFIRMED' AND leader_signed_by IS NULL
+       RETURNING *`,
+      [params.weekId, params.employeeId, signedAt]
+    )
+    if (signedRows.length === 0) return null
+
+    const resultRows = await runOn<{ summary_data: unknown }>(
+      client,
+      `SELECT summary_data FROM thread_order_results WHERE week_id = $1`,
+      [params.weekId]
+    )
+    const summaryData = resultRows[0]?.summary_data
+    if (Array.isArray(summaryData)) {
+      await syncDeliveries(params.weekId, summaryData, client)
+    }
+
+    return signedRows[0]
+  })
 
   if (!updated) {
     const current = await queryOne<{ id: number; status: string; leader_signed_by: number | null }>(

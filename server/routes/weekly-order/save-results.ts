@@ -246,9 +246,9 @@ saveResults.post('/:id/results/apply', requirePermission('thread.allocations.man
 
     const performer = getPerformer(c)
     const outcome = await tx(async (client) => {
-      const weeks = await runOn<{ status: string }>(
+      const weeks = await runOn<{ status: string; leader_signed_by: number | null }>(
         client,
-        `SELECT status FROM thread_order_weeks WHERE id = $1 FOR UPDATE`,
+        `SELECT status, leader_signed_by FROM thread_order_weeks WHERE id = $1 FOR UPDATE`,
         [id],
       )
       if (weeks.length === 0) return { status: 404 as const, error: 'Không tìm thấy tuần đặt hàng' }
@@ -277,7 +277,9 @@ saveResults.post('/:id/results/apply', requirePermission('thread.allocations.man
       )
       const applied = updated[0]
 
-      await syncDeliveries(id, applied.summary_data ?? [], client)
+      if (weeks[0].leader_signed_by) {
+        await syncDeliveries(id, applied.summary_data ?? [], client)
+      }
 
       const { oldValues, newValues } = pickChangedSummaryRows(
         current[0].summary_data ?? [],

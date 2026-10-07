@@ -55,6 +55,7 @@ deliveries.get('/deliveries/overview', requirePermission('thread.allocations.vie
     if (!showCancelled) {
       conds.push(`w.status <> 'CANCELLED'`)
     }
+    conds.push(`w.leader_signed_by IS NOT NULL`)
     if (weekId) {
       params.push(parseInt(weekId))
       conds.push(`d.week_id = $${params.length}`)

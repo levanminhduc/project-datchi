@@ -1208,8 +1208,11 @@ const handleConfirmWeek = async () => {
 
   try {
     setStepStatus(2, 'loading')
-    await weeklyOrderService.syncDeliveries(selectedWeek.value!.id)
+    const syncResult = await weeklyOrderService.syncDeliveries(selectedWeek.value!.id)
     setStepStatus(2, 'success')
+    if (syncResult.awaiting_leader_sign) {
+      snackbar.info('Chờ lãnh đạo ký duyệt mới chuyển NCC giao')
+    }
   } catch (err) {
     setStepStatus(2, 'error', err instanceof Error ? err.message : 'Lỗi đồng bộ giao hàng')
     return

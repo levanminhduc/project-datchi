@@ -227,8 +227,8 @@ export const weeklyOrderService = {
     return response.data
   },
 
-  async syncDeliveries(id: number): Promise<{ synced: boolean }> {
-    const response = await fetchApi<ApiResponse<{ synced: boolean }>>(`${BASE}/${id}/sync-deliveries`, {
+  async syncDeliveries(id: number): Promise<{ synced: boolean; awaiting_leader_sign?: boolean }> {
+    const response = await fetchApi<ApiResponse<{ synced: boolean; awaiting_leader_sign?: boolean }>>(`${BASE}/${id}/sync-deliveries`, {
       method: 'POST',
     })
 
