@@ -12,7 +12,7 @@
         <h1 class="text-h5 q-my-none text-weight-bold text-primary">
           Ký Duyệt Đơn Hàng
         </h1>
-        <div class="text-grey-6">
+        <div class="leader-review-muted">
           Danh sách đơn hàng tuần chờ lãnh đạo ký duyệt
         </div>
       </div>
@@ -20,7 +20,9 @@
       <AppButton
         flat
         icon="refresh"
-        label="Tải lại"
+        :label="$q.screen.gt.xs ? 'Tải lại' : undefined"
+        :round="$q.screen.xs"
+        aria-label="Tải lại"
         @click="handleRefresh"
       />
     </div>
@@ -28,7 +30,7 @@
     <q-tabs
       v-model="activeTab"
       dense
-      class="text-grey q-mb-md"
+      class="leader-review-tabs q-mb-md"
       active-color="primary"
       indicator-color="primary"
       align="left"
@@ -131,18 +133,18 @@
             >
               <q-card-section>
                 <div class="row items-center">
-                  <div class="col">
+                  <div class="col-12 col-sm">
                     <div class="text-subtitle1 text-weight-bold">
                       {{ order.week_name }}
                     </div>
                     <div class="text-caption text-grey-7">
                       Người đặt: {{ order.created_by || '—' }} · {{ formatDate(order.created_at) }}
                     </div>
-                    <div class="text-caption text-grey-6">
+                    <div class="text-caption leader-review-muted">
                       {{ order.item_count }} PO/Style · {{ order.summary_preview.length }} loại chỉ cần đặt
                     </div>
                   </div>
-                  <div class="col-auto row q-gutter-sm">
+                  <div class="col-12 col-sm-auto row q-gutter-sm leader-review-actions">
                     <AppButton
                       flat
                       dense
@@ -151,63 +153,6 @@
                       label="Xem Đơn Hàng"
                       @click="openOrderDetail(order.id)"
                     />
-                    <span style="display: inline-block;">
-                      <q-btn-dropdown
-                        flat
-                        dense
-                        color="primary"
-                        icon="file_download"
-                        label="Xuất Excel"
-                        no-caps
-                        disable
-                      >
-                        <q-list dense>
-                          <q-item
-                            v-close-popup
-                            clickable
-                            @click="handleExportAll(order)"
-                          >
-                            <q-item-section avatar>
-                              <q-icon
-                                name="o_list_alt"
-                                color="primary"
-                              />
-                            </q-item-section>
-                            <q-item-section>
-                              <q-item-label>Xuất tất cả</q-item-label>
-                              <q-item-label caption>
-                                {{ order.summary_all.length }} loại chỉ
-                              </q-item-label>
-                            </q-item-section>
-                          </q-item>
-                          <q-item
-                            v-close-popup
-                            clickable
-                            @click="handleExportFiltered(order)"
-                          >
-                            <q-item-section avatar>
-                              <q-icon
-                                name="o_filter_alt"
-                                color="positive"
-                              />
-                            </q-item-section>
-                            <q-item-section>
-                              <q-item-label>Xuất chỉ cần đặt</q-item-label>
-                              <q-item-label caption>
-                                {{ order.summary_preview.length }} loại chỉ
-                              </q-item-label>
-                            </q-item-section>
-                          </q-item>
-                        </q-list>
-                      </q-btn-dropdown>
-                      <q-tooltip
-                        anchor="top middle"
-                        self="bottom middle"
-                        :offset="[0, 8]"
-                      >
-                        Lãnh đạo chưa ký duyệt nên chưa thể xuất Excel
-                      </q-tooltip>
-                    </span>
                     <AppButton
                       color="primary"
                       icon="o_approval"
@@ -234,6 +179,7 @@
                     flat
                     bordered
                     dense
+                    wrap-cells
                     hide-pagination
                     :rows-per-page-options="[0]"
                   />
@@ -264,7 +210,8 @@
             <q-pagination
               v-model="pendingPage"
               :max="pendingTotalPages"
-              :max-pages="7"
+              :max-pages="$q.screen.xs ? 5 : 7"
+              :size="$q.screen.xs ? 'lg' : undefined"
               direction-links
               boundary-links
               @update:model-value="onPendingPageChange"
@@ -318,21 +265,21 @@
             >
               <q-card-section>
                 <div class="row items-center">
-                  <div class="col">
+                  <div class="col-12 col-sm">
                     <div class="text-subtitle1 text-weight-bold">
                       {{ order.week_name }}
                     </div>
                     <div class="text-caption text-grey-7">
                       Người đặt: {{ order.created_by || '—' }} · {{ formatDate(order.created_at) }}
                     </div>
-                    <div class="text-caption text-grey-6">
+                    <div class="text-caption leader-review-muted">
                       {{ order.item_count }} PO/Style · {{ order.summary_preview.length }} loại chỉ cần đặt
                     </div>
                     <div class="text-caption text-positive q-mt-xs">
                       Người ký: {{ order.leader_signed_by_name || '—' }} · {{ formatDate(order.leader_signed_at || '') }}
                     </div>
                   </div>
-                  <div class="col-auto row q-gutter-sm">
+                  <div class="col-12 col-sm-auto row q-gutter-sm leader-review-actions">
                     <AppBadge
                       label="Đã ký duyệt"
                       color="positive"
@@ -412,6 +359,7 @@
                     flat
                     bordered
                     dense
+                    wrap-cells
                     hide-pagination
                     :rows-per-page-options="[0]"
                   />
@@ -442,7 +390,8 @@
             <q-pagination
               v-model="signedPage"
               :max="signedTotalPages"
-              :max-pages="7"
+              :max-pages="$q.screen.xs ? 5 : 7"
+              :size="$q.screen.xs ? 'lg' : undefined"
               direction-links
               boundary-links
               @update:model-value="onSignedPageChange"
@@ -673,6 +622,28 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.leader-review-muted {
+  color: #757575;
+}
+
+.body--dark .leader-review-muted {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.leader-review-tabs {
+  color: #757575;
+}
+
+.body--dark .leader-review-tabs {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+@media (max-width: 599.98px) {
+  .leader-review-actions {
+    margin-top: 4px;
+  }
+}
+
 .leader-review-search {
   position: relative;
 }

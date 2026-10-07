@@ -7,7 +7,7 @@
   >
     <q-badge
       v-if="unreadCount > 0"
-      color="red"
+      color="red-8"
       floating
       rounded
     >
