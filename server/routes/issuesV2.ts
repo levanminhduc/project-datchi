@@ -118,6 +118,10 @@ function roundToTwoDecimals(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
+function toContainsPattern(value: string): string {
+  return `%${value.replace(/[\\%_]/g, '\\$&')}%`
+}
+
 interface ReturnValidationResult {
   valid: boolean
   errors: string[]
@@ -3287,7 +3291,7 @@ issuesV2.get('/:id', async (c) => {
 /**
  * GET /api/issues/v2 - List issues with filters
  *
- * Query: ?department=X&status=DRAFT&from=2026-02-01&to=2026-02-28&page=1&limit=20
+ * Query: ?department=X&po=X&style=X&color=X&status=DRAFT&from=2026-02-01&to=2026-02-28&page=1&limit=20
  */
 issuesV2.get('/', async (c) => {
   try {
@@ -3309,26 +3313,52 @@ issuesV2.get('/', async (c) => {
       throw err
     }
 
-    const { department, status, from, to, page = 1, limit = 20 } = validated
+    const { department, po, style, color, status, from, to, page = 1, limit = 20 } = validated
 
     const conditions: string[] = []
     const params: unknown[] = []
 
     if (department) {
       params.push(department)
-      conditions.push(`department = $${params.length}`)
+      conditions.push(`ti.department = $${params.length}`)
     }
     if (status) {
       params.push(status)
-      conditions.push(`status = $${params.length}`)
+      conditions.push(`ti.status = $${params.length}`)
     }
     if (from) {
       params.push(`${from}T00:00:00`)
-      conditions.push(`created_at >= $${params.length}`)
+      conditions.push(`ti.created_at >= $${params.length}`)
     }
     if (to) {
       params.push(`${to}T23:59:59`)
-      conditions.push(`created_at <= $${params.length}`)
+      conditions.push(`ti.created_at <= $${params.length}`)
+    }
+
+    const lineConditions: string[] = []
+    if (po) {
+      params.push(toContainsPattern(po))
+      lineConditions.push(`fpo.po_number ILIKE $${params.length}`)
+    }
+    if (style) {
+      params.push(toContainsPattern(style))
+      lineConditions.push(`fst.style_code ILIKE $${params.length}`)
+    }
+    if (color) {
+      params.push(toContainsPattern(color))
+      lineConditions.push(`COALESCE(fsc.color_name, fco.name) ILIKE $${params.length}`)
+    }
+    if (lineConditions.length > 0) {
+      conditions.push(
+        `EXISTS (
+           SELECT 1 FROM thread_issue_lines fl
+           LEFT JOIN purchase_orders fpo ON fpo.id = fl.po_id
+           LEFT JOIN styles fst ON fst.id = fl.style_id
+           LEFT JOIN style_colors fsc ON fsc.id = fl.style_color_id
+           LEFT JOIN colors fco ON fco.id = fl.color_id
+           WHERE fl.issue_id = ti.id AND ${lineConditions.join(' AND ')}
+         )`
+      )
     }
 
     const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : ''
@@ -3337,7 +3367,7 @@ issuesV2.get('/', async (c) => {
     let count: number
     try {
       count = await queryCount(
-        `SELECT count(*)::int AS count FROM thread_issues${whereClause}`,
+        `SELECT count(*)::int AS count FROM thread_issues ti${whereClause}`,
         params
       )
 

@@ -171,6 +171,10 @@ const columns: QTableColumn[] = [
 const historyLoaded = ref(false)
 
 const localFilters = ref<IssueV2Filters>({
+  po: undefined,
+  style: undefined,
+  color: undefined,
+  department: undefined,
   status: undefined,
   from: undefined,
   to: undefined,
@@ -965,8 +969,24 @@ const handleHistorySearch = async () => {
   await loadHistoryData()
 }
 
+const debouncedHistorySearch = useDebounceFn(() => {
+  handleHistorySearch()
+}, 300)
+
+const handleHistoryTextFilter = (value: string | number | null) => {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    handleHistorySearch()
+    return
+  }
+  debouncedHistorySearch()
+}
+
 const handleClearHistoryFilters = () => {
   localFilters.value = {
+    po: undefined,
+    style: undefined,
+    color: undefined,
+    department: undefined,
     status: undefined,
     from: undefined,
     to: undefined,
@@ -1806,6 +1826,54 @@ onUnmounted(() => {
             <q-card-section>
               <div class="row items-end q-col-gutter-md">
                 <div class="col-12 col-sm-6 col-md-3">
+                  <AppInput
+                    v-model="localFilters.po"
+                    label="PO"
+                    dense
+                    clearable
+                    hide-bottom-space
+                    @update:model-value="handleHistoryTextFilter"
+                    @keyup.enter="handleHistorySearch"
+                  />
+                </div>
+
+                <div class="col-12 col-sm-6 col-md-3">
+                  <AppInput
+                    v-model="localFilters.style"
+                    label="Style"
+                    dense
+                    clearable
+                    hide-bottom-space
+                    @update:model-value="handleHistoryTextFilter"
+                    @keyup.enter="handleHistorySearch"
+                  />
+                </div>
+
+                <div class="col-12 col-sm-6 col-md-3">
+                  <AppInput
+                    v-model="localFilters.color"
+                    label="Màu Hàng"
+                    dense
+                    clearable
+                    hide-bottom-space
+                    @update:model-value="handleHistoryTextFilter"
+                    @keyup.enter="handleHistorySearch"
+                  />
+                </div>
+
+                <div class="col-12 col-sm-6 col-md-3">
+                  <AppSelect
+                    v-model="localFilters.department"
+                    :options="departmentOptions"
+                    label="Bộ Phận"
+                    clearable
+                    dense
+                    hide-bottom-space
+                    @update:model-value="handleHistorySearch"
+                  />
+                </div>
+
+                <div class="col-12 col-sm-6 col-md-3">
                   <AppSelect
                     v-model="localFilters.status"
                     :options="statusOptions"
@@ -1817,7 +1885,7 @@ onUnmounted(() => {
                   />
                 </div>
 
-                <div class="col-12 col-sm-6 col-md-2">
+                <div class="col-12 col-sm-6 col-md-3">
                   <AppInput
                     v-model="localFilters.from"
                     label="Từ ngày"
@@ -1844,7 +1912,7 @@ onUnmounted(() => {
                   </AppInput>
                 </div>
 
-                <div class="col-12 col-sm-6 col-md-2">
+                <div class="col-12 col-sm-6 col-md-3">
                   <AppInput
                     v-model="localFilters.to"
                     label="Đến ngày"

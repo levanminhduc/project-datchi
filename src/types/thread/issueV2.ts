@@ -359,6 +359,9 @@ export interface IssueFormData {
  */
 export interface IssueV2Filters {
   department?: string
+  po?: string
+  style?: string
+  color?: string
   status?: IssueV2Status
   from?: string // YYYY-MM-DD
   to?: string // YYYY-MM-DD

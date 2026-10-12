@@ -51,6 +51,12 @@ function buildQueryString(filters?: IssueV2Filters): string {
   const params = new URLSearchParams()
 
   if (filters.department) params.append('department', filters.department)
+  const po = filters.po?.trim()
+  if (po) params.append('po', po)
+  const style = filters.style?.trim()
+  if (style) params.append('style', style)
+  const color = filters.color?.trim()
+  if (color) params.append('color', color)
   if (filters.status) params.append('status', filters.status)
   if (filters.from) params.append('from', convertDateFormat(filters.from))
   if (filters.to) params.append('to', convertDateFormat(filters.to))

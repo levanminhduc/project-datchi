@@ -99,6 +99,9 @@ export type ValidateIssueLineV2DTO = z.infer<typeof ValidateIssueLineV2Schema>
 
 export const IssueV2FiltersSchema = z.object({
   department: z.string().optional(),
+  po: z.string().trim().max(100).optional(),
+  style: z.string().trim().max(100).optional(),
+  color: z.string().trim().max(100).optional(),
   status: IssueV2StatusEnum.optional(),
   from: z.string().optional(), // YYYY-MM-DD
   to: z.string().optional(), // YYYY-MM-DD
