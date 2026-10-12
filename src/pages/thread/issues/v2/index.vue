@@ -197,7 +197,7 @@ const statusOptions = [
 
 const historyColumns: QTableColumn[] = [
   { name: 'order_info', label: 'PO/Style/SubArt', field: 'po_number', align: 'left' },
-  { name: 'colors', label: 'Màu Hàng', field: 'color_names', align: 'left' },
+  { name: 'colors', label: 'Màu Hàng', field: 'color_names', align: 'left', style: 'width: 240px; min-width: 240px; max-width: 240px', headerStyle: 'width: 240px; min-width: 240px; max-width: 240px' },
   { name: 'department', label: 'Bộ Phận', field: 'department', align: 'left', sortable: true },
   { name: 'status', label: 'Trạng Thái', field: 'status', align: 'center' },
   { name: 'created_at', label: 'Ngày Tạo', field: 'created_at', align: 'left', sortable: true },
@@ -1986,7 +1986,17 @@ onUnmounted(() => {
 
             <template #body-cell-colors="props">
               <q-td :props="props">
-                {{ props.row.color_names?.join(', ') || '-' }}
+                <div
+                  v-if="props.row.color_names?.length"
+                  class="history-colors"
+                >
+                  <span
+                    v-for="colorName in props.row.color_names"
+                    :key="colorName"
+                    class="history-color-chip"
+                  >{{ colorName }}</span>
+                </div>
+                <span v-else>-</span>
               </q-td>
             </template>
 
@@ -2252,5 +2262,20 @@ onUnmounted(() => {
 
 .history-table :deep(.q-table tbody tr:hover) {
   background: rgba(0, 0, 0, 0.03);
+}
+
+.history-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  white-space: normal;
+}
+
+.history-color-chip {
+  padding: 1px 6px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 18px;
 }
 </style>
