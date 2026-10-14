@@ -50,6 +50,7 @@ import announcementsRouter from './routes/announcements'
 import overQuotaRouter from './routes/over-quota'
 import threadConeSummaryRouter from './routes/thread/cone-summary'
 import chatAssistantRouter from './routes/chat-assistant'
+import { createAiToolsRouter } from './ai-tools/router'
 import realtimeRouter from './realtime/stream'
 import { startRealtimeListener, stopRealtimeListener } from './realtime/listener'
 import { authMiddleware } from './middleware/auth'
@@ -146,6 +147,7 @@ app.route('/api/announcements', announcementsRouter)
 app.route('/api/over-quota', overQuotaRouter)
 app.route('/api/thread/cone-summary', threadConeSummaryRouter)
 app.route('/api/chat-assistant', chatAssistantRouter)
+app.route('/api/ai', createAiToolsRouter((request) => app.fetch(request)))
 
 const HAS_DIST = existsSync('dist/index.html')
 if (HAS_DIST) {

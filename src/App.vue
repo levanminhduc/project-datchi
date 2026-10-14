@@ -22,7 +22,7 @@ const router = useRouter();
 const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
 const { notifications, startPolling, stopPolling } = useNotifications();
-const { isAuthenticated, tempPassword, isLoading, hasAllPermissions } = useAuth();
+const { isAuthenticated, tempPassword, isLoading, hasPermission } = useAuth();
 const { startVersionCheck, stopVersionCheck } = useVersionCheck();
 const {
   currentAnnouncement,
@@ -59,7 +59,7 @@ const showSidebar = computed(() => route.path !== "/login" && !isPublicPage.valu
 const showFloatingChatAssistant = computed(() =>
   showSidebar.value
   && route.path !== '/thread/chat-assistant'
-  && hasAllPermissions(['thread.inventory.view', 'thread.styles.view'])
+  && hasPermission('chat.assistant.use')
 )
 
 const approvedPopupOpen = ref(false)

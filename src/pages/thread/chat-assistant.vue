@@ -19,7 +19,7 @@ import ChatAssistantPanel from '@/components/thread/ChatAssistantPanel.vue'
 definePage({
   meta: {
     requiresAuth: true,
-    allPermissions: ['thread.inventory.view', 'thread.styles.view'],
+    permissions: ['chat.assistant.use'],
     title: 'Trợ lý tra cứu chỉ',
   },
 })

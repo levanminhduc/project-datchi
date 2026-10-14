@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto'
 import { Hono } from 'hono'
-import { requireAllPermissions } from '../middleware/auth'
+import { requirePermission } from '../middleware/auth'
+import type { AppEnv } from '../types/hono-env'
 import type { ChatAssistantResult } from '../types/chat-assistant'
 import {
   buildChatAnswer,
@@ -9,23 +11,19 @@ import {
   extractChatTex,
 } from '../utils/chat-assistant-parser'
 import { getChatStock, getChatUsage, resolveChatThreadRefs } from '../utils/chat-assistant-data'
-import { chatWithGemini, GeminiChatError, getGeminiChatConfig } from '../utils/chat-assistant-gemini'
-import { chatWithOpenAI, OpenAIChatError, getOpenAIChatConfig } from '../utils/chat-assistant-openai'
 
-const chatAssistant = new Hono()
+const chatAssistant = new Hono<AppEnv>()
+
+const FALLBACK_PERMISSIONS = ['thread.inventory.view', 'thread.styles.view']
 
 interface ChatbotServiceData {
   answer?: unknown
-  term?: unknown
-  source_endpoints?: unknown
-  context?: unknown
+  tools_used?: unknown
 }
 
 interface ChatbotServiceEnvelope {
   data?: ChatbotServiceData | null
   error?: unknown
-  message?: unknown
-  detail?: unknown
 }
 
 interface ChatbotProxyConfig {
@@ -34,7 +32,7 @@ interface ChatbotProxyConfig {
   timeoutMs: number
 }
 
-type ChatbotProxyStatus = 400 | 408 | 502
+type ChatbotProxyStatus = 400 | 401 | 403 | 408 | 502
 
 class ChatbotProxyError extends Error {
   constructor(
@@ -56,7 +54,7 @@ function getChatbotProxyConfig(): ChatbotProxyConfig | null {
   return {
     baseUrl,
     internalToken,
-    timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15_000,
+    timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 28_000,
   }
 }
 
@@ -67,6 +65,10 @@ function getPayloadMessage(payload: unknown): string | null {
   for (const key of ['error', 'message', 'detail']) {
     const value = record[key]
     if (typeof value === 'string' && value.trim()) return value
+    if (value && typeof value === 'object') {
+      const nested = (value as Record<string, unknown>).message
+      if (typeof nested === 'string' && nested.trim()) return nested
+    }
   }
 
   return null
@@ -80,69 +82,71 @@ async function readJsonPayload(response: Response): Promise<unknown> {
   }
 }
 
+function toProxyStatus(status: number): ChatbotProxyStatus {
+  if (status === 400 || status === 422) return 400
+  if (status === 401 || status === 403 || status === 408) return status
+  if (status === 504) return 408
+  return 502
+}
+
 function mapChatbotData(data: ChatbotServiceData): ChatAssistantResult {
   const answer = typeof data.answer === 'string' && data.answer.trim()
     ? data.answer
-    : 'Chatbot không trả về câu trả lời.'
-  const sourceEndpoints = Array.isArray(data.source_endpoints)
-    ? data.source_endpoints.filter((value): value is string => typeof value === 'string')
+    : 'Trợ lý không trả về câu trả lời.'
+  const toolsUsed = Array.isArray(data.tools_used)
+    ? data.tools_used.filter((value): value is string => typeof value === 'string')
     : []
 
   return {
     answer,
-    term: typeof data.term === 'string' && data.term.trim() ? data.term : null,
+    term: null,
     tex: null,
     intents: [],
     stock: [],
     usage: [],
     suggestions: CHAT_ASSISTANT_EXAMPLES,
-    source_endpoints: sourceEndpoints,
-    context: data.context ?? null,
+    context: { tools_used: toolsUsed },
   }
 }
 
 async function queryChatbotService(
   config: ChatbotProxyConfig,
-  message: string,
+  question: string,
   authorization: string,
+  requestId: string,
 ): Promise<ChatAssistantResult> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs)
 
   let response: Response
   try {
-    response = await fetch(`${config.baseUrl}/v1/chat/query`, {
+    response = await fetch(`${config.baseUrl}/v1/chat`, {
       method: 'POST',
       headers: {
         'Authorization': authorization,
         'Content-Type': 'application/json',
         'X-Internal-Token': config.internalToken,
+        'X-Request-Id': requestId,
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ app: 'datchi', question }),
       signal: controller.signal,
     })
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      throw new ChatbotProxyError('Chatbot service phản hồi quá thời gian', 408)
+      throw new ChatbotProxyError('Trợ lý AI phản hồi quá thời gian', 408)
     }
-    throw new ChatbotProxyError('Không thể kết nối chatbot service')
+    throw new ChatbotProxyError('Không thể kết nối trợ lý AI')
   } finally {
     clearTimeout(timeout)
   }
 
   const payload = await readJsonPayload(response)
   if (!response.ok) {
-    const errorMessage = getPayloadMessage(payload) ?? 'Chatbot service trả về lỗi'
-    const statusCode = response.status === 400 || response.status === 422
-      ? 400
-      : response.status === 408
-        ? 408
-        : 502
-    throw new ChatbotProxyError(errorMessage, statusCode)
+    throw new ChatbotProxyError(getPayloadMessage({ error: (payload as ChatbotServiceEnvelope | null)?.error }) ?? 'Trợ lý AI trả về lỗi', toProxyStatus(response.status))
   }
 
   if (!payload || typeof payload !== 'object') {
-    throw new ChatbotProxyError('Chatbot service trả về payload không hợp lệ')
+    throw new ChatbotProxyError('Trợ lý AI trả về dữ liệu không hợp lệ')
   }
 
   const envelope = payload as ChatbotServiceEnvelope
@@ -151,25 +155,29 @@ async function queryChatbotService(
     throw new ChatbotProxyError(serviceError)
   }
   if (!envelope.data || typeof envelope.data !== 'object') {
-    throw new ChatbotProxyError('Chatbot service không trả về dữ liệu')
+    throw new ChatbotProxyError('Trợ lý AI không trả về dữ liệu')
   }
 
   return mapChatbotData(envelope.data)
 }
 
-chatAssistant.post('/query', requireAllPermissions('thread.inventory.view', 'thread.styles.view'), async (c) => {
+chatAssistant.post('/query', requirePermission('chat.assistant.use'), async (c) => {
   try {
     const body = await c.req.json().catch(() => null) as { message?: unknown } | null
     const message = typeof body?.message === 'string' ? body.message.trim().replace(/\s+/g, ' ') : ''
     if (!message) return c.json({ data: null, error: 'Vui lòng nhập câu hỏi' }, 400)
+    if (message.length > 2000) return c.json({ data: null, error: 'Câu hỏi tối đa 2000 ký tự' }, 400)
 
+    const auth = c.get('auth')
     const chatbotConfig = getChatbotProxyConfig()
     if (chatbotConfig) {
       const authorization = c.req.header('Authorization')
       if (!authorization) return c.json({ data: null, error: 'Chưa xác thực' }, 401)
 
+      const requestId = randomUUID()
+      console.log(`[chat-assistant] employee=${auth.employeeId} request_id=${requestId}`)
       try {
-        const data = await queryChatbotService(chatbotConfig, message, authorization)
+        const data = await queryChatbotService(chatbotConfig, message, authorization, requestId)
         return c.json({ data, error: null })
       } catch (err) {
         if (err instanceof ChatbotProxyError) {
@@ -179,53 +187,8 @@ chatAssistant.post('/query', requireAllPermissions('thread.inventory.view', 'thr
       }
     }
 
-    const openaiConfig = getOpenAIChatConfig()
-    if (openaiConfig) {
-      try {
-        const result = await chatWithOpenAI(openaiConfig, message)
-        const data: ChatAssistantResult = {
-          answer: result.answer,
-          term: null,
-          tex: null,
-          intents: [],
-          stock: [],
-          usage: [],
-          suggestions: CHAT_ASSISTANT_EXAMPLES,
-          source_endpoints: result.source_endpoints,
-          context: { tools_used: result.tools_used },
-        }
-        return c.json({ data, error: null })
-      } catch (err) {
-        if (err instanceof OpenAIChatError) {
-          return c.json({ data: null, error: err.message }, err.statusCode)
-        }
-        throw err
-      }
-    }
-
-    const geminiConfig = getGeminiChatConfig()
-    if (geminiConfig) {
-      try {
-        const result = await chatWithGemini(geminiConfig, message)
-        const data: ChatAssistantResult = {
-          answer: result.answer,
-          term: null,
-          tex: null,
-          intents: [],
-          stock: [],
-          usage: [],
-          suggestions: CHAT_ASSISTANT_EXAMPLES,
-          source_endpoints: result.source_endpoints,
-          context: { tools_used: result.tools_used },
-        }
-        return c.json({ data, error: null })
-      } catch (err) {
-        if (err instanceof GeminiChatError) {
-          return c.json({ data: null, error: err.message }, err.statusCode)
-        }
-        throw err
-      }
-    }
+    const canUseFallback = auth.isRoot || FALLBACK_PERMISSIONS.every((permission) => auth.permissions.includes(permission))
+    if (!canUseFallback) return c.json({ data: null, error: 'Trợ lý AI chưa được bật' }, 403)
 
     const term = extractChatTerm(message)
     const tex = extractChatTex(message)

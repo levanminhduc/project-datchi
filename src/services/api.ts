@@ -294,7 +294,12 @@ async function forceBackToLogin() {
 export async function fetchApiRaw(
   endpointOrUrl: string,
   options: RequestOptions = {},
-  config: { includeJsonContentType?: boolean; timeout?: number; retryOnNetworkError?: boolean } = {}
+  config: {
+    includeJsonContentType?: boolean
+    timeout?: number
+    retryOnNetworkError?: boolean
+    retryOnServerBusy?: boolean
+  } = {}
 ): Promise<Response> {
   const url = resolveRequestUrl(endpointOrUrl)
   const includeJsonContentType = config.includeJsonContentType ?? false
@@ -394,7 +399,7 @@ export async function fetchApiRaw(
 
   const response = await makeRequest(token)
 
-  if (response.status === 502 || response.status === 503) {
+  if ((response.status === 502 || response.status === 503) && (config.retryOnServerBusy ?? true)) {
     await new Promise(r => setTimeout(r, 1500))
     const retryResponse = await makeRequest(token)
     if (retryResponse.status === 502 || retryResponse.status === 503) {
@@ -446,12 +451,13 @@ export async function fetchApiRaw(
 export async function fetchApi<T>(
   endpoint: string,
   options: RequestOptions = {},
-  config?: { timeout?: number; retryOnNetworkError?: boolean }
+  config?: { timeout?: number; retryOnNetworkError?: boolean; retryOnServerBusy?: boolean }
 ): Promise<T> {
   const response = await fetchApiRaw(endpoint, options, {
     includeJsonContentType: true,
     timeout: config?.timeout,
     retryOnNetworkError: config?.retryOnNetworkError,
+    retryOnServerBusy: config?.retryOnServerBusy,
   })
 
   let payload: unknown = null

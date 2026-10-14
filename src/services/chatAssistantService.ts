@@ -16,6 +16,7 @@ export const chatAssistantService = {
       body: JSON.stringify({ message }),
     }, {
       timeout: 30_000,
+      retryOnServerBusy: false,
     })
 
     if (response.error) throw new Error(response.error)
