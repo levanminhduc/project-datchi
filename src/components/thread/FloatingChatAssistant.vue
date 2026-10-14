@@ -1,185 +1,70 @@
 <template>
   <div
-    class="floating-chat-assistant"
-    :class="{ open: isOpen, dragging: isDragging }"
+    class="floating-chat-assistant chat-assistant"
+    :class="{ open: isOpen, dragging: isDragging, 'sheet-open': isOpen && isSheet }"
     :style="wrapperStyle"
   >
     <transition name="assistant-window">
       <section
         v-if="isOpen"
         class="assistant-window"
+        :class="{ sheet: isSheet }"
         :style="windowStyle"
         role="dialog"
         aria-label="Trợ lý Chỉ AI"
-        @keydown.esc="closeAssistant"
       >
         <header class="assistant-header">
-          <div class="assistant-identity">
-            <div class="assistant-avatar">
-              <q-icon name="smart_toy" />
-            </div>
-            <div>
-              <div class="assistant-title">
-                Chỉ AI
-              </div>
-              <div class="assistant-status">
-                <span class="status-dot" />
-                Trực tuyến
-              </div>
-            </div>
+          <div class="assistant-title">
+            Chỉ AI
           </div>
 
           <div class="header-actions">
             <AppButton
               icon="open_in_full"
-              variant="flat"
-              color="white"
+              variant="text"
               round
               dense
-              aria-label="Mở trang trợ lý đầy đủ"
+              size="sm"
+              aria-label="Mở trang đầy đủ"
               @click="openFullAssistant"
             >
               <q-tooltip>Mở trang đầy đủ</q-tooltip>
             </AppButton>
             <AppButton
-              icon="close"
-              variant="flat"
-              color="white"
+              icon="add_comment"
+              variant="text"
               round
               dense
-              aria-label="Đóng trợ lý"
+              size="sm"
+              aria-label="Cuộc trò chuyện mới"
+              @click="startNewConversation"
+            >
+              <q-tooltip>Cuộc trò chuyện mới</q-tooltip>
+            </AppButton>
+            <AppButton
+              icon="close"
+              variant="text"
+              round
+              dense
+              size="sm"
+              aria-label="Đóng"
               @click="closeAssistant"
-            />
+            >
+              <q-tooltip>Đóng</q-tooltip>
+            </AppButton>
           </div>
         </header>
 
-        <div
-          ref="messagesEl"
-          class="assistant-messages"
-          :style="{ minHeight: messagesMinHeight }"
-        >
-          <div
-            v-for="item in messages"
-            :key="item.id"
-            class="assistant-row"
-            :class="item.role"
-          >
-            <div
-              class="assistant-bubble"
-              :class="{ thinking: item.status === 'thinking', 'with-table': item.stockRows?.length }"
-            >
-              <div class="assistant-text">
-                {{ item.text }}
-                <span
-                  v-if="item.status === 'thinking'"
-                  class="thinking-dots"
-                  aria-hidden="true"
-                >
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              </div>
-
-              <div
-                v-if="item.stockRows?.length"
-                class="stock-table-wrap"
-              >
-                <table
-                  class="stock-table"
-                  aria-label="Tồn khả dụng theo NCC, Tex và màu"
-                >
-                  <thead>
-                    <tr>
-                      <th>NCC</th>
-                      <th>Tex</th>
-                      <th>Màu</th>
-                      <th>Nguyên</th>
-                      <th>Lẻ</th>
-                      <th>Mét lẻ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="row in item.stockRows"
-                      :key="row.id"
-                    >
-                      <td>{{ row.supplierName }}</td>
-                      <td>{{ row.texLabel }}</td>
-                      <td>{{ row.colorName }}</td>
-                      <td class="number-cell">
-                        {{ formatNumber(row.fullCones) }}
-                      </td>
-                      <td class="number-cell">
-                        {{ formatNumber(row.partialCones) }}
-                      </td>
-                      <td class="number-cell">
-                        {{ formatNumber(row.partialMeters) }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div
-          v-if="showQuickQuestions"
-          class="quick-row"
-        >
-          <button
-            v-for="question in quickQuestions"
-            :key="question"
-            class="quick-chip"
-            type="button"
-            :disabled="loading"
-            @click="askQuick(question)"
-          >
-            {{ question }}
-            <q-icon name="arrow_forward" />
-          </button>
-        </div>
-
-        <form
-          class="assistant-composer"
-          @submit.prevent="sendMessage()"
-        >
-          <div class="composer-shell">
-            <AppInput
-              v-model="draft"
-              class="composer-input"
-              type="textarea"
-              placeholder="Nhập mã màu, Tex hoặc mã hàng..."
-              aria-label="Câu hỏi cho trợ lý Chỉ AI"
-              hide-bottom-space
-              autogrow
-              borderless
-              dense
-              :outlined="false"
-              :disable="loading"
-              @keydown.enter.exact.prevent="sendMessage()"
-            >
-              <template #prepend>
-                <q-icon name="manage_search" />
-              </template>
-            </AppInput>
-            <div class="send-button-cell">
-              <AppButton
-                type="submit"
-                icon="send"
-                round
-                :loading="loading"
-                :disable="!draft.trim()"
-                aria-label="Gửi câu hỏi"
-              />
-            </div>
-          </div>
-        </form>
+        <ChatConversation
+          ref="conversationRef"
+          class="assistant-body"
+          compact
+        />
       </section>
     </transition>
 
     <button
+      ref="launcherEl"
       class="assistant-launcher"
       type="button"
       :aria-expanded="isOpen"
@@ -187,323 +72,48 @@
       @pointerdown="onLauncherPointerDown"
       @click="onLauncherClick"
     >
-      <span class="launcher-halo" />
-      <span class="launcher-core">
-        <q-icon :name="isOpen ? 'close' : 'smart_toy'" />
-      </span>
-      <span
-        v-if="!isOpen"
-        class="launcher-badge"
-      >
-        AI
-      </span>
+      <q-icon
+        :name="isOpen ? 'close' : 'smart_toy'"
+        size="24px"
+      />
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
-import AppInput from '@/components/ui/inputs/AppInput.vue'
-import { chatAssistantService } from '@/services'
-import {
-  buildStockTableRows,
-  formatAssistantText,
-  formatChatNumber,
-  type StockTableRow,
-} from './chat-assistant-presentation'
-
-interface FloatingChatMessage {
-  id: number
-  role: 'assistant' | 'user'
-  text: string
-  status?: 'thinking'
-  stockRows?: StockTableRow[]
-}
+import ChatConversation from '@/components/thread/chat/ChatConversation.vue'
+import { useChatAssistant } from '@/composables/thread/use-chat-assistant'
+import { useChatLauncherDock } from '@/composables/thread/use-chat-launcher-dock'
 
 const router = useRouter()
-
-const quickQuestions = [
-  'BK còn bao nhiêu cuộn?',
-  'C9700 còn bao nhiêu cuộn?',
-  'Tex 40 màu C9700',
-]
-
-const initialMessage: FloatingChatMessage = {
-  id: 1,
-  role: 'assistant',
-  text: 'Chào anh/chị. Em là Chỉ AI, hỗ trợ tra nhanh tồn kho và định mức chỉ.',
-}
+const { reset } = useChatAssistant()
+const {
+  isDragging,
+  isSheet,
+  wrapperStyle,
+  windowStyle,
+  onLauncherPointerDown,
+  consumeSuppressedClick,
+} = useChatLauncherDock()
 
 const isOpen = ref(false)
-const loading = ref(false)
-const draft = ref('')
-const messages = ref<FloatingChatMessage[]>([{ ...initialMessage }])
-const messagesEl = ref<HTMLElement | null>(null)
-let nextId = 2
-
-const MIN_ASSISTANT_THINKING_MS = 650
-const showQuickQuestions = computed(() => !messages.value.some((item) => item.role === 'user'))
-
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
+const launcherEl = ref<HTMLElement | null>(null)
+const conversationRef = ref<InstanceType<typeof ChatConversation> | null>(null)
 
 function toggleAssistant() {
   isOpen.value = !isOpen.value
-  if (isOpen.value) scrollToBottom()
 }
-
-// --- Draggable launcher: snaps to nearest left/right edge, never mid-screen ---
-
-type DockSide = 'left' | 'right'
-
-const LAUNCHER_SIZE = 46
-const EDGE_MARGIN = 18
-const WINDOW_GAP = 16
-const DRAG_THRESHOLD_PX = 6
-const POSITION_STORAGE_KEY = 'floating-chat-assistant-position'
-
-const viewport = ref(
-  typeof window === 'undefined'
-    ? { width: 1024, height: 768 }
-    : { width: window.innerWidth, height: window.innerHeight },
-)
-const dockSide = ref<DockSide>('right')
-const dockTop = ref<number | null>(null)
-const isDragging = ref(false)
-const dragPos = ref({ x: 0, y: 0 })
-
-let dragStartX = 0
-let dragStartY = 0
-let dragOriginX = 0
-let dragOriginY = 0
-let dragMoved = false
-let suppressClick = false
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), Math.max(min, max))
-}
-
-const maxLauncherTop = computed(() => viewport.value.height - LAUNCHER_SIZE - EDGE_MARGIN)
-
-const defaultLauncherTop = computed(() => maxLauncherTop.value)
-
-const settledTop = computed(() =>
-  clamp(dockTop.value ?? defaultLauncherTop.value, EDGE_MARGIN, maxLauncherTop.value),
-)
-
-const settledLeft = computed(() =>
-  dockSide.value === 'left'
-    ? EDGE_MARGIN
-    : viewport.value.width - LAUNCHER_SIZE - EDGE_MARGIN,
-)
-
-const effectiveLeft = computed(() => (isDragging.value ? dragPos.value.x : settledLeft.value))
-const effectiveTop = computed(() => (isDragging.value ? dragPos.value.y : settledTop.value))
-
-const wrapperStyle = computed(() => ({
-  left: `${effectiveLeft.value}px`,
-  top: `${effectiveTop.value}px`,
-}))
-
-const windowOpensRight = computed(
-  () => effectiveLeft.value + LAUNCHER_SIZE / 2 < viewport.value.width / 2,
-)
-
-const windowMaxHeight = computed(() => {
-  const spaceAbove = effectiveTop.value - WINDOW_GAP - 8
-  const spaceBelow = viewport.value.height - (effectiveTop.value + LAUNCHER_SIZE + WINDOW_GAP) - 8
-  const available = Math.max(spaceAbove, spaceBelow)
-  return Math.max(260, Math.min(650, viewport.value.height - 24, available))
-})
-
-const windowStyle = computed(() => {
-  const spaceAbove = effectiveTop.value - WINDOW_GAP - 8
-  const spaceBelow = viewport.value.height - (effectiveTop.value + LAUNCHER_SIZE + WINDOW_GAP) - 8
-  const openBelow = spaceBelow > spaceAbove
-
-  return {
-    left: windowOpensRight.value ? '0' : 'auto',
-    right: windowOpensRight.value ? 'auto' : '0',
-    ...(openBelow
-      ? { top: `${LAUNCHER_SIZE + WINDOW_GAP}px`, bottom: 'auto' }
-      : { bottom: `${LAUNCHER_SIZE + WINDOW_GAP}px`, top: 'auto' }),
-    maxHeight: `${windowMaxHeight.value}px`,
-  }
-})
-
-// Header (~72px) + quick row (~46px) + composer (~84px) + paddings ~= 214px
-const messagesMinHeight = computed(
-  () => `${Math.max(48, Math.min(260, windowMaxHeight.value - 214))}px`,
-)
-
-function onLauncherPointerDown(event: PointerEvent) {
-  if (event.button !== 0) return
-
-  dragStartX = event.clientX
-  dragStartY = event.clientY
-  dragOriginX = effectiveLeft.value
-  dragOriginY = effectiveTop.value
-  dragMoved = false
-
-  window.addEventListener('pointermove', onLauncherPointerMove)
-  window.addEventListener('pointerup', onLauncherPointerUp)
-  window.addEventListener('pointercancel', onLauncherPointerCancel)
-}
-
-function onLauncherPointerMove(event: PointerEvent) {
-  const deltaX = event.clientX - dragStartX
-  const deltaY = event.clientY - dragStartY
-
-  if (!dragMoved && Math.hypot(deltaX, deltaY) > DRAG_THRESHOLD_PX) {
-    dragMoved = true
-    isDragging.value = true
-  }
-
-  if (!dragMoved) return
-
-  dragPos.value = {
-    x: clamp(dragOriginX + deltaX, 0, viewport.value.width - LAUNCHER_SIZE),
-    y: clamp(dragOriginY + deltaY, 0, viewport.value.height - LAUNCHER_SIZE),
-  }
-}
-
-function onLauncherPointerUp() {
-  removeDragListeners()
-
-  if (!dragMoved) return
-  dragMoved = false
-  isDragging.value = false
-  suppressClick = true
-
-  const launcherCenterX = dragPos.value.x + LAUNCHER_SIZE / 2
-  dockSide.value = launcherCenterX < viewport.value.width / 2 ? 'left' : 'right'
-  dockTop.value = clamp(dragPos.value.y, EDGE_MARGIN, maxLauncherTop.value)
-  persistPosition()
-}
-
-function onLauncherPointerCancel() {
-  removeDragListeners()
-  dragMoved = false
-  isDragging.value = false
-}
-
-function removeDragListeners() {
-  window.removeEventListener('pointermove', onLauncherPointerMove)
-  window.removeEventListener('pointerup', onLauncherPointerUp)
-  window.removeEventListener('pointercancel', onLauncherPointerCancel)
-}
-
-function onLauncherClick() {
-  if (suppressClick) {
-    suppressClick = false
-    return
-  }
-  toggleAssistant()
-}
-
-function persistPosition() {
-  try {
-    localStorage.setItem(
-      POSITION_STORAGE_KEY,
-      JSON.stringify({ side: dockSide.value, top: dockTop.value }),
-    )
-  } catch {
-    // Ignore storage errors (private mode, quota, ...)
-  }
-}
-
-function restorePosition() {
-  try {
-    const raw = localStorage.getItem(POSITION_STORAGE_KEY)
-    if (!raw) return
-    const saved = JSON.parse(raw) as { side?: DockSide; top?: number }
-    if (saved.side === 'left' || saved.side === 'right') dockSide.value = saved.side
-    if (typeof saved.top === 'number' && Number.isFinite(saved.top)) dockTop.value = saved.top
-  } catch {
-    // Ignore malformed storage data
-  }
-}
-
-function onViewportResize() {
-  viewport.value = { width: window.innerWidth, height: window.innerHeight }
-}
-
-onMounted(() => {
-  onViewportResize()
-  restorePosition()
-  window.addEventListener('resize', onViewportResize)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', onViewportResize)
-  removeDragListeners()
-})
 
 function closeAssistant() {
   isOpen.value = false
 }
 
-function scrollToBottom() {
-  void nextTick(() => {
-    if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight
-  })
-}
-
-async function sendMessage(value?: string) {
-  const message = (value ?? draft.value).trim()
-  if (!message || loading.value) return
-
-  messages.value.push({ id: nextId++, role: 'user', text: message })
-  const assistantId = nextId++
-  messages.value.push({
-    id: assistantId,
-    role: 'assistant',
-    text: 'Đang tra cứu',
-    status: 'thinking',
-  })
-  draft.value = ''
-  loading.value = true
-  scrollToBottom()
-
-  try {
-    const result = await waitForAssistantThinking(chatAssistantService.query(message))
-    const stockRows = buildStockTableRows(result)
-    updateAssistantMessage(assistantId, formatAssistantText(result.answer, stockRows), stockRows)
-  } catch (error) {
-    updateAssistantMessage(assistantId, error instanceof Error ? error.message : 'Lỗi khi tra cứu')
-  } finally {
-    loading.value = false
-    scrollToBottom()
-  }
-}
-
-function updateAssistantMessage(id: number, text: string, stockRows: StockTableRow[] = []) {
-  const message = messages.value.find((item) => item.id === id)
-  if (!message) return
-
-  message.text = text
-  message.status = undefined
-  message.stockRows = stockRows.length > 0 ? stockRows : undefined
-}
-
-async function waitForAssistantThinking<T>(promise: Promise<T>): Promise<T> {
-  const [settled] = await Promise.all([
-    promise.then(
-      (value) => ({ status: 'fulfilled' as const, value }),
-      (reason) => ({ status: 'rejected' as const, reason }),
-    ),
-    wait(MIN_ASSISTANT_THINKING_MS),
-  ])
-
-  if (settled.status === 'rejected') throw settled.reason
-  return settled.value
-}
-
-function askQuick(question: string) {
-  void sendMessage(question)
+function onLauncherClick() {
+  if (consumeSuppressedClick()) return
+  toggleAssistant()
 }
 
 function openFullAssistant() {
@@ -511,9 +121,35 @@ function openFullAssistant() {
   void router.push('/thread/chat-assistant')
 }
 
-function formatNumber(value: number): string {
-  return formatChatNumber(value)
+function startNewConversation() {
+  reset()
+  conversationRef.value?.focusComposer()
 }
+
+function onWindowKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || event.defaultPrevented) return
+  isOpen.value = false
+}
+
+watch(isOpen, async (open) => {
+  if (open) {
+    window.addEventListener('keydown', onWindowKeydown)
+  } else {
+    window.removeEventListener('keydown', onWindowKeydown)
+  }
+
+  await nextTick()
+
+  if (open) {
+    conversationRef.value?.focusComposer()
+  } else {
+    launcherEl.value?.focus()
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onWindowKeydown)
+})
 </script>
 
 <style scoped lang="scss">
@@ -538,496 +174,105 @@ function formatNumber(value: number): string {
 
 .assistant-launcher {
   position: relative;
-  width: 46px;
-  height: 46px;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
   border: 0;
   border-radius: 50%;
   cursor: grab;
   touch-action: none;
   color: #fff;
-  background: transparent;
-  filter: drop-shadow(0 10px 18px rgba(0, 90, 210, 0.3));
+  background: var(--q-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
 }
 
 .floating-chat-assistant.dragging .assistant-launcher {
   cursor: grabbing;
 }
 
+.floating-chat-assistant.sheet-open .assistant-launcher {
+  visibility: hidden;
+}
+
 .assistant-launcher:focus-visible {
-  outline: 3px solid rgba(0, 166, 255, 0.45);
-  outline-offset: 5px;
-}
-
-.launcher-halo {
-  position: absolute;
-  inset: -6px;
-  border-radius: 50%;
-  background: conic-gradient(from 120deg, #16c7ff, #2563eb, #00b894, #16c7ff);
-  opacity: 0.75;
-  animation: ai-halo-spin 3.8s linear infinite;
-}
-
-.launcher-halo::after {
-  content: '';
-  position: absolute;
-  inset: 5px;
-  border-radius: inherit;
-  background: #fff;
-}
-
-.launcher-core {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.78), transparent 26%),
-    linear-gradient(135deg, #0b7dff, #0755db 54%, #0abf9f);
-  box-shadow:
-    inset 0 0 0 2px rgba(255, 255, 255, 0.72),
-    inset 0 -8px 14px rgba(0, 39, 122, 0.34);
-  font-size: 24px;
-}
-
-.launcher-badge {
-  position: absolute;
-  right: -4px;
-  top: -5px;
-  min-width: 22px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #fff;
-  color: #0f5ee9;
-  font-size: 10px;
-  font-weight: 800;
-  box-shadow: 0 4px 10px rgba(10, 70, 150, 0.2);
+  outline: 2px solid var(--q-primary);
+  outline-offset: 3px;
 }
 
 .assistant-window {
   position: absolute;
-  width: min(430px, calc(100vw - 28px));
+  z-index: 1;
   display: flex;
   flex-direction: column;
+  width: min(400px, calc(100vw - 24px));
+  height: 600px;
   overflow: hidden;
-  border: 1px solid rgba(37, 99, 235, 0.14);
-  border-radius: 22px;
-  background: rgba(250, 253, 255, 0.96);
-  box-shadow:
-    0 24px 60px rgba(25, 45, 80, 0.22),
-    0 4px 14px rgba(15, 78, 160, 0.12);
-  backdrop-filter: blur(14px);
+  color: inherit;
+  background: var(--chat-surface);
+  border: 1px solid var(--chat-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.assistant-window.sheet {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  height: 100dvh;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .assistant-header {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px;
-  background: #0969f0;
-  color: #fff;
-}
-
-.assistant-identity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.assistant-avatar {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.18);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.45);
-  font-size: 25px;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  border-bottom: 1px solid var(--chat-border);
 }
 
 .assistant-title {
   font-size: 16px;
-  font-weight: 800;
-  line-height: 1.15;
-}
-
-.assistant-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.82);
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #54ffb5;
-  box-shadow: 0 0 0 4px rgba(84, 255, 181, 0.18);
+  line-height: 1.3;
 }
 
 .header-actions {
   display: flex;
-  gap: 4px;
+  gap: 2px;
 }
 
-.header-actions :deep(.q-btn) {
-  color: #fff;
+.assistant-body {
+  flex: 1 1 auto;
+  min-height: 0;
 }
-
-.assistant-messages {
-  flex: 1;
-  max-height: 390px;
-  overflow-y: auto;
-  scrollbar-color: rgba(44, 92, 130, 0.32) transparent;
-  scrollbar-width: thin;
-  padding: 18px 16px 10px;
-  background:
-    linear-gradient(180deg, rgba(225, 246, 255, 0.82), rgba(247, 252, 248, 0.9)),
-    repeating-linear-gradient(135deg, rgba(8, 93, 190, 0.04) 0 1px, transparent 1px 12px);
-}
-
-.assistant-row {
-  display: flex;
-  margin-bottom: 12px;
-}
-
-.assistant-row.assistant {
-  justify-content: flex-start;
-}
-
-.assistant-row.user {
-  justify-content: flex-end;
-}
-
-.assistant-bubble {
-  max-width: 88%;
-  padding: 10px 12px;
-  border-radius: 16px;
-  color: #223041;
-  background: #fff;
-  border: 1px solid rgba(42, 84, 125, 0.08);
-  box-shadow: 0 8px 18px rgba(20, 55, 90, 0.08);
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.assistant-bubble.with-table {
-  max-width: 100%;
-}
-
-.assistant-row.user .assistant-bubble {
-  color: #fff;
-  background: #1464f6;
-  border-color: transparent;
-  box-shadow: 0 8px 18px rgba(20, 100, 246, 0.2);
-}
-
-.assistant-bubble.thinking {
-  color: #526273;
-}
-
-.assistant-text {
-  white-space: pre-wrap;
-  line-height: 1.52;
-  font-size: 14px;
-}
-
-.stock-table-wrap {
-  margin-top: 10px;
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-color: rgba(44, 92, 130, 0.32) transparent;
-  scrollbar-width: thin;
-  border: 1px solid #d8e3ea;
-  border-radius: 12px;
-  background: #fff;
-}
-
-.stock-table {
-  width: 100%;
-  min-width: 610px;
-  border-collapse: collapse;
-  font-size: 12px;
-  line-height: 1.35;
-  overflow-wrap: normal;
-  word-break: normal;
-}
-
-.stock-table th,
-.stock-table td {
-  padding: 8px 9px;
-  border-bottom: 1px solid #e8eef2;
-  vertical-align: top;
-}
-
-.stock-table th {
-  background: #f4f8fa;
-  color: #596979;
-  font-size: 11px;
-  font-weight: 800;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.stock-table tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.number-cell {
-  text-align: right;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.quick-row {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  scrollbar-color: rgba(44, 92, 130, 0.28) transparent;
-  scrollbar-width: thin;
-  padding: 10px 14px 2px;
-  background: rgba(250, 253, 255, 0.96);
-}
-
-.quick-chip {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 34px;
-  padding: 0 12px;
-  border: 1px solid #d8e2e9;
-  border-radius: 999px;
-  color: #263442;
-  background: #fff;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-  box-shadow: 0 4px 10px rgba(35, 55, 75, 0.06);
-}
-
-.quick-chip:hover {
-  border-color: #7ab8ff;
-  color: #075bd8;
-}
-
-.quick-chip:disabled {
-  cursor: default;
-  opacity: 0.58;
-}
-
-.assistant-composer {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  align-self: stretch;
-  box-sizing: border-box;
-  padding: 12px 14px 16px;
-  background: rgba(250, 253, 255, 0.96);
-  border-top: 1px solid #e5edf2;
-}
-
-.composer-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 48px;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-width: 0;
-  min-height: 56px;
-  box-sizing: border-box;
-  padding: 4px 4px 4px 12px;
-  border-radius: 28px;
-  background: #fff;
-  box-shadow:
-    inset 0 0 0 1px #d6e4ec,
-    0 8px 18px rgba(29, 68, 104, 0.08);
-}
-
-.composer-shell:focus-within {
-  box-shadow:
-    inset 0 0 0 2px rgba(20, 100, 246, 0.32),
-    0 10px 22px rgba(29, 68, 104, 0.1);
-}
-
-.composer-input {
-  display: block;
-  min-width: 0;
-  width: 100%;
-  max-width: none;
-}
-
-.composer-input.q-field,
-.composer-input :deep(.q-field__inner),
-.composer-input :deep(.q-field__control-container) {
-  width: 100%;
-  min-width: 0;
-}
-
-.composer-input :deep(.q-field__control) {
-  width: 100%;
-  min-height: 44px;
-  padding: 0;
-  border-radius: 22px;
-  background: transparent;
-}
-
-.composer-input :deep(.q-field__prepend) {
-  height: 44px;
-  padding-right: 8px;
-  color: #517085;
-}
-
-.composer-input :deep(.q-field__native),
-.composer-input :deep(textarea) {
-  width: 100%;
-  min-height: 44px;
-  padding-top: 11px;
-  padding-bottom: 9px;
-  resize: none;
-}
-
-.composer-input :deep(textarea) {
-  max-height: 90px;
-  line-height: 1.45;
-}
-
-.send-button-cell {
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  min-height: 48px;
-  max-width: 48px;
-  max-height: 48px;
-  aspect-ratio: 1 / 1;
-  display: grid;
-  place-items: center;
-  align-self: center;
-  transition: transform 120ms ease, box-shadow 120ms ease;
-}
-
-.send-button-cell :deep(.q-btn) {
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  min-height: 48px;
-  max-width: 48px;
-  max-height: 48px;
-  padding: 0;
-  border-radius: 50%;
-  box-shadow: 0 8px 16px rgba(20, 100, 246, 0.18);
-}
-
-.send-button-cell:active {
-  transform: scale(0.96);
-}
-
-.send-button-cell:active :deep(.q-btn) {
-  box-shadow: 0 5px 12px rgba(20, 100, 246, 0.14);
-}
-
-.send-button-cell :deep(.q-btn__content) {
-  width: 48px;
-  height: 48px;
-  min-height: 48px;
-}
-
-.send-button-cell :deep(.q-icon) {
-  font-size: 20px;
-}
-
-.assistant-messages::-webkit-scrollbar,
-.stock-table-wrap::-webkit-scrollbar,
-.quick-row::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-.assistant-messages::-webkit-scrollbar-track,
-.stock-table-wrap::-webkit-scrollbar-track,
-.quick-row::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.assistant-messages::-webkit-scrollbar-thumb,
-.stock-table-wrap::-webkit-scrollbar-thumb,
-.quick-row::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(44, 92, 130, 0.28);
-}
-
-.assistant-messages::-webkit-scrollbar-thumb:hover,
-.stock-table-wrap::-webkit-scrollbar-thumb:hover,
-.quick-row::-webkit-scrollbar-thumb:hover {
-  background: rgba(44, 92, 130, 0.42);
-}
-
-.thinking-dots {
-  display: inline-flex;
-  gap: 4px;
-  margin-left: 6px;
-  vertical-align: middle;
-}
-
-.thinking-dots span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentcolor;
-  opacity: 0.36;
-  animation: thinking-pulse 1s infinite ease-in-out;
-}
-
-.thinking-dots span:nth-child(2) { animation-delay: 0.16s; }
-.thinking-dots span:nth-child(3) { animation-delay: 0.32s; }
 
 .assistant-window-enter-active,
 .assistant-window-leave-active {
-  transition: opacity 180ms ease, transform 180ms ease;
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
 .assistant-window-enter-from,
 .assistant-window-leave-to {
   opacity: 0;
-  transform: translateY(12px) scale(0.96);
+  transform: translateY(8px);
 }
 
-@keyframes ai-halo-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes thinking-pulse {
-  0%, 80%, 100% {
-    transform: translateY(0);
-    opacity: 0.36;
+@media (prefers-reduced-motion: reduce) {
+  .floating-chat-assistant,
+  .assistant-window-enter-active,
+  .assistant-window-leave-active {
+    transition: none;
   }
 
-  40% {
-    transform: translateY(-3px);
-    opacity: 0.9;
-  }
-}
-
-@media (max-width: 599px) {
-  .assistant-window {
-    width: calc(100vw - 24px);
-    border-radius: 18px;
-  }
-
-  .assistant-messages {
-    max-height: calc(100vh - 320px);
+  .assistant-window-enter-from,
+  .assistant-window-leave-to {
+    transform: none;
   }
 }
 </style>

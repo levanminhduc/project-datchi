@@ -1,0 +1,15 @@
+.chat-assistant {
+  --chat-surface: #ffffff;
+  --chat-border: rgba(0, 0, 0, 0.12);
+  --chat-muted: #616161;
+  --chat-user-bg: #f0f2f5;
+  --chat-hover: rgba(0, 0, 0, 0.05);
+}
+
+.body--dark .chat-assistant {
+  --chat-surface: #1e1e1e;
+  --chat-border: rgba(255, 255, 255, 0.14);
+  --chat-muted: #bdbdbd;
+  --chat-user-bg: #2c2f36;
+  --chat-hover: rgba(255, 255, 255, 0.08);
+}
