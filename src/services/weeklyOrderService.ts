@@ -648,6 +648,12 @@ export const weeklyOrderService = {
     }
   },
 
+  async getLeaderPendingCount(): Promise<number> {
+    const response = await fetchApi<ApiResponse<{ count: number }>>(`${BASE}/leader-review/pending-count`)
+    if (response.error) throw new Error(response.error)
+    return response.data?.count ?? 0
+  },
+
   async leaderSign(id: number): Promise<ThreadOrderWeek> {
     const response = await fetchApi<ApiResponse<ThreadOrderWeek>>(`${BASE}/${id}/leader-sign`, {
       method: 'PATCH',

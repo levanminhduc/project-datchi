@@ -11,6 +11,8 @@ import { useVersionCheck } from "./composables/useVersionCheck";
 import AnnouncementPopup from './components/ui/AnnouncementPopup.vue'
 import ApprovedOrdersPopup from './components/notifications/ApprovedOrdersPopup.vue'
 import type { Notification } from '@/types/notification'
+import type { NavItem } from '@/types/navigation'
+import { useLeaderPendingCount } from './composables/thread/use-leader-pending-count'
 import NetworkStatusBanner from './components/ui/feedback/NetworkStatusBanner.vue'
 import AppLoading from './components/ui/AppLoading.vue'
 import { useAnnouncements } from './composables/use-announcements'
@@ -23,6 +25,11 @@ const { init: initDarkMode } = useDarkMode();
 const { isOpen, navItems, toggle } = useSidebar();
 const { notifications, startPolling, stopPolling } = useNotifications();
 const { isAuthenticated, tempPassword, isLoading, hasPermission } = useAuth();
+const {
+  pendingCount: leaderPendingCount,
+  startPolling: startLeaderPendingPolling,
+  stopPolling: stopLeaderPendingPolling,
+} = useLeaderPendingCount();
 const { startVersionCheck, stopVersionCheck } = useVersionCheck();
 const {
   currentAnnouncement,
@@ -61,6 +68,29 @@ const showFloatingChatAssistant = computed(() =>
   && route.path !== '/thread/chat-assistant'
   && hasPermission('chat.assistant.use')
 )
+
+const LEADER_REVIEW_PATH = '/thread/weekly-order/leader-review'
+
+const canLeaderSign = computed(() => showSidebar.value && hasPermission('thread.leader.sign'))
+
+const sidebarItems = computed<NavItem[]>(() =>
+  navItems.map(item => ({
+    ...item,
+    children: item.children?.map(child =>
+      child.to === LEADER_REVIEW_PATH && leaderPendingCount.value > 0
+        ? { ...child, badge: leaderPendingCount.value }
+        : child
+    ),
+  }))
+)
+
+watch(canLeaderSign, (can) => {
+  if (can) {
+    startLeaderPendingPolling()
+  } else {
+    stopLeaderPendingPolling()
+  }
+}, { immediate: true })
 
 const approvedPopupOpen = ref(false)
 const dismissedApprovedThisSession = ref(false)
@@ -133,7 +163,7 @@ onMounted(() => {
       <q-scroll-area class="fit">
         <q-list>
           <SidebarItem
-            v-for="item in navItems"
+            v-for="item in sidebarItems"
             :key="item.label"
             :item="item"
           />

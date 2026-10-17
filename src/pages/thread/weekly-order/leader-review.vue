@@ -437,6 +437,7 @@ import AppInput from '@/components/ui/inputs/AppInput.vue'
 import ResultsSummaryTable from '@/components/thread/weekly-order/ResultsSummaryTable.vue'
 import { exportOrderResults, type ExportWeekMeta } from '@/composables/thread/useWeeklyOrderExport'
 import { openRouteInTab } from '@/utils/open-tab'
+import { useLeaderPendingCount } from '@/composables/thread/use-leader-pending-count'
 
 definePage({
   meta: {
@@ -448,6 +449,7 @@ definePage({
 const PAGE_SIZE = 10
 
 const snackbar = useSnackbar()
+const { refresh: refreshLeaderPendingCount } = useLeaderPendingCount()
 const activeTab = ref('pending')
 const loading = ref(false)
 const orders = ref<LeaderReviewItem[]>([])
@@ -582,6 +584,7 @@ async function handleSign() {
     await weeklyOrderService.leaderSign(signingOrder.value.id)
     snackbar.success('Đã ký duyệt thành công')
     showConfirmDialog.value = false
+    refreshLeaderPendingCount()
     await fetchData()
     if (signedLoaded.value) {
       fetchSignedData()

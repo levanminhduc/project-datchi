@@ -569,6 +569,20 @@ core.get('/history-by-week', requirePermission('thread.allocations.view'), async
   }
 })
 
+core.get('/leader-review/pending-count', requirePermission('thread.leader.sign'), async (c) => {
+  try {
+    const count = await queryCount(
+      `SELECT count(*)::int AS count FROM thread_order_weeks w
+       WHERE w.status = 'CONFIRMED' AND w.leader_signed_by IS NULL`,
+      [],
+    )
+    return c.json({ data: { count: count ?? 0 }, error: null })
+  } catch (err) {
+    console.error('Error fetching leader review pending count:', err)
+    return c.json({ data: null, error: getErrorMessage(err) }, 500)
+  }
+})
+
 core.get('/leader-review', requirePermission('thread.leader.sign'), async (c) => {
   try {
     const signed = c.req.query('signed') === 'true'
