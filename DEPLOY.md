@@ -161,6 +161,22 @@ Checklist trên trình duyệt (`http://<ip-máy-chủ>:8080`):
 - [ ] Tạo bài nháp, thêm 1 ảnh, lưu: file mới xuất hiện trong `D:\datchi\storage\guide-images\guides\`. Xóa bài nháp đó sau khi test.
 - [ ] Mở trợ lý AI, hỏi "Tồn kho chỉ C9700 còn bao nhiêu?": có câu trả lời, và `D:\datchi\ai-logs\usage-<năm-tháng>.jsonl` có thêm 1 dòng. Không thấy mục trợ lý AI thì kiểm tra migration `20261014120000_add_chat_assistant_permission.sql` đã chạy chưa (mục 3).
 
+### 2.6 Trợ lý AI: chi phí, đổi khoá, đổi model
+
+Xem chi phí AI theo tháng (đọc từ `ai-logs`):
+
+```powershell
+docker compose -f docker-compose.ghcr.yml --env-file .env.docker exec ai-assistant python -m app.usage_report 2026-10
+```
+
+Đổi khoá API, model hoặc nhà cung cấp: sửa `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` / `AI_PROVIDER` trong `.env.docker`, rồi tạo lại riêng container AI (backend không cần khởi động lại):
+
+```powershell
+docker compose -f docker-compose.ghcr.yml --env-file .env.docker up -d ai-assistant
+```
+
+Đổi `CHATBOT_INTERNAL_TOKEN` thì phải `up -d` lại **cả** `backend` và `ai-assistant`.
+
 ## 3. Cập nhật version mới
 
 > Máy đang chạy chưa có container `ai-assistant` (lần đầu thêm trợ lý AI): làm theo [mục 6.3](#63-thêm-trợ-lý-ai-cho-máy-đang-chạy) thay cho mục này.
@@ -202,7 +218,7 @@ pg_dump -h 127.0.0.1 -U postgres -d datchi -Fc --no-owner --no-privileges --sche
 Compress-Archive -Path storage\* -DestinationPath "backups\storage_$ts.zip"
 ```
 
-Copy sang **máy mới**: `backups\db_<ts>.dump`, `backups\storage_<ts>.zip`, `.env.docker`, `docker-compose.ghcr.yml`, `migrations-applied.txt`.
+Copy sang **máy mới**: `backups\db_<ts>.dump`, `backups\storage_<ts>.zip`, `.env.docker`, `docker-compose.ghcr.yml`, `migrations-applied.txt`, và thư mục `ai-logs` nếu muốn giữ lịch sử chi phí AI.
 
 Trên **máy mới** (đã làm xong mục 2.1 → 2.3, **chưa** chạy `up`):
 
@@ -232,7 +248,7 @@ psql -h 127.0.0.1 -U postgres -d datchi -tAc "SELECT DISTINCT m[1] FROM guides g
 
 ## 5. Backup định kỳ
 
-Chạy lệnh backup ở mục 4 ("máy cũ") theo lịch bằng Task Scheduler, ví dụ mỗi đêm. Giữ ít nhất 7 bản gần nhất và copy ra ổ hoặc máy khác. Backup phải có **cả** file `db_*.dump` lẫn `storage_*.zip` của cùng thời điểm.
+Chạy lệnh backup ở mục 4 ("máy cũ") theo lịch bằng Task Scheduler, ví dụ mỗi đêm. Giữ ít nhất 7 bản gần nhất và copy ra ổ hoặc máy khác. Backup phải có **cả** file `db_*.dump` lẫn `storage_*.zip` của cùng thời điểm. Thư mục `ai-logs` chỉ chứa log chi phí AI, không cần cho việc restore; muốn giữ lịch sử chi phí thì copy định kỳ.
 
 Trên máy dev có source (Git Bash) có sẵn script tương đương:
 
@@ -280,8 +296,9 @@ Dùng cho máy đã chạy backend + frontend, chưa có container `ai-assistant
    ```
 2. **Chạy migration** theo [mục 3](#3-cập-nhật-version-mới) bước 2, với mọi file mới chưa có trong `migrations-applied.txt`. Bắt buộc có `20261014120000_add_chat_assistant_permission.sql` (quyền dùng trợ lý AI). Kiểm tra:
    ```powershell
-   psql -h 127.0.0.1 -U postgres -d datchi -tAc "SELECT count(*) FROM permissions WHERE code = 'chat.assistant.use'"   # phải ra 1
+   psql -h 127.0.0.1 -U postgres -d datchi -tAc "SELECT count(*) FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE p.code = 'chat.assistant.use'"   # phải ra 6 (admin, warehouse_manager, warehouse_staff, planning, production, viewer)
    ```
+   Ra `0` là migration chưa chạy. Migration dùng `ON CONFLICT DO NOTHING` nên chạy lại cũng an toàn.
 3. **Tải file compose mới** (chỉ file này):
    ```powershell
    $raw = "https://raw.githubusercontent.com/levanminhduc/project-datchi/main"
@@ -357,7 +374,7 @@ Cấu hình GitHub:
 | App chạy nhưng thiếu tính năng mới / lỗi SQL "column does not exist" | Chưa chạy migration mới (mục 3) hoặc image `latest` chưa được build lại (mục 7) |
 | Port đã dùng | Đổi `FRONTEND_PORT` / `BACKEND_PORT` |
 | `ai-assistant` restart liên tục, log `Missing APP_DATCHI_BASE_URL or APP_DATCHI_INTERNAL_TOKEN` | Chưa đặt `CHATBOT_INTERNAL_TOKEN` trong `.env.docker`, hoặc chạy compose thiếu `--env-file` |
-| Chatbot báo "Trợ lý AI chưa được bật" | Backend không thấy `CHATBOT_INTERNAL_TOKEN`: đặt biến rồi `up -d` lại |
+| Chatbot báo "Trợ lý AI chưa được bật", hoặc chỉ trả lời kiểu tra mã màu đơn giản | Backend không thấy `CHATBOT_INTERNAL_TOKEN` nên dùng chế độ tra cứu cũ: đặt biến rồi `up -d` lại |
 | Chatbot báo "Không thể kết nối trợ lý AI" | Container `ai-assistant` không chạy (`ps`, `logs ai-assistant`) |
 | Chatbot báo "Không được phép gọi trợ lý" | Token hai bên lệch: sửa `.env.docker` xong phải `up -d` lại **cả** backend và `ai-assistant` |
 | Chatbot báo "Trợ lý AI phản hồi quá thời gian" | Model chậm hoặc câu hỏi cần nhiều công cụ: tăng `AI_TOTAL_TIMEOUT_S` và `CHATBOT_REQUEST_TIMEOUT_MS` |

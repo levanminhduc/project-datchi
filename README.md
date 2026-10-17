@@ -19,6 +19,7 @@ Hệ thống quản lý toàn diện cho kho chỉ trong nhà máy may:
 - **Tính toán chỉ:** Thread requirements per style/quantity
 - **HR & RBAC:** Nhân viên, vai trò, phân quyền chi tiết
 - **Mobile:** Trang mobile cho receive/issue/recovery + QR scanning
+- **Trợ lý AI:** Hỏi đáp tồn kho, mã hàng, PO, tuần đặt hàng, xuất kho V2, phân bổ bộ phận theo quyền của người hỏi
 
 ---
 
@@ -59,17 +60,19 @@ cp .env.example .env
 #        SUPABASE_JWT_SECRET, VITE_API_URL
 ```
 
-### Chatbot service
+### Trợ lý AI
 
-`/api/chat-assistant/query` có thể proxy sang repo `datchi-chatbot-service` khi bật env:
+Model AI chạy ở repo riêng [`ai-assistant-service`](https://github.com/levanminhduc/ai-assistant-service) (FastAPI, port 8010). Backend chỉ cung cấp công cụ tra cứu, không giữ khoá API AI. Bật ở local:
 
 ```bash
 CHATBOT_SERVICE_URL=http://127.0.0.1:8010
-CHATBOT_INTERNAL_TOKEN=change-me
-CHATBOT_REQUEST_TIMEOUT_MS=15000
+CHATBOT_INTERNAL_TOKEN=<giống APP_DATCHI_INTERNAL_TOKEN bên service>
+CHATBOT_REQUEST_TIMEOUT_MS=28000
 ```
 
-Luồng khi bật: Vue → Hono `/api/chat-assistant/query` → FastAPI `/v1/chat/query` → Hono data APIs. Hono vẫn forward `Authorization` của user sang FastAPI; FastAPI dùng token đó khi gọi lại data API. Nếu chưa cấu hình `CHATBOT_SERVICE_URL` hoặc `CHATBOT_INTERNAL_TOKEN`, route giữ fallback tra cứu rule-based cũ.
+Luồng: Vue → Hono `POST /api/chat-assistant/query` → service `POST /v1/chat` → model chọn công cụ → service gọi lại Hono `GET /api/ai/tools`, `POST /api/ai/tools/:name` kèm `Authorization` của người hỏi + `X-Internal-Token`. Mỗi công cụ (`server/ai-tools/tools/`) chỉ gọi lại các GET endpoint có sẵn trong allowlist (`server/ai-tools/internal-fetch.ts`), nên người hỏi chỉ thấy dữ liệu họ có quyền xem. Thiếu `CHATBOT_SERVICE_URL` hoặc `CHATBOT_INTERNAL_TOKEN` thì route dùng tra cứu rule-based cũ.
+
+Test: `npm run test:ai`. Deploy prod: [`DEPLOY.md`](DEPLOY.md) (container `ai-assistant` trong `docker-compose.ghcr.yml`).
 
 ### Lệnh khác
 
@@ -127,6 +130,7 @@ project-datchi/
 │   ├── migrations/               # 97 SQL migrations
 │   └── schema/                   # Full schema snapshots
 ├── docker-compose.yml            # 2 containers: frontend + backend
+├── docker-compose.ghcr.yml       # Prod: frontend + backend + ai-assistant, pull từ GHCR
 ├── Dockerfile.frontend           # 3-stage multi-stage build (nginx:8080)
 ├── Dockerfile.backend            # 3-stage multi-stage build (Hono:3010)
 └── nginx.docker.conf             # Brotli + gzip + security headers
@@ -164,6 +168,7 @@ UI Components (67 ui + 48 thread)
 | [`docs/code-standards.md`](docs/code-standards.md) | Coding patterns, anti-patterns, pre-commit |
 | [`docs/project-roadmap.md`](docs/project-roadmap.md) | Milestones, planned features, technical debt |
 | [`docs/docker-deployment.md`](docs/docker-deployment.md) | Docker build, nginx, known issues |
+| [`DEPLOY.md`](DEPLOY.md) | Deploy prod, cập nhật, backup, chuyển máy, trợ lý AI |
 
 ---
 

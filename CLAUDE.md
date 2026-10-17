@@ -31,6 +31,7 @@ Core invariant: a thread type identity = exact combination of Supplier (NCC) + T
 | Realtime | LISTEN/NOTIFY + SSE | PostgreSQL native |
 | Storage | Filesystem (STORAGE_DIR) | guide images saved locally |
 | Testing | Playwright | 1.58.2 |
+| AI assistant | `server/ai-tools` (tools) + separate repo `ai-assistant-service` (FastAPI, model loop) | Claude Sonnet 5.5 default |
 
 ## 3. Dev Commands
 
@@ -47,6 +48,7 @@ npm run build           # type-check + vite build
 npm run e2e             # Playwright headless
 npm run e2e:ui          # Playwright UI mode
 npm run e2e:headed      # Playwright headed
+npm run test:ai         # AI tools + chat-assistant tests (stubbed DB)
 
 psql -h 127.0.0.1 -p 5432 -U postgres -d datchi   # Connect to DB (local credentials: postgres:postgres)
 PGPASSWORD=postgres psql -h 127.0.0.1 -p 5432 -U postgres -d datchi -c "SELECT 1;"   # Non-interactive DB query example
@@ -83,3 +85,18 @@ Deeper explanations and examples (read on demand):
 | `.claude/docs/auth-permissions.md` | JWT sign/verify (jose), requirePermission, adding permissions |
 | `.claude/docs/weekly-order-issue-recovery.md` | Weekly order flow, Issue V2, recovery, loans, schema exceptions |
 | `.claude/docs/safety-and-workflow.md` | Dangerous commands, surgical changes, pre-commit checklist |
+
+## 6. AI Assistant (chatbot)
+
+Flow: Vue → `POST /api/chat-assistant/query` → `ai-assistant-service` `POST /v1/chat` (sibling repo `../ai-assistant-service`) → model picks tools → service calls back `GET /api/ai/tools` / `POST /api/ai/tools/:name` with the asker's `Authorization` + `X-Internal-Token` (`CHATBOT_INTERNAL_TOKEN`). The model prompt lives in two places: `SERVICE_RULES` in the service's `app/agent.py` (generic) and `server/ai-tools/instructions.ts` (datchi glossary + tool routing hints).
+
+Adding a tool:
+
+1. Create `server/ai-tools/tools/<name>.ts` with `defineTool({ name, description, permissions, input, run })`. Tools read data only through `ctx.get(path, zodSchema)`, which calls existing GET endpoints as the asker — no direct SQL, no writes.
+2. Add each new path regex to `ALLOWED_PATHS` in `server/ai-tools/internal-fetch.ts`; register the tool in `server/ai-tools/registry.ts`.
+3. `permissions` must cover every endpoint the tool (and the tools it depends on for IDs) calls, so the tool is hidden when it would 403.
+4. Description and field explanations in Vietnamese; add routing hints to `instructions.ts` when the model must chain tools.
+5. Tests in `server/ai-tools/tools/*.test.ts` via `buildAiTestApp` + `withStubbedPool` (stubs `pool.query`, `pool.connect` throws); add the file to `test:ai` in `package.json`.
+6. In `ai-assistant-service`, regenerate `tests/datchi_tools.json` from `AI_TOOLS` and update the tool count asserted in the provider tests.
+
+Prod: container `ai-assistant` in `docker-compose.ghcr.yml`, setup and troubleshooting in `DEPLOY.md` (sections 2.6, 6.3, 8).
