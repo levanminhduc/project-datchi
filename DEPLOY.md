@@ -163,6 +163,8 @@ Checklist trên trình duyệt (`http://<ip-máy-chủ>:8080`):
 
 ## 3. Cập nhật version mới
 
+> Máy đang chạy chưa có container `ai-assistant` (lần đầu thêm trợ lý AI): làm theo [mục 6.3](#63-thêm-trợ-lý-ai-cho-máy-đang-chạy) thay cho mục này.
+
 1. **Backup trước** (lệnh ở [mục 4](#4-chuyển-sang-máy-khác--restore), phần "máy cũ").
 2. **Chạy migration DB mới (nếu có).** Image **không** tự chạy migration, và DB không có bảng ghi lại migration đã chạy, nên phải tự quản bằng `migrations-applied.txt`.
    - Bên dev gửi kèm mỗi bản phát hành danh sách file migration mới. Lấy danh sách bằng:
@@ -265,6 +267,58 @@ Volume cũ vẫn giữ nguyên làm dự phòng (`docker volume ls`). Chỉ xóa
 ### 6.2 Máy vẫn đang chạy bản Supabase
 
 Không nâng cấp thẳng được. Phải chuyển dữ liệu Supabase sang PostgreSQL thuần và lấy ảnh ra từ Supabase Storage trước. Liên hệ dev để làm theo quy trình migration riêng.
+
+### 6.3 Thêm trợ lý AI cho máy đang chạy
+
+Dùng cho máy đã chạy backend + frontend, chưa có container `ai-assistant`. Làm lần lượt từng bước. **Không** tải `.env.docker.example` đè lên `.env.docker` đang dùng (sẽ mất `DATABASE_URL`, `JWT_SIGNING_SECRET` thật).
+
+1. **Backup** DB và storage (lệnh ở [mục 4](#4-chuyển-sang-máy-khác--restore), phần "máy cũ"). Lưu thêm bản sao cấu hình:
+   ```powershell
+   cd D:\datchi
+   Copy-Item docker-compose.ghcr.yml backups\docker-compose.ghcr.yml.bak
+   Copy-Item .env.docker backups\.env.docker.bak
+   ```
+2. **Chạy migration** theo [mục 3](#3-cập-nhật-version-mới) bước 2, với mọi file mới chưa có trong `migrations-applied.txt`. Bắt buộc có `20261014120000_add_chat_assistant_permission.sql` (quyền dùng trợ lý AI). Kiểm tra:
+   ```powershell
+   psql -h 127.0.0.1 -U postgres -d datchi -tAc "SELECT count(*) FROM permissions WHERE code = 'chat.assistant.use'"   # phải ra 1
+   ```
+3. **Tải file compose mới** (chỉ file này):
+   ```powershell
+   $raw = "https://raw.githubusercontent.com/levanminhduc/project-datchi/main"
+   curl.exe -fsSL "$raw/docker-compose.ghcr.yml" -o docker-compose.ghcr.yml
+   Select-String -Path docker-compose.ghcr.yml -Pattern "ai-assistant:"   # phải thấy 1 dòng
+   ```
+4. **Tạo token nội bộ** và ghi lại chuỗi in ra:
+   ```powershell
+   -join (1..32 | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+   ```
+5. **Sửa `.env.docker`** bằng `notepad .env.docker`:
+   - Xóa mọi dòng cũ bắt đầu bằng `CHATBOT_` hoặc `# CHATBOT_` (bản cũ có `CHATBOT_REQUEST_TIMEOUT_MS=15000`, để lại sẽ làm backend cắt ngang câu trả lời).
+   - Dán khối sau vào cuối file, thay `<token bước 4>` và `<khoá API Anthropic>`, rồi lưu:
+     ```
+     CHATBOT_INTERNAL_TOKEN=<token bước 4>
+     CHATBOT_REQUEST_TIMEOUT_MS=28000
+     AI_PROVIDER=anthropic
+     ANTHROPIC_API_KEY=<khoá API Anthropic>
+     ANTHROPIC_MODEL=claude-sonnet-5-5
+     AI_LOG_HOST_DIR=./ai-logs
+     ```
+   - Kiểm tra mỗi biến chỉ xuất hiện 1 lần:
+     ```powershell
+     Select-String -Path .env.docker -Pattern '^(CHATBOT_|AI_|ANTHROPIC_)'
+     ```
+6. **Tạo thư mục log** và chạy:
+   ```powershell
+   New-Item -ItemType Directory -Force ai-logs | Out-Null
+   docker compose -f docker-compose.ghcr.yml --env-file .env.docker pull
+   docker compose -f docker-compose.ghcr.yml --env-file .env.docker up -d
+   ```
+7. **Kiểm tra** theo [mục 2.5](#25-kiểm-tra-sau-deploy): `ps` phải có 3 container `backend`, `frontend`, `ai-assistant` đều `(healthy)`, hai lệnh `exec ... /health` đều in ra `ok`, và hỏi thử trợ lý AI trên trình duyệt có câu trả lời. Xác nhận đang dùng Sonnet:
+   ```powershell
+   docker compose -f docker-compose.ghcr.yml --env-file .env.docker logs ai-assistant | Select-String "outcome=" | Select-Object -Last 1   # có model=claude-sonnet-5-5
+   ```
+
+Lỗi thì tra bảng [mục 8](#8-xử-lý-sự-cố). Trợ lý AI lỗi không ảnh hưởng phần còn lại của app. Muốn tắt tạm: `docker compose -f docker-compose.ghcr.yml --env-file .env.docker stop ai-assistant`. Muốn quay về hẳn bản cũ: chép lại 2 file `.bak` ở bước 1 rồi `up -d --remove-orphans`.
 
 ## 7. Phát hành bản mới (phía dev)
 
