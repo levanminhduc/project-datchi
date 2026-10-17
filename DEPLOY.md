@@ -13,9 +13,25 @@ Trình duyệt ──► frontend (nginx, :8080) ──/api──► backend (Ho
                               PostgreSQL 17 trên máy host        Thư mục .\storage trên máy host
 ```
 
+Trợ lý AI chạy trong container `ai-assistant` cùng compose. Hai container gọi nhau bằng tên service trong mạng nội bộ của compose, `ai-assistant` không mở port ra máy host:
+
+```
+Trình duyệt ──► frontend ──/api/chat-assistant──► backend:3000
+                                                     │ CHATBOT_SERVICE_URL
+                                                     ▼
+                                              ai-assistant:8010 ──► Claude / OpenAI / Gemini (internet)
+                                                     │ APP_DATCHI_BASE_URL
+                                                     ▼
+                                              backend:3000/api/ai/tools/... (token của người hỏi)
+```
+
+Cả hai chiều xác thực bằng cùng một `CHATBOT_INTERNAL_TOKEN`. Khoá API AI chỉ nằm trong container `ai-assistant`.
+
 | Thành phần | Nằm ở đâu | Backup bằng |
 |---|---|---|
 | Image `datchi-frontend`, `datchi-backend` | `ghcr.io/levanminhduc/...` (public) | Không cần, pull lại được |
+| Image `ai-assistant-service` | `ghcr.io/levanminhduc/ai-assistant-service` | Không cần, pull lại được |
+| Log chi phí AI | Thư mục `AI_LOG_HOST_DIR` (mặc định `.\ai-logs`) | Copy thư mục nếu cần giữ lịch sử chi phí |
 | Dữ liệu (bài viết, tồn kho, user…) | PostgreSQL trên host, DB `datchi` | `pg_dump` |
 | **Ảnh bài hướng dẫn** | Thư mục `STORAGE_HOST_DIR` (mặc định `.\storage`) | **Copy nguyên thư mục** |
 | Cấu hình | `.env.docker` | Copy file (có secret, giữ kín) |
@@ -32,6 +48,7 @@ D:\datchi\
 ├── .env.docker
 ├── migrations-applied.txt              ← nhật ký migration đã chạy (mục 3)
 ├── storage\guide-images\guides\*.webp   ← ảnh bài hướng dẫn
+├── ai-logs\usage-YYYY-MM.jsonl          ← log token/chi phí trợ lý AI
 └── backups\                             ← file backup
 ```
 
@@ -49,11 +66,13 @@ D:\datchi\
 - Docker Desktop (Windows) hoặc Docker Engine + Compose v2.
 - PostgreSQL 17, có `psql`, `pg_dump`, `pg_restore` trong PATH (`C:\Program Files\PostgreSQL\17\bin`).
 - Image đang để public nên **không cần** `docker login`. Nếu sau này chuyển sang private: tạo GitHub PAT (classic) quyền `read:packages` rồi chạy `docker login ghcr.io -u <GITHUB_USERNAME>` và dán PAT làm mật khẩu.
+- Image `ai-assistant-service` cũng phải public (GitHub → Packages → `ai-assistant-service` → Package settings → Change visibility → Public), hoặc máy chủ phải `docker login ghcr.io` như trên. Package mới tạo mặc định là private.
+- Máy chủ phải ra được internet tới nhà cung cấp AI (`api.anthropic.com`, hoặc OpenAI/Gemini nếu đổi `AI_PROVIDER`).
 
 ### 2.2 Lấy file cấu hình
 
 ```powershell
-New-Item -ItemType Directory -Force D:\datchi\storage, D:\datchi\backups | Out-Null
+New-Item -ItemType Directory -Force D:\datchi\storage, D:\datchi\backups, D:\datchi\ai-logs | Out-Null
 cd D:\datchi
 $raw = "https://raw.githubusercontent.com/levanminhduc/project-datchi/main"
 curl.exe -fsSL "$raw/docker-compose.ghcr.yml" -o docker-compose.ghcr.yml
@@ -72,7 +91,16 @@ Sửa `.env.docker` bằng Notepad:
 | `STORAGE_DIR` | Giữ nguyên `/data/storage` |
 | `STORAGE_HOST_DIR` | Thư mục ảnh trên host, mặc định `./storage` (tính từ thư mục chứa file compose) |
 | `IMAGE_TAG` | Bỏ trống = `latest`, hoặc pin một version, ví dụ `1.2.0` |
-| `TELEGRAM_*`, `CHATBOT_*` | Tùy chọn. **Không dùng thì xóa giá trị mẫu, để trống** |
+| `TELEGRAM_*` | Tùy chọn. **Không dùng thì xóa giá trị mẫu, để trống** |
+| `CHATBOT_INTERNAL_TOKEN` | Chuỗi ngẫu nhiên ≥ 32 ký tự (tạo như dưới). Backend và `ai-assistant` cùng đọc biến này. Để trống thì `ai-assistant` không khởi động được |
+| `CHATBOT_REQUEST_TIMEOUT_MS` | `28000`. Phải lớn hơn `AI_TOTAL_TIMEOUT_S` × 1000, nếu không backend cắt ngang câu trả lời |
+| `CHATBOT_SERVICE_URL` | Bỏ trống, mặc định `http://ai-assistant:8010` |
+| `AI_PROVIDER` | `anthropic` (hoặc `openai`, `gemini`) |
+| `ANTHROPIC_API_KEY` | Khoá API của nhà đang dùng (`OPENAI_API_KEY`, `GEMINI_API_KEY` nếu đổi nhà) |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` |
+| `AI_CALL_TIMEOUT_S` / `AI_TOTAL_TIMEOUT_S` | `12` / `25`. Tăng nếu hay báo "quá thời gian", nhớ tăng `CHATBOT_REQUEST_TIMEOUT_MS` theo |
+| `AI_IMAGE_TAG` | Bỏ trống = `latest`, hoặc pin tag của image `ai-assistant-service` |
+| `AI_LOG_HOST_DIR` | Thư mục log chi phí AI trên host, mặc định `./ai-logs` |
 
 Tạo secret ngẫu nhiên:
 
@@ -108,10 +136,13 @@ docker compose -f docker-compose.ghcr.yml --env-file .env.docker up -d
 ### 2.5 Kiểm tra sau deploy
 
 ```powershell
-docker compose -f docker-compose.ghcr.yml --env-file .env.docker ps     # backend, frontend: Up ... (healthy)
+docker compose -f docker-compose.ghcr.yml --env-file .env.docker ps     # backend, frontend, ai-assistant: Up ... (healthy)
 curl.exe http://127.0.0.1:3010/health                                   # {"status":"ok",...}
 curl.exe http://127.0.0.1:8080/health                                   # qua nginx, cũng phải {"status":"ok"}
 docker compose -f docker-compose.ghcr.yml --env-file .env.docker logs --tail 30 backend
+docker compose -f docker-compose.ghcr.yml --env-file .env.docker logs --tail 30 ai-assistant
+docker compose -f docker-compose.ghcr.yml --env-file .env.docker exec ai-assistant python -c "import urllib.request; print(urllib.request.urlopen('http://backend:3000/health').read())"   # ai-assistant gọi được backend
+docker compose -f docker-compose.ghcr.yml --env-file .env.docker exec backend wget -qO- http://ai-assistant:8010/health   # backend gọi được ai-assistant
 ```
 
 Log backend bình thường có các dòng:
@@ -128,6 +159,7 @@ Checklist trên trình duyệt (`http://<ip-máy-chủ>:8080`):
 - [ ] Mở trang tồn kho, số liệu hiển thị.
 - [ ] Mở một bài hướng dẫn có ảnh: ảnh hiện.
 - [ ] Tạo bài nháp, thêm 1 ảnh, lưu: file mới xuất hiện trong `D:\datchi\storage\guide-images\guides\`. Xóa bài nháp đó sau khi test.
+- [ ] Mở trợ lý AI, hỏi "Tồn kho chỉ C9700 còn bao nhiêu?": có câu trả lời, và `D:\datchi\ai-logs\usage-<năm-tháng>.jsonl` có thêm 1 dòng. Không thấy mục trợ lý AI thì kiểm tra migration `20261014120000_add_chat_assistant_permission.sql` đã chạy chưa (mục 3).
 
 ## 3. Cập nhật version mới
 
@@ -146,7 +178,7 @@ Checklist trên trình duyệt (`http://<ip-máy-chủ>:8080`):
      if ($LASTEXITCODE -eq 0) { Add-Content migrations-applied.txt $f } else { "LỖI - dừng lại, báo dev" }
      ```
      Gặp lỗi thì **dừng, không deploy image mới**, gửi dev nội dung lỗi và tên file. Không chạy lại file đã ghi trong `migrations-applied.txt`.
-3. **Pull và khởi động lại:**
+3. **Pull và khởi động lại** (pull cả image `ai-assistant-service`):
    ```powershell
    docker compose -f docker-compose.ghcr.yml --env-file .env.docker pull
    docker compose -f docker-compose.ghcr.yml --env-file .env.docker up -d
@@ -244,6 +276,8 @@ Workflow `.github/workflows/docker-publish.yml`: 2 job song song build `Dockerfi
 | Push tag `v1.2.3` | `1.2.3` + `1.2` + `<sha>` |
 | Actions → *Build & Push Docker Images* → Run workflow | Như push branch được chọn |
 
+Trợ lý AI nằm ở repo riêng `levanminhduc/ai-assistant-service`, có workflow `docker-publish.yml` cùng quy tắc tag như trên, đẩy image `ghcr.io/levanminhduc/ai-assistant-service`. Đổi công cụ AI ở backend (`server/ai-tools/`) chỉ cần build lại backend; đổi prompt, provider, bảng giá thì build lại `ai-assistant-service`.
+
 Checklist trước khi báo prod cập nhật:
 - [ ] Code đã **push** lên `origin/main`. CI chỉ build những gì có trên GitHub, commit chỉ nằm ở máy local sẽ không có trong image.
 - [ ] Run mới nhất ở tab Actions màu xanh, và thời gian build khớp commit vừa push (`gh run list --workflow docker-publish.yml -L 3`).
@@ -268,3 +302,10 @@ Cấu hình GitHub:
 | Frontend báo lỗi CORS | `FRONTEND_URL` không khớp URL đang mở app (cả `http`/`https`, IP/tên miền, port) |
 | App chạy nhưng thiếu tính năng mới / lỗi SQL "column does not exist" | Chưa chạy migration mới (mục 3) hoặc image `latest` chưa được build lại (mục 7) |
 | Port đã dùng | Đổi `FRONTEND_PORT` / `BACKEND_PORT` |
+| `ai-assistant` restart liên tục, log `Missing APP_DATCHI_BASE_URL or APP_DATCHI_INTERNAL_TOKEN` | Chưa đặt `CHATBOT_INTERNAL_TOKEN` trong `.env.docker`, hoặc chạy compose thiếu `--env-file` |
+| Chatbot báo "Trợ lý AI chưa được bật" | Backend không thấy `CHATBOT_INTERNAL_TOKEN`: đặt biến rồi `up -d` lại |
+| Chatbot báo "Không thể kết nối trợ lý AI" | Container `ai-assistant` không chạy (`ps`, `logs ai-assistant`) |
+| Chatbot báo "Không được phép gọi trợ lý" | Token hai bên lệch: sửa `.env.docker` xong phải `up -d` lại **cả** backend và `ai-assistant` |
+| Chatbot báo "Trợ lý AI phản hồi quá thời gian" | Model chậm hoặc câu hỏi cần nhiều công cụ: tăng `AI_TOTAL_TIMEOUT_S` và `CHATBOT_REQUEST_TIMEOUT_MS` |
+| Log `ai-assistant` báo lỗi xác thực / 401 từ nhà AI | Sai hoặc hết hạn `ANTHROPIC_API_KEY`, hoặc `AI_PROVIDER` không khớp khoá đã điền |
+| Pull `ai-assistant-service` báo `denied` | Package còn private: chuyển public hoặc `docker login ghcr.io` (mục 2.1) |

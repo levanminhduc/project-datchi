@@ -43,9 +43,34 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
-      CHATBOT_SERVICE_URL: ${CHATBOT_SERVICE_URL:-}
+      CHATBOT_SERVICE_URL: ${CHATBOT_SERVICE_URL:-http://ai-assistant:8010}
       CHATBOT_INTERNAL_TOKEN: ${CHATBOT_INTERNAL_TOKEN:-}
-      CHATBOT_REQUEST_TIMEOUT_MS: ${CHATBOT_REQUEST_TIMEOUT_MS:-15000}
+      CHATBOT_REQUEST_TIMEOUT_MS: ${CHATBOT_REQUEST_TIMEOUT_MS:-28000}
     volumes:
       - ${STORAGE_HOST_DIR:-./storage}:${STORAGE_DIR:-/data/storage}
+    restart: unless-stopped
+
+  ai-assistant:
+    image: ghcr.io/levanminhduc/ai-assistant-service:${AI_IMAGE_TAG:-latest}
+    init: true
+    environment:
+      AI_PROVIDER: ${AI_PROVIDER:-anthropic}
+      AI_FALLBACK_PROVIDER: ${AI_FALLBACK_PROVIDER:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-luna}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      AI_EFFORT: ${AI_EFFORT:-low}
+      AI_MAX_TOKENS: ${AI_MAX_TOKENS:-4096}
+      AI_MAX_ROUNDS: ${AI_MAX_ROUNDS:-5}
+      AI_CALL_TIMEOUT_S: ${AI_CALL_TIMEOUT_S:-12}
+      AI_TOTAL_TIMEOUT_S: ${AI_TOTAL_TIMEOUT_S:-25}
+      APP_REQUEST_TIMEOUT_S: ${APP_REQUEST_TIMEOUT_S:-12}
+      APPS: datchi
+      APP_DATCHI_BASE_URL: http://backend:3000
+      APP_DATCHI_INTERNAL_TOKEN: ${CHATBOT_INTERNAL_TOKEN:-}
+    volumes:
+      - ${AI_LOG_HOST_DIR:-./ai-logs}:/app/logs
     restart: unless-stopped
