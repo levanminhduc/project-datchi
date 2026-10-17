@@ -1,5 +1,5 @@
 import { fetchApi } from './api'
-import type { ChatAssistantResult } from '@/types/thread'
+import type { ChatAssistantResult, ChatHistoryItem } from '@/types/thread'
 
 interface ApiResponse<T> {
   data: T | null
@@ -10,10 +10,10 @@ interface ApiResponse<T> {
 const BASE = '/api/chat-assistant'
 
 export const chatAssistantService = {
-  async query(message: string): Promise<ChatAssistantResult> {
+  async query(message: string, history: ChatHistoryItem[] = []): Promise<ChatAssistantResult> {
     const response = await fetchApi<ApiResponse<ChatAssistantResult>>(`${BASE}/query`, {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, history }),
     }, {
       timeout: 30_000,
       retryOnServerBusy: false,

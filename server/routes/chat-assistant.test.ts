@@ -23,11 +23,11 @@ function buildApp(permissions: string[]) {
   return app
 }
 
-function ask(app: Hono<AppEnv>, message = 'C9700 còn bao nhiêu cuộn?') {
+function ask(app: Hono<AppEnv>, message = 'C9700 còn bao nhiêu cuộn?', history?: unknown) {
   return app.request('/query', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer abc', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify(history === undefined ? { message } : { message, history }),
   })
 }
 
@@ -89,7 +89,7 @@ async function testForwardsQuestionToService() {
     const [call] = seen
     assert.ok(call)
     assert.equal(call.url, 'http://ai.test/v1/chat')
-    assert.deepEqual(JSON.parse(String(call.init?.body)), { app: 'datchi', question: 'C9700 còn bao nhiêu cuộn?' })
+    assert.deepEqual(JSON.parse(String(call.init?.body)), { app: 'datchi', question: 'C9700 còn bao nhiêu cuộn?', history: [] })
     const headers = call.init?.headers as Record<string, string>
     assert.equal(headers['Authorization'], 'Bearer abc')
     assert.equal(headers['X-Internal-Token'], 'noi-bo')
@@ -156,6 +156,215 @@ async function testFallbackNeedsLookupPermissions() {
   })
 }
 
+const OK_PAYLOAD = { data: { answer: 'Có C9701.', tools_used: [] }, error: null }
+
+async function testForwardsTrimmedHistory() {
+  const seen: SeenCall[] = []
+  const history = [
+    { role: 'user', content: '  C9700\n\n còn   bao nhiêu cuộn?  ' },
+    { role: 'assistant', content: 'x'.repeat(2500) },
+  ]
+  await withService(SERVICE_ENV, jsonFetch(200, OK_PAYLOAD, seen), async () => {
+    const res = await ask(buildApp(['chat.assistant.use']), 'Còn màu khác không?', history)
+    assert.equal(res.status, 200)
+    const [call] = seen
+    assert.ok(call)
+    assert.deepEqual(JSON.parse(String(call.init?.body)), {
+      app: 'datchi',
+      question: 'Còn màu khác không?',
+      history: [
+        { role: 'user', content: 'C9700 còn bao nhiêu cuộn?' },
+        { role: 'assistant', content: 'x'.repeat(2000) },
+      ],
+    })
+  })
+}
+
+async function testCutsHistoryByCodePoint() {
+  const seen: SeenCall[] = []
+  const history = [
+    { role: 'user', content: 'q' },
+    { role: 'assistant', content: 'a'.repeat(1999) + '📦' + 'b'.repeat(10) },
+  ]
+  await withService(SERVICE_ENV, jsonFetch(200, OK_PAYLOAD, seen), async () => {
+    const res = await ask(buildApp(['chat.assistant.use']), 'Còn màu khác không?', history)
+    assert.equal(res.status, 200)
+    const [call] = seen
+    assert.ok(call)
+    const body = JSON.parse(String(call.init?.body)) as { history: { role: string; content: string }[] }
+    assert.deepEqual(body.history[1]?.content, 'a'.repeat(1999) + '📦')
+  })
+}
+
+async function testRejectsInvalidHistory() {
+  const user = { role: 'user', content: 'a' }
+  const assistant = { role: 'assistant', content: 'b' }
+  const cases: unknown[] = [
+    'abc',
+    {},
+    null,
+    Array.from({ length: 11 }, () => [user, assistant]).flat(),
+    [user, assistant, user],
+    [assistant, user],
+    [user],
+    [user, user],
+    [{ role: 'system', content: 'a' }, assistant],
+    [null, assistant],
+    [{ role: 'user', content: 5 }, assistant],
+  ]
+  for (const history of cases) {
+    const seen: SeenCall[] = []
+    await withService(SERVICE_ENV, jsonFetch(200, OK_PAYLOAD, seen), async () => {
+      const res = await ask(buildApp(['chat.assistant.use']), 'Còn màu khác không?', history)
+      assert.equal(res.status, 400, JSON.stringify(history))
+      assert.deepEqual(await res.json(), { data: null, error: 'Lịch sử hội thoại không hợp lệ' })
+      assert.equal(seen.length, 0)
+    })
+  }
+}
+
+async function testFallbackIgnoresHistory() {
+  await withService({}, jsonFetch(200, {}), async () => {
+    const res = await ask(buildApp(['chat.assistant.use']), 'C9700 còn bao nhiêu cuộn?', 'abc')
+    assert.equal(res.status, 403)
+    assert.deepEqual(await res.json(), { data: null, error: 'Trợ lý AI chưa được bật' })
+  })
+}
+
+async function forwardedBody(message: string, history: unknown, payload: unknown = OK_PAYLOAD) {
+  const seen: SeenCall[] = []
+  let status = 0
+  let data: unknown = null
+  await withService(SERVICE_ENV, jsonFetch(200, payload, seen), async () => {
+    const res = await ask(buildApp(['chat.assistant.use']), message, history)
+    status = res.status
+    data = await res.json()
+  })
+  const body = seen[0] ? JSON.parse(String(seen[0].init?.body)) as { question: string; history: unknown[] } : null
+  return { status, data, body }
+}
+
+async function testSanitizesControlCharacters() {
+  const history = [
+    { role: 'user', content: '\u001f' },
+    { role: 'assistant', content: 'bị bỏ' },
+    { role: 'user', content: '\ud800C9700\u0085' },
+    { role: 'assistant', content: '\ufeffCòn 120 cuộn.\u001c' },
+  ]
+  const { status, body } = await forwardedBody('\u001cC9700\ufeff còn màu khác?', history)
+  assert.equal(status, 200)
+  assert.ok(body)
+  assert.equal(body.question, 'C9700 còn màu khác?')
+  assert.deepEqual(body.history, [
+    { role: 'user', content: 'C9700' },
+    { role: 'assistant', content: 'Còn 120 cuộn.' },
+  ])
+}
+
+async function testQuestionOfControlCharactersIsRejected() {
+  await withService(SERVICE_ENV, jsonFetch(200, OK_PAYLOAD), async () => {
+    const res = await ask(buildApp(['chat.assistant.use']), '\u001c\u001d\ufeff')
+    assert.equal(res.status, 400)
+    assert.deepEqual(await res.json(), { data: null, error: 'Vui lòng nhập câu hỏi' })
+  })
+}
+
+async function testBlankPairsAreDropped() {
+  const history = [
+    { role: 'user', content: '   ' },
+    { role: 'assistant', content: 'a' },
+    { role: 'user', content: 'q' },
+    { role: 'assistant', content: '\u001e' },
+  ]
+  const { status, body } = await forwardedBody('Còn màu khác không?', history)
+  assert.equal(status, 200)
+  assert.deepEqual(body?.history, [])
+}
+
+async function testAcceptsTwentyItems() {
+  const history = Array.from({ length: 10 }, () => [
+    { role: 'user', content: 'q' },
+    { role: 'assistant', content: 'a' },
+  ]).flat()
+  const { status, body } = await forwardedBody('Còn màu khác không?', history)
+  assert.equal(status, 200)
+  assert.equal(body?.history.length, 20)
+}
+
+async function testForwardsEmptyHistory() {
+  const { status, body } = await forwardedBody('Còn màu khác không?', [])
+  assert.equal(status, 200)
+  assert.deepEqual(body?.history, [])
+}
+
+async function testForwardsAnswerKind() {
+  const refusal = { data: { answer: 'Trợ lý không trả lời được câu hỏi này.', tools_used: [], answer_kind: 'refusal' }, error: null }
+  const first = await forwardedBody('Hỏi gì đó?', undefined, refusal)
+  assert.equal((first.data as { data: { answer_kind?: string } }).data.answer_kind, 'refusal')
+
+  const unknown = { data: { answer: 'Có.', tools_used: [], answer_kind: 'xyz' }, error: null }
+  const second = await forwardedBody('Hỏi gì đó?', undefined, unknown)
+  assert.equal((second.data as { data: { answer_kind?: string } }).data.answer_kind, 'xyz')
+
+  const absent = { data: { answer: 'Có.', tools_used: [] }, error: null }
+  const fourth = await forwardedBody('Hỏi gì đó?', undefined, absent)
+  assert.equal((fourth.data as { data: { answer_kind?: string } }).data.answer_kind, undefined)
+
+  const notString = { data: { answer: 'Có.', tools_used: [], answer_kind: 5 }, error: null }
+  const fifth = await forwardedBody('Hỏi gì đó?', undefined, notString)
+  assert.equal((fifth.data as { data: { answer_kind?: string } }).data.answer_kind, undefined)
+
+  const empty = { data: { answer: '   ', tools_used: [], answer_kind: 'answer' }, error: null }
+  const third = await forwardedBody('Hỏi gì đó?', undefined, empty)
+  assert.equal((third.data as { data: { answer_kind?: string } }).data.answer_kind, 'empty')
+}
+
+async function testRejectsRawOversizedQuestion() {
+  const seen: SeenCall[] = []
+  await withService(SERVICE_ENV, jsonFetch(200, OK_PAYLOAD, seen), async () => {
+    const res = await ask(buildApp(['chat.assistant.use']), 'a'.repeat(8001))
+    assert.equal(res.status, 400)
+    assert.deepEqual(await res.json(), { data: null, error: 'Câu hỏi tối đa 2000 ký tự' })
+    assert.equal(seen.length, 0)
+  })
+}
+
+async function testCutsRawHistoryBeforeSanitizing() {
+  const history = [
+    { role: 'user', content: 'q' },
+    { role: 'assistant', content: 'a'.repeat(7999) + '📦' + 'b'.repeat(10) },
+    { role: 'user', content: '\u001f'.repeat(9000) + 'c' },
+    { role: 'assistant', content: 'd' },
+  ]
+  const { status, body } = await forwardedBody('Còn màu khác không?', history)
+  assert.equal(status, 200)
+  assert.deepEqual(body?.history, [
+    { role: 'user', content: 'q' },
+    { role: 'assistant', content: 'a'.repeat(2000) },
+  ])
+}
+
+async function testMissingAuthorizationComesBeforeHistory() {
+  await withService(SERVICE_ENV, jsonFetch(200, OK_PAYLOAD), async () => {
+    const res = await buildApp(['chat.assistant.use']).request('/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Còn màu khác không?', history: 'abc' }),
+    })
+    assert.equal(res.status, 401)
+  })
+}
+
+async function testAuthorisedFallbackIgnoresInvalidHistory() {
+  const permissions = ['chat.assistant.use', 'thread.inventory.view', 'thread.styles.view']
+  await withService({}, jsonFetch(200, {}), async () => {
+    const res = await ask(buildApp(permissions), 'xin chào', 'abc')
+    assert.equal(res.status, 200)
+    const payload = await res.json() as { data: { term: string | null } }
+    assert.equal(payload.data.term, null)
+  })
+}
+
 async function main() {
   await testRequiresChatPermission()
   await testForwardsQuestionToService()
@@ -165,6 +374,20 @@ async function main() {
   await testRejectsOverlongQuestion()
   await testServiceDetailIsNotForwarded()
   await testFallbackNeedsLookupPermissions()
+  await testForwardsTrimmedHistory()
+  await testCutsHistoryByCodePoint()
+  await testRejectsInvalidHistory()
+  await testFallbackIgnoresHistory()
+  await testSanitizesControlCharacters()
+  await testQuestionOfControlCharactersIsRejected()
+  await testBlankPairsAreDropped()
+  await testAcceptsTwentyItems()
+  await testForwardsEmptyHistory()
+  await testForwardsAnswerKind()
+  await testRejectsRawOversizedQuestion()
+  await testCutsRawHistoryBeforeSanitizing()
+  await testMissingAuthorizationComesBeforeHistory()
+  await testAuthorisedFallbackIgnoresInvalidHistory()
   console.log('chat-assistant route tests passed')
 }
 

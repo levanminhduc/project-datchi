@@ -13,6 +13,7 @@ export interface ChatMessage {
   stockRows?: StockTableRow[]
   sources?: string[]
   suggestions?: string[]
+  answerKind?: string
   createdAt: number
   question?: string
 }
@@ -22,6 +23,7 @@ export interface AssistantMessageContent {
   stockRows: StockTableRow[]
   sources: string[]
   suggestions: string[]
+  answerKind?: string
 }
 
 export interface AnswerSegment {
@@ -61,6 +63,7 @@ export function toAssistantMessage(result: ChatAssistantResult): AssistantMessag
     stockRows,
     sources: extractSources(result.context),
     suggestions: (result.suggestions ?? []).slice(0, MAX_SUGGESTIONS),
+    ...(result.answer_kind ? { answerKind: result.answer_kind } : {}),
   }
 }
 

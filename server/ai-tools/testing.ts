@@ -1,8 +1,12 @@
 import { Hono } from 'hono'
 import { pool } from '../db/pool'
+import deptAllocationsRouter from '../routes/deptAllocations'
+import employeesRouter from '../routes/employees'
 import inventoryRouter from '../routes/inventory'
+import issuesV2Router from '../routes/issuesV2'
 import purchaseOrdersRouter from '../routes/purchaseOrders'
 import stylesRouter from '../routes/styles'
+import weeklyOrderRouter from '../routes/weekly-order'
 import type { AppEnv } from '../types/hono-env'
 import { createAiToolsRouter } from './router'
 import type { AiAuth, AiTool } from './types'
@@ -17,6 +21,8 @@ function profile(employeeId: number, employeeCode: string, permissions: string[]
 export const TEST_USERS: Record<string, AiAuth> = {
   root: profile(1, 'ROOT001', ['*'], true),
   kho: profile(2, 'KHO001', ['chat.assistant.use', 'thread.inventory.view', 'thread.allocations.view']),
+  xuatkho: profile(6, 'XK001', ['chat.assistant.use', 'thread.allocations.view', 'thread.issues.return']),
+  phanbo: profile(7, 'PB001', ['chat.assistant.use', 'thread.issues.return', 'thread.dept-allocation.manage']),
   kehoach: profile(3, 'KH001', ['chat.assistant.use', 'thread.styles.view', 'thread.purchase-orders.view']),
   kythuat: profile(4, 'KT001', ['chat.assistant.use', 'thread.styles.view']),
   xem: profile(5, 'XEM001', ['chat.assistant.use']),
@@ -38,6 +44,10 @@ export function buildAiTestApp(options: { tools?: AiTool[]; timeoutMs?: number }
   app.route('/api/inventory', inventoryRouter)
   app.route('/api/styles', stylesRouter)
   app.route('/api/purchase-orders', purchaseOrdersRouter)
+  app.route('/api/weekly-orders', weeklyOrderRouter)
+  app.route('/api/issues/v2', issuesV2Router)
+  app.route('/api/employees', employeesRouter)
+  app.route('/api/dept-allocations', deptAllocationsRouter)
   app.route('/api/ai', createAiToolsRouter((request) => app.fetch(request), options))
   return app
 }

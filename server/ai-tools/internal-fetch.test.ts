@@ -58,6 +58,9 @@ async function testRejectsPathsOutsideAllowlist() {
   const get = createInternalGet(fakeFetch(200, { data: [] }, seen), 'Bearer x')
   await expectCode(get('/api/employees', schema), 'upstream_error')
   await expectCode(get('/api/inventory/summary/by-cone/abc/warehouses', schema), 'upstream_error')
+  await expectCode(get('/api/issues/v2/1/return-logs', schema), 'upstream_error')
+  await expectCode(get('/api/weekly-orders/1/warehouses', schema), 'upstream_error')
+  await expectCode(get('/api/dept-allocations/department-quota', schema), 'upstream_error')
   assert.equal(seen.length, 0, 'đường dẫn ngoài allowlist không được gọi')
 }
 

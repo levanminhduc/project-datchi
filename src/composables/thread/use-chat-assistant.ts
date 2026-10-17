@@ -5,6 +5,8 @@ import {
   toAssistantMessage,
   type ChatMessage,
 } from '@/components/thread/chat-assistant-messages'
+import type { ChatHistoryItem } from '@/types/thread'
+import { buildChatHistory } from './chat-history'
 
 const FALLBACK_ERROR = 'Không thể kết nối tới trợ lý. Vui lòng thử lại.'
 
@@ -43,11 +45,11 @@ function replaceMessage(id: number, next: ChatMessage) {
   messages.value.splice(index, 1, next)
 }
 
-async function resolveQuestion(assistantId: number, question: string) {
+async function resolveQuestion(assistantId: number, question: string, history: ChatHistoryItem[]) {
   const requestGeneration = generation
 
   try {
-    const result = await chatAssistantService.query(question)
+    const result = await chatAssistantService.query(question, history)
     if (requestGeneration !== generation) return
     replaceMessage(assistantId, {
       id: assistantId,
@@ -74,6 +76,7 @@ async function send(text: string) {
   const question = text.trim()
   if (!question || loading.value) return
 
+  const history = buildChatHistory(messages.value, messages.value.length)
   const now = Date.now()
   const assistantId = nextId + 1
   messages.value.push(
@@ -82,14 +85,16 @@ async function send(text: string) {
   )
   nextId += 2
 
-  await resolveQuestion(assistantId, question)
+  await resolveQuestion(assistantId, question, history)
 }
 
 async function retry(id: number) {
-  const target = messages.value.find((item) => item.id === id)
+  const index = messages.value.findIndex((item) => item.id === id)
+  const target = messages.value[index]
   if (!target || target.status !== 'error' || !target.question || loading.value) return
 
   const question = target.question
+  const history = buildChatHistory(messages.value, index - 1)
   replaceMessage(id, {
     id,
     role: 'assistant',
@@ -99,7 +104,7 @@ async function retry(id: number) {
     question,
   })
 
-  await resolveQuestion(id, question)
+  await resolveQuestion(id, question, history)
 }
 
 export function useChatAssistant() {

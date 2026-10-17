@@ -9,6 +9,13 @@ const ALLOWED_PATHS = [
   /^\/api\/styles$/,
   /^\/api\/styles\/\d+\/thread-specs$/,
   /^\/api\/purchase-orders$/,
+  /^\/api\/weekly-orders$/,
+  /^\/api\/weekly-orders\/\d+$/,
+  /^\/api\/weekly-orders\/\d+\/(results|reservation-summary|delivery-summary)$/,
+  /^\/api\/issues\/v2$/,
+  /^\/api\/issues\/v2\/\d+$/,
+  /^\/api\/employees\/issue-departments$/,
+  /^\/api\/dept-allocations\/(summary|logs)$/,
 ]
 
 function readMessage(body: unknown): string | null {

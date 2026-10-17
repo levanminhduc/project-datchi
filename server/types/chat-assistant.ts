@@ -1,5 +1,10 @@
 export type ChatAssistantIntent = 'stock' | 'usage'
 
+export interface ChatHistoryItem {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface ChatAssistantStockRow {
   thread_type_id: number
   thread_code: string
@@ -32,6 +37,7 @@ export interface ChatAssistantResult {
   suggestions: string[]
   source_endpoints?: string[]
   context?: unknown
+  answer_kind?: string
 }
 
 export interface SummaryRpcRow {

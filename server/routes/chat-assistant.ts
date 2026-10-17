@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Hono } from 'hono'
 import { requirePermission } from '../middleware/auth'
 import type { AppEnv } from '../types/hono-env'
-import type { ChatAssistantResult } from '../types/chat-assistant'
+import type { ChatAssistantResult, ChatHistoryItem } from '../types/chat-assistant'
 import {
   buildChatAnswer,
   CHAT_ASSISTANT_EXAMPLES,
@@ -16,9 +16,14 @@ const chatAssistant = new Hono<AppEnv>()
 
 const FALLBACK_PERMISSIONS = ['thread.inventory.view', 'thread.styles.view']
 
+const HISTORY_MAX_ITEMS = 20
+const HISTORY_CONTENT_MAX = 2000
+const RAW_TEXT_MAX = 8000
+
 interface ChatbotServiceData {
   answer?: unknown
   tools_used?: unknown
+  answer_kind?: unknown
 }
 
 interface ChatbotServiceEnvelope {
@@ -90,9 +95,10 @@ function toProxyStatus(status: number): ChatbotProxyStatus {
 }
 
 function mapChatbotData(data: ChatbotServiceData): ChatAssistantResult {
-  const answer = typeof data.answer === 'string' && data.answer.trim()
-    ? data.answer
-    : 'Trợ lý không trả về câu trả lời.'
+  const hasAnswer = typeof data.answer === 'string' && data.answer.trim() !== ''
+  const answer = typeof data.answer === 'string' && hasAnswer ? data.answer : 'Trợ lý không trả về câu trả lời.'
+  const serviceKind = typeof data.answer_kind === 'string' && data.answer_kind !== '' ? data.answer_kind : undefined
+  const answerKind = hasAnswer ? serviceKind : 'empty'
   const toolsUsed = Array.isArray(data.tools_used)
     ? data.tools_used.filter((value): value is string => typeof value === 'string')
     : []
@@ -106,12 +112,54 @@ function mapChatbotData(data: ChatbotServiceData): ChatAssistantResult {
     usage: [],
     suggestions: CHAT_ASSISTANT_EXAMPLES,
     context: { tools_used: toolsUsed },
+    ...(answerKind ? { answer_kind: answerKind } : {}),
   }
+}
+
+function cutByCodePoint(text: string, limit: number): string {
+  return Array.from(text).slice(0, limit).join('')
+}
+
+function isDroppedCodePoint(code: number): boolean {
+  if (code === 0x09 || code === 0x0a || code === 0x0d) return false
+  return code <= 0x1f
+    || (code >= 0x7f && code <= 0x9f)
+    || code === 0xfeff
+    || (code >= 0xd800 && code <= 0xdfff)
+}
+
+function sanitizeChatText(text: string): string {
+  return Array.from(text).filter((char) => !isDroppedCodePoint(char.codePointAt(0) ?? 0)).join('')
+}
+
+function parseHistoryContent(item: unknown, role: ChatHistoryItem['role']): string | null {
+  if (!item || typeof item !== 'object') return null
+  const record = item as Record<string, unknown>
+  if (record.role !== role || typeof record.content !== 'string') return null
+  const cleaned = sanitizeChatText(record.content.slice(0, RAW_TEXT_MAX))
+  const normalized = role === 'user' ? cleaned.replace(/\s+/g, ' ') : cleaned
+  return cutByCodePoint(normalized.trim(), HISTORY_CONTENT_MAX)
+}
+
+function parseHistory(value: unknown): ChatHistoryItem[] | null {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > HISTORY_MAX_ITEMS || value.length % 2 !== 0) return null
+
+  const history: ChatHistoryItem[] = []
+  for (let index = 0; index < value.length; index += 2) {
+    const question = parseHistoryContent(value[index], 'user')
+    const answer = parseHistoryContent(value[index + 1], 'assistant')
+    if (question === null || answer === null) return null
+    if (!question || !answer) continue
+    history.push({ role: 'user', content: question }, { role: 'assistant', content: answer })
+  }
+  return history
 }
 
 async function queryChatbotService(
   config: ChatbotProxyConfig,
   question: string,
+  history: ChatHistoryItem[],
   authorization: string,
   requestId: string,
 ): Promise<ChatAssistantResult> {
@@ -128,7 +176,7 @@ async function queryChatbotService(
         'X-Internal-Token': config.internalToken,
         'X-Request-Id': requestId,
       },
-      body: JSON.stringify({ app: 'datchi', question }),
+      body: JSON.stringify({ app: 'datchi', question, history }),
       signal: controller.signal,
     })
   } catch (err) {
@@ -163,8 +211,11 @@ async function queryChatbotService(
 
 chatAssistant.post('/query', requirePermission('chat.assistant.use'), async (c) => {
   try {
-    const body = await c.req.json().catch(() => null) as { message?: unknown } | null
-    const message = typeof body?.message === 'string' ? body.message.trim().replace(/\s+/g, ' ') : ''
+    const body = await c.req.json().catch(() => null) as { message?: unknown; history?: unknown } | null
+    if (typeof body?.message === 'string' && body.message.length > RAW_TEXT_MAX) {
+      return c.json({ data: null, error: 'Câu hỏi tối đa 2000 ký tự' }, 400)
+    }
+    const message = typeof body?.message === 'string' ? sanitizeChatText(body.message).trim().replace(/\s+/g, ' ') : ''
     if (!message) return c.json({ data: null, error: 'Vui lòng nhập câu hỏi' }, 400)
     if (message.length > 2000) return c.json({ data: null, error: 'Câu hỏi tối đa 2000 ký tự' }, 400)
 
@@ -174,10 +225,13 @@ chatAssistant.post('/query', requirePermission('chat.assistant.use'), async (c) 
       const authorization = c.req.header('Authorization')
       if (!authorization) return c.json({ data: null, error: 'Chưa xác thực' }, 401)
 
+      const history = parseHistory(body?.history)
+      if (!history) return c.json({ data: null, error: 'Lịch sử hội thoại không hợp lệ' }, 400)
+
       const requestId = randomUUID()
       console.log(`[chat-assistant] employee=${auth.employeeId} request_id=${requestId}`)
       try {
-        const data = await queryChatbotService(chatbotConfig, message, authorization, requestId)
+        const data = await queryChatbotService(chatbotConfig, message, history, authorization, requestId)
         return c.json({ data, error: null })
       } catch (err) {
         if (err instanceof ChatbotProxyError) {

@@ -22,6 +22,11 @@ export interface ChatAssistantUsageRow {
   meters_per_unit: number
 }
 
+export interface ChatHistoryItem {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface ChatAssistantResult {
   answer: string
   term: string | null
@@ -32,4 +37,5 @@ export interface ChatAssistantResult {
   suggestions: string[]
   source_endpoints?: string[]
   context?: unknown
+  answer_kind?: string
 }
