@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_TOOL_ROWS } from '../paging'
 import { defineTool } from '../types'
 
 const stylesSchema = z.looseObject({
@@ -12,13 +13,13 @@ const stylesSchema = z.looseObject({
 
 export const searchStyles = defineTool({
   name: 'search_styles',
-  description: 'Tìm mã hàng (style) theo mã hoặc tên, tối đa 20 kết quả. Dùng style_id để gọi get_style_thread_specs.',
+  description: 'Tìm mã hàng (style) theo mã hoặc tên, tối đa 500 kết quả. Dùng style_id để gọi get_style_thread_specs.',
   permissions: ['thread.styles.view'],
   input: z.object({
     search: z.string().trim().min(1).max(50).describe('Mã hàng hoặc tên mã hàng, ví dụ ST-001'),
   }),
   run: async (input, ctx) => {
-    const params = new URLSearchParams({ search: input.search, limit: '20' })
+    const params = new URLSearchParams({ search: input.search, limit: String(MAX_TOOL_ROWS) })
     const body = await ctx.get(`/api/styles?${params.toString()}`, stylesSchema)
     return {
       total: body.data.length,

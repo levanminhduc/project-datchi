@@ -1,9 +1,8 @@
 import { z } from 'zod'
+import { collectPages } from '../paging'
 import { defineTool } from '../types'
 
 const WEEK_STATUSES = ['DRAFT', 'CONFIRMED', 'CANCELLED'] as const
-const SCAN_LIMIT = 100
-const MAX_RESULTS = 20
 
 const weeksSchema = z.looseObject({
   data: z.array(z.looseObject({
@@ -26,10 +25,10 @@ function normalize(value: string): string {
 export const searchWeeklyOrders = defineTool({
   name: 'search_weekly_orders',
   description: [
-    'Tìm tuần đặt hàng theo tên tuần (ví dụ "Tuần 42") và/hoặc trạng thái, mới nhất trước, tối đa 20 tuần.',
+    'Tìm tuần đặt hàng theo tên tuần (ví dụ "Tuần 42") và/hoặc trạng thái, mới nhất trước, tối đa 500 tuần.',
     'Dùng week_id ở kết quả để gọi get_weekly_order (danh sách PO, mã hàng, màu hàng của tuần) hoặc get_weekly_order_threads (nhu cầu, giữ cuộn, giao hàng NCC theo loại chỉ).',
     'Trạng thái: DRAFT nháp, CONFIRMED đã xác nhận, CANCELLED đã huỷ.',
-    'Chỉ tìm trong 100 tuần mới nhất. Tài khoản không phải admin chỉ thấy tuần do chính mình tạo; không thấy tuần thì nói là không có trong danh sách tuần của người hỏi, đừng khẳng định tuần đó không tồn tại.',
+    'Chỉ tìm trong 500 tuần mới nhất. Tài khoản không phải admin chỉ thấy tuần do chính mình tạo; không thấy tuần thì nói là không có trong danh sách tuần của người hỏi, đừng khẳng định tuần đó không tồn tại.',
   ].join(' '),
   permissions: ['thread.allocations.view'],
   input: z.object({
@@ -37,16 +36,19 @@ export const searchWeeklyOrders = defineTool({
     status: z.enum(WEEK_STATUSES).optional().describe('Trạng thái tuần'),
   }),
   run: async (input, ctx) => {
-    const params = new URLSearchParams({ page: '1', limit: String(SCAN_LIMIT) })
-    if (input.status) params.set('status', input.status)
-    const body = await ctx.get(`/api/weekly-orders?${params.toString()}`, weeksSchema)
+    const { rows, total } = await collectPages(async (page, pageSize) => {
+      const params = new URLSearchParams({ page: String(page), limit: String(pageSize) })
+      if (input.status) params.set('status', input.status)
+      const body = await ctx.get(`/api/weekly-orders?${params.toString()}`, weeksSchema)
+      return { rows: body.data, total: body.pagination.total }
+    })
 
     const needle = input.name ? normalize(input.name) : null
-    const matched = needle ? body.data.filter((week) => normalize(week.week_name).includes(needle)) : body.data
+    const matched = needle ? rows.filter((week) => normalize(week.week_name).includes(needle)) : rows
 
     return {
-      total: needle ? matched.length : body.pagination.total,
-      result: matched.slice(0, MAX_RESULTS).map((week) => ({
+      total: needle ? matched.length : total,
+      result: matched.map((week) => ({
         week_id: week.id,
         week_name: week.week_name,
         status: week.status,

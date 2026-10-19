@@ -1,4 +1,4 @@
-export const RESULT_LIMIT_BYTES = 16 * 1024
+export const RESULT_LIMIT_BYTES = 200 * 1024
 
 function byteSize(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value) ?? 'null', 'utf8')

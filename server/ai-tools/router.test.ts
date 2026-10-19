@@ -84,13 +84,20 @@ async function testSmallResultIsNotTruncated() {
   assert.equal((body.data?.result as unknown[]).length, 3)
 }
 
+async function testFiveHundredRowsAreNotTruncated() {
+  const { status, body } = await callTool(buildAiTestApp({ tools }), 'echo_rows', { count: 500 })
+  assert.equal(status, 200)
+  assert.equal(body.data?.truncated, false)
+  assert.equal((body.data?.result as unknown[]).length, 500)
+}
+
 async function testLargeResultIsTruncatedButKeepsTotal() {
-  const { status, body } = await callTool(buildAiTestApp({ tools }), 'echo_rows', { count: 2000 })
+  const { status, body } = await callTool(buildAiTestApp({ tools }), 'echo_rows', { count: 5000 })
   assert.equal(status, 200)
   assert.equal(body.data?.truncated, true)
-  assert.equal(body.data?.total, 2000)
+  assert.equal(body.data?.total, 5000)
   const rows = body.data?.result as unknown[]
-  assert.ok(rows.length > 0 && rows.length < 2000)
+  assert.ok(rows.length > 0 && rows.length < 5000)
   assert.ok(Buffer.byteLength(JSON.stringify(rows)) <= RESULT_LIMIT_BYTES)
 }
 
@@ -102,14 +109,14 @@ async function testSlowToolTimesOut() {
 
 function testLimitResultTrimsArraysInsideObject() {
   const big = {
-    styles_total: 500,
-    styles: Array.from({ length: 500 }, (_, index) => ({ index, text: 'y'.repeat(60) })),
+    styles_total: 4000,
+    styles: Array.from({ length: 4000 }, (_, index) => ({ index, text: 'y'.repeat(60) })),
     note: 'giữ nguyên',
   }
   const limited = limitResult(big)
   assert.equal(limited.truncated, true)
   const output = limited.result as Record<string, unknown>
-  assert.equal(output.styles_total, 500)
+  assert.equal(output.styles_total, 4000)
   assert.equal(output.note, 'giữ nguyên')
   assert.ok(Buffer.byteLength(JSON.stringify(output)) <= RESULT_LIMIT_BYTES)
 }
@@ -122,6 +129,7 @@ async function main() {
   await testUnknownTool()
   await testInvalidInput()
   await testSmallResultIsNotTruncated()
+  await testFiveHundredRowsAreNotTruncated()
   await testLargeResultIsTruncatedButKeepsTotal()
   await testSlowToolTimesOut()
   testLimitResultTrimsArraysInsideObject()

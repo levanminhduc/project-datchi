@@ -1,7 +1,6 @@
 import { z } from 'zod'
+import { MAX_TOOL_ROWS } from '../paging'
 import { defineTool } from '../types'
-
-const MAX_LOGS = 20
 
 const summarySchema = z.looseObject({
   data: z.looseObject({
@@ -61,7 +60,7 @@ export const getDeptAllocation = defineTool({
           product_quantity: row.product_quantity,
         })),
         logs_total: logs.data.length,
-        logs: logs.data.slice(0, MAX_LOGS).map((log) => ({
+        logs: logs.data.slice(0, MAX_TOOL_ROWS).map((log) => ({
           department: log.dept_product_allocations.department,
           added_quantity: log.added_quantity,
           total_after: log.total_after,

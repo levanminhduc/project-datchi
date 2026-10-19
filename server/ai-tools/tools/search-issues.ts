@@ -1,8 +1,8 @@
 import { z } from 'zod'
+import { collectPages } from '../paging'
 import { AiToolError, defineTool, type AiToolContext } from '../types'
 
 const ISSUE_STATUSES = ['DRAFT', 'CONFIRMED', 'RETURNED'] as const
-const PAGE_LIMIT = 20
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 const issuesSchema = z.looseObject({
@@ -46,7 +46,7 @@ async function resolveDepartment(ctx: AiToolContext, department: string): Promis
 export const searchIssues = defineTool({
   name: 'search_issues',
   description: [
-    'Tìm phiếu xuất kho (Xuất kho V2) theo PO, mã hàng, màu hàng, bộ phận nhận, trạng thái hoặc khoảng ngày tạo, mới nhất trước, tối đa 20 phiếu.',
+    'Tìm phiếu xuất kho (Xuất kho V2) theo PO, mã hàng, màu hàng, bộ phận nhận, trạng thái hoặc khoảng ngày tạo, mới nhất trước, tối đa 500 phiếu.',
     'department là bộ phận nhận chỉ; created_by là người lập phiếu xuất (người xuất).',
     'Trạng thái: DRAFT là phiếu nháp, chưa xuất chỉ ra; CONFIRMED là đã xuất; RETURNED là đã xuất và đã nhận trả lại.',
     'Dùng issue_id để gọi get_issue_detail xem từng loại chỉ đã xuất.',
@@ -62,17 +62,23 @@ export const searchIssues = defineTool({
     to: z.string().regex(DATE_PATTERN).optional().describe('Đến ngày tạo phiếu, dạng YYYY-MM-DD'),
   }),
   run: async (input, ctx) => {
-    const params = new URLSearchParams({ page: '1', limit: String(PAGE_LIMIT) })
+    const filters = new URLSearchParams()
     for (const key of ['po', 'style', 'color', 'status', 'from', 'to'] as const) {
       const value = input[key]
-      if (value) params.set(key, value)
+      if (value) filters.set(key, value)
     }
-    if (input.department) params.set('department', await resolveDepartment(ctx, input.department))
+    if (input.department) filters.set('department', await resolveDepartment(ctx, input.department))
 
-    const body = await ctx.get(`/api/issues/v2?${params.toString()}`, issuesSchema)
+    const { rows, total } = await collectPages(async (page, pageSize) => {
+      const params = new URLSearchParams(filters)
+      params.set('page', String(page))
+      params.set('limit', String(pageSize))
+      const body = await ctx.get(`/api/issues/v2?${params.toString()}`, issuesSchema)
+      return { rows: body.data.data, total: body.data.total }
+    })
     return {
-      total: body.data.total,
-      result: body.data.data.map((issue) => ({
+      total,
+      result: rows.map((issue) => ({
         issue_id: issue.id,
         issue_code: issue.issue_code,
         department: issue.department,

@@ -116,6 +116,10 @@ function testNeverReadsThreadTypeColor() {
   }
 }
 
+function testSectionsReadUpToFiveHundredRows() {
+  for (const sql of Object.values(THREAD_USAGE_SQL)) assert.ok(sql.trimEnd().endsWith('LIMIT 500'), sql)
+}
+
 async function main() {
   await testRootSeesAllSections()
   await testPlanningSeesStylesAndOrdersOnly()
@@ -126,6 +130,7 @@ async function main() {
   await testInvalidTexIsRejected()
   testSqlShape()
   testNeverReadsThreadTypeColor()
+  testSectionsReadUpToFiveHundredRows()
   console.log('thread-usage tool tests passed')
 }
 

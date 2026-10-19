@@ -38,6 +38,21 @@ async function testSearchWeeklyOrdersReportsRealTotal() {
   })
 }
 
+async function testSearchWeeklyOrdersPagesUpToFiveHundred() {
+  const responder = (text: string, params: unknown[]): Record<string, unknown>[] => {
+    if (text.includes('count(*)::int AS count FROM thread_order_weeks')) return [{ count: 250 }]
+    if (!text.includes('AS item_count')) return []
+    const offset = Number(params.at(-1))
+    return Array.from({ length: Math.min(100, 250 - offset) }, (_, index) => weekRow(offset + index + 1, `Tuần ${offset + index + 1}`))
+  }
+  await withStubbedPool(responder, async () => {
+    const { status, body } = await callTool(buildAiTestApp(), 'search_weekly_orders', {}, 'kho')
+    assert.equal(status, 200, JSON.stringify(body))
+    assert.equal(body.data?.total, 250)
+    assert.equal((body.data?.result as unknown[]).length, 250)
+  })
+}
+
 async function testGetWeeklyOrderItems() {
   const responder = (text: string): Record<string, unknown>[] => {
     if (!text.includes('LEFT JOIN employees e ON e.id = w.leader_signed_by')) return []
@@ -177,6 +192,7 @@ async function testWeeklyToolsNeedAllocationPermission() {
 async function main() {
   await testSearchWeeklyOrdersByName()
   await testSearchWeeklyOrdersReportsRealTotal()
+  await testSearchWeeklyOrdersPagesUpToFiveHundred()
   await testGetWeeklyOrderItems()
   await testWeeklyOrderThreadsMergesByThreadAndColor()
   await testWeeklyOrderThreadsFilters()

@@ -35,6 +35,43 @@ async function testSearchIssuesResolvesDepartment() {
   })
 }
 
+async function testSearchIssuesPagesThroughResults() {
+  const responder = (text: string, params: unknown[]): Record<string, unknown>[] => {
+    if (text.includes('count(*)::int AS count FROM thread_issues ti')) return [{ count: 250 }]
+    if (!text.includes('SELECT ti.*')) return []
+    const offset = Number(params.at(-1))
+    return Array.from({ length: Math.min(100, 250 - offset) }, (_, index) => ({
+      id: offset + index + 1, issue_code: `XK2-${offset + index + 1}`, department: 'Tổ May 1', status: 'CONFIRMED',
+      created_by: null, notes: null, created_at: '2026-10-15T02:00:00.000Z', line_count: [{ count: 1 }],
+    }))
+  }
+  await withStubbedPool(responder, async (calls) => {
+    const { status, body } = await callTool(buildAiTestApp(), 'search_issues', {}, 'xuatkho')
+    assert.equal(status, 200, JSON.stringify(body))
+    assert.equal(body.data?.total, 250)
+    assert.equal((body.data?.result as unknown[]).length, 250)
+    assert.equal(calls.filter((call) => call.text.includes('SELECT ti.*')).length, 3)
+  })
+}
+
+async function testDeptAllocationKeepsAllLogs() {
+  const responder = (text: string): Record<string, unknown>[] => {
+    if (!text.includes('SELECT dpal.*')) return deptResponder(text)
+    return Array.from({ length: 30 }, (_, index) => ({
+      id: index + 1, allocation_id: 1, added_quantity: 10, total_after: 10 * (index + 1), created_by: 'Phạm D',
+      created_at: '2026-10-14T01:00:00.000Z',
+      dept_product_allocations: { po_id: 9, style_id: 5, style_color_id: 3, department: 'Tổ May 1', deleted_at: null },
+    }))
+  }
+  await withStubbedPool(responder, async () => {
+    const { status, body } = await callTool(buildAiTestApp(), 'get_dept_allocation', { po_id: 9, style_id: 5, style_color_id: 3 })
+    assert.equal(status, 200, JSON.stringify(body))
+    const result = body.data?.result as { logs_total: number; logs: unknown[] }
+    assert.equal(result.logs_total, 30)
+    assert.equal(result.logs.length, 30)
+  })
+}
+
 async function testSearchIssuesAmbiguousDepartment() {
   await withStubbedPool(issuesResponder, async (calls) => {
     const { status, body } = await callTool(buildAiTestApp(), 'search_issues', { department: 'may' }, 'xuatkho')
@@ -138,9 +175,11 @@ async function testIssueToolsNeedReturnPermission() {
 async function main() {
   await testSearchIssuesResolvesDepartment()
   await testSearchIssuesAmbiguousDepartment()
+  await testSearchIssuesPagesThroughResults()
   await testGetIssueDetail()
   await testIssueToolsNeedReturnPermission()
   await testGetDeptAllocation()
+  await testDeptAllocationKeepsAllLogs()
   await testDeptAllocationNeedsManagePermission()
   await testDeptAllocationHiddenWithoutWeekAccess()
   console.log('ai-tools issue tests passed')

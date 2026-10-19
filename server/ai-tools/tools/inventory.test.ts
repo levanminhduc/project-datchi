@@ -119,13 +119,13 @@ async function testRequiresInventoryPermission() {
 }
 
 async function testLargeResultIsTruncated() {
-  const rows = Array.from({ length: 300 }, (_, index) => coneRpcRow(index + 1))
+  const rows = Array.from({ length: 2000 }, (_, index) => coneRpcRow(index + 1))
   await withStubbedPool(inventoryResponder(rows), async () => {
     const { status, body } = await callTool(buildAiTestApp(), 'search_inventory', { search: '40' })
     assert.equal(status, 200)
     assert.equal(body.data?.truncated, true)
-    assert.equal(body.data?.total, 300)
-    assert.ok((body.data?.result as unknown[]).length < 300)
+    assert.equal(body.data?.total, 2000)
+    assert.ok((body.data?.result as unknown[]).length < 2000)
   })
 }
 

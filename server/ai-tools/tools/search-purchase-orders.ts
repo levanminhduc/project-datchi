@@ -1,8 +1,8 @@
 import { z } from 'zod'
+import { collectPages, MAX_TOOL_ROWS } from '../paging'
 import { defineTool } from '../types'
 
 const PO_STATUSES = ['PENDING', 'CONFIRMED', 'IN_PRODUCTION', 'COMPLETED', 'CANCELLED'] as const
-const MAX_ITEMS_PER_PO = 10
 
 const purchaseOrdersSchema = z.looseObject({
   data: z.array(z.looseObject({
@@ -24,7 +24,7 @@ const purchaseOrdersSchema = z.looseObject({
 export const searchPurchaseOrders = defineTool({
   name: 'search_purchase_orders',
   description: [
-    'Tìm đơn hàng (PO) theo số PO và/hoặc trạng thái, mới nhất trước, tối đa 10 PO; mỗi PO kèm tối đa 10 dòng mã hàng và số lượng.',
+    'Tìm đơn hàng (PO) theo số PO và/hoặc trạng thái, mới nhất trước, tối đa 500 PO; mỗi PO kèm tối đa 500 dòng mã hàng và số lượng.',
     'Chỉ trả PO có ít nhất một dòng mã hàng.',
     'Trạng thái: PENDING chờ xử lý, CONFIRMED đã xác nhận, IN_PRODUCTION đang sản xuất, COMPLETED hoàn thành, CANCELLED đã huỷ.',
   ].join(' '),
@@ -34,13 +34,16 @@ export const searchPurchaseOrders = defineTool({
     status: z.enum(PO_STATUSES).optional().describe('Trạng thái PO'),
   }),
   run: async (input, ctx) => {
-    const params = new URLSearchParams({ include: 'items', pageSize: String(10) })
-    if (input.po_number) params.set('po_number', input.po_number)
-    if (input.status) params.set('status', input.status)
-    const body = await ctx.get(`/api/purchase-orders?${params.toString()}`, purchaseOrdersSchema)
+    const { rows, total } = await collectPages(async (page, pageSize) => {
+      const params = new URLSearchParams({ include: 'items', page: String(page), pageSize: String(pageSize) })
+      if (input.po_number) params.set('po_number', input.po_number)
+      if (input.status) params.set('status', input.status)
+      const body = await ctx.get(`/api/purchase-orders?${params.toString()}`, purchaseOrdersSchema)
+      return { rows: body.data, total: body.count }
+    })
     return {
-      total: body.count,
-      result: body.data.map((po) => ({
+      total,
+      result: rows.map((po) => ({
         po_number: po.po_number,
         customer: po.customer_name,
         status: po.status,
@@ -49,7 +52,7 @@ export const searchPurchaseOrders = defineTool({
         delivery_date: po.delivery_date,
         week: po.week,
         item_count: po.items.length,
-        items: po.items.slice(0, MAX_ITEMS_PER_PO).map((item) => ({
+        items: po.items.slice(0, MAX_TOOL_ROWS).map((item) => ({
           style_code: item.style?.style_code ?? null,
           style_name: item.style?.style_name ?? null,
           quantity: item.quantity,

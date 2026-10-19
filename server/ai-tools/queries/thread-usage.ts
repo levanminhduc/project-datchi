@@ -1,4 +1,5 @@
 import { query } from '../../db/query'
+import { MAX_TOOL_ROWS } from '../paging'
 
 export interface ThreadUsageFilter {
   term: string
@@ -35,7 +36,7 @@ export const THREAD_USAGE_SQL = {
      LEFT JOIN style_colors sc ON sc.id = scts.style_color_id
      WHERE ${THREAD_MATCH}
      ORDER BY st.style_code, sc.color_name, sts.display_order
-     LIMIT 30`,
+     LIMIT ${MAX_TOOL_ROWS}`,
   purchaseOrders: `${MATCHED_SPECS}
      SELECT po.po_number, po.customer_name, po.status, po.week, po.delivery_date, st.style_code,
             SUM(pi.quantity)::int AS quantity, COUNT(*) OVER()::int AS total
@@ -47,7 +48,7 @@ export const THREAD_USAGE_SQL = {
        AND pi.style_id IN (SELECT style_id FROM matched)
      GROUP BY po.id, po.po_number, po.customer_name, po.status, po.week, po.delivery_date, st.style_code
      ORDER BY po.id DESC
-     LIMIT 20`,
+     LIMIT ${MAX_TOOL_ROWS}`,
   weeklyOrders: `${MATCHED_SPECS}
      SELECT w.week_name, po.po_number, st.style_code, sc.color_name AS style_color_name,
             SUM(toi.quantity)::int AS quantity, COUNT(*) OVER()::int AS total
@@ -64,7 +65,7 @@ export const THREAD_USAGE_SQL = {
        )
      GROUP BY w.id, w.week_name, po.po_number, st.style_code, sc.color_name
      ORDER BY w.id DESC
-     LIMIT 20`,
+     LIMIT ${MAX_TOOL_ROWS}`,
   issued: `SELECT po.po_number, st.style_code, sc.color_name AS style_color_name, s.name AS supplier_name,
             tt.tex_number, c.name AS color_name,
             SUM(l.issued_full)::int AS issued_full, SUM(l.issued_partial)::int AS issued_partial,
@@ -83,7 +84,7 @@ export const THREAD_USAGE_SQL = {
        AND ${THREAD_MATCH}
      GROUP BY po.po_number, st.style_code, sc.color_name, s.name, l.thread_type_id, tt.tex_number, l.thread_color_id, c.name
      ORDER BY MAX(i.created_at) DESC
-     LIMIT 20`,
+     LIMIT ${MAX_TOOL_ROWS}`,
 }
 
 async function runSection(sql: string, filter: ThreadUsageFilter): Promise<UsageSection> {

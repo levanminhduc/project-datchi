@@ -29,7 +29,7 @@ async function testSearchStyles() {
     const list = calls.find((call) => /FROM "?styles"?/.test(call.text))
     assert.ok(list)
     assert.ok(list.params.includes('%ST-001%'))
-    assert.ok(list.params.includes(20))
+    assert.ok(list.params.includes(500))
   })
 }
 

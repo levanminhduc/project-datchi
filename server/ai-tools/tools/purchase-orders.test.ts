@@ -42,7 +42,7 @@ async function testSearchPurchaseOrders() {
     assert.ok(list.text.includes('EXISTS (SELECT 1 FROM po_items'))
     assert.ok(list.params.includes('%PO-2026%'))
     assert.ok(list.params.includes('CONFIRMED'))
-    assert.ok(list.params.includes(10))
+    assert.ok(list.params.includes(100))
   })
 }
 
@@ -56,13 +56,29 @@ async function testNullStatusIsAccepted() {
   })
 }
 
-async function testItemsAreCapped() {
+async function testKeepsAllItemsOfPo() {
   await withStubbedPool(poResponder(12), async () => {
     const { body } = await callTool(buildAiTestApp(), 'search_purchase_orders', {})
     const [po] = body.data?.result as Array<{ item_count: number; items: unknown[] }>
     assert.ok(po)
     assert.equal(po.item_count, 12)
-    assert.equal(po.items.length, 10)
+    assert.equal(po.items.length, 12)
+  })
+}
+
+async function testPagesThroughPurchaseOrders() {
+  const responder = (text: string, params: unknown[]): Record<string, unknown>[] => {
+    if (text.includes('count(*)::int AS count FROM purchase_orders po')) return [{ count: 250 }]
+    if (!text.includes('SELECT po.*')) return []
+    const offset = Number(params.at(-1))
+    return Array.from({ length: Math.min(100, 250 - offset) }, () => poRow(1))
+  }
+  await withStubbedPool(responder, async (calls) => {
+    const { status, body } = await callTool(buildAiTestApp(), 'search_purchase_orders', {})
+    assert.equal(status, 200, JSON.stringify(body))
+    assert.equal(body.data?.total, 250)
+    assert.equal((body.data?.result as unknown[]).length, 250)
+    assert.equal(calls.filter((call) => call.text.includes('SELECT po.*')).length, 3)
   })
 }
 
@@ -84,7 +100,8 @@ async function testNeedsPurchaseOrderPermission() {
 async function main() {
   await testSearchPurchaseOrders()
   await testNullStatusIsAccepted()
-  await testItemsAreCapped()
+  await testKeepsAllItemsOfPo()
+  await testPagesThroughPurchaseOrders()
   await testRejectsUnknownStatus()
   await testNeedsPurchaseOrderPermission()
   console.log('purchase-order tool tests passed')
