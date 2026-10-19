@@ -22,6 +22,54 @@
         </li>
       </ul>
       <div
+        v-else-if="block.type === 'table'"
+        class="answer-table-wrap"
+        tabindex="0"
+        role="region"
+        aria-label="Bảng kết quả"
+      >
+        <table class="answer-table">
+          <thead>
+            <tr>
+              <th
+                v-for="(cell, cellIndex) in block.headers"
+                :key="cellIndex"
+                scope="col"
+                :class="{ 'is-numeric': block.numeric[cellIndex] }"
+              >
+                <template
+                  v-for="(segment, segmentIndex) in cell"
+                  :key="segmentIndex"
+                >
+                  <strong v-if="segment.bold">{{ segment.text }}</strong>
+                  <span v-else>{{ segment.text }}</span>
+                </template>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(row, rowIndex) in block.rows"
+              :key="rowIndex"
+            >
+              <td
+                v-for="(cell, cellIndex) in row"
+                :key="cellIndex"
+                :class="{ 'is-numeric': block.numeric[cellIndex] }"
+              >
+                <template
+                  v-for="(segment, segmentIndex) in cell"
+                  :key="segmentIndex"
+                >
+                  <strong v-if="segment.bold">{{ segment.text }}</strong>
+                  <span v-else>{{ segment.text }}</span>
+                </template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div
         v-else
         class="answer-paragraph"
       >
@@ -98,6 +146,57 @@ const blocks = computed(() => parseAnswerBlocks(props.message.text))
 
   li + li {
     margin-top: 2px;
+  }
+}
+
+.answer-table-wrap {
+  max-width: 100%;
+  margin: 0 0 8px;
+  overflow-x: auto;
+  border: 1px solid var(--chat-border);
+  border-radius: 12px;
+  background: var(--chat-surface);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--q-primary);
+    outline-offset: 2px;
+  }
+}
+
+.answer-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.4;
+
+  th,
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--chat-border);
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+
+  th {
+    background: var(--chat-hover);
+    color: var(--chat-muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .is-numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
 }
 

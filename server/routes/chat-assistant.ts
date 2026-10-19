@@ -24,6 +24,7 @@ interface ChatbotServiceData {
   answer?: unknown
   tools_used?: unknown
   answer_kind?: unknown
+  suggestions?: unknown
 }
 
 interface ChatbotServiceEnvelope {
@@ -94,6 +95,15 @@ function toProxyStatus(status: number): ChatbotProxyStatus {
   return 502
 }
 
+function readSuggestions(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => item !== '')
+    .slice(0, 3)
+}
+
 function mapChatbotData(data: ChatbotServiceData): ChatAssistantResult {
   const hasAnswer = typeof data.answer === 'string' && data.answer.trim() !== ''
   const answer = typeof data.answer === 'string' && hasAnswer ? data.answer : 'Trợ lý không trả về câu trả lời.'
@@ -110,7 +120,7 @@ function mapChatbotData(data: ChatbotServiceData): ChatAssistantResult {
     intents: [],
     stock: [],
     usage: [],
-    suggestions: CHAT_ASSISTANT_EXAMPLES,
+    suggestions: readSuggestions(data.suggestions),
     context: { tools_used: toolsUsed },
     ...(answerKind ? { answer_kind: answerKind } : {}),
   }

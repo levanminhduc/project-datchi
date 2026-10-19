@@ -4,6 +4,12 @@ import {
   formatAssistantText,
   type StockTableRow,
 } from './chat-assistant-presentation'
+import {
+  isNumericCell,
+  isTableRow,
+  isTableSeparator,
+  splitTableCells,
+} from './chat-answer-table'
 
 export interface ChatMessage {
   id: number
@@ -31,10 +37,9 @@ export interface AnswerSegment {
   bold: boolean
 }
 
-export interface AnswerBlock {
-  type: 'paragraph' | 'list'
-  lines: AnswerSegment[][]
-}
+export type AnswerBlock =
+  | { type: 'paragraph' | 'list'; lines: AnswerSegment[][] }
+  | { type: 'table'; headers: AnswerSegment[][]; rows: AnswerSegment[][][]; numeric: boolean[] }
 
 export const STARTER_QUESTIONS: string[] = [
   'Tex 40 màu C9700 còn bao nhiêu cuộn?',
@@ -67,18 +72,49 @@ export function toAssistantMessage(result: ChatAssistantResult): AssistantMessag
   }
 }
 
+function buildTableBlock(lines: string[]): AnswerBlock {
+  const headers = splitTableCells(lines[0] ?? '')
+  const rows = lines.slice(2).map((line) => {
+    const cells = splitTableCells(line).slice(0, headers.length)
+    while (cells.length < headers.length) cells.push('')
+    return cells
+  })
+  const numeric = headers.map((_, column) => {
+    const values = rows.map((row) => (row[column] ?? '').replace(BOLD_PATTERN, '$1')).filter((cell) => cell !== '')
+    return values.length > 0 && values.every(isNumericCell)
+  })
+
+  return {
+    type: 'table',
+    headers: headers.map(parseInlineSegments),
+    rows: rows.map((row) => row.map(parseInlineSegments)),
+    numeric,
+  }
+}
+
 export function parseAnswerBlocks(text: string): AnswerBlock[] {
   const blocks: AnswerBlock[] = []
-  let current: AnswerBlock | null = null
+  let current: Extract<AnswerBlock, { lines: AnswerSegment[][] }> | null = null
+  const lines = text.split('\n')
 
-  for (const rawLine of text.split('\n')) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index] ?? ''
+    if (isTableRow(rawLine) && isTableSeparator(lines[index + 1] ?? '')) {
+      let end = index + 2
+      while (end < lines.length && isTableRow(lines[end] ?? '')) end += 1
+      blocks.push(buildTableBlock(lines.slice(index, end)))
+      current = null
+      index = end - 1
+      continue
+    }
+
     if (!rawLine.trim()) {
       current = null
       continue
     }
 
     const listMatch = LIST_ITEM_PATTERN.exec(rawLine)
-    const type: AnswerBlock['type'] = listMatch ? 'list' : 'paragraph'
+    const type: 'paragraph' | 'list' = listMatch ? 'list' : 'paragraph'
     const content = (listMatch?.[1] ?? rawLine).trim()
     const segments = parseInlineSegments(content)
     if (segments.length === 0) continue

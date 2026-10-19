@@ -297,6 +297,19 @@ async function testForwardsEmptyHistory() {
   assert.deepEqual(body?.history, [])
 }
 
+async function testForwardsSuggestions() {
+  const readSuggestions = (result: { data: unknown }) => (result.data as { data: { suggestions: unknown } }).data.suggestions
+
+  const mixed = { data: { answer: 'Có.', tools_used: [], suggestions: [' Tồn theo kho? ', '', 7, 'B?', 'C?', 'D?'] }, error: null }
+  assert.deepEqual(readSuggestions(await forwardedBody('Hỏi gì đó?', undefined, mixed)), ['Tồn theo kho?', 'B?', 'C?'])
+
+  const absent = { data: { answer: 'Có.', tools_used: [] }, error: null }
+  assert.deepEqual(readSuggestions(await forwardedBody('Hỏi gì đó?', undefined, absent)), [])
+
+  const notArray = { data: { answer: 'Có.', tools_used: [], suggestions: 'abc' }, error: null }
+  assert.deepEqual(readSuggestions(await forwardedBody('Hỏi gì đó?', undefined, notArray)), [])
+}
+
 async function testForwardsAnswerKind() {
   const refusal = { data: { answer: 'Trợ lý không trả lời được câu hỏi này.', tools_used: [], answer_kind: 'refusal' }, error: null }
   const first = await forwardedBody('Hỏi gì đó?', undefined, refusal)
@@ -384,6 +397,7 @@ async function main() {
   await testAcceptsTwentyItems()
   await testForwardsEmptyHistory()
   await testForwardsAnswerKind()
+  await testForwardsSuggestions()
   await testRejectsRawOversizedQuestion()
   await testCutsRawHistoryBeforeSanitizing()
   await testMissingAuthorizationComesBeforeHistory()

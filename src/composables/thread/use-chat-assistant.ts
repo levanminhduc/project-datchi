@@ -9,6 +9,7 @@ import type { ChatHistoryItem } from '@/types/thread'
 import { buildChatHistory } from './chat-history'
 
 const FALLBACK_ERROR = 'Không thể kết nối tới trợ lý. Vui lòng thử lại.'
+const MAX_FOLLOWUP_QUESTIONS = 2
 
 const messages = ref<ChatMessage[]>([])
 const loading = computed(() => messages.value.some((item) => item.status === 'thinking'))
@@ -17,6 +18,10 @@ const lastSuggestions = computed<string[]>(() => {
   if (!last || last.role !== 'assistant' || last.status !== 'done') return []
   return last.suggestions ?? []
 })
+const showFollowups = computed(() =>
+  lastSuggestions.value.length > 0
+  && messages.value.filter((item) => item.role === 'user').length <= MAX_FOLLOWUP_QUESTIONS,
+)
 
 let nextId = 1
 let generation = 0
@@ -114,6 +119,7 @@ export function useChatAssistant() {
     messages,
     loading,
     lastSuggestions,
+    showFollowups,
     send,
     retry,
     reset,

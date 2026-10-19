@@ -2,25 +2,35 @@
   <div
     v-if="visibleSuggestions.length > 0"
     class="chat-suggestions"
+    :class="{ 'is-row': isRow }"
   >
     <p class="chat-suggestions__label">
       {{ label }}
     </p>
-    <AppButton
-      v-for="suggestion in visibleSuggestions"
-      :key="suggestion"
-      :label="suggestion"
-      variant="outlined"
-      no-caps
-      align="left"
-      @click="emit('select', suggestion)"
-    />
+    <div
+      ref="rowEl"
+      class="chat-suggestions__row"
+      @wheel="isRow && onWheel($event)"
+      @pointerdown="isRow && onPointerDown($event)"
+      @click.capture="isRow && onClickCapture($event)"
+    >
+      <AppButton
+        v-for="suggestion in visibleSuggestions"
+        :key="suggestion"
+        :label="suggestion"
+        variant="outlined"
+        no-caps
+        align="left"
+        @click="emit('select', suggestion)"
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
+import { useDragScroll } from '@/composables/thread/use-drag-scroll'
 
 const MAX_SUGGESTIONS = 3
 
@@ -36,6 +46,10 @@ const emit = defineEmits<{
   select: [question: string]
 }>()
 
+const rowEl = ref<HTMLElement | null>(null)
+const { onWheel, onPointerDown, onClickCapture } = useDragScroll(rowEl)
+
+const isRow = computed(() => props.variant === 'followup')
 const label = computed(() => (props.variant === 'starter' ? 'Thử hỏi' : 'Hỏi tiếp'))
 const visibleSuggestions = computed(() => props.suggestions.slice(0, MAX_SUGGESTIONS))
 </script>
@@ -53,6 +67,38 @@ const visibleSuggestions = computed(() => props.suggestions.slice(0, MAX_SUGGEST
   margin: 0;
   color: var(--chat-muted);
   font-size: 13px;
+}
+
+.chat-suggestions__row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.is-row {
+  align-items: stretch;
+
+  .chat-suggestions__row {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+    user-select: none;
+  }
+
+  .chat-suggestions__row :deep(.q-btn) {
+    flex: 0 0 auto;
+    max-width: none;
+
+    .q-btn__content {
+      flex-wrap: nowrap;
+      white-space: nowrap;
+    }
+  }
 }
 
 .chat-suggestions :deep(.q-btn) {

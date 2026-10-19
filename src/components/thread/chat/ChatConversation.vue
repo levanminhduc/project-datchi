@@ -9,7 +9,7 @@
       @retry="retry"
     >
       <ChatSuggestions
-        v-if="lastSuggestions.length > 0"
+        v-if="showFollowups"
         :suggestions="lastSuggestions"
         variant="followup"
         @select="handleSend"
@@ -47,7 +47,7 @@ withDefaults(
   { compact: false },
 )
 
-const { messages, loading, lastSuggestions, send, retry } = useChatAssistant()
+const { messages, loading, lastSuggestions, showFollowups, send, retry } = useChatAssistant()
 
 const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null)
 
