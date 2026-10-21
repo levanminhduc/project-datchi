@@ -10,12 +10,14 @@ import {
   isTableSeparator,
   splitTableCells,
 } from './chat-answer-table'
+import { toolLabel } from './chat-tool-labels'
 
 export interface ChatMessage {
   id: number
   role: 'assistant' | 'user'
   text: string
-  status: 'thinking' | 'done' | 'error'
+  status: 'thinking' | 'streaming' | 'done' | 'error'
+  statusText?: string
   stockRows?: StockTableRow[]
   sources?: string[]
   suggestions?: string[]
@@ -48,14 +50,6 @@ export const STARTER_QUESTIONS: string[] = [
 ]
 
 const MAX_SUGGESTIONS = 3
-
-const SOURCE_LABELS: Record<string, string> = {
-  search_stock: 'Tồn kho',
-  search_usage: 'Định mức',
-  search_styles: 'Mã hàng',
-  search_purchase_orders: 'Đơn hàng',
-  search_thread_orders: 'Đơn hàng',
-}
 
 const LIST_ITEM_PATTERN = /^\s*(?:[-*•]|\d+[.)])\s+(.*)$/
 const BOLD_PATTERN = /\*\*([^*]+)\*\*/g
@@ -152,7 +146,7 @@ function extractSources(context: unknown): string[] {
 
   const labels: string[] = []
   for (const tool of toolsUsed) {
-    const label = typeof tool === 'string' ? SOURCE_LABELS[tool] : undefined
+    const label = typeof tool === 'string' ? toolLabel(tool)?.source : undefined
     if (label && !labels.includes(label)) labels.push(label)
   }
   return labels

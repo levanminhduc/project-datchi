@@ -124,6 +124,14 @@ function testUnpairedUserMessageIsSkipped() {
   ])
 }
 
+function testSkipsStreamingAnswers() {
+  const messages = [...pair('q1', 'a1'), ...pair('q2', 'Còn 1', 'streaming')]
+  assert.deepEqual(buildChatHistory(messages, messages.length), [
+    { role: 'user', content: 'q1' },
+    { role: 'assistant', content: 'a1' },
+  ])
+}
+
 function main() {
   testKeepsDonePairsOnly()
   testSkipsEmptyAnswer()
@@ -136,6 +144,7 @@ function main() {
   testErrorPairBeforeRetryPoint()
   testBeforeIndexBeyondLength()
   testUnpairedUserMessageIsSkipped()
+  testSkipsStreamingAnswers()
   console.log('chat-history tests passed')
 }
 

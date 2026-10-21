@@ -1,18 +1,22 @@
 import { computed, effectScope, ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { chatAssistantService } from '@/services'
+import { StreamUnavailableError, type StreamStatus } from '@/services/chat-stream'
 import {
   toAssistantMessage,
   type ChatMessage,
 } from '@/components/thread/chat-assistant-messages'
-import type { ChatHistoryItem } from '@/types/thread'
+import { statusText } from '@/components/thread/chat-tool-labels'
+import type { ChatAssistantResult, ChatHistoryItem } from '@/types/thread'
 import { buildChatHistory } from './chat-history'
 
 const FALLBACK_ERROR = 'Không thể kết nối tới trợ lý. Vui lòng thử lại.'
 const MAX_FOLLOWUP_QUESTIONS = 2
 
 const messages = ref<ChatMessage[]>([])
-const loading = computed(() => messages.value.some((item) => item.status === 'thinking'))
+const loading = computed(() =>
+  messages.value.some((item) => item.status === 'thinking' || item.status === 'streaming'),
+)
 const lastSuggestions = computed<string[]>(() => {
   const last = messages.value[messages.value.length - 1]
   if (!last || last.role !== 'assistant' || last.status !== 'done') return []
@@ -50,11 +54,51 @@ function replaceMessage(id: number, next: ChatMessage) {
   messages.value.splice(index, 1, next)
 }
 
+function patchMessage(id: number, patch: (current: ChatMessage) => ChatMessage) {
+  const index = messages.value.findIndex((item) => item.id === id)
+  const current = messages.value[index]
+  if (!current) return
+  messages.value.splice(index, 1, patch(current))
+}
+
+function applyStatus(current: ChatMessage, status: StreamStatus): ChatMessage {
+  if (status.phase === 'thinking' && current.status === 'streaming') return current
+  const next = { ...current, statusText: statusText(status) }
+  return status.phase === 'thinking' ? next : { ...next, status: 'thinking', text: '' }
+}
+
+function fetchAnswer(
+  assistantId: number,
+  question: string,
+  history: ChatHistoryItem[],
+  requestGeneration: number,
+): Promise<ChatAssistantResult> {
+  const isCurrent = () => requestGeneration === generation
+  return chatAssistantService
+    .stream(question, history, {
+      onStatus: (status) => {
+        if (isCurrent()) patchMessage(assistantId, (current) => applyStatus(current, status))
+      },
+      onDelta: (text) => {
+        if (!isCurrent()) return
+        patchMessage(assistantId, (current) => ({
+          ...current,
+          status: 'streaming',
+          text: current.text + text,
+        }))
+      },
+    })
+    .catch((error: unknown) => {
+      if (error instanceof StreamUnavailableError) return chatAssistantService.query(question, history)
+      throw error
+    })
+}
+
 async function resolveQuestion(assistantId: number, question: string, history: ChatHistoryItem[]) {
   const requestGeneration = generation
 
   try {
-    const result = await chatAssistantService.query(question, history)
+    const result = await fetchAnswer(assistantId, question, history, requestGeneration)
     if (requestGeneration !== generation) return
     replaceMessage(assistantId, {
       id: assistantId,
@@ -86,7 +130,15 @@ async function send(text: string) {
   const assistantId = nextId + 1
   messages.value.push(
     { id: nextId, role: 'user', text: question, status: 'done', createdAt: now },
-    { id: assistantId, role: 'assistant', text: '', status: 'thinking', createdAt: now, question },
+    {
+      id: assistantId,
+      role: 'assistant',
+      text: '',
+      status: 'thinking',
+      statusText: statusText({ phase: 'thinking' }),
+      createdAt: now,
+      question,
+    },
   )
   nextId += 2
 
@@ -105,6 +157,7 @@ async function retry(id: number) {
     role: 'assistant',
     text: '',
     status: 'thinking',
+    statusText: statusText({ phase: 'thinking' }),
     createdAt: Date.now(),
     question,
   })
