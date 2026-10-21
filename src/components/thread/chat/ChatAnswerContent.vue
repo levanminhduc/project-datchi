@@ -128,7 +128,8 @@ const blocks = computed(() => parseAnswerBlocks(props.message.text, { streaming:
 }
 
 .is-streaming > .answer-paragraph:last-child > p:last-child::after,
-.is-streaming > .answer-list:last-child > li:last-child::after {
+.is-streaming > .answer-list:last-child > li:last-child::after,
+.is-streaming:has(> .answer-table-wrap:last-child)::after {
   content: '';
   display: inline-block;
   width: 2px;
@@ -139,13 +140,24 @@ const blocks = computed(() => parseAnswerBlocks(props.message.text, { streaming:
   animation: answer-caret-blink 1s steps(1) infinite;
 
   @media (prefers-reduced-motion: reduce) {
-    animation: none;
+    animation: answer-caret-pulse 2s ease-in-out infinite;
   }
 }
 
 @keyframes answer-caret-blink {
   50% {
     opacity: 0;
+  }
+}
+
+@keyframes answer-caret-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
 

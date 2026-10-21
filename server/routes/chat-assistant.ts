@@ -323,6 +323,9 @@ chatAssistant.post('/stream', requirePermission('chat.assistant.use'), async (c)
 
     const controller = new AbortController()
     const idle = createIdleTimer(controller, config.timeoutMs)
+    const clientSignal = c.req.raw.signal
+    if (clientSignal.aborted) controller.abort()
+    else clientSignal.addEventListener('abort', () => controller.abort(), { once: true })
 
     let response: Response
     try {
@@ -336,11 +339,22 @@ chatAssistant.post('/stream', requirePermission('chat.assistant.use'), async (c)
       throw err
     }
 
+    if (clientSignal.aborted) {
+      idle.clear()
+      await response.body?.cancel().catch(() => {})
+      return c.json({ data: null, error: 'Yêu cầu đã bị hủy' }, 408)
+    }
+
     const isEventStream = response.ok && (response.headers.get('Content-Type') ?? '').startsWith('text/event-stream')
     if (!isEventStream || !response.body) {
-      idle.clear()
-      if (response.status === 404) return c.json({ data: null, error: 'stream_unavailable' }, 404)
+      if (response.status === 404) {
+        idle.clear()
+        await response.body?.cancel().catch(() => {})
+        return c.json({ data: null, error: 'stream_unavailable' }, 404)
+      }
       const payload = await readJsonPayload(response)
+      idle.clear()
+      if (idle.timedOut) return c.json({ data: null, error: 'Trợ lý AI phản hồi quá thời gian' }, 408)
       if (!response.ok) {
         const message = getPayloadMessage({ error: (payload as ChatbotServiceEnvelope | null)?.error }) ?? 'Trợ lý AI trả về lỗi'
         return c.json({ data: null, error: message }, toProxyStatus(response.status))
@@ -348,6 +362,7 @@ chatAssistant.post('/stream', requirePermission('chat.assistant.use'), async (c)
       return c.json({ data: null, error: 'Trợ lý AI trả về dữ liệu không hợp lệ' }, 502)
     }
 
+    idle.clear()
     const upstream = response.body.getReader()
     return streamSSE(c, async (stream) => {
       stream.onAbort(() => controller.abort())
@@ -357,7 +372,13 @@ chatAssistant.post('/stream', requirePermission('chat.assistant.use'), async (c)
       try {
         while (true) {
           idle.arm()
-          const { done, value } = await upstream.read()
+          let chunk: ReadableStreamReadResult<Uint8Array>
+          try {
+            chunk = await upstream.read()
+          } finally {
+            idle.clear()
+          }
+          const { done, value } = chunk
           if (done) break
           pending += decoder.decode(value, { stream: true })
           const cut = pending.lastIndexOf('\n\n')

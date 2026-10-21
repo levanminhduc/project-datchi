@@ -548,6 +548,119 @@ async function testStreamIdleTimeoutResetsOnEachChunk() {
   })
 }
 
+function abortError() {
+  return Object.assign(new Error('aborted'), { name: 'AbortError' })
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function testStreamClientAbortAbortsUpstream() {
+  const seen: SeenCall[] = []
+  const hanging = ((input: string | URL | Request, init?: RequestInit) => {
+    seen.push({ url: String(input), init })
+    return new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(abortError()))
+    })
+  }) as unknown as typeof fetch
+  await withService(SERVICE_ENV, hanging, async () => {
+    const client = new AbortController()
+    const pending = buildApp(['chat.assistant.use']).request('/stream', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer abc', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'C9700 còn bao nhiêu cuộn?' }),
+      signal: client.signal,
+    })
+    await sleep(50)
+    assert.equal(seen[0]?.init?.signal?.aborted, false)
+    client.abort()
+    await sleep(50)
+    assert.equal(seen[0]?.init?.signal?.aborted, true)
+    await pending.catch(() => null)
+  })
+}
+
+async function testStreamClientGoneBeforeHeadersDoesNotStartStream() {
+  let cancelled = false
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const lateFetch = (async () => {
+    await gate
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(SSE_EVENTS[0]))
+      },
+      cancel() {
+        cancelled = true
+      },
+    })
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }) as unknown as typeof fetch
+  await withService(SERVICE_ENV, lateFetch, async () => {
+    const client = new AbortController()
+    const pending = buildApp(['chat.assistant.use']).request('/stream', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer abc', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'C9700 còn bao nhiêu cuộn?' }),
+      signal: client.signal,
+    })
+    await sleep(50)
+    client.abort()
+    release()
+    await sleep(100)
+    assert.equal(cancelled, true)
+    await pending.catch(() => null)
+  })
+}
+
+async function testStreamStalledJsonErrorBodyTimesOut() {
+  const stalledJson = (async (_input: string | URL | Request, init?: RequestInit) => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        init?.signal?.addEventListener('abort', () => controller.error(abortError()))
+      },
+    })
+    return new Response(body, { status: 500, headers: { 'Content-Type': 'application/json' } })
+  }) as unknown as typeof fetch
+  await withService({ ...SERVICE_ENV, CHATBOT_REQUEST_TIMEOUT_MS: '100' }, stalledJson, async () => {
+    const started = Date.now()
+    const res = await askStream(buildApp(['chat.assistant.use']))
+    assert.equal(res.status, 408)
+    assert.deepEqual(await res.json(), { data: null, error: 'Trợ lý AI phản hồi quá thời gian' })
+    assert.ok(Date.now() - started < 2000)
+  })
+}
+
+async function testStreamIdleTimerIgnoresClientBackpressure() {
+  const encoder = new TextEncoder()
+  const pullFetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    let next = 0
+    const body = new ReadableStream<Uint8Array>(
+      {
+        start(controller) {
+          init?.signal?.addEventListener('abort', () => controller.error(abortError()))
+        },
+        pull(controller) {
+          const chunk = SSE_EVENTS[next]
+          next += 1
+          if (chunk === undefined) controller.close()
+          else controller.enqueue(encoder.encode(chunk))
+        },
+      },
+      { highWaterMark: 0 },
+    )
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }) as unknown as typeof fetch
+  await withService({ ...SERVICE_ENV, CHATBOT_REQUEST_TIMEOUT_MS: '100' }, pullFetch, async () => {
+    const res = await askStream(buildApp(['chat.assistant.use']))
+    await sleep(350)
+    assert.equal(await res.text(), SSE_EVENTS.join(''))
+  })
+}
+
 async function main() {
   await testRequiresChatPermission()
   await testForwardsQuestionToService()
@@ -582,6 +695,10 @@ async function main() {
   await testStreamValidatesMessage()
   await testStreamIdleTimeoutEmitsError()
   await testStreamIdleTimeoutResetsOnEachChunk()
+  await testStreamClientAbortAbortsUpstream()
+  await testStreamClientGoneBeforeHeadersDoesNotStartStream()
+  await testStreamStalledJsonErrorBodyTimesOut()
+  await testStreamIdleTimerIgnoresClientBackpressure()
   console.log('chat-assistant route tests passed')
 }
 

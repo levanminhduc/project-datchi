@@ -70,6 +70,17 @@ function testStreamingHidesTableHeaderUntilSeparatorArrives() {
   assert.equal(kept[0]?.type === 'paragraph' && kept[0].lines.length, 2)
 }
 
+function testStreamingHidesTableHeaderFollowedByEmptyTrailingLine() {
+  for (const tail of ['| Kho | Cuộn |\n', '| Kho | Cuộn |\n| --\n', '| Kho | Cuộn |\n| --- | :-\n']) {
+    const blocks = parseAnswerBlocks('Tồn theo kho:\n' + tail, STREAMING)
+    assert.deepEqual(blocks.map((b) => b.type), ['paragraph'], JSON.stringify(tail))
+    const [paragraph] = blocks
+    assert.equal(paragraph?.type === 'paragraph' && paragraph.lines.length, 1, JSON.stringify(tail))
+  }
+  const finished = parseAnswerBlocks('Tồn theo kho:\n| Kho | Cuộn |\n')
+  assert.equal(finished[0]?.type === 'paragraph' && finished[0].lines.length, 2)
+}
+
 function testStreamingPipeLineFollowedByTextStaysParagraph() {
   const blocks = parseAnswerBlocks('| Tex 40 | C9700 |\nCòn 12 cuộn', STREAMING)
   assert.deepEqual(blocks.map((b) => b.type), ['paragraph'])
@@ -114,6 +125,7 @@ function main() {
   testStreamingTableWithOnlyPartialRowHasNoRows()
   testStreamingKeepsClosedLastRow()
   testStreamingHidesTableHeaderUntilSeparatorArrives()
+  testStreamingHidesTableHeaderFollowedByEmptyTrailingLine()
   testStreamingPipeLineFollowedByTextStaysParagraph()
   testUnclosedBoldIsPlainText()
   testStreamingEmptyAndSymbolOnlyInputDoNotCrash()

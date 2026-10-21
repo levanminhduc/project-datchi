@@ -116,8 +116,9 @@ export function parseAnswerBlocks(text: string, options: ParseAnswerOptions = {}
 
     if (streaming && isTableRow(rawLine)) {
       const next = lines[index + 1]
-      if (next === undefined) continue
-      if (index + 2 === lines.length && isPartialSeparator(next)) break
+      const atEnd = (offset: number) => index + offset === lines.length || (index + offset + 1 === lines.length && lines[index + offset] === '')
+      if (next === undefined || (next === '' && atEnd(2))) continue
+      if (atEnd(2) && isPartialSeparator(next)) break
     }
 
     if (!rawLine.trim()) {
