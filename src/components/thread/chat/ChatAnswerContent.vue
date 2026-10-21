@@ -1,5 +1,8 @@
 <template>
-  <div class="answer-content">
+  <div
+    class="answer-content"
+    :class="{ 'is-streaming': streaming }"
+  >
     <template
       v-for="(block, blockIndex) in blocks"
       :key="blockIndex"
@@ -113,7 +116,8 @@ const props = withDefaults(
   { compact: false },
 )
 
-const blocks = computed(() => parseAnswerBlocks(props.message.text))
+const streaming = computed(() => props.message.status === 'streaming')
+const blocks = computed(() => parseAnswerBlocks(props.message.text, { streaming: streaming.value }))
 </script>
 
 <style scoped lang="scss">
@@ -121,6 +125,28 @@ const blocks = computed(() => parseAnswerBlocks(props.message.text))
   min-width: 0;
   line-height: 1.55;
   overflow-wrap: anywhere;
+}
+
+.is-streaming > .answer-paragraph:last-child > p:last-child::after,
+.is-streaming > .answer-list:last-child > li:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  background: currentColor;
+  vertical-align: text-bottom;
+  animation: answer-caret-blink 1s steps(1) infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes answer-caret-blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 .answer-paragraph,

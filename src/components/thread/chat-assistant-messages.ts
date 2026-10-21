@@ -53,6 +53,11 @@ const MAX_SUGGESTIONS = 3
 
 const LIST_ITEM_PATTERN = /^\s*(?:[-*•]|\d+[.)])\s+(.*)$/
 const BOLD_PATTERN = /\*\*([^*]+)\*\*/g
+const PARTIAL_SEPARATOR_PATTERN = /^[\s|:-]*$/
+
+export interface ParseAnswerOptions {
+  streaming?: boolean
+}
 
 export function toAssistantMessage(result: ChatAssistantResult): AssistantMessageContent {
   const stockRows = buildStockTableRows(result)
@@ -66,7 +71,8 @@ export function toAssistantMessage(result: ChatAssistantResult): AssistantMessag
   }
 }
 
-function buildTableBlock(lines: string[]): AnswerBlock {
+function buildTableBlock(lines: string[], streaming: boolean): AnswerBlock {
+  const parseCell = (cell: string) => parseInlineSegments(cell, streaming)
   const headers = splitTableCells(lines[0] ?? '')
   const rows = lines.slice(2).map((line) => {
     const cells = splitTableCells(line).slice(0, headers.length)
@@ -80,13 +86,18 @@ function buildTableBlock(lines: string[]): AnswerBlock {
 
   return {
     type: 'table',
-    headers: headers.map(parseInlineSegments),
-    rows: rows.map((row) => row.map(parseInlineSegments)),
+    headers: headers.map(parseCell),
+    rows: rows.map((row) => row.map(parseCell)),
     numeric,
   }
 }
 
-export function parseAnswerBlocks(text: string): AnswerBlock[] {
+function isPartialSeparator(line: string): boolean {
+  return isTableRow(line) && PARTIAL_SEPARATOR_PATTERN.test(line) && !isTableSeparator(line)
+}
+
+export function parseAnswerBlocks(text: string, options: ParseAnswerOptions = {}): AnswerBlock[] {
+  const streaming = options.streaming === true
   const blocks: AnswerBlock[] = []
   let current: Extract<AnswerBlock, { lines: AnswerSegment[][] }> | null = null
   const lines = text.split('\n')
@@ -96,10 +107,17 @@ export function parseAnswerBlocks(text: string): AnswerBlock[] {
     if (isTableRow(rawLine) && isTableSeparator(lines[index + 1] ?? '')) {
       let end = index + 2
       while (end < lines.length && isTableRow(lines[end] ?? '')) end += 1
-      blocks.push(buildTableBlock(lines.slice(index, end)))
+      if (streaming && end === lines.length && end > index + 2 && !(lines[end - 1] ?? '').trim().endsWith('|')) end -= 1
+      blocks.push(buildTableBlock(lines.slice(index, end), streaming))
       current = null
       index = end - 1
       continue
+    }
+
+    if (streaming && isTableRow(rawLine)) {
+      const next = lines[index + 1]
+      if (next === undefined) continue
+      if (index + 2 === lines.length && isPartialSeparator(next)) break
     }
 
     if (!rawLine.trim()) {
@@ -110,7 +128,7 @@ export function parseAnswerBlocks(text: string): AnswerBlock[] {
     const listMatch = LIST_ITEM_PATTERN.exec(rawLine)
     const type: 'paragraph' | 'list' = listMatch ? 'list' : 'paragraph'
     const content = (listMatch?.[1] ?? rawLine).trim()
-    const segments = parseInlineSegments(content)
+    const segments = parseInlineSegments(content, streaming)
     if (segments.length === 0) continue
 
     if (!current || current.type !== type) {
@@ -123,18 +141,25 @@ export function parseAnswerBlocks(text: string): AnswerBlock[] {
   return blocks
 }
 
-function parseInlineSegments(content: string): AnswerSegment[] {
+function plainSegment(text: string, streaming: boolean, atEnd: boolean): AnswerSegment[] {
+  if (!streaming) return text ? [{ text, bold: false }] : []
+  const stripped = text.replace(/\*\*/g, '')
+  const cleaned = atEnd ? stripped.replace(/\*$/, '') : stripped
+  return cleaned ? [{ text: cleaned, bold: false }] : []
+}
+
+function parseInlineSegments(content: string, streaming = false): AnswerSegment[] {
   const segments: AnswerSegment[] = []
   let cursor = 0
 
   for (const match of content.matchAll(BOLD_PATTERN)) {
     const start = match.index ?? 0
-    if (start > cursor) segments.push({ text: content.slice(cursor, start), bold: false })
+    if (start > cursor) segments.push(...plainSegment(content.slice(cursor, start), streaming, false))
     if (match[1]) segments.push({ text: match[1], bold: true })
     cursor = start + match[0].length
   }
 
-  if (cursor < content.length) segments.push({ text: content.slice(cursor), bold: false })
+  if (cursor < content.length) segments.push(...plainSegment(content.slice(cursor), streaming, true))
   return segments
 }
 

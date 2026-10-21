@@ -6,7 +6,9 @@
     role="log"
     aria-live="polite"
     aria-relevant="additions text"
+    :aria-busy="busy"
     aria-label="Hội thoại với trợ lý tra cứu chỉ"
+    @scroll.passive="onScroll"
   >
     <ol class="chat-message-list__items">
       <li
@@ -26,16 +28,13 @@
           v-else-if="item.status === 'thinking'"
           class="chat-thinking"
         >
-          <span>Đang tra cứu</span>
           <span
-            v-if="reducedMotion"
+            class="chat-thinking__dots"
             aria-hidden="true"
-          >…</span>
-          <q-spinner-dots
-            v-else
-            size="1.4em"
-            aria-hidden="true"
-          />
+          >
+            <i /><i /><i />
+          </span>
+          <span>{{ item.statusText ?? 'Đang tra cứu…' }}</span>
         </div>
 
         <div
@@ -66,7 +65,10 @@
             :message="item"
             :compact="compact"
           />
-          <div class="chat-actions">
+          <div
+            v-if="item.status === 'done'"
+            class="chat-actions"
+          >
             <AppButton
               icon="content_copy"
               variant="text"
@@ -111,13 +113,24 @@ const emit = defineEmits<{
 
 const snackbar = useSnackbar()
 const scrollEl = ref<HTMLElement | null>(null)
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+const FOLLOW_THRESHOLD_PX = 80
+let following = true
+let lastScrollTop = 0
 
-const busy = computed(() => props.messages.some((item) => item.status === 'thinking'))
+const busy = computed(() => props.messages.some((item) => item.status === 'thinking' || item.status === 'streaming'))
 
-function scrollToBottom() {
+function scrollToBottom(behavior: 'auto' | 'instant' | 'smooth' = 'auto') {
   const el = scrollEl.value
-  if (el) el.scrollTop = el.scrollHeight
+  if (el) el.scrollTo({ top: el.scrollHeight, behavior })
+}
+
+function onScroll() {
+  const el = scrollEl.value
+  if (!el) return
+  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD_PX
+  if (nearBottom) following = true
+  else if (el.scrollTop < lastScrollTop) following = false
+  lastScrollTop = el.scrollTop
 }
 
 function formatTime(timestamp: number): string {
@@ -144,17 +157,27 @@ async function copyAnswer(text: string) {
 }
 
 watch(
-  () => {
-    const last = props.messages[props.messages.length - 1]
-    return `${props.messages.length}:${last?.status ?? ''}`
-  },
+  () => props.messages.length,
   async () => {
+    following = true
     await nextTick()
     scrollToBottom()
   },
 )
 
-onMounted(scrollToBottom)
+watch(
+  () => {
+    const last = props.messages[props.messages.length - 1]
+    return `${last?.status ?? ''}:${last?.text.length ?? 0}`
+  },
+  async () => {
+    if (!following) return
+    await nextTick()
+    scrollToBottom('instant')
+  },
+)
+
+onMounted(() => scrollToBottom())
 </script>
 
 <style scoped lang="scss">
@@ -231,8 +254,64 @@ onMounted(scrollToBottom)
 .chat-thinking {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   color: var(--chat-muted);
+}
+
+.chat-thinking__dots {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+
+  i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: chat-thinking-dot 1.2s ease-in-out infinite;
+
+    &:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    i,
+    i:nth-child(n) {
+      animation: chat-thinking-pulse 2s ease-in-out infinite;
+      animation-delay: 0s;
+    }
+  }
+}
+
+@keyframes chat-thinking-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes chat-thinking-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 .chat-error {
