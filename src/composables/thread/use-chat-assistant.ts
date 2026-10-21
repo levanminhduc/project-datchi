@@ -1,14 +1,14 @@
 import { computed, effectScope, ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { chatAssistantService } from '@/services'
-import { StreamUnavailableError, type StreamStatus } from '@/services/chat-stream'
 import {
   toAssistantMessage,
   type ChatMessage,
 } from '@/components/thread/chat-assistant-messages'
 import { statusText } from '@/components/thread/chat-tool-labels'
-import type { ChatAssistantResult, ChatHistoryItem } from '@/types/thread'
+import type { ChatHistoryItem } from '@/types/thread'
 import { buildChatHistory } from './chat-history'
+import { createRequestTracker, fetchAnswer } from './chat-stream-flow'
 
 const FALLBACK_ERROR = 'Không thể kết nối tới trợ lý. Vui lòng thử lại.'
 const MAX_FOLLOWUP_QUESTIONS = 2
@@ -29,6 +29,7 @@ const showFollowups = computed(() =>
 
 let nextId = 1
 let generation = 0
+const requests = createRequestTracker()
 let logoutWatcherInstalled = false
 
 function installLogoutWatcher() {
@@ -45,6 +46,7 @@ function installLogoutWatcher() {
 
 function reset() {
   generation += 1
+  requests.abort()
   messages.value = []
 }
 
@@ -61,44 +63,20 @@ function patchMessage(id: number, patch: (current: ChatMessage) => ChatMessage) 
   messages.value.splice(index, 1, patch(current))
 }
 
-function applyStatus(current: ChatMessage, status: StreamStatus): ChatMessage {
-  if (status.phase === 'thinking' && current.status === 'streaming') return current
-  const next = { ...current, statusText: statusText(status) }
-  return status.phase === 'thinking' ? next : { ...next, status: 'thinking', text: '' }
-}
-
-function fetchAnswer(
-  assistantId: number,
-  question: string,
-  history: ChatHistoryItem[],
-  requestGeneration: number,
-): Promise<ChatAssistantResult> {
-  const isCurrent = () => requestGeneration === generation
-  return chatAssistantService
-    .stream(question, history, {
-      onStatus: (status) => {
-        if (isCurrent()) patchMessage(assistantId, (current) => applyStatus(current, status))
-      },
-      onDelta: (text) => {
-        if (!isCurrent()) return
-        patchMessage(assistantId, (current) => ({
-          ...current,
-          status: 'streaming',
-          text: current.text + text,
-        }))
-      },
-    })
-    .catch((error: unknown) => {
-      if (error instanceof StreamUnavailableError) return chatAssistantService.query(question, history)
-      throw error
-    })
-}
-
 async function resolveQuestion(assistantId: number, question: string, history: ChatHistoryItem[]) {
   const requestGeneration = generation
+  const request = requests.begin()
+  const isCurrent = () => requestGeneration === generation
 
   try {
-    const result = await fetchAnswer(assistantId, question, history, requestGeneration)
+    const result = await fetchAnswer(
+      chatAssistantService,
+      question,
+      history,
+      request.signal,
+      isCurrent,
+      (patch) => patchMessage(assistantId, patch),
+    )
     if (requestGeneration !== generation) return
     replaceMessage(assistantId, {
       id: assistantId,
@@ -118,6 +96,8 @@ async function resolveQuestion(assistantId: number, question: string, history: C
       createdAt: Date.now(),
       question,
     })
+  } finally {
+    requests.end(request)
   }
 }
 

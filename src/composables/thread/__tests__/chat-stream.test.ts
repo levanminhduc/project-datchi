@@ -2,9 +2,14 @@ import assert from 'node:assert/strict'
 import { toAssistantMessage } from '../../../components/thread/chat-assistant-messages'
 import { TOOL_LABELS, statusText } from '../../../components/thread/chat-tool-labels'
 import {
+  consumeStreamResponse,
   handleStreamEvent,
   normalizeDone,
   parseSseChunks,
+  STREAM_FALLBACK_ERROR,
+  STREAM_INTERRUPTED,
+  StreamAbortedError,
+  StreamUnavailableError,
   type StreamHandlers,
   type StreamStatus,
 } from '../../../services/chat-stream'
@@ -175,7 +180,139 @@ function testHandleStreamEventIgnoresUnknown() {
   assert.deepEqual([statuses, deltas], [[], []])
 }
 
-function main() {
+const encoder = new TextEncoder()
+
+interface FakeBody {
+  response: Response
+  state: { cancelled: boolean }
+}
+
+function sseResponse(chunks: Array<string | Error>, signal?: AbortSignal, hang = false): FakeBody {
+  const state = { cancelled: false }
+  let index = 0
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')))
+    },
+    pull(controller) {
+      const chunk = chunks[index]
+      index += 1
+      if (chunk === undefined) {
+        if (hang) return new Promise<void>(() => {})
+        controller.close()
+      } else if (chunk instanceof Error) {
+        controller.error(chunk)
+      } else {
+        controller.enqueue(encoder.encode(chunk))
+      }
+    },
+    cancel() {
+      state.cancelled = true
+    },
+  })
+  const response = new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  return { response, state }
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+}
+
+const DONE_EVENT = 'event: done\ndata: {"answer":"Còn 120.","answer_kind":"answer","tools_used":[],"suggestions":[]}\n\n'
+const DELTA_EVENT = 'event: delta\ndata: {"text":"Còn"}\n\n'
+
+async function testAnyNotFoundMeansStreamUnavailable() {
+  const { handlers } = recorder()
+  await assert.rejects(
+    consumeStreamResponse(jsonResponse(404, { data: null, error: 'Không tìm thấy endpoint' }), handlers),
+    StreamUnavailableError,
+  )
+  await assert.rejects(
+    consumeStreamResponse(jsonResponse(404, { data: null, error: 'stream_unavailable' }), handlers),
+    StreamUnavailableError,
+  )
+  await assert.rejects(
+    consumeStreamResponse(new Response('<html>Not Found</html>', { status: 404 }), handlers),
+    StreamUnavailableError,
+  )
+}
+
+async function testJsonErrorKeepsMessage() {
+  const { handlers } = recorder()
+  await assert.rejects(
+    consumeStreamResponse(jsonResponse(403, { data: null, error: 'Bạn chưa có quyền dùng trợ lý' }), handlers),
+    { message: 'Bạn chưa có quyền dùng trợ lý' },
+  )
+  await assert.rejects(
+    consumeStreamResponse(new Response('lỗi', { status: 502 }), handlers),
+    { message: STREAM_FALLBACK_ERROR },
+  )
+  await assert.rejects(
+    consumeStreamResponse(jsonResponse(200, { data: null, error: null }), handlers),
+    { message: STREAM_FALLBACK_ERROR },
+  )
+}
+
+async function testEventsSplitAcrossReads() {
+  const { statuses, deltas, handlers } = recorder()
+  const text = `event: status\ndata: {"phase":"thinking"}\n\nevent: delta\ndata: {"text":"Còn "}\n\n${DONE_EVENT}`
+  const bytes = encoder.encode(text)
+  const cut = bytes.indexOf(0xc3) + 1
+  const pieces = [bytes.slice(0, 20), bytes.slice(20, cut), bytes.slice(cut)]
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const piece of pieces) controller.enqueue(piece)
+      controller.close()
+    },
+  })
+  const result = await consumeStreamResponse(
+    new Response(stream, { headers: { 'content-type': 'text/event-stream; charset=utf-8' } }),
+    handlers,
+  )
+  assert.equal(result.answer, 'Còn 120.')
+  assert.deepEqual(statuses, [{ phase: 'thinking' }])
+  assert.deepEqual(deltas, ['Còn '])
+}
+
+async function testStopsAtDoneAndCancelsReader() {
+  const { handlers } = recorder()
+  const body = sseResponse([DONE_EVENT, DELTA_EVENT], undefined, true)
+  const result = await consumeStreamResponse(body.response, handlers)
+  assert.equal(result.answer, 'Còn 120.')
+  assert.equal(body.state.cancelled, true)
+}
+
+async function testEndWithoutDoneIsInterrupted() {
+  const { handlers } = recorder()
+  const body = sseResponse([DELTA_EVENT])
+  await assert.rejects(consumeStreamResponse(body.response, handlers), { message: STREAM_INTERRUPTED })
+}
+
+async function testMidBodyReadErrorIsVietnamese() {
+  const { deltas, handlers } = recorder()
+  const body = sseResponse([DELTA_EVENT, new TypeError('network error')])
+  await assert.rejects(consumeStreamResponse(body.response, handlers), { message: STREAM_INTERRUPTED })
+  assert.ok(/[à-ỹ]/.test(STREAM_INTERRUPTED))
+  assert.deepEqual(deltas, ['Còn'])
+}
+
+async function testOwnAbortIsNotAnInterruption() {
+  const { handlers } = recorder()
+  const controller = new AbortController()
+  const body = sseResponse([DELTA_EVENT], controller.signal, true)
+  const pending = consumeStreamResponse(body.response, handlers, controller.signal)
+  controller.abort()
+  await assert.rejects(pending, StreamAbortedError)
+}
+
+async function testErrorEventKeepsServiceMessage() {
+  const { handlers } = recorder()
+  const body = sseResponse(['event: error\ndata: {"code":"llm_timeout","message":"Trợ lý phản hồi chậm"}\n\n'], undefined, true)
+  await assert.rejects(consumeStreamResponse(body.response, handlers), { message: 'Trợ lý phản hồi chậm' })
+  assert.equal(body.state.cancelled, true)
+}
+
+async function main() {
   testParsesEventSplitAcrossBuffers()
   testParsesMultipleEventsAndKeepsRest()
   testSkipsPingComments()
@@ -191,7 +328,15 @@ function main() {
   testHandleStreamEventDoneReturnsNormalizedResult()
   testHandleStreamEventErrorThrowsMessage()
   testHandleStreamEventIgnoresUnknown()
+  await testAnyNotFoundMeansStreamUnavailable()
+  await testJsonErrorKeepsMessage()
+  await testEventsSplitAcrossReads()
+  await testStopsAtDoneAndCancelsReader()
+  await testEndWithoutDoneIsInterrupted()
+  await testMidBodyReadErrorIsVietnamese()
+  await testOwnAbortIsNotAnInterruption()
+  await testErrorEventKeepsServiceMessage()
   console.log('chat-stream tests passed')
 }
 
-main()
+void main()
