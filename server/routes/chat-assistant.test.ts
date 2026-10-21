@@ -23,8 +23,8 @@ function buildApp(permissions: string[]) {
   return app
 }
 
-function ask(app: Hono<AppEnv>, message = 'C9700 còn bao nhiêu cuộn?', history?: unknown) {
-  return app.request('/query', {
+function ask(app: Hono<AppEnv>, message = 'C9700 còn bao nhiêu cuộn?', history?: unknown, path = '/query') {
+  return app.request(path, {
     method: 'POST',
     headers: { 'Authorization': 'Bearer abc', 'Content-Type': 'application/json' },
     body: JSON.stringify(history === undefined ? { message } : { message, history }),
@@ -378,6 +378,176 @@ async function testAuthorisedFallbackIgnoresInvalidHistory() {
   })
 }
 
+const SSE_EVENTS = [
+  'event: status\ndata: {"phase":"thinking"}\n\n',
+  'event: delta\ndata: {"text":"Còn 120"}\n\n',
+  'event: done\ndata: {"answer":"Còn 120 cuộn.","answer_kind":"answer","tools_used":[],"suggestions":[]}\n\n',
+]
+
+function sseFetch(chunks: string[], seen: SeenCall[] = [], stall = false): typeof fetch {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    seen.push({ url: String(input), init })
+    const encoder = new TextEncoder()
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk))
+        if (!stall) {
+          controller.close()
+          return
+        }
+        init?.signal?.addEventListener('abort', () => {
+          controller.error(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+        })
+      },
+    })
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }) as unknown as typeof fetch
+}
+
+function askStream(app: Hono<AppEnv>, message = 'C9700 còn bao nhiêu cuộn?', history?: unknown) {
+  return ask(app, message, history, '/stream')
+}
+
+async function testStreamPassesEventsThrough() {
+  const seen: SeenCall[] = []
+  await withService(SERVICE_ENV, sseFetch(SSE_EVENTS, seen), async () => {
+    const res = await askStream(buildApp(['chat.assistant.use']), 'C9700 còn bao nhiêu cuộn?', [])
+    assert.equal(res.status, 200)
+    assert.ok(res.headers.get('content-type')?.startsWith('text/event-stream'))
+    assert.equal(await res.text(), SSE_EVENTS.join(''))
+
+    const [call] = seen
+    assert.ok(call)
+    assert.equal(call.url, 'http://ai.test/v1/chat/stream')
+    assert.deepEqual(JSON.parse(String(call.init?.body)), { app: 'datchi', question: 'C9700 còn bao nhiêu cuộn?', history: [] })
+    const headers = call.init?.headers as Record<string, string>
+    assert.equal(headers['Authorization'], 'Bearer abc')
+    assert.equal(headers['X-Internal-Token'], 'noi-bo')
+    assert.ok(headers['X-Request-Id'] && headers['X-Request-Id'].length >= 8)
+  })
+}
+
+async function testStreamKeepsEventsSplitAcrossChunks() {
+  const joined = SSE_EVENTS.join('')
+  const chunks = [joined.slice(0, 20), joined.slice(20, 75), joined.slice(75)]
+  await withService(SERVICE_ENV, sseFetch(chunks), async () => {
+    const res = await askStream(buildApp(['chat.assistant.use']))
+    assert.equal(await res.text(), joined)
+  })
+}
+
+async function testStreamUnavailableWhenNotConfigured() {
+  await withService({}, jsonFetch(200, {}), async () => {
+    const res = await askStream(buildApp(['chat.assistant.use']))
+    assert.equal(res.status, 404)
+    assert.deepEqual(await res.json(), { data: null, error: 'stream_unavailable' })
+  })
+}
+
+async function testStreamUnavailableWhenServiceIs404() {
+  await withService(SERVICE_ENV, jsonFetch(404, { detail: 'Not Found' }), async () => {
+    const res = await askStream(buildApp(['chat.assistant.use']))
+    assert.equal(res.status, 404)
+    assert.deepEqual(await res.json(), { data: null, error: 'stream_unavailable' })
+  })
+}
+
+async function testStreamServiceJsonErrorKeepsStatus() {
+  const payload = { data: null, error: { code: 'unauthorized', message: 'Phiên đăng nhập đã hết hạn' } }
+  await withService(SERVICE_ENV, jsonFetch(401, payload), async () => {
+    const res = await askStream(buildApp(['chat.assistant.use']))
+    assert.equal(res.status, 401)
+    assert.deepEqual(await res.json(), { data: null, error: 'Phiên đăng nhập đã hết hạn' })
+  })
+}
+
+async function testStreamServiceDownReturns502() {
+  const failing = (async () => {
+    throw new TypeError('fetch failed')
+  }) as unknown as typeof fetch
+  await withService(SERVICE_ENV, failing, async () => {
+    const res = await askStream(buildApp(['chat.assistant.use']))
+    assert.equal(res.status, 502)
+    assert.deepEqual(await res.json(), { data: null, error: 'Không thể kết nối trợ lý AI' })
+  })
+}
+
+async function testStreamRequiresPermission() {
+  const seen: SeenCall[] = []
+  await withService(SERVICE_ENV, sseFetch(SSE_EVENTS, seen), async () => {
+    const res = await askStream(buildApp(['thread.inventory.view', 'thread.styles.view']))
+    assert.equal(res.status, 403)
+    assert.equal(seen.length, 0)
+  })
+}
+
+async function testStreamValidatesMessage() {
+  const seen: SeenCall[] = []
+  await withService(SERVICE_ENV, sseFetch(SSE_EVENTS, seen), async () => {
+    const app = buildApp(['chat.assistant.use'])
+    const empty = await askStream(app, '   ')
+    assert.equal(empty.status, 400)
+    assert.deepEqual(await empty.json(), { data: null, error: 'Vui lòng nhập câu hỏi' })
+
+    const long = await askStream(app, 'a'.repeat(2001))
+    assert.equal(long.status, 400)
+    assert.deepEqual(await long.json(), { data: null, error: 'Câu hỏi tối đa 2000 ký tự' })
+
+    const badHistory = await askStream(app, 'Còn màu khác không?', 'abc')
+    assert.equal(badHistory.status, 400)
+    assert.deepEqual(await badHistory.json(), { data: null, error: 'Lịch sử hội thoại không hợp lệ' })
+
+    const noAuth = await app.request('/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Còn màu khác không?' }),
+    })
+    assert.equal(noAuth.status, 401)
+    assert.equal(seen.length, 0)
+  })
+}
+
+async function testStreamIdleTimeoutEmitsError() {
+  const seen: SeenCall[] = []
+  await withService({ ...SERVICE_ENV, CHATBOT_REQUEST_TIMEOUT_MS: '100' }, sseFetch(SSE_EVENTS.slice(0, 1), seen, true), async () => {
+    const started = Date.now()
+    const res = await askStream(buildApp(['chat.assistant.use']))
+    assert.equal(res.status, 200)
+    const text = await res.text()
+    assert.equal(
+      text,
+      SSE_EVENTS[0] + 'event: error\ndata: {"code":"timeout","message":"Trợ lý AI phản hồi quá thời gian"}\n\n',
+    )
+    assert.ok(Date.now() - started < 2000)
+    assert.equal(seen[0]?.init?.signal?.aborted, true)
+  })
+}
+
+async function testStreamIdleTimeoutResetsOnEachChunk() {
+  const encoder = new TextEncoder()
+  let aborted = false
+  const slowFetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    init?.signal?.addEventListener('abort', () => {
+      aborted = true
+    })
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        for (const chunk of SSE_EVENTS) {
+          await new Promise((resolve) => setTimeout(resolve, 80))
+          controller.enqueue(encoder.encode(chunk))
+        }
+        controller.close()
+      },
+    })
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }) as unknown as typeof fetch
+  await withService({ ...SERVICE_ENV, CHATBOT_REQUEST_TIMEOUT_MS: '150' }, slowFetch, async () => {
+    const res = await askStream(buildApp(['chat.assistant.use']))
+    assert.equal(await res.text(), SSE_EVENTS.join(''))
+    assert.equal(aborted, false)
+  })
+}
+
 async function main() {
   await testRequiresChatPermission()
   await testForwardsQuestionToService()
@@ -402,6 +572,16 @@ async function main() {
   await testCutsRawHistoryBeforeSanitizing()
   await testMissingAuthorizationComesBeforeHistory()
   await testAuthorisedFallbackIgnoresInvalidHistory()
+  await testStreamPassesEventsThrough()
+  await testStreamKeepsEventsSplitAcrossChunks()
+  await testStreamUnavailableWhenNotConfigured()
+  await testStreamUnavailableWhenServiceIs404()
+  await testStreamServiceJsonErrorKeepsStatus()
+  await testStreamServiceDownReturns502()
+  await testStreamRequiresPermission()
+  await testStreamValidatesMessage()
+  await testStreamIdleTimeoutEmitsError()
+  await testStreamIdleTimeoutResetsOnEachChunk()
   console.log('chat-assistant route tests passed')
 }
 

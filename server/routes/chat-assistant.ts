@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Hono } from 'hono'
+import { streamSSE } from 'hono/streaming'
 import { requirePermission } from '../middleware/auth'
 import type { AppEnv } from '../types/hono-env'
 import type { ChatAssistantResult, ChatHistoryItem } from '../types/chat-assistant'
@@ -219,24 +220,185 @@ async function queryChatbotService(
   return mapChatbotData(envelope.data)
 }
 
+interface ChatRequestBody {
+  message?: unknown
+  history?: unknown
+}
+
+function readQuestion(body: ChatRequestBody | null): { message: string } | { error: string } {
+  if (typeof body?.message === 'string' && body.message.length > RAW_TEXT_MAX) {
+    return { error: 'Câu hỏi tối đa 2000 ký tự' }
+  }
+  const message = typeof body?.message === 'string' ? sanitizeChatText(body.message).trim().replace(/\s+/g, ' ') : ''
+  if (!message) return { error: 'Vui lòng nhập câu hỏi' }
+  if (message.length > 2000) return { error: 'Câu hỏi tối đa 2000 ký tự' }
+  return { message }
+}
+
+function readServiceRequest(
+  authorization: string | undefined,
+  body: ChatRequestBody | null,
+): { authorization: string; history: ChatHistoryItem[] } | { error: string; status: 400 | 401 } {
+  if (!authorization) return { error: 'Chưa xác thực', status: 401 }
+  const history = parseHistory(body?.history)
+  if (!history) return { error: 'Lịch sử hội thoại không hợp lệ', status: 400 }
+  return { authorization, history }
+}
+
+interface IdleTimer {
+  arm: () => void
+  clear: () => void
+  readonly timedOut: boolean
+}
+
+function createIdleTimer(controller: AbortController, timeoutMs: number): IdleTimer {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let timedOut = false
+  return {
+    arm() {
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        timedOut = true
+        controller.abort()
+      }, timeoutMs)
+    },
+    clear() {
+      clearTimeout(timer)
+    },
+    get timedOut() {
+      return timedOut
+    },
+  }
+}
+
+async function openChatbotStream(
+  config: ChatbotProxyConfig,
+  question: string,
+  history: ChatHistoryItem[],
+  authorization: string,
+  requestId: string,
+  controller: AbortController,
+  idle: IdleTimer,
+): Promise<Response> {
+  idle.arm()
+  try {
+    return await fetch(`${config.baseUrl}/v1/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Authorization': authorization,
+        'Content-Type': 'application/json',
+        'X-Internal-Token': config.internalToken,
+        'X-Request-Id': requestId,
+      },
+      body: JSON.stringify({ app: 'datchi', question, history }),
+      signal: controller.signal,
+    })
+  } catch (err) {
+    idle.clear()
+    if (idle.timedOut || (err instanceof Error && err.name === 'AbortError')) {
+      throw new ChatbotProxyError('Trợ lý AI phản hồi quá thời gian', 408)
+    }
+    throw new ChatbotProxyError('Không thể kết nối trợ lý AI')
+  }
+}
+
+function formatSseError(code: string, message: string): string {
+  return `event: error\ndata: ${JSON.stringify({ code, message })}\n\n`
+}
+
+chatAssistant.post('/stream', requirePermission('chat.assistant.use'), async (c) => {
+  try {
+    const body = await c.req.json().catch(() => null) as ChatRequestBody | null
+    const question = readQuestion(body)
+    if ('error' in question) return c.json({ data: null, error: question.error }, 400)
+
+    const config = getChatbotProxyConfig()
+    if (!config) return c.json({ data: null, error: 'stream_unavailable' }, 404)
+
+    const request = readServiceRequest(c.req.header('Authorization'), body)
+    if ('error' in request) return c.json({ data: null, error: request.error }, request.status)
+
+    const requestId = randomUUID()
+    console.log(`[chat-assistant] employee=${c.get('auth').employeeId} request_id=${requestId} stream=1`)
+
+    const controller = new AbortController()
+    const idle = createIdleTimer(controller, config.timeoutMs)
+
+    let response: Response
+    try {
+      response = await openChatbotStream(
+        config, question.message, request.history, request.authorization, requestId, controller, idle,
+      )
+    } catch (err) {
+      if (err instanceof ChatbotProxyError) {
+        return c.json({ data: null, error: err.message }, err.statusCode)
+      }
+      throw err
+    }
+
+    const isEventStream = response.ok && (response.headers.get('Content-Type') ?? '').startsWith('text/event-stream')
+    if (!isEventStream || !response.body) {
+      idle.clear()
+      if (response.status === 404) return c.json({ data: null, error: 'stream_unavailable' }, 404)
+      const payload = await readJsonPayload(response)
+      if (!response.ok) {
+        const message = getPayloadMessage({ error: (payload as ChatbotServiceEnvelope | null)?.error }) ?? 'Trợ lý AI trả về lỗi'
+        return c.json({ data: null, error: message }, toProxyStatus(response.status))
+      }
+      return c.json({ data: null, error: 'Trợ lý AI trả về dữ liệu không hợp lệ' }, 502)
+    }
+
+    const upstream = response.body.getReader()
+    return streamSSE(c, async (stream) => {
+      stream.onAbort(() => controller.abort())
+      const decoder = new TextDecoder()
+      let pending = ''
+      let completed = false
+      try {
+        while (true) {
+          idle.arm()
+          const { done, value } = await upstream.read()
+          if (done) break
+          pending += decoder.decode(value, { stream: true })
+          const cut = pending.lastIndexOf('\n\n')
+          if (cut >= 0) {
+            await stream.write(pending.slice(0, cut + 2))
+            pending = pending.slice(cut + 2)
+          }
+        }
+        if (pending) await stream.write(pending)
+        completed = true
+      } catch {
+        if (!stream.aborted) {
+          const error = idle.timedOut
+            ? formatSseError('timeout', 'Trợ lý AI phản hồi quá thời gian')
+            : formatSseError('connection', 'Không thể kết nối trợ lý AI')
+          await stream.write(error).catch(() => {})
+        }
+      } finally {
+        idle.clear()
+        if (!completed) controller.abort()
+      }
+    })
+  } catch (err) {
+    console.error('chat-assistant stream error:', err)
+    return c.json({ data: null, error: 'Lỗi khi tra cứu trợ lý chỉ' }, 500)
+  }
+})
+
 chatAssistant.post('/query', requirePermission('chat.assistant.use'), async (c) => {
   try {
-    const body = await c.req.json().catch(() => null) as { message?: unknown; history?: unknown } | null
-    if (typeof body?.message === 'string' && body.message.length > RAW_TEXT_MAX) {
-      return c.json({ data: null, error: 'Câu hỏi tối đa 2000 ký tự' }, 400)
-    }
-    const message = typeof body?.message === 'string' ? sanitizeChatText(body.message).trim().replace(/\s+/g, ' ') : ''
-    if (!message) return c.json({ data: null, error: 'Vui lòng nhập câu hỏi' }, 400)
-    if (message.length > 2000) return c.json({ data: null, error: 'Câu hỏi tối đa 2000 ký tự' }, 400)
+    const body = await c.req.json().catch(() => null) as ChatRequestBody | null
+    const question = readQuestion(body)
+    if ('error' in question) return c.json({ data: null, error: question.error }, 400)
+    const message = question.message
 
     const auth = c.get('auth')
     const chatbotConfig = getChatbotProxyConfig()
     if (chatbotConfig) {
-      const authorization = c.req.header('Authorization')
-      if (!authorization) return c.json({ data: null, error: 'Chưa xác thực' }, 401)
-
-      const history = parseHistory(body?.history)
-      if (!history) return c.json({ data: null, error: 'Lịch sử hội thoại không hợp lệ' }, 400)
+      const request = readServiceRequest(c.req.header('Authorization'), body)
+      if ('error' in request) return c.json({ data: null, error: request.error }, request.status)
+      const { authorization, history } = request
 
       const requestId = randomUUID()
       console.log(`[chat-assistant] employee=${auth.employeeId} request_id=${requestId}`)
