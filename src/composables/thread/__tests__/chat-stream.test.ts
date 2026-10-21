@@ -120,6 +120,19 @@ function testNormalizeDoneWithoutKindOrBadInput() {
   assert.deepEqual(empty.suggestions, [])
 }
 
+function testNormalizeDoneKeepsRequestId() {
+  assert.equal(normalizeDone({ answer: 'ok', request_id: ' req-123 ' }).request_id, 'req-123')
+  for (const request_id of [undefined, '', '   ', 7, null]) {
+    assert.equal('request_id' in normalizeDone({ answer: 'ok', request_id }), false)
+  }
+  assert.equal('request_id' in normalizeDone(null), false)
+}
+
+function testRequestIdReachesAssistantMessage() {
+  assert.equal(toAssistantMessage(normalizeDone({ answer: 'ok', request_id: 'req-123' })).requestId, 'req-123')
+  assert.equal('requestId' in toAssistantMessage(normalizeDone({ answer: 'ok' })), false)
+}
+
 function recorder() {
   const statuses: StreamStatus[] = []
   const deltas: string[] = []
@@ -324,6 +337,8 @@ async function main() {
   testNormalizeDoneEmptyAnswer()
   testNormalizeDoneCapsAndTrimsSuggestions()
   testNormalizeDoneWithoutKindOrBadInput()
+  testNormalizeDoneKeepsRequestId()
+  testRequestIdReachesAssistantMessage()
   testHandleStreamEventRoutesStatusAndDelta()
   testHandleStreamEventDoneReturnsNormalizedResult()
   testHandleStreamEventErrorThrowsMessage()

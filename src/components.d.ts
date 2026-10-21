@@ -65,6 +65,7 @@ declare module 'vue' {
     ChatAssistantPanel: typeof import('./components/thread/ChatAssistantPanel.vue')['default']
     ChatComposer: typeof import('./components/thread/chat/ChatComposer.vue')['default']
     ChatConversation: typeof import('./components/thread/chat/ChatConversation.vue')['default']
+    ChatFeedback: typeof import('./components/thread/chat/ChatFeedback.vue')['default']
     ChatMessageList: typeof import('./components/thread/chat/ChatMessageList.vue')['default']
     ChatStockResult: typeof import('./components/thread/chat/ChatStockResult.vue')['default']
     ChatSuggestions: typeof import('./components/thread/chat/ChatSuggestions.vue')['default']

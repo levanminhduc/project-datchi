@@ -661,7 +661,222 @@ async function testStreamIdleTimerIgnoresClientBackpressure() {
   })
 }
 
+function sendFeedback(app: Hono<AppEnv>, body: unknown, authorization: string | null = 'Bearer abc') {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (authorization) headers['Authorization'] = authorization
+  return app.request('/feedback', { method: 'POST', headers, body: JSON.stringify(body) })
+}
+
+const FEEDBACK_OK = { data: { ok: true }, error: null }
+const CHAT_USER = ['chat.assistant.use']
+
+async function testForwardsRequestId() {
+  const readRequestId = async (data: Record<string, unknown>) => {
+    const result = await forwardedBody('Hỏi gì đó?', undefined, { data: { answer: 'Có.', tools_used: [], ...data }, error: null })
+    return (result.data as { data: { request_id?: string } }).data.request_id
+  }
+  assert.equal(await readRequestId({ request_id: 'req-123' }), 'req-123')
+  assert.equal(await readRequestId({}), undefined)
+  assert.equal(await readRequestId({ request_id: 7 }), undefined)
+  assert.equal(await readRequestId({ request_id: '   ' }), undefined)
+}
+
+async function testFeedbackForwardsToService() {
+  const seen: SeenCall[] = []
+  await withService(SERVICE_ENV, jsonFetch(200, FEEDBACK_OK, seen), async () => {
+    const res = await sendFeedback(buildApp(CHAT_USER), { request_id: 'req-123', rating: 'down', comment: 'Sai số cuộn' })
+    assert.equal(res.status, 200)
+    assert.deepEqual(await res.json(), { data: { ok: true }, error: null })
+
+    const [call] = seen
+    assert.ok(call)
+    assert.equal(seen.length, 1)
+    assert.equal(call.url, 'http://ai.test/v1/feedback')
+    assert.equal(call.init?.method, 'POST')
+    assert.deepEqual(JSON.parse(String(call.init?.body)), {
+      app: 'datchi', request_id: 'req-123', rating: 'down', comment: 'Sai số cuộn',
+    })
+    const headers = call.init?.headers as Record<string, string>
+    assert.equal(headers['Authorization'], 'Bearer abc')
+    assert.equal(headers['X-Internal-Token'], 'noi-bo')
+  })
+}
+
+async function testFeedbackOmitsEmptyComment() {
+  for (const comment of [undefined, '', '   ', '\u0000\u0007']) {
+    const seen: SeenCall[] = []
+    await withService(SERVICE_ENV, jsonFetch(200, FEEDBACK_OK, seen), async () => {
+      const res = await sendFeedback(buildApp(CHAT_USER), { request_id: 'req-1', rating: 'up', comment })
+      assert.equal(res.status, 200)
+      assert.deepEqual(JSON.parse(String(seen[0]?.init?.body)), { app: 'datchi', request_id: 'req-1', rating: 'up' })
+    })
+  }
+}
+
+async function testFeedbackSanitizesComment() {
+  const seen: SeenCall[] = []
+  await withService(SERVICE_ENV, jsonFetch(200, FEEDBACK_OK, seen), async () => {
+    const comment = `  Sai\u0000 số\u0007 cuộn${'x'.repeat(489)}  `
+    const res = await sendFeedback(buildApp(CHAT_USER), { request_id: ' req-1 ', rating: 'down', comment })
+    assert.equal(res.status, 200)
+    const forwarded = JSON.parse(String(seen[0]?.init?.body)) as { request_id: string; comment: string }
+    assert.equal(forwarded.request_id, 'req-1')
+    assert.equal(forwarded.comment, `Sai số cuộn${'x'.repeat(489)}`)
+    assert.equal(Array.from(forwarded.comment).length, 500)
+  })
+}
+
+async function testFeedbackValidatesBody() {
+  const invalid: unknown[] = [
+    null,
+    {},
+    { rating: 'up' },
+    { request_id: '', rating: 'up' },
+    { request_id: '   ', rating: 'up' },
+    { request_id: 12, rating: 'up' },
+    { request_id: 'x'.repeat(101), rating: 'up' },
+    { request_id: 'req-1' },
+    { request_id: 'req-1', rating: 'UP' },
+    { request_id: 'req-1', rating: 'meh' },
+    { request_id: 'req-1', rating: 1 },
+    { request_id: 'req-1', rating: 'down', comment: 5 },
+    { request_id: 'req-1', rating: 'down', comment: 'x'.repeat(501) },
+    { request_id: 'req-1', rating: 'down', comment: 'x'.repeat(9000) },
+  ]
+  const seen: SeenCall[] = []
+  await withService(SERVICE_ENV, jsonFetch(200, FEEDBACK_OK, seen), async () => {
+    for (const body of invalid) {
+      const res = await sendFeedback(buildApp(CHAT_USER), body)
+      assert.equal(res.status, 400, JSON.stringify(body)?.slice(0, 80))
+      const payload = await res.json() as { data: unknown; error: string }
+      assert.equal(payload.data, null)
+      assert.ok(payload.error)
+    }
+    assert.equal(seen.length, 0)
+  })
+}
+
+async function testFeedbackAcceptsCommentOfExactlyLimit() {
+  const seen: SeenCall[] = []
+  await withService(SERVICE_ENV, jsonFetch(200, FEEDBACK_OK, seen), async () => {
+    const res = await sendFeedback(buildApp(CHAT_USER), { request_id: 'req-1', rating: 'down', comment: 'ế'.repeat(500) })
+    assert.equal(res.status, 200)
+    assert.equal(seen.length, 1)
+  })
+}
+
+async function testFeedbackRequiresPermission() {
+  const seen: SeenCall[] = []
+  await withService(SERVICE_ENV, jsonFetch(200, FEEDBACK_OK, seen), async () => {
+    const res = await sendFeedback(buildApp(['thread.inventory.view', 'thread.styles.view']), { request_id: 'req-1', rating: 'up' })
+    assert.equal(res.status, 403)
+    assert.equal(seen.length, 0)
+  })
+}
+
+async function testFeedbackUnavailableWhenNotConfigured() {
+  const seen: SeenCall[] = []
+  for (const env of [{}, { CHATBOT_SERVICE_URL: 'http://ai.test/' }, { CHATBOT_INTERNAL_TOKEN: 'noi-bo' }]) {
+    await withService(env, jsonFetch(200, FEEDBACK_OK, seen), async () => {
+      const res = await sendFeedback(buildApp(CHAT_USER), { request_id: 'req-1', rating: 'up' })
+      assert.equal(res.status, 404)
+      assert.deepEqual(await res.json(), { data: null, error: 'feedback_unavailable' })
+    })
+  }
+  assert.equal(seen.length, 0)
+}
+
+async function testFeedbackNeedsAuthorization() {
+  const seen: SeenCall[] = []
+  await withService(SERVICE_ENV, jsonFetch(200, FEEDBACK_OK, seen), async () => {
+    const res = await sendFeedback(buildApp(CHAT_USER), { request_id: 'req-1', rating: 'up' }, null)
+    assert.equal(res.status, 401)
+    assert.equal(seen.length, 0)
+  })
+}
+
+async function testFeedbackServiceErrorsKeepStatus() {
+  const cases: Array<[number, unknown, number, string]> = [
+    [401, { data: null, error: { code: 'unauthorized', message: 'Phiên đăng nhập đã hết hạn' } }, 401, 'Phiên đăng nhập đã hết hạn'],
+    [429, { data: null, error: { code: 'rate_limited', message: 'Bạn gửi quá nhanh' } }, 429, 'Bạn gửi quá nhanh'],
+    [422, { data: null, error: 'Dữ liệu không hợp lệ' }, 400, 'Dữ liệu không hợp lệ'],
+    [500, { data: null, error: 'boom' }, 502, 'boom'],
+    [500, null, 502, 'Trợ lý AI trả về lỗi'],
+  ]
+  for (const [status, payload, expectedStatus, expectedMessage] of cases) {
+    await withService(SERVICE_ENV, jsonFetch(status, payload), async () => {
+      const res = await sendFeedback(buildApp(CHAT_USER), { request_id: 'req-1', rating: 'up' })
+      assert.equal(res.status, expectedStatus, String(status))
+      assert.deepEqual(await res.json(), { data: null, error: expectedMessage })
+    })
+  }
+}
+
+async function testFeedbackServiceDownReturns502() {
+  const failing = (async () => {
+    throw new TypeError('fetch failed')
+  }) as unknown as typeof fetch
+  await withService(SERVICE_ENV, failing, async () => {
+    const res = await sendFeedback(buildApp(CHAT_USER), { request_id: 'req-1', rating: 'up' })
+    assert.equal(res.status, 502)
+    assert.deepEqual(await res.json(), { data: null, error: 'Không thể kết nối trợ lý AI' })
+  })
+}
+
+async function testFeedbackTimeoutReturns408() {
+  const hanging = ((_input: string | URL | Request, init?: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })))
+    })) as unknown as typeof fetch
+  await withService({ ...SERVICE_ENV, CHATBOT_REQUEST_TIMEOUT_MS: '50' }, hanging, async () => {
+    const started = Date.now()
+    const res = await sendFeedback(buildApp(CHAT_USER), { request_id: 'req-1', rating: 'up' })
+    assert.equal(res.status, 408)
+    assert.ok(Date.now() - started < 1000)
+  })
+}
+
+async function testFeedbackStalledBodyTimesOut() {
+  const stalled = ((_input: string | URL | Request, init?: RequestInit) => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        init?.signal?.addEventListener('abort', () => controller.error(Object.assign(new Error('aborted'), { name: 'AbortError' })))
+      },
+    })
+    return Promise.resolve(new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  }) as unknown as typeof fetch
+  await withService({ ...SERVICE_ENV, CHATBOT_REQUEST_TIMEOUT_MS: '100' }, stalled, async () => {
+    const started = Date.now()
+    const res = await sendFeedback(buildApp(CHAT_USER), { request_id: 'req-1', rating: 'up' })
+    assert.equal(res.status, 408)
+    assert.ok(Date.now() - started < 1500)
+  })
+}
+
+async function testFeedbackRejectsMalformedServiceReply() {
+  for (const payload of [null, {}, { data: null, error: null }, { data: { ok: false }, error: null }]) {
+    await withService(SERVICE_ENV, jsonFetch(200, payload), async () => {
+      const res = await sendFeedback(buildApp(CHAT_USER), { request_id: 'req-1', rating: 'up' })
+      assert.equal(res.status, 502, JSON.stringify(payload))
+    })
+  }
+}
+
 async function main() {
+  await testForwardsRequestId()
+  await testFeedbackForwardsToService()
+  await testFeedbackOmitsEmptyComment()
+  await testFeedbackSanitizesComment()
+  await testFeedbackValidatesBody()
+  await testFeedbackAcceptsCommentOfExactlyLimit()
+  await testFeedbackRequiresPermission()
+  await testFeedbackUnavailableWhenNotConfigured()
+  await testFeedbackNeedsAuthorization()
+  await testFeedbackServiceErrorsKeepStatus()
+  await testFeedbackServiceDownReturns502()
+  await testFeedbackTimeoutReturns408()
+  await testFeedbackStalledBodyTimesOut()
+  await testFeedbackRejectsMalformedServiceReply()
   await testRequiresChatPermission()
   await testForwardsQuestionToService()
   await testServiceUnauthorizedPassesThrough()

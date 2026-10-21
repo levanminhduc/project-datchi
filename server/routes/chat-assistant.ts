@@ -20,12 +20,15 @@ const FALLBACK_PERMISSIONS = ['thread.inventory.view', 'thread.styles.view']
 const HISTORY_MAX_ITEMS = 20
 const HISTORY_CONTENT_MAX = 2000
 const RAW_TEXT_MAX = 8000
+const FEEDBACK_COMMENT_MAX = 500
+const FEEDBACK_REQUEST_ID_MAX = 100
 
 interface ChatbotServiceData {
   answer?: unknown
   tools_used?: unknown
   answer_kind?: unknown
   suggestions?: unknown
+  request_id?: unknown
 }
 
 interface ChatbotServiceEnvelope {
@@ -39,7 +42,7 @@ interface ChatbotProxyConfig {
   timeoutMs: number
 }
 
-type ChatbotProxyStatus = 400 | 401 | 403 | 408 | 502
+type ChatbotProxyStatus = 400 | 401 | 403 | 408 | 429 | 502
 
 class ChatbotProxyError extends Error {
   constructor(
@@ -110,6 +113,7 @@ function mapChatbotData(data: ChatbotServiceData): ChatAssistantResult {
   const answer = typeof data.answer === 'string' && hasAnswer ? data.answer : 'Trợ lý không trả về câu trả lời.'
   const serviceKind = typeof data.answer_kind === 'string' && data.answer_kind !== '' ? data.answer_kind : undefined
   const answerKind = hasAnswer ? serviceKind : 'empty'
+  const requestId = typeof data.request_id === 'string' ? data.request_id.trim() : ''
   const toolsUsed = Array.isArray(data.tools_used)
     ? data.tools_used.filter((value): value is string => typeof value === 'string')
     : []
@@ -124,6 +128,7 @@ function mapChatbotData(data: ChatbotServiceData): ChatAssistantResult {
     suggestions: readSuggestions(data.suggestions),
     context: { tools_used: toolsUsed },
     ...(answerKind ? { answer_kind: answerKind } : {}),
+    ...(requestId ? { request_id: requestId } : {}),
   }
 }
 
@@ -218,6 +223,76 @@ async function queryChatbotService(
   }
 
   return mapChatbotData(envelope.data)
+}
+
+interface FeedbackPayload {
+  requestId: string
+  rating: 'up' | 'down'
+  comment: string
+}
+
+function readFeedback(body: unknown): FeedbackPayload | { error: string } {
+  if (!body || typeof body !== 'object') return { error: 'Dữ liệu đánh giá không hợp lệ' }
+  const record = body as Record<string, unknown>
+  const requestId = typeof record.request_id === 'string' ? record.request_id.trim() : ''
+  if (!requestId || requestId.length > FEEDBACK_REQUEST_ID_MAX) return { error: 'Mã câu trả lời không hợp lệ' }
+  if (record.rating !== 'up' && record.rating !== 'down') return { error: 'Đánh giá không hợp lệ' }
+  if (record.comment !== undefined && record.comment !== null && typeof record.comment !== 'string') {
+    return { error: 'Góp ý không hợp lệ' }
+  }
+  const rawComment = typeof record.comment === 'string' ? record.comment : ''
+  const tooLong = { error: `Góp ý tối đa ${FEEDBACK_COMMENT_MAX} ký tự` }
+  if (rawComment.length > RAW_TEXT_MAX) return tooLong
+  const comment = sanitizeChatText(rawComment).trim()
+  if (Array.from(comment).length > FEEDBACK_COMMENT_MAX) return tooLong
+  return { requestId, rating: record.rating, comment }
+}
+
+async function sendFeedbackToService(
+  config: ChatbotProxyConfig,
+  feedback: FeedbackPayload,
+  authorization: string,
+): Promise<void> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs)
+
+  try {
+    let response: Response
+    try {
+      response = await fetch(`${config.baseUrl}/v1/feedback`, {
+        method: 'POST',
+        headers: {
+          'Authorization': authorization,
+          'Content-Type': 'application/json',
+          'X-Internal-Token': config.internalToken,
+        },
+        body: JSON.stringify({
+          app: 'datchi',
+          request_id: feedback.requestId,
+          rating: feedback.rating,
+          ...(feedback.comment ? { comment: feedback.comment } : {}),
+        }),
+        signal: controller.signal,
+      })
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new ChatbotProxyError('Trợ lý AI phản hồi quá thời gian', 408)
+      }
+      throw new ChatbotProxyError('Không thể kết nối trợ lý AI')
+    }
+
+    const payload = await readJsonPayload(response)
+    if (controller.signal.aborted) throw new ChatbotProxyError('Trợ lý AI phản hồi quá thời gian', 408)
+    if (!response.ok) {
+      const status = response.status === 429 ? 429 : toProxyStatus(response.status)
+      throw new ChatbotProxyError(getPayloadMessage({ error: (payload as ChatbotServiceEnvelope | null)?.error }) ?? 'Trợ lý AI trả về lỗi', status)
+    }
+
+    const data = (payload as { data?: { ok?: unknown } | null } | null)?.data
+    if (data?.ok !== true) throw new ChatbotProxyError('Trợ lý AI trả về dữ liệu không hợp lệ')
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 interface ChatRequestBody {
@@ -404,6 +479,33 @@ chatAssistant.post('/stream', requirePermission('chat.assistant.use'), async (c)
   } catch (err) {
     console.error('chat-assistant stream error:', err)
     return c.json({ data: null, error: 'Lỗi khi tra cứu trợ lý chỉ' }, 500)
+  }
+})
+
+chatAssistant.post('/feedback', requirePermission('chat.assistant.use'), async (c) => {
+  try {
+    const body = await c.req.json().catch(() => null)
+    const feedback = readFeedback(body)
+    if ('error' in feedback) return c.json({ data: null, error: feedback.error }, 400)
+
+    const config = getChatbotProxyConfig()
+    if (!config) return c.json({ data: null, error: 'feedback_unavailable' }, 404)
+
+    const authorization = c.req.header('Authorization')
+    if (!authorization) return c.json({ data: null, error: 'Chưa xác thực' }, 401)
+
+    try {
+      await sendFeedbackToService(config, feedback, authorization)
+    } catch (err) {
+      if (err instanceof ChatbotProxyError) {
+        return c.json({ data: null, error: err.message }, err.statusCode)
+      }
+      throw err
+    }
+    return c.json({ data: { ok: true }, error: null })
+  } catch (err) {
+    console.error('chat-assistant feedback error:', err)
+    return c.json({ data: null, error: 'Lỗi khi gửi đánh giá trợ lý chỉ' }, 500)
   }
 })
 

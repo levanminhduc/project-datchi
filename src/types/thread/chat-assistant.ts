@@ -38,4 +38,13 @@ export interface ChatAssistantResult {
   source_endpoints?: string[]
   context?: unknown
   answer_kind?: string
+  request_id?: string
+}
+
+export type ChatFeedbackRating = 'up' | 'down'
+
+export interface ChatFeedbackRequest {
+  request_id: string
+  rating: ChatFeedbackRating
+  comment?: string
 }

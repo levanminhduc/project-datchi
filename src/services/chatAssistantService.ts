@@ -1,6 +1,6 @@
 import { fetchApi, fetchApiRaw } from './api'
 import { consumeStreamResponse, type StreamHandlers } from './chat-stream'
-import type { ChatAssistantResult, ChatHistoryItem } from '@/types/thread'
+import type { ChatAssistantResult, ChatFeedbackRequest, ChatHistoryItem } from '@/types/thread'
 
 interface ApiResponse<T> {
   data: T | null
@@ -10,6 +10,7 @@ interface ApiResponse<T> {
 
 const BASE = '/api/chat-assistant'
 const STREAM_CONNECT_TIMEOUT_MS = 30_000
+const FEEDBACK_TIMEOUT_MS = 15_000
 
 export const chatAssistantService = {
   async query(
@@ -49,5 +50,17 @@ export const chatAssistantService = {
     })
 
     return consumeStreamResponse(response, handlers, signal)
+  },
+
+  async feedback(request: ChatFeedbackRequest): Promise<void> {
+    const response = await fetchApi<ApiResponse<{ ok: boolean }>>(`${BASE}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }, {
+      timeout: FEEDBACK_TIMEOUT_MS,
+      retryOnServerBusy: false,
+    })
+
+    if (response.error) throw new Error(response.error)
   },
 }

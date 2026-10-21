@@ -38,6 +38,7 @@ export interface ChatAssistantResult {
   source_endpoints?: string[]
   context?: unknown
   answer_kind?: string
+  request_id?: string
 }
 
 export interface SummaryRpcRow {

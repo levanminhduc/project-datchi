@@ -71,6 +71,7 @@ export function normalizeDone(data: unknown): ChatAssistantResult {
   const answer = hasAnswer ? (record.answer as string) : EMPTY_ANSWER
   const serviceKind = typeof record.answer_kind === 'string' && record.answer_kind !== '' ? record.answer_kind : undefined
   const answerKind = hasAnswer ? serviceKind : 'empty'
+  const requestId = typeof record.request_id === 'string' ? record.request_id.trim() : ''
   const suggestions = readStrings(record.suggestions)
     .map((item) => item.trim())
     .filter((item) => item !== '')
@@ -86,6 +87,7 @@ export function normalizeDone(data: unknown): ChatAssistantResult {
     suggestions,
     context: { tools_used: readStrings(record.tools_used) },
     ...(answerKind ? { answer_kind: answerKind } : {}),
+    ...(requestId ? { request_id: requestId } : {}),
   }
 }
 

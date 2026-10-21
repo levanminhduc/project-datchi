@@ -80,6 +80,10 @@
             >
               <q-tooltip>Sao chép</q-tooltip>
             </AppButton>
+            <ChatFeedback
+              v-if="canRate(item) && item.requestId"
+              :request-id="item.requestId"
+            />
             <span class="chat-actions__meta">{{ describeMeta(item) }}</span>
           </div>
         </div>
@@ -97,7 +101,9 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import AppButton from '@/components/ui/buttons/AppButton.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
 import type { ChatMessage } from '@/components/thread/chat-assistant-messages'
+import { canRate } from '@/components/thread/chat-feedback'
 import ChatAnswerContent from './ChatAnswerContent.vue'
+import ChatFeedback from './ChatFeedback.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -342,6 +348,7 @@ onMounted(() => scrollToBottom())
 
 .chat-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   min-height: 32px;

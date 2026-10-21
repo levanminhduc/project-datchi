@@ -22,6 +22,7 @@ export interface ChatMessage {
   sources?: string[]
   suggestions?: string[]
   answerKind?: string
+  requestId?: string
   createdAt: number
   question?: string
 }
@@ -32,6 +33,7 @@ export interface AssistantMessageContent {
   sources: string[]
   suggestions: string[]
   answerKind?: string
+  requestId?: string
 }
 
 export interface AnswerSegment {
@@ -68,6 +70,7 @@ export function toAssistantMessage(result: ChatAssistantResult): AssistantMessag
     sources: extractSources(result.context),
     suggestions: (result.suggestions ?? []).slice(0, MAX_SUGGESTIONS),
     ...(result.answer_kind ? { answerKind: result.answer_kind } : {}),
+    ...(result.request_id ? { requestId: result.request_id } : {}),
   }
 }
 
