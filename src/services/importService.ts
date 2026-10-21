@@ -11,6 +11,9 @@ import type {
   ImportStreamDone,
   POImportPreview,
   POImportResult,
+  StyleCmptImportRow,
+  StyleCmptPreview,
+  StyleCmptImportResult,
 } from '@/types/thread'
 
 interface ApiResponse<T> {
@@ -219,5 +222,29 @@ export const importService = {
 
   async downloadPOTemplate(): Promise<void> {
     await authenticatedDownload('/api/import/template/po-items', 'template-import-po.xlsx')
+  },
+
+  async parseStyleCmpt(rows: StyleCmptImportRow[]): Promise<StyleCmptPreview> {
+    const response = await fetchApi<ApiResponse<StyleCmptPreview>>('/api/import/style-cmpt/parse', {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    }, { timeout: 60_000 })
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không nhận được dữ liệu xem trước')
+    return response.data
+  },
+
+  async executeStyleCmpt(rows: StyleCmptImportRow[]): Promise<StyleCmptImportResult> {
+    const response = await fetchApi<ApiResponse<StyleCmptImportResult>>('/api/import/style-cmpt/execute', {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    }, { timeout: 120_000 })
+    if (response.error) throw new Error(response.error)
+    if (!response.data) throw new Error('Không nhận được kết quả import')
+    return response.data
+  },
+
+  async downloadStyleCmptTemplate(): Promise<void> {
+    await authenticatedDownload('/api/import/template/style-cmpt', 'template-import-gia-cmpt.xlsx')
   },
 }

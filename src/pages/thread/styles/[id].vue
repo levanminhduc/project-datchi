@@ -102,6 +102,22 @@
                   clearable
                 />
               </div>
+              <div
+                v-for="field in cmptFields"
+                :key="field.key"
+                class="col-12 col-sm-4"
+              >
+                <q-input
+                  v-model="form[field.key]"
+                  :label="field.label"
+                  suffix="USD/cái"
+                  inputmode="decimal"
+                  outlined
+                  dense
+                  clearable
+                  :rules="[cmptPriceRule]"
+                />
+              </div>
               <div class="col-12">
                 <q-input
                   v-model="form.description"
@@ -806,7 +822,26 @@ const form = ref({
   style_name: '',
   fabric_type: null as string | null,
   description: '',
+  cm_price: '' as string | null,
+  p_price: '' as string | null,
+  t_price: '' as string | null,
 })
+
+const cmptFields = [
+  { key: 'cm_price', label: 'CM' },
+  { key: 'p_price', label: 'P' },
+  { key: 't_price', label: 'T' },
+] as const
+const CMPT_PRICE_PATTERN = /^\d{1,8}([.,]\d{1,4})?$/
+const CMPT_PRICE_MESSAGE = 'Giá CMPT phải là số không âm, tối đa 4 chữ số thập phân'
+const normalizeCmptPrice = (value: string | null): string | null => {
+  const text = (value ?? '').trim().replace(',', '.')
+  return text === '' ? null : text
+}
+const cmptPriceRule = (value: string | null) => {
+  const text = (value ?? '').trim()
+  return text === '' || CMPT_PRICE_PATTERN.test(text) || CMPT_PRICE_MESSAGE
+}
 
 // Fabric type options
 const fabricTypeOptions = [
@@ -879,6 +914,9 @@ watch(selectedStyle, (style) => {
       style_name: style.style_name,
       fabric_type: style.fabric_type,
       description: style.description || '',
+      cm_price: style.cm_price ?? '',
+      p_price: style.p_price ?? '',
+      t_price: style.t_price ?? '',
     }
   }
 }, { immediate: true })
@@ -918,12 +956,18 @@ const handleSave = async () => {
   if (!form.value.style_name) {
     return
   }
+  if (cmptFields.some(field => cmptPriceRule(form.value[field.key]) !== true)) {
+    return
+  }
 
   isSaving.value = true
   await updateStyle(id.value, {
     style_name: form.value.style_name,
     fabric_type: form.value.fabric_type || undefined,
     description: form.value.description || undefined,
+    cm_price: normalizeCmptPrice(form.value.cm_price),
+    p_price: normalizeCmptPrice(form.value.p_price),
+    t_price: normalizeCmptPrice(form.value.t_price),
   })
   isSaving.value = false
 }

@@ -380,6 +380,13 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/thread/styles/import-cmpt': RouteRecordInfo<
+      '/thread/styles/import-cmpt',
+      '/thread/styles/import-cmpt',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/thread/styles/with-specs': RouteRecordInfo<
       '/thread/styles/with-specs',
       '/thread/styles/with-specs',
@@ -782,6 +789,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/thread/styles/[id].vue': {
       routes:
         | '/thread/styles/[id]'
+      views:
+        | never
+    }
+    'src/pages/thread/styles/import-cmpt.vue': {
+      routes:
+        | '/thread/styles/import-cmpt'
       views:
         | never
     }

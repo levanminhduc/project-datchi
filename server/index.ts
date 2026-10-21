@@ -40,6 +40,7 @@ import notificationsRouter from './routes/notifications'
 import notificationChannelsRouter from './routes/notification-channels'
 import telegramRouter from './routes/telegram'
 import importRouter from './routes/import'
+import styleCmptImportRouter from './routes/import-style-cmpt'
 import subArtsRouter from './routes/subArts'
 import styleColorsRouter from './routes/styleColors'
 import deptAllocationsRouter from './routes/deptAllocations'
@@ -138,6 +139,7 @@ app.route('/api/stock', stockRouter)
 app.route('/api/notifications', notificationsRouter)
 app.route('/api/notification-channels', notificationChannelsRouter)
 app.route('/api/import', importRouter)
+app.route('/api/import', styleCmptImportRouter)
 app.route('/api/sub-arts', subArtsRouter)
 app.route('/api/style-colors', styleColorsRouter)
 app.route('/api/dept-allocations', deptAllocationsRouter)

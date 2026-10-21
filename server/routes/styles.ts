@@ -3,6 +3,7 @@ import { query, queryOne } from '../db/query'
 import { from } from '../db/sql-builder'
 import { requirePermission } from '../middleware/auth'
 import { getErrorMessage } from '../utils/errorHelper'
+import { pickCmptPrices } from '../validation/styleCmpt'
 
 const styles = new Hono()
 
@@ -174,17 +175,25 @@ styles.post('/', requirePermission('thread.styles.create'), async (c) => {
       return c.json({ data: null, error: 'Ten ma hang (style_name) la bat buoc' }, 400)
     }
 
+    const cmpt = pickCmptPrices(body)
+    if (cmpt.error) {
+      return c.json({ data: null, error: cmpt.error }, 400)
+    }
+
     let data: Record<string, unknown> | null
     try {
       data = await queryOne<Record<string, unknown>>(
-        `INSERT INTO styles (style_code, style_name, description, fabric_type)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO styles (style_code, style_name, description, fabric_type, cm_price, p_price, t_price)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
         [
           body.style_code,
           body.style_name,
           body.description ?? null,
           body.fabric_type ?? null,
+          cmpt.prices.cm_price ?? null,
+          cmpt.prices.p_price ?? null,
+          cmpt.prices.t_price ?? null,
         ]
       )
     } catch (err) {
@@ -214,7 +223,12 @@ styles.put('/:id', requirePermission('thread.styles.edit'), async (c) => {
 
     const body = await c.req.json()
 
-    const updateData: Record<string, unknown> = {}
+    const cmpt = pickCmptPrices(body)
+    if (cmpt.error) {
+      return c.json({ data: null, error: cmpt.error }, 400)
+    }
+
+    const updateData: Record<string, unknown> = { ...cmpt.prices }
     if (body.style_code !== undefined) updateData.style_code = body.style_code
     if (body.style_name !== undefined) updateData.style_name = body.style_name
     if (body.description !== undefined) updateData.description = body.description

@@ -54,6 +54,15 @@
           
           <div class="col-12 col-sm-auto">
             <q-btn
+              v-if="canEditStyles"
+              color="secondary"
+              icon="upload"
+              label="Import giá CMPT"
+              unelevated
+              class="full-width-xs q-mr-sm"
+              @click="router.push('/thread/styles/import-cmpt')"
+            />
+            <q-btn
               color="primary"
               icon="add"
               label="Thêm mã hàng"
@@ -279,6 +288,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStyles } from '@/composables/thread/useStyles'
+import { usePermission } from '@/composables/usePermission'
 import { subArtService } from '@/services/subArtService'
 import CreateStyleDialog from '@/components/thread/CreateStyleDialog.vue'
 import type { Style, UpdateStyleDTO } from '@/types/thread'
@@ -292,6 +302,8 @@ definePage({
 
 // Router
 const router = useRouter()
+const { can } = usePermission()
+const canEditStyles = can('thread.styles.edit')
 
 // Composables
 const { styles, isLoading, fetchStyles, updateStyle } = useStyles()
